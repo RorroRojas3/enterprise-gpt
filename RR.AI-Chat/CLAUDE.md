@@ -299,7 +299,6 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Don't call `.Wait()` / `.Result` / `.GetAwaiter().GetResult()`
 - Don't return `void` from async (except event handlers)
 - Don't add new mutable class DTOs — new DTOs are records
-- Don't extend the legacy `ExceptionHandlerMiddleware` — write `IExceptionHandler` for new error mappings
 - Don't change the `ErrorDto` wire shape — frontend depends on `{ statusCode, errors[], traceId, timestamp }`
 - Don't add data annotations to entities — fluent `IEntityTypeConfiguration<T>` only
 - Don't edit EF migrations once they're in source control — add a new one
@@ -314,5 +313,4 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 Documented so future Claude sessions don't copy these patterns when writing new code:
 
 - **Class-based DTOs** in `RR.AI-Chat.Dto/` (23 files) — should be `record` types. Convert opportunistically when you touch one.
-- **`ExceptionHandlerMiddleware`** at [`RR.AI-Chat.Api/Middlewares/ExceptionHandlerMiddleware.cs`](RR.AI-Chat.Api/Middlewares/ExceptionHandlerMiddleware.cs) — should be one or more `IExceptionHandler` implementations registered via `AddExceptionHandler<T>`. Migrate as a single dedicated PR; preserve the `ErrorDto` JSON shape and the status-code mappings (`ValidationException`→400, `OperationCanceledException`→499, etc.).
 - **Brace-style namespaces** across all `.cs` files — modern C# convention is file-scoped (`namespace Foo;`). Stay brace-style for consistency until a project-wide migration. Don't mix styles in a single PR.

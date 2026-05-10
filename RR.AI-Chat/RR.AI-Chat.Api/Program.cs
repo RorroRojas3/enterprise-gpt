@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
-using RR.AI_Chat.Api.Middlewares;
+using RR.AI_Chat.Api.ExceptionHandlers;
 using RR.AI_Chat.Repository;
 using RR.AI_Chat.Service;
 using RR.AI_Chat.Service.Common.Interface;
@@ -179,6 +179,11 @@ builder.Services.AddScoped<IAzureCosmosService>(provider =>
 // Register configuration settings
 builder.Services.Configure<List<McpServerSettings>>(builder.Configuration.GetSection("McpServers"));
 
+// Exception handlers (chained — first to return true wins; GlobalExceptionHandler is the fallback)
+builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
+builder.Services.AddExceptionHandler<OperationCanceledExceptionHandler>();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
 // Singletons
 builder.Services.AddSingleton<IConversationLockService, ConversationLockService>();
 builder.Services.AddSingleton<ITokenService, TokenService>();
@@ -242,7 +247,8 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
     //Authorization = new[] { new HangfireAuthorizationFilter() }
 });
 
-app.UseMiddleware<ExceptionHandlerMiddleware>();
+// .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
+app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 
