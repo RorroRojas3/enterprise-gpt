@@ -16,7 +16,6 @@
     <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
     <PackageReference Include="FluentValidation" Version="12.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
-    <PackageReference Include="Hangfire" Version="1.8.23" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.59.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.7" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7">

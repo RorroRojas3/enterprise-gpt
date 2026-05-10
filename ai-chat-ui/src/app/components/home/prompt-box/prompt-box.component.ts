@@ -355,12 +355,12 @@ export class PromptBoxComponent implements OnDestroy {
             attachedFile.progress = result.progress;
 
             if (result.state === JobState.Succeeded) {
-              attachedFile.status = JobState.Succeeded;
+              attachedFile.status = result.status;
               console.log(`File ${attachedFile.name} upload succeeded`);
               this.jobPollingSubscriptions.delete(attachedFile.id);
               resolve();
             } else if (result.state === JobState.Failed) {
-              attachedFile.status = JobState.Failed;
+              attachedFile.status = result.status;
               console.error(
                 `File ${attachedFile.name} upload failed: ${result.status}`,
               );
@@ -375,7 +375,7 @@ export class PromptBoxComponent implements OnDestroy {
             }
           },
           error: (error) => {
-            attachedFile.status = 'failed';
+            attachedFile.status = JobStatus.Failed;
             console.error(
               `Error polling status for file ${attachedFile.name}:`,
               error,

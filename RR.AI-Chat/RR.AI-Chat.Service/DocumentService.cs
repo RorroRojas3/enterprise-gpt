@@ -1,5 +1,4 @@
-﻿using Hangfire.Server;
-using Microsoft.Data.SqlTypes;
+﻿using Microsoft.Data.SqlTypes;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,13 +8,14 @@ using RR.AI_Chat.Dto;
 using RR.AI_Chat.Dto.Enums;
 using RR.AI_Chat.Entity;
 using RR.AI_Chat.Repository;
+using RR.AI_Chat.Service.BackgroundJobs;
 using RR.AI_Chat.Service.Common.Interface;
 
 namespace RR.AI_Chat.Service
 {
-    public interface IDocumentService 
+    public interface IDocumentService
     {
-        Task<ConversationDocumentDto> CreateConversationDocumentAsync(PerformContext? context, FileDto fileDataDto, Guid userId, Guid chatId, CancellationToken cancellationToken);
+        Task<ConversationDocumentDto> CreateConversationDocumentAsync(string jobId, FileDto fileDataDto, Guid userId, Guid chatId, CancellationToken cancellationToken);
 
         Task<FileDto?> GenerateConversationHistoryAsync(Guid chatId, DocumentFormats documentFormat, CancellationToken cancellationToken);
 
@@ -24,7 +24,7 @@ namespace RR.AI_Chat.Service
         Task<PageEmbeddingDto> GeneratePageEmbeddingAsync(DocumentExtractorDto documentExtractor, CancellationToken cancellationToken);
     }
 
-    public class DocumentService(ILogger<DocumentService> logger, 
+    public class DocumentService(ILogger<DocumentService> logger,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IBlobStorageService blobStorageService,
         IConfiguration configuration,
@@ -38,6 +38,7 @@ namespace RR.AI_Chat.Service
         [FromKeyedServices("common")] IFileService commonFileService,
         [FromKeyedServices("word")] IFileService wordFileService,
         IAzureCosmosService cosmosService,
+        IJobStatusStore jobStatusStore,
         AIChatDbContext ctx) : IDocumentService
     {
         private readonly ILogger _logger = logger;
@@ -54,22 +55,19 @@ namespace RR.AI_Chat.Service
         private readonly IFileService _commonFileService = commonFileService;
         private readonly IFileService _wordFileService = wordFileService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
+        private readonly IJobStatusStore _jobStatusStore = jobStatusStore;
         private readonly AIChatDbContext _ctx = ctx;
 
-        public async Task<ConversationDocumentDto> CreateConversationDocumentAsync(PerformContext? context, FileDto fileDataDto, Guid userId, Guid chatId, CancellationToken cancellationToken)
+        public async Task<ConversationDocumentDto> CreateConversationDocumentAsync(string jobId, FileDto fileDataDto, Guid userId, Guid chatId, CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(context, nameof(context));
+            ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
             ArgumentNullException.ThrowIfNull(fileDataDto, nameof(fileDataDto));
 
-            var jobId = context.BackgroundJob.Id;
-            context.SetJobParameter(JobName.Status.ToString(), JobStatus.Queued.ToString());
-            context.SetJobParameter(JobName.Progress.ToString(), 0);
             _logger.LogInformation("Starting document creation. Job ID: {JobId}, Chat ID: {ChatId}, File Name: {FileName}", jobId, chatId, fileDataDto.FileName);
 
-            context.SetJobParameter(JobName.Status.ToString(), JobStatus.Uploading.ToString());
-            context.SetJobParameter(JobName.Progress.ToString(), 25);
+            _jobStatusStore.Update(jobId, JobStatus.Uploading, 25);
 
-            string container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer")!;  
+            string container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer")!;
             string blob = $"{userId}/{chatId}/{fileDataDto.FileName}";
             Dictionary<string, string> metadata = new()
             {
@@ -82,9 +80,8 @@ namespace RR.AI_Chat.Service
 
             await _blobStorageService.UploadAsync(container, blob, fileDataDto.Content, metadata, cancellationToken);
 
+            _jobStatusStore.Update(jobId, JobStatus.Extracting, 50);
             var documentExtractors = await ExtractTextAsync(fileDataDto, cancellationToken);
-            context.SetJobParameter(JobName.Status.ToString(), JobStatus.Extracting.ToString());
-            context.SetJobParameter(JobName.Progress.ToString(), 50);
 
             List<ConversationDocumentPage> documentPages = [];
             var date = DateTimeOffset.UtcNow;
@@ -131,8 +128,7 @@ namespace RR.AI_Chat.Service
                     });
                 }
             }
-            context.SetJobParameter(JobName.Status.ToString(), JobStatus.Embedding.ToString());
-            context.SetJobParameter(JobName.Progress.ToString(), 75);
+            _jobStatusStore.Update(jobId, JobStatus.Embedding, 75);
 
             var document = new ConversationDocument
             {
@@ -151,8 +147,7 @@ namespace RR.AI_Chat.Service
             await _ctx.AddAsync(document, cancellationToken);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            context.SetJobParameter(JobName.Status.ToString(), JobStatus.Processed.ToString());
-            context.SetJobParameter(JobName.Progress.ToString(), 100);
+            _jobStatusStore.Update(jobId, JobStatus.Processed, 100);
 
             return document.MapToChatDocumentDto();
         }

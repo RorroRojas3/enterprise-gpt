@@ -4,8 +4,6 @@ using Azure.AI.OpenAI;
 using Azure.Identity;
 using Azure.Storage.Blobs;
 using FluentValidation;
-using Hangfire;
-using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +13,7 @@ using Microsoft.Identity.Web;
 using RR.AI_Chat.Api.ExceptionHandlers;
 using RR.AI_Chat.Repository;
 using RR.AI_Chat.Service;
+using RR.AI_Chat.Service.BackgroundJobs;
 using RR.AI_Chat.Service.Common.Interface;
 using RR.AI_Chat.Service.Settings;
 using System.ClientModel;
@@ -101,28 +100,11 @@ IEmbeddingGenerator<string, Embedding<float>> ollamaGenerator =
         .AsIEmbeddingGenerator();
 builder.Services.AddEmbeddingGenerator(ollamaGenerator);
 
-// Add Hangfire services
-builder.Services.AddHangfire(configuration => configuration
-    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
-    .UseSimpleAssemblyNameTypeSerializer()
-    .UseRecommendedSerializerSettings()
-    .UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection"), new SqlServerStorageOptions
-    {
-        CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-        SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-        QueuePollInterval = TimeSpan.Zero,
-        UseRecommendedIsolationLevel = true,
-        DisableGlobalLocks = true,
-    }));
-
-// Add the processing server as IHostedService
-builder.Services.AddHangfireServer(options =>
-{
-    options.WorkerCount = Environment.ProcessorCount * 2;
-});
-
-// Register IStorageConnection for dependency injection
-builder.Services.AddScoped(provider => JobStorage.Current.GetConnection());
+// Background job pipeline (replaces Hangfire). BackgroundJobProcessor consumes IBackgroundJobQueue,
+// caps concurrent jobs via SemaphoreSlim, and updates IJobStatusStore for client polling.
+builder.Services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
+builder.Services.AddSingleton<IJobStatusStore, JobStatusStore>();
+builder.Services.AddHostedService<BackgroundJobProcessor>();
 
 // Add Microsoft Graph Service
 builder.Services.AddSingleton(sp =>
@@ -240,12 +222,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-// Add Hangfire Dashboard
-app.UseHangfireDashboard("/hangfire", new DashboardOptions
-{
-    //Authorization = new[] { new HangfireAuthorizationFilter() }
-});
 
 // .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
 app.UseExceptionHandler();
