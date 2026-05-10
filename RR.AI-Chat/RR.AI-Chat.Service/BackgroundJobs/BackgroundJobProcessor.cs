@@ -52,21 +52,36 @@ namespace RR.AI_Chat.Service.BackgroundJobs
 
             var inFlight = new ConcurrentDictionary<Task, byte>();
 
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                while (!stoppingToken.IsCancellationRequested)
+                JobWorkItem item;
+                try
                 {
-                    var item = await _queue.DequeueAsync(stoppingToken).ConfigureAwait(false);
-                    await _gate.WaitAsync(stoppingToken).ConfigureAwait(false);
-
-                    var task = ProcessAsync(item, stoppingToken);
-                    inFlight[task] = 0;
-                    _ = task.ContinueWith(t => inFlight.TryRemove(t, out _), TaskScheduler.Default);
+                    item = await _queue.DequeueAsync(stoppingToken).ConfigureAwait(false);
                 }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                // Expected during shutdown.
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                try
+                {
+                    await _gate.WaitAsync(stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    // Item was dequeued but the host is shutting down before we could acquire a
+                    // concurrency slot. The work item would otherwise be silently dropped, leaving
+                    // the snapshot stuck in Queued. Mark it Failed so the client sees a terminal
+                    // state and the snapshot becomes evictable.
+                    _logger.LogWarning("Background job {JobId} dequeued but not started before shutdown", item.JobId);
+                    _store.Fail(item.JobId, "Host shutdown before job could start.");
+                    break;
+                }
+
+                var task = ProcessAsync(item, stoppingToken);
+                inFlight[task] = 0;
+                _ = task.ContinueWith(t => inFlight.TryRemove(t, out _), TaskScheduler.Default);
             }
 
             await Task.WhenAll(inFlight.Keys).ConfigureAwait(false);

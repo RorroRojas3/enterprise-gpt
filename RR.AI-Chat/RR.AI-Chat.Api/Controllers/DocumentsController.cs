@@ -34,20 +34,31 @@ namespace RR.AI_Chat.Api.Controllers
                 FileName = file.FileName,
                 ContentType = file.ContentType,
                 Length = file.Length,
-                Content = await ReadFileAsync(file)
+                Content = await ReadFileAsync(file, cancellationToken)
             };
 
             var jobId = Guid.NewGuid().ToString();
             var oid = _tokenService.GetOid();
             _jobStatusStore.Register(jobId);
 
-            await _backgroundJobQueue.EnqueueAsync(new JobWorkItem(
-                jobId,
-                async (sp, ct) =>
-                {
-                    var documentService = sp.GetRequiredService<IDocumentService>();
-                    await documentService.CreateConversationDocumentAsync(jobId, fileData, oid, conversationId, ct);
-                }), cancellationToken);
+            try
+            {
+                await _backgroundJobQueue.EnqueueAsync(new JobWorkItem(
+                    jobId,
+                    async (sp, ct) =>
+                    {
+                        var documentService = sp.GetRequiredService<IDocumentService>();
+                        await documentService.CreateConversationDocumentAsync(jobId, fileData, oid, conversationId, ct);
+                    }), cancellationToken);
+            }
+            catch
+            {
+                // Register succeeded but enqueue did not — the snapshot would otherwise sit in
+                // Queued forever (JobStatusStore only evicts terminal states). Mark it Failed so
+                // retention can reclaim it and any racing poll sees a deterministic terminal state.
+                _jobStatusStore.Fail(jobId, "Failed to enqueue background job.");
+                throw;
+            }
 
             return Accepted(new JobDto { Id = jobId });
         }
@@ -95,10 +106,10 @@ namespace RR.AI_Chat.Api.Controllers
             return Ok(fileExtensions);
         }
 
-        private static async Task<byte[]> ReadFileAsync(IFormFile file)
+        private static async Task<byte[]> ReadFileAsync(IFormFile file, CancellationToken cancellationToken)
         {
             using var memoryStream = new MemoryStream();
-            await file.CopyToAsync(memoryStream);
+            await file.CopyToAsync(memoryStream, cancellationToken);
             return memoryStream.ToArray();
         }
 
