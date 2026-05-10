@@ -165,6 +165,9 @@ builder.Services.Configure<List<McpServerSettings>>(builder.Configuration.GetSec
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 builder.Services.AddExceptionHandler<OperationCanceledExceptionHandler>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+// Required by app.UseExceptionHandler() in .NET 10: provides a ProblemDetails fallback
+// for the rare case where every IExceptionHandler returns false.
+builder.Services.AddProblemDetails();
 
 // Singletons
 builder.Services.AddSingleton<IConversationLockService, ConversationLockService>();
