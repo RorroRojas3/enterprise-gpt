@@ -30,7 +30,7 @@ For deeper topical guidance, invoke the bundled skills via the Skill tool:
 - **Data:** EF Core 10 with SQL Server (primary, schemas `Core` and `Core.Ref`) + Cosmos DB (secondary, denormalized views).
 - **LLM:** Azure OpenAI primary via `Microsoft.Extensions.AI`; OpenAI/Anthropic/Ollama via keyed DI.
 - **MCP client:** `ModelContextProtocol` 1.1.0 — `McpServerService` lists tools from configured servers.
-- **Background jobs:** Hangfire on SQL Server, dashboard at `/hangfire`.
+- **Background jobs:** Built-in `BackgroundService` + `Channel<T>` queue + `SemaphoreSlim` throttle, with an in-memory `IJobStatusStore`. See [`RR.AI-Chat.Service/BackgroundJobs/`](RR.AI-Chat.Service/BackgroundJobs/).
 - **Validation:** FluentValidation 12.x, auto-registered.
 
 ## Project Layout — Where Things Go
@@ -229,10 +229,14 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - No Key Vault wiring yet. Don't introduce `Microsoft.Extensions.Configuration.AzureKeyVault` without coordinating.
 - Sections: `AzureAd`, `AzureAIFoundry`, `AzureStorage`, `DocumentIntelligence`, `CosmosDb`, `CorsOrigins`, `McpServers`, `ConnectionStrings:DefaultConnection`.
 
-## Background Jobs (Hangfire)
+## Background Jobs
 
-- Hangfire 1.8.x with SQL Server storage. Worker count = `Environment.ProcessorCount * 2`. Dashboard at `/hangfire`.
-- For new long-running work, prefer `IBackgroundJobClient.Enqueue(...)` over inline `Task.Run`.
+- Pipeline lives in [`RR.AI-Chat.Service/BackgroundJobs/`](RR.AI-Chat.Service/BackgroundJobs/): `IBackgroundJobQueue` (Channel-backed singleton), `IJobStatusStore` (ConcurrentDictionary singleton with TTL eviction), and `BackgroundJobProcessor : BackgroundService` (consumer with `SemaphoreSlim` throttle).
+- Enqueue from a controller by capturing primitives + DTOs in a `JobWorkItem` delegate; resolve scoped services via the `IServiceProvider` parameter inside the delegate. The delegate runs in a per-job DI scope under the host's stopping token (not the request's `CancellationToken`).
+- Resolve any `HttpContext`-bound state (e.g. `_tokenService.GetOid()`) on the request thread before enqueueing — the background scope has no `HttpContext`.
+- Concurrency cap is `BackgroundJobs:MaxConcurrent` in `appsettings.json` (`0` = `Environment.ProcessorCount * 2`). Retention for terminal job snapshots is `BackgroundJobs:RetentionMinutes` (default 60).
+- Status is in-memory only; jobs not yet complete when the API restarts are lost. If durability is needed, swap `JobStatusStore` for an EF-backed implementation behind the same `IJobStatusStore` interface.
+- For new long-running work, prefer this pipeline over inline `Task.Run`.
 
 ## CORS & HTTPS
 

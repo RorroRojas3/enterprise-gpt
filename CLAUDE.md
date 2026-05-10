@@ -27,3 +27,18 @@ The `.claude/skills/` folder contains user-invokable skills for backend work. In
 - **`microsoft-learn`** — Microsoft/Azure documentation.
 
 For frontend Angular tasks, prefer `mcp__angular-cli__get_best_practices` and `mcp__angular-cli__search_documentation` over generic web search.
+
+## Feature documentation convention
+
+Every non-trivial feature gets a software-engineering doc at:
+
+```
+docs/{area}/{feature-name}.md
+```
+
+- `{area}` — the broad part of the app the feature belongs to (e.g. `documents`, `conversations`, `auth`, `mcp`, `ui`).
+- `{feature-name}` — kebab-case name of the specific feature or workflow (e.g. `upload-workflow`, `streaming`, `multi-provider-routing`).
+
+The doc should explain the **end-to-end** behavior across UI + API: contracts, sequence, key files (linked with relative markdown links), failure modes, configuration, and extension points. Audience is a software engineer onboarding to or extending the feature — not an end user.
+
+When you add a new feature or substantially change an existing one, create or update the matching doc. Reference [`docs/documents/upload-workflow.md`](docs/documents/upload-workflow.md) as the worked example.

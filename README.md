@@ -1,4 +1,4 @@
-# AI Chat Application
+# Enterprise GPT
 
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Angular](https://img.shields.io/badge/Angular-21-DD0031?logo=angular)](https://angular.dev/)
@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![SQL Server](https://img.shields.io/badge/SQL%20Server-Vector%20Search-CC2927?logo=microsoft-sql-server)](https://www.microsoft.com/sql-server)
 
-A full-stack AI chat application built with .NET 10 Web API backend and Angular 21 frontend. The application supports multiple AI service providers including Ollama, OpenAI, Azure AI Foundry, and Anthropic, with document management and vector search capabilities.
+Enterprise GPT is a full-stack AI chat platform built with a .NET 10 Web API backend and an Angular 21 frontend. It supports multiple AI service providers including Ollama, OpenAI, Azure AI Foundry, and Anthropic, with document management and vector search capabilities.
 
 ## 📋 Table of Contents
 
@@ -698,7 +698,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [OllamaSharp](https://github.com/awaescher/OllamaSharp) - Ollama .NET client
 - [Anthropic.SDK](https://github.com/tghamm/Anthropic.SDK) - Anthropic .NET SDK
 - [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) - OpenAPI/Swagger documentation
-- [Hangfire](https://www.hangfire.io/) - Background job processing
 
 **Frontend (Angular)**
 
@@ -736,7 +735,7 @@ If you encounter any issues or have questions:
 
 ## 🔗 Useful Links
 
-- [.NET 9 Documentation](https://docs.microsoft.com/dotnet/)
+- [.NET 10 Documentation](https://learn.microsoft.com/dotnet/)
 - [Angular Documentation](https://angular.dev/)
 - [Entity Framework Core](https://docs.microsoft.com/ef/core/)
 - [OpenAI API Reference](https://platform.openai.com/docs/)

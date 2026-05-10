@@ -1,7 +1,8 @@
 export enum JobStatus {
-  Queued = 'queued',
-  Uploading = 'uploading',
-  Extracting = 'extracting',
-  Embedding = 'embedding',
-  Processed = 'processed',
+  Queued = 'Queued',
+  Uploading = 'Uploading',
+  Extracting = 'Extracting',
+  Embedding = 'Embedding',
+  Processed = 'Processed',
+  Failed = 'Failed',
 }
