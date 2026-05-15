@@ -36,7 +36,7 @@
             ],
             "stylePreprocessorOptions": {
               "sass": {
-                "silenceDeprecations": ["import", "global-builtin", "color-functions"]
+                "silenceDeprecations": ["import", "global-builtin", "color-functions", "if-function"]
               }
             }
           },
@@ -101,7 +101,7 @@
             "scripts": [],
             "stylePreprocessorOptions": {
               "sass": {
-                "silenceDeprecations": ["import", "global-builtin", "color-functions"]
+                "silenceDeprecations": ["import", "global-builtin", "color-functions", "if-function"]
               }
             }
           }
