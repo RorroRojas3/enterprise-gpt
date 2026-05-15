@@ -1,7 +1,7 @@
-using System.Text.Json.Serialization;
-using RR.AI_Chat.Common.Enums;
+﻿using System.Text.Json.Serialization;
+using Enterprise.Gpt.Common.Enums;
 
-namespace RR.AI_Chat.Dto
+namespace Enterprise.Gpt.Dto
 {
     public sealed record UserDto
     {

@@ -1,4 +1,4 @@
-namespace RR.AI_Chat.Service.Prompts
+﻿namespace Enterprise.Gpt.Service.Prompts
 {
     /// <summary>
     /// Loads and parameterises conversation system prompts from markdown templates

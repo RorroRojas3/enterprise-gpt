@@ -1,6 +1,6 @@
-﻿using RR.AI_Chat.Common.Enums;
+﻿using Enterprise.Gpt.Common.Enums;
 
-namespace RR.AI_Chat.Dto
+namespace Enterprise.Gpt.Dto
 {
     public class ConversationMessageDto
     {

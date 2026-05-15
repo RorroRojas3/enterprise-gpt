@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Diagnostics;
-using RR.AI_Chat.Dto;
+﻿using Microsoft.AspNetCore.Diagnostics;
+using Enterprise.Gpt.Dto;
 using System.Net;
 using System.Text.Json;
 
-namespace RR.AI_Chat.Api.ExceptionHandlers
+namespace Enterprise.Gpt.Api.ExceptionHandlers
 {
     /// <summary>
     /// Fallback exception handler that maps the remaining exception types

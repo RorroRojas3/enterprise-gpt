@@ -1,6 +1,6 @@
-using RR.AI_Chat.Dto.Enums;
+﻿using Enterprise.Gpt.Dto.Enums;
 
-namespace RR.AI_Chat.Service.BackgroundJobs
+namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// Immutable snapshot of a background job's current pipeline state, returned by <see cref="IJobStatusStore.Get"/>.

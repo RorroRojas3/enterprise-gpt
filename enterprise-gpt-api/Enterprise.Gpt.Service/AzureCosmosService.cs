@@ -4,7 +4,7 @@ using System.Net;
 /// <summary>
 /// Contains services for Azure Cosmos DB operations.
 /// </summary>
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     /// <summary>
     /// Defines operations for interacting with Azure Cosmos DB.

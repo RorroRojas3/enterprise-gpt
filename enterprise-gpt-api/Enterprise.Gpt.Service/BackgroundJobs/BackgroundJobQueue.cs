@@ -1,6 +1,6 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 
-namespace RR.AI_Chat.Service.BackgroundJobs
+namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// Default <see cref="IBackgroundJobQueue"/> backed by an unbounded <see cref="Channel{T}"/> with a single reader

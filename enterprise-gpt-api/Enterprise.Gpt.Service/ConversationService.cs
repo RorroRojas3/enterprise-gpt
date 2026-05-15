@@ -3,19 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using RR.AI_Chat.Common.Enums;
-using RR.AI_Chat.Dto;
-using RR.AI_Chat.Dto.Actions.Chat;
-using RR.AI_Chat.Entity;
-using RR.AI_Chat.Repository;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Actions.Chat;
+using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Repository;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Conversation = RR.AI_Chat.Entity.Conversation;
+using Conversation = Enterprise.Gpt.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
-using RR.AI_Chat.Service.Exceptions;
-using RR.AI_Chat.Service.Prompts;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Prompts;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IConversationService 
     {

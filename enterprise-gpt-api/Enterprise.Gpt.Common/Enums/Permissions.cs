@@ -1,4 +1,4 @@
-namespace RR.AI_Chat.Common.Enums
+﻿namespace Enterprise.Gpt.Common.Enums
 {
     public enum Permissions
     {

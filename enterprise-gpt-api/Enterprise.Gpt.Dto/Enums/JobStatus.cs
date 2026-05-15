@@ -1,6 +1,6 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 
-namespace RR.AI_Chat.Dto.Enums
+namespace Enterprise.Gpt.Dto.Enums
 {
     public enum JobStatus
     {

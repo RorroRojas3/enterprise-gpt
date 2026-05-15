@@ -1,6 +1,6 @@
-﻿using RR.AI_Chat.Dto;
+﻿using Enterprise.Gpt.Dto;
 
-namespace RR.AI_Chat.Service.Common.Interface
+namespace Enterprise.Gpt.Service.Common.Interface
 {
     public interface IFileService
     {

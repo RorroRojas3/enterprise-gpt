@@ -1,7 +1,7 @@
 ﻿using Microsoft.Data.SqlTypes;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     public class BaseDocumentPage : BaseModifiedEntity
     {

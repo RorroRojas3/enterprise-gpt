@@ -1,4 +1,4 @@
-﻿namespace RR.AI_Chat.Dto.Enums
+﻿namespace Enterprise.Gpt.Dto.Enums
 {
     /// <summary>
     /// Contains unique identifiers for different AI service providers.

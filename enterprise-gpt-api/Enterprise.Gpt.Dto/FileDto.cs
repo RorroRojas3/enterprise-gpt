@@ -1,7 +1,7 @@
-using RR.AI_Chat.Common.Extensions;
-using RR.AI_Chat.Dto.Enums;
+﻿using Enterprise.Gpt.Common.Extensions;
+using Enterprise.Gpt.Dto.Enums;
 
-namespace RR.AI_Chat.Dto
+namespace Enterprise.Gpt.Dto
 {
     public class FileDto
     {

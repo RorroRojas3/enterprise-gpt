@@ -1,10 +1,10 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace RR.AI_Chat.Service.BackgroundJobs
+namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// Hosted service that consumes <see cref="JobWorkItem"/> entries from the <see cref="IBackgroundJobQueue"/>,

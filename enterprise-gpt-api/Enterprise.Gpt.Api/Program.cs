@@ -10,11 +10,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
-using RR.AI_Chat.Api.ExceptionHandlers;
-using RR.AI_Chat.Repository;
-using RR.AI_Chat.Service;
-using RR.AI_Chat.Service.BackgroundJobs;
-using RR.AI_Chat.Service.Settings;
+using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Settings;
 using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);

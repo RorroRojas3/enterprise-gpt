@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using RR.AI_Chat.Dto.Enums;
+using Enterprise.Gpt.Dto.Enums;
 
-namespace RR.AI_Chat.Service.BackgroundJobs
+namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// <see cref="ConcurrentDictionary{TKey, TValue}"/>-backed <see cref="IJobStatusStore"/>. A periodic timer

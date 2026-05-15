@@ -1,8 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using RR.AI_Chat.Entity;
+using Enterprise.Gpt.Entity;
 
-namespace RR.AI_Chat.Repository.Configurations
+namespace Enterprise.Gpt.Repository.Configurations
 {
     public sealed class UserConfiguration : IEntityTypeConfiguration<User>
     {

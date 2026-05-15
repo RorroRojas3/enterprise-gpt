@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
-using RR.AI_Chat.Common.Enums;
+using Enterprise.Gpt.Common.Enums;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public static class MappingService
     {

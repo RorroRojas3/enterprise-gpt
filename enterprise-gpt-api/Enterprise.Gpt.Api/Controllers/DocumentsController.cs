@@ -1,12 +1,12 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using RR.AI_Chat.Common.Extensions;
-using RR.AI_Chat.Dto;
-using RR.AI_Chat.Dto.Enums;
-using RR.AI_Chat.Service;
-using RR.AI_Chat.Service.BackgroundJobs;
+using Enterprise.Gpt.Common.Extensions;
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.BackgroundJobs;
 
-namespace RR.AI_Chat.Api.Controllers
+namespace Enterprise.Gpt.Api.Controllers
 {
     [Authorize]
     [Route("api/[controller]")]

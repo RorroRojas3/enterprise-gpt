@@ -40,13 +40,13 @@ Enterprise GPT is a full-stack AI chat platform built with a .NET 10 Web API bac
 
 ```
 ai-chat/
-├── RR.AI-Chat/                 # .NET 10 Web API Backend
-│   ├── RR.AI-Chat.Api/         # API Controllers & Program.cs
-│   ├── RR.AI-Chat.Service/     # Business Logic Services
-│   ├── RR.AI-Chat.Repository/  # Data Access Layer
-│   ├── RR.AI-Chat.Entity/      # Entity Framework Models
-│   └── RR.AI-Chat.Dto/         # Data Transfer Objects
-└── ai-chat-ui/                 # Angular 21 Frontend
+├── enterprise-gpt-api/             # .NET 10 Web API Backend
+│   ├── Enterprise.Gpt.Api/         # API Controllers & Program.cs
+│   ├── Enterprise.Gpt.Service/     # Business Logic Services
+│   ├── Enterprise.Gpt.Repository/  # Data Access Layer
+│   ├── Enterprise.Gpt.Entity/      # Entity Framework Models
+│   └── Enterprise.Gpt.Dto/         # Data Transfer Objects
+└── enterprise-ui/                  # Angular 21 Frontend
     ├── src/app/services/       # HTTP Services
     ├── src/app/dtos/           # TypeScript DTOs
     └── src/environments/       # Environment Configuration
@@ -120,7 +120,7 @@ cd ai-chat
 Create user secrets for the API project:
 
 ```bash
-cd RR.AI-Chat/RR.AI-Chat.Api
+cd enterprise-gpt-api/Enterprise.Gpt.Api
 dotnet user-secrets init
 ```
 
@@ -145,10 +145,10 @@ dotnet user-secrets set "OllamaUrl" "http://localhost:11434/"
 ### 4. Run the API
 
 ```bash
-cd RR.AI-Chat
+cd enterprise-gpt-api
 dotnet restore
 dotnet build
-dotnet run --project RR.AI-Chat.Api
+dotnet run --project Enterprise.Gpt.Api
 ```
 
 The API will start at `https://localhost:7045` (HTTPS) and `http://localhost:5045` (HTTP).
@@ -156,7 +156,7 @@ The API will start at `https://localhost:7045` (HTTPS) and `http://localhost:504
 ### 5. Run the Frontend
 
 ```bash
-cd ai-chat-ui
+cd enterprise-ui
 npm install
 npm start
 ```
@@ -241,8 +241,8 @@ The application uses Entity Framework migrations. To set up the database:
 
 2. **Run Migrations** (when available):
    ```bash
-   cd RR.AI-Chat
-   dotnet ef database update --project RR.AI-Chat.Api
+   cd enterprise-gpt-api
+   dotnet ef database update --project Enterprise.Gpt.Api
    ```
 
 ## 📚 API Endpoints
@@ -440,7 +440,7 @@ this.sessionService.deleteSession(sessionId).subscribe(() => {
 **Setting up OpenAI**:
 
 ```bash
-cd RR.AI-Chat/RR.AI-Chat.Api
+cd enterprise-gpt-api/Enterprise.Gpt.Api
 dotnet user-secrets set "OpenAI:ApiKey" "sk-proj-xxxxxxxxxxxxx"
 ```
 
@@ -467,14 +467,14 @@ dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-xxxxxxxxxxxxx"
 **Backend Tests**:
 
 ```bash
-cd RR.AI-Chat
+cd enterprise-gpt-api
 dotnet test
 ```
 
 **Frontend Tests**:
 
 ```bash
-cd ai-chat-ui
+cd enterprise-ui
 npm test
 ```
 
@@ -483,14 +483,14 @@ npm test
 **Backend**:
 
 ```bash
-cd RR.AI-Chat
+cd enterprise-gpt-api
 dotnet publish -c Release -o ./publish
 ```
 
 **Frontend**:
 
 ```bash
-cd ai-chat-ui
+cd enterprise-ui
 npm run build
 ```
 
@@ -504,14 +504,14 @@ npm run build
 ### Running Backend Tests
 
 ```bash
-cd RR.AI-Chat
+cd enterprise-gpt-api
 dotnet test --verbosity normal
 ```
 
 ### Running Frontend Tests
 
 ```bash
-cd ai-chat-ui
+cd enterprise-ui
 npm test
 ```
 
@@ -529,14 +529,14 @@ To generate code coverage reports:
 
 ```bash
 dotnet tool install -g dotnet-coverage
-cd RR.AI-Chat
+cd enterprise-gpt-api
 dotnet-coverage collect -f cobertura -o coverage.cobertura.xml dotnet test
 ```
 
 **Frontend**:
 
 ```bash
-cd ai-chat-ui
+cd enterprise-ui
 npm test -- --code-coverage
 ```
 
@@ -621,7 +621,7 @@ Coverage reports will be generated in the `coverage/` directory.
       "servers": {
         "angular-cli": {
           "type": "stdio",
-          "command": "ai-chat-ui/node_modules/.bin/ng.cmd",
+          "command": "enterprise-ui/node_modules/.bin/ng.cmd",
           "args": ["mcp", "--read-only"]
         }
       }

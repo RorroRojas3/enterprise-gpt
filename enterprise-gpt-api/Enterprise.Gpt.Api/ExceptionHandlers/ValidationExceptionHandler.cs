@@ -1,10 +1,10 @@
-using FluentValidation;
+﻿using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
-using RR.AI_Chat.Dto;
+using Enterprise.Gpt.Dto;
 using System.Net;
 using System.Text.Json;
 
-namespace RR.AI_Chat.Api.ExceptionHandlers
+namespace Enterprise.Gpt.Api.ExceptionHandlers
 {
     /// <summary>
     /// Handles <see cref="ValidationException"/> instances thrown by FluentValidation by

@@ -2,13 +2,13 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using RR.AI_Chat.Dto;
-using RR.AI_Chat.Dto.Enums;
-using RR.AI_Chat.Entity;
-using RR.AI_Chat.Repository;
-using RR.AI_Chat.Service.BackgroundJobs;
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service.BackgroundJobs;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IDocumentService
     {

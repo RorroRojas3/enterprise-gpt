@@ -1,6 +1,6 @@
-# RR.AI-Chat — .NET Backend Guide
+# enterprise-gpt-api — .NET Backend Guide
 
-This file is the per-folder Claude instructions for `RR.AI-Chat/`. It is auto-loaded when working in this directory. The rules here are non-negotiable and reflect both official .NET 10 / C# 14 best practices (verified via `mcp__microsoft-learn__microsoft_docs_search`) and the conventions already used in this codebase.
+This file is the per-folder Claude instructions for `enterprise-gpt-api/`. It is auto-loaded when working in this directory. The rules here are non-negotiable and reflect both official .NET 10 / C# 14 best practices (verified via `mcp__microsoft-learn__microsoft_docs_search`) and the conventions already used in this codebase.
 
 When you need deeper guidance during a task, call:
 - `mcp__microsoft-learn__microsoft_docs_search` — search official Microsoft/Azure docs
@@ -17,33 +17,33 @@ For deeper topical guidance, invoke the bundled skills via the Skill tool:
 ## Project Overview
 
 - **TFM:** `net10.0` for every project. `<Nullable>enable</Nullable>` and `<ImplicitUsings>enable</ImplicitUsings>` are project-wide. No `Directory.Build.props`, no `global.json`, no `<LangVersion>` (defaults to **C# 14** on net10.0). **Don't** change any of these without explicit ask.
-- **Solution:** [`RR.AI-Chat.sln`](RR.AI-Chat.sln) — six projects, layered:
-  - `RR.AI-Chat.Common` — shared enums + extensions (no deps)
-  - `RR.AI-Chat.Entity` (→ Common) — domain entities; `BaseEntity`, `BaseModifiedEntity`, `BaseModifiedByEntity` with soft-delete `DateDeactivated` and `byte[] Version` rowversion
-  - `RR.AI-Chat.Dto` (→ Common) — DTOs grouped under `Actions/<Domain>` + FluentValidation validators colocated
-  - `RR.AI-Chat.Repository` (→ Dto, Entity) — `AIChatDbContext`, fluent `*Configuration.cs` files, EF migrations
-  - `RR.AI-Chat.Service` (→ Dto, Repository) — business logic; **services use `AIChatDbContext` directly** (no separate repository pattern)
-  - `RR.AI-Chat.Api` (→ Dto, Repository, Service) — controllers, middlewares, `Program.cs`
-- **Namespace convention:** `RR.AI_Chat.*` (underscore — hyphen is illegal in identifiers).
-- **API style:** controller-based MVC (**not** Minimal APIs). All controllers under `RR.AI-Chat.Api/Controllers/`.
+- **Solution:** [`Enterprise.Gpt.sln`](Enterprise.Gpt.sln) — six projects, layered:
+  - `Enterprise.Gpt.Common` — shared enums + extensions (no deps)
+  - `Enterprise.Gpt.Entity` (→ Common) — domain entities; `BaseEntity`, `BaseModifiedEntity`, `BaseModifiedByEntity` with soft-delete `DateDeactivated` and `byte[] Version` rowversion
+  - `Enterprise.Gpt.Dto` (→ Common) — DTOs grouped under `Actions/<Domain>` + FluentValidation validators colocated
+  - `Enterprise.Gpt.Repository` (→ Dto, Entity) — `AIChatDbContext`, fluent `*Configuration.cs` files, EF migrations
+  - `Enterprise.Gpt.Service` (→ Dto, Repository) — business logic; **services use `AIChatDbContext` directly** (no separate repository pattern)
+  - `Enterprise.Gpt.Api` (→ Dto, Repository, Service) — controllers, middlewares, `Program.cs`
+- **Namespace convention:** `Enterprise.Gpt.*` (underscore — hyphen is illegal in identifiers).
+- **API style:** controller-based MVC (**not** Minimal APIs). All controllers under `Enterprise.Gpt.Api/Controllers/`.
 - **Auth:** JWT Bearer + Microsoft Identity Web (Azure AD / Entra ID).
 - **Data:** EF Core 10 with SQL Server (primary, schemas `Core` and `Core.Ref`) + Cosmos DB (secondary, denormalized views).
 - **LLM:** Azure OpenAI primary via `Microsoft.Extensions.AI`; OpenAI/Anthropic/Ollama via keyed DI.
 - **MCP client:** `ModelContextProtocol` 1.1.0 — `McpServerService` lists tools from configured servers.
-- **Background jobs:** Built-in `BackgroundService` + `Channel<T>` queue + `SemaphoreSlim` throttle, with an in-memory `IJobStatusStore`. See [`RR.AI-Chat.Service/BackgroundJobs/`](RR.AI-Chat.Service/BackgroundJobs/).
+- **Background jobs:** Built-in `BackgroundService` + `Channel<T>` queue + `SemaphoreSlim` throttle, with an in-memory `IJobStatusStore`. See [`Enterprise.Gpt.Service/BackgroundJobs/`](Enterprise.Gpt.Service/BackgroundJobs/).
 - **Validation:** FluentValidation 12.x, auto-registered.
 
 ## Project Layout — Where Things Go
 
 | New thing | Goes here |
 |---|---|
-| Domain entity | `RR.AI-Chat.Entity/` + `*Configuration.cs` in `RR.AI-Chat.Repository/Configurations/` + `DbSet<T>` on `AIChatDbContext` + EF migration |
-| Request DTO | `RR.AI-Chat.Dto/Actions/<Domain>/<Domain>Actions.cs` (with `AbstractValidator<T>` colocated) |
-| Response DTO | `RR.AI-Chat.Dto/<Domain>Dto.cs` |
-| Service | `RR.AI-Chat.Service/<Domain>Service.cs` with `I<Domain>Service` interface; register in `Program.cs` |
-| Endpoint | Controller in `RR.AI-Chat.Api/Controllers/<Domain>Controller.cs` (controller-based, never Minimal APIs) |
-| Middleware | `RR.AI-Chat.Api/Middlewares/` |
-| Entity ↔ DTO mapping | Static class in `RR.AI-Chat.Service/Mappers/<Entity>Mapper.cs` (e.g., [`UserMapper`](RR.AI-Chat.Service/Mappers/UserMapper.cs)) — see **Mappers** section |
+| Domain entity | `Enterprise.Gpt.Entity/` + `*Configuration.cs` in `Enterprise.Gpt.Repository/Configurations/` + `DbSet<T>` on `AIChatDbContext` + EF migration |
+| Request DTO | `Enterprise.Gpt.Dto/Actions/<Domain>/<Domain>Actions.cs` (with `AbstractValidator<T>` colocated) |
+| Response DTO | `Enterprise.Gpt.Dto/<Domain>Dto.cs` |
+| Service | `Enterprise.Gpt.Service/<Domain>Service.cs` with `I<Domain>Service` interface; register in `Program.cs` |
+| Endpoint | Controller in `Enterprise.Gpt.Api/Controllers/<Domain>Controller.cs` (controller-based, never Minimal APIs) |
+| Middleware | `Enterprise.Gpt.Api/Middlewares/` |
+| Entity ↔ DTO mapping | Static class in `Enterprise.Gpt.Service/Mappers/<Entity>Mapper.cs` (e.g., [`UserMapper`](Enterprise.Gpt.Service/Mappers/UserMapper.cs)) — see **Mappers** section |
 
 ## C# 14 / .NET 10 — Modern Features You Can Use
 
@@ -115,7 +115,7 @@ C# 14 is the default on net10.0. Use it freely:
 
 - Choose precise exception types: `ArgumentException`, `ArgumentNullException`, `InvalidOperationException`, `OperationCanceledException`, custom `NotFoundException`. **Don't** throw or catch base `Exception`.
 - **No silent catches.** Log and rethrow, or let the exception bubble.
-- **Wire shape is sacred.** The frontend reads [`ErrorDto`](RR.AI-Chat.Dto/ErrorDto.cs) — `{ statusCode, errors[], traceId, timestamp }` (camelCase via `[JsonPropertyName]`). Don't change the JSON contract.
+- **Wire shape is sacred.** The frontend reads [`ErrorDto`](Enterprise.Gpt.Dto/ErrorDto.cs) — `{ statusCode, errors[], traceId, timestamp }` (camelCase via `[JsonPropertyName]`). Don't change the JSON contract.
 - **Service layer should throw.** Don't catch-and-translate at the controller.
 - `ValidationException` (FluentValidation) → 400 with rule messages in `errors[]`.
 - `OperationCanceledException` → 499 (client cancelled).
@@ -129,7 +129,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 ## Validation
 
 - **FluentValidation 12.x**, auto-registered via `AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies())` in `Program.cs`.
-- For each request DTO, write an `AbstractValidator<TDto>` colocated in the same `*Actions.cs` file (existing pattern in [`ConversationActions.cs`](RR.AI-Chat.Dto/Actions/Chat/ConversationActions.cs)).
+- For each request DTO, write an `AbstractValidator<TDto>` colocated in the same `*Actions.cs` file (existing pattern in [`ConversationActions.cs`](Enterprise.Gpt.Dto/Actions/Chat/ConversationActions.cs)).
 - Inject `IValidator<TDto>` into services and call `await validator.ValidateAndThrowAsync(dto, cancellationToken)`. The thrown `ValidationException` is mapped to a 400 by error-handling middleware.
 - Use `ChildRules` and `RuleForEach` for nested collections.
 - FluentValidation works fine against records — convert DTOs to records as you touch them (see Migration Debt below).
@@ -162,11 +162,11 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Audience accepts both `AzureAd:ClientId` and `api://{ClientId}`.
 - Token caching: `AddInMemoryTokenCaches()`. Downstream calls: `EnableTokenAcquisitionToCallDownstreamApi()`.
 - All controllers use class-level `[Authorize]`. Use `[AllowAnonymous]` on individual actions when needed.
-- The frontend MSAL acquires tokens for these scopes — **don't break the audience config** without coordinating with `ai-chat-ui`.
+- The frontend MSAL acquires tokens for these scopes — **don't break the audience config** without coordinating with `enterprise-ui`.
 
 ## Data Access (EF Core 10, SQL Server)
 
-- Single `AIChatDbContext` ([`RR.AI-Chat.Repository/AIChatDbContext.cs`](RR.AI-Chat.Repository/AIChatDbContext.cs)) with primary-constructor DI.
+- Single `AIChatDbContext` ([`Enterprise.Gpt.Repository/AIChatDbContext.cs`](Enterprise.Gpt.Repository/AIChatDbContext.cs)) with primary-constructor DI.
 - Provider: SQL Server, compatibility level 170 (.NET 10).
 - **No repository pattern.** Services inject `AIChatDbContext` directly.
 - DbSets: `Users`, `AIServices`, `Conversations`, `Models`, `ConversationDocuments`, `ConversationDocumentPages`. Schemas: `Core`, `Core.Ref`.
@@ -174,7 +174,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Global delete behavior: `NoAction`. Soft delete via `DateDeactivated`. Optimistic concurrency via `byte[] Version` rowversion.
 - Migrations auto-applied at startup via `context.Database.Migrate()`. Add new migrations via:
   ```
-  dotnet ef migrations add <Name> --project RR.AI-Chat.Repository --startup-project RR.AI-Chat.Api
+  dotnet ef migrations add <Name> --project Enterprise.Gpt.Repository --startup-project Enterprise.Gpt.Api
   ```
   Once a migration is in source control, **don't** edit it — add a new one.
 - **Async, cancellation-aware queries always** — `ToListAsync(cancellationToken)`, `SaveChangesAsync(cancellationToken)`, etc.
@@ -214,12 +214,12 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
     ```
 - Existing class DTOs are migration debt; convert when you touch them (see Migration Debt below). FluentValidation works fine against records.
 - Request DTOs go in `Actions/<Domain>/<Domain>Actions.cs`, validators colocated.
-- Response DTOs are top-level in `RR.AI-Chat.Dto/`.
+- Response DTOs are top-level in `Enterprise.Gpt.Dto/`.
 - Use `[JsonPropertyName("camelCase")]` to match the frontend's expected JSON.
 
 ## Mappers
 
-All Entity ↔ DTO conversions live in a dedicated static class under [`RR.AI-Chat.Service/Mappers/`](RR.AI-Chat.Service/Mappers/), one file per entity, named `<Entity>Mapper.cs`. Services depend on these mappers rather than duplicating projection / construction logic inline. **Don't** put `MapTo*` methods on the entity class itself ([`Conversation.MapToChatDto`](RR.AI-Chat.Entity/Conversation.cs) and [`ConversationDocument.MapToChatDocumentDto`](RR.AI-Chat.Entity/ConversationDocument.cs) are migration debt — move them when you touch them).
+All Entity ↔ DTO conversions live in a dedicated static class under [`Enterprise.Gpt.Service/Mappers/`](Enterprise.Gpt.Service/Mappers/), one file per entity, named `<Entity>Mapper.cs`. Services depend on these mappers rather than duplicating projection / construction logic inline. **Don't** put `MapTo*` methods on the entity class itself ([`Conversation.MapToChatDto`](Enterprise.Gpt.Entity/Conversation.cs) and [`ConversationDocument.MapToChatDocumentDto`](Enterprise.Gpt.Entity/ConversationDocument.cs) are migration debt — move them when you touch them).
 
 **Naming rules:**
 
@@ -229,7 +229,7 @@ All Entity ↔ DTO conversions live in a dedicated static class under [`RR.AI-Ch
 | Entity → DTO (LINQ projection) | `MapTo<NameOfDto>Expression` | Static `Expression<Func<TEntity, TDto>>` property, used inside `IQueryable.Select(...)` |
 | Action DTO → Entity | `From<ActionDtoName>To<EntityName>` | `this`-extension on the action DTO. For updates, mutate the tracked entity in place; for creates, return a new entity instance |
 
-**Worked example** — [`RR.AI-Chat.Service/Mappers/UserMapper.cs`](RR.AI-Chat.Service/Mappers/UserMapper.cs):
+**Worked example** — [`Enterprise.Gpt.Service/Mappers/UserMapper.cs`](Enterprise.Gpt.Service/Mappers/UserMapper.cs):
 
 ```csharp
 public static class UserMapper
@@ -282,13 +282,13 @@ public static class UserMapper
 ## Configuration & Secrets
 
 - `appsettings.json` (checked in) holds non-sensitive defaults. **No `appsettings.Development.json`** — don't add one without a reason.
-- User secrets enabled in `RR.AI-Chat.Api.csproj` (`UserSecretsId`). Local secrets go there.
+- User secrets enabled in `Enterprise.Gpt.Api.csproj` (`UserSecretsId`). Local secrets go there.
 - No Key Vault wiring yet. Don't introduce `Microsoft.Extensions.Configuration.AzureKeyVault` without coordinating.
 - Sections: `AzureAd`, `AzureAIFoundry`, `AzureStorage`, `DocumentIntelligence`, `CosmosDb`, `CorsOrigins`, `McpServers`, `ConnectionStrings:DefaultConnection`.
 
 ## Background Jobs
 
-- Pipeline lives in [`RR.AI-Chat.Service/BackgroundJobs/`](RR.AI-Chat.Service/BackgroundJobs/): `IBackgroundJobQueue` (Channel-backed singleton), `IJobStatusStore` (ConcurrentDictionary singleton with TTL eviction), and `BackgroundJobProcessor : BackgroundService` (consumer with `SemaphoreSlim` throttle).
+- Pipeline lives in [`Enterprise.Gpt.Service/BackgroundJobs/`](Enterprise.Gpt.Service/BackgroundJobs/): `IBackgroundJobQueue` (Channel-backed singleton), `IJobStatusStore` (ConcurrentDictionary singleton with TTL eviction), and `BackgroundJobProcessor : BackgroundService` (consumer with `SemaphoreSlim` throttle).
 - Enqueue from a controller by capturing primitives + DTOs in a `JobWorkItem` delegate; resolve scoped services via the `IServiceProvider` parameter inside the delegate. The delegate runs in a per-job DI scope under the host's stopping token (not the request's `CancellationToken`).
 - Resolve any `HttpContext`-bound state (e.g. `_tokenService.GetOid()`) on the request thread before enqueueing — the background scope has no `HttpContext`.
 - Concurrency cap is `BackgroundJobs:MaxConcurrent` in `appsettings.json` (`0` = `Environment.ProcessorCount * 2`). Retention for terminal job snapshots is `BackgroundJobs:RetentionMinutes` (default 60).
@@ -300,15 +300,10 @@ public static class UserMapper
 - `AddCors` policy `"AllowSpecificOrigins"`, origins from `CorsOrigins` array, credentials allowed.
 - `UseHttpsRedirection()` is on. Don't disable.
 
-## Container & Deploy
-
-- `<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>`. Compose file at [`docker-compose.yml`](docker-compose.yml) wires `sqlserver`, `migration`, `api`, `ui`.
-- Prefer .NET's built-in container publishing (`dotnet publish --os linux --arch x64 /t:PublishContainer`) over hand-rolled Dockerfiles for new services.
-
 ## Tests
 
 **No test projects exist yet.** When adding tests:
-- New project: `RR.AI-Chat.<Layer>.Tests` (e.g., `RR.AI-Chat.Service.Tests`).
+- New project: `Enterprise.Gpt.<Layer>.Tests` (e.g., `Enterprise.Gpt.Service.Tests`).
 - **xUnit** is the framework (the `csharp-xunit` skill provides full guidance).
 - Mirror class names: `ConversationService` → `ConversationServiceTests`.
 - Test name pattern: `MethodName_Scenario_ExpectedBehavior`.
@@ -334,7 +329,7 @@ public static class UserMapper
 
 1. Confirm TFM in each `.csproj` is still `net10.0`.
 2. Confirm `Program.cs` middleware order (ExceptionHandler → HttpsRedirection → Cors → Authentication → Authorization → Controllers).
-3. `dotnet build RR.AI-Chat/RR.AI-Chat.sln` before assuming a syntax issue.
+3. `dotnet build enterprise-gpt-api/Enterprise.Gpt.sln` before assuming a syntax issue.
 4. For deeper guidance, call `mcp__microsoft-learn__microsoft_docs_search`. Prefer this over generic web search for .NET / Azure topics.
 5. Don't change TFM, SDK version, or `<LangVersion>` unless explicitly asked.
 
@@ -353,7 +348,7 @@ public static class UserMapper
 - Initialize empty collections/lists/arrays with `[]` (collection expression)
 - Write new DTOs as `record` types
 - Write new error mappings as `IExceptionHandler` implementations
-- Centralize Entity ↔ DTO mappings in `RR.AI-Chat.Service/Mappers/<Entity>Mapper.cs` using `MapTo<Dto>` (materialized), `MapTo<Dto>Expression` (projection), and `From<ActionDto>To<Entity>` (apply update)
+- Centralize Entity ↔ DTO mappings in `Enterprise.Gpt.Service/Mappers/<Entity>Mapper.cs` using `MapTo<Dto>` (materialized), `MapTo<Dto>Expression` (projection), and `From<ActionDto>To<Entity>` (apply update)
 - Call change-tracking methods on the `DbContext` (`_ctx.Add(entity)`, `_ctx.Remove(entity)`, `_ctx.Update(entity)`), not on the `DbSet`
 
 **Don't**
@@ -373,7 +368,7 @@ public static class UserMapper
 - Don't add Serilog / App Insights / Key Vault without explicit ask
 - Don't change `<TargetFramework>`, `<Nullable>`, `<ImplicitUsings>`, or add `<LangVersion>`
 - Don't reference primary-constructor parameters bare in member bodies — assign to `_underscore` fields
-- Don't put `MapTo*` extensions on the entity class itself or inline projection logic in services — centralize in `RR.AI-Chat.Service/Mappers/<Entity>Mapper.cs`
+- Don't put `MapTo*` extensions on the entity class itself or inline projection logic in services — centralize in `Enterprise.Gpt.Service/Mappers/<Entity>Mapper.cs`
 
 > **`appsettings.Development.json`** does not exist; **no test projects** exist; **no health-check endpoints** exist. Add these only when explicitly asked.
 
@@ -381,6 +376,6 @@ public static class UserMapper
 
 Documented so future Claude sessions don't copy these patterns when writing new code:
 
-- **Class-based DTOs** in `RR.AI-Chat.Dto/` (23 files) — should be `record` types. Convert opportunistically when you touch one.
+- **Class-based DTOs** in `Enterprise.Gpt.Dto/` (23 files) — should be `record` types. Convert opportunistically when you touch one.
 - **Brace-style namespaces** across all `.cs` files — modern C# convention is file-scoped (`namespace Foo;`). Stay brace-style for consistency until a project-wide migration. Don't mix styles in a single PR.
-- **Inline mappers on entity classes** — [`Conversation.ChatExtensions.MapToChatDto`](RR.AI-Chat.Entity/Conversation.cs) and [`ConversationDocument`'s `MapToChatDocumentDto`](RR.AI-Chat.Entity/ConversationDocument.cs) live on the entity. They should be moved into `RR.AI-Chat.Service/Mappers/ConversationMapper.cs` / `ConversationDocumentMapper.cs` (with the `MapTo<Dto>Expression` form added for the existing `_ctx.Conversations.Select(s => s.MapToChatDto())` call-sites). Migrate when you touch them.
+- **Inline mappers on entity classes** — [`Conversation.ChatExtensions.MapToChatDto`](Enterprise.Gpt.Entity/Conversation.cs) and [`ConversationDocument`'s `MapToChatDocumentDto`](Enterprise.Gpt.Entity/ConversationDocument.cs) live on the entity. They should be moved into `Enterprise.Gpt.Service/Mappers/ConversationMapper.cs` / `ConversationDocumentMapper.cs` (with the `MapTo<Dto>Expression` form added for the existing `_ctx.Conversations.Select(s => s.MapToChatDto())` call-sites). Migrate when you touch them.

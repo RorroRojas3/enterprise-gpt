@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>RR.AI_Chat.Dto</RootNamespace>
+    <RootNamespace>Enterprise.Gpt.Dto</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RR.AI-Chat.Common\RR.AI-Chat.Common.csproj" />
+    <ProjectReference Include="..\Enterprise.Gpt.Common\Enterprise.Gpt.Common.csproj" />
   </ItemGroup>
 
 </Project>

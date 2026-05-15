@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace RR.AI_Chat.Dto
+namespace Enterprise.Gpt.Dto
 {
     public class ConversationDocumentDto
     {

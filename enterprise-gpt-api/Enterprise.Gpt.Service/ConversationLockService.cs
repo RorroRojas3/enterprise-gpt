@@ -1,6 +1,6 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IConversationLockService
     {

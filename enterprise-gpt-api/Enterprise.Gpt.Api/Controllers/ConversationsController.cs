@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using RR.AI_Chat.Dto.Actions.Chat;
-using RR.AI_Chat.Service;
+using Enterprise.Gpt.Dto.Actions.Chat;
+using Enterprise.Gpt.Service;
 
-namespace RR.AI_Chat.Api.Controllers
+namespace Enterprise.Gpt.Api.Controllers
 {
     [Authorize]
     [Route("api/[controller]")]

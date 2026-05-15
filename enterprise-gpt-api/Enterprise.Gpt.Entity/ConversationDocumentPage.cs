@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     [Table(nameof(ConversationDocumentPage), Schema = "Core")]
     public class ConversationDocumentPage : BaseDocumentPage

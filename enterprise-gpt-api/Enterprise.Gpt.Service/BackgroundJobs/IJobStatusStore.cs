@@ -1,6 +1,6 @@
-using RR.AI_Chat.Dto.Enums;
+﻿using Enterprise.Gpt.Dto.Enums;
 
-namespace RR.AI_Chat.Service.BackgroundJobs
+namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// In-memory store tracking the live status of background jobs. Singleton lifetime; thread-safe.

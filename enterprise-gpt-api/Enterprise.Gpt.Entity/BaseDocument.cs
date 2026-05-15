@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     public class BaseDocument : BaseModifiedEntity
     {

@@ -3,7 +3,7 @@ using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using Microsoft.Extensions.Logging;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IBlobStorageService
     {

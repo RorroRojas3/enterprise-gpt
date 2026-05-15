@@ -2,7 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     public class BaseEntity
     {

@@ -6,9 +6,9 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build-api",
-      "program": "${workspaceFolder}/RR.AI-Chat/RR.AI-Chat.Api/bin/Debug/net10.0/RR.AI-Chat.Api.dll",
+      "program": "${workspaceFolder}/enterprise-gpt-api/Enterprise.Gpt.Api/bin/Debug/net10.0/Enterprise.Gpt.Api.dll",
       "args": [],
-      "cwd": "${workspaceFolder}/RR.AI-Chat/RR.AI-Chat.Api",
+      "cwd": "${workspaceFolder}/enterprise-gpt-api/Enterprise.Gpt.Api",
       "stopAtEntry": false,
       "serverReadyAction": {
         "action": "openExternally",
@@ -26,7 +26,7 @@
       "request": "launch",
       "preLaunchTask": "serve-ui",
       "url": "http://localhost:4200/",
-      "webRoot": "${workspaceFolder}/ai-chat-ui",
+      "webRoot": "${workspaceFolder}/enterprise-ui",
       "sourceMaps": true
     }
   ],

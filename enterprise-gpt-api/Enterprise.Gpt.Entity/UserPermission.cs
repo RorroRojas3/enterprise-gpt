@@ -1,6 +1,6 @@
-using RR.AI_Chat.Common.Enums;
+﻿using Enterprise.Gpt.Common.Enums;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     public class UserPermission : BaseModifiedByEntity
     {

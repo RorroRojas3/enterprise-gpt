@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "ai-chat-ui": {
+    "enterprise-ui": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -17,7 +17,7 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "outputPath": "dist/ai-chat-ui",
+            "outputPath": "dist/enterprise-ui",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -74,10 +74,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "ai-chat-ui:build:production"
+              "buildTarget": "enterprise-ui:build:production"
             },
             "development": {
-              "buildTarget": "ai-chat-ui:build:development"
+              "buildTarget": "enterprise-ui:build:development"
             }
           },
           "defaultConfiguration": "development"

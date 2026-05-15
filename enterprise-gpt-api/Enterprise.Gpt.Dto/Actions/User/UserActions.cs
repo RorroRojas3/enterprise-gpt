@@ -1,7 +1,7 @@
 ﻿using FluentValidation;
 using System.Text.Json.Serialization;
 
-namespace RR.AI_Chat.Dto.Actions.User
+namespace Enterprise.Gpt.Dto.Actions.User
 {
     public class UpdateUserActionDto
     {

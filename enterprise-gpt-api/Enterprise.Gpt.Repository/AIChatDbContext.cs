@@ -1,8 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using RR.AI_Chat.Entity;
-using RR.AI_Chat.Repository.Configurations;
+using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Repository.Configurations;
 
-namespace RR.AI_Chat.Repository
+namespace Enterprise.Gpt.Repository
 {
     public class AIChatDbContext(DbContextOptions<AIChatDbContext> options) : DbContext(options)
     {

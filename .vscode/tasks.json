@@ -7,7 +7,7 @@
       "type": "process",
       "args": [
         "build",
-        "${workspaceFolder}/RR.AI-Chat/RR.AI-Chat.Api/RR.AI-Chat.Api.csproj",
+        "${workspaceFolder}/enterprise-gpt-api/Enterprise.Gpt.Api/Enterprise.Gpt.Api.csproj",
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary;ForceNoAlign"
       ],
@@ -17,7 +17,7 @@
       "label": "serve-ui",
       "type": "npm",
       "script": "start",
-      "path": "ai-chat-ui",
+      "path": "enterprise-ui",
       "isBackground": true,
       "problemMatcher": {
         "owner": "typescript",

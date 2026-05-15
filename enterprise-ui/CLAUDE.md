@@ -1,6 +1,6 @@
-# ai-chat-ui — Angular Frontend Guide
+# enterprise-ui — Angular Frontend Guide
 
-This file is the per-folder Claude instructions for `ai-chat-ui/`. It is auto-loaded when working in this directory. The rules here are non-negotiable and reflect both official Angular v21 best practices (verified via `mcp__angular-cli__get_best_practices`) and the conventions already used in this codebase.
+This file is the per-folder Claude instructions for `enterprise-ui/`. It is auto-loaded when working in this directory. The rules here are non-negotiable and reflect both official Angular v21 best practices (verified via `mcp__angular-cli__get_best_practices`) and the conventions already used in this codebase.
 
 When you need deeper Angular guidance during a task, call:
 - `mcp__angular-cli__get_best_practices` — version-specific official guide
@@ -32,7 +32,7 @@ src/app/
 ├── pages/           page-level (route target) components
 ├── services/        HTTP/data services and the central StoreService
 ├── store/           @ngrx/signals signalStore() instances
-├── dtos/            request/response models (mirror backend RR.AI-Chat.Dto)
+├── dtos/            request/response models (mirror backend Enterprise.Gpt.Dto)
 ├── interceptors/    functional HTTP interceptors
 ├── shared/          shared UI: navbar, menu-offcanvas, notification
 ├── app.component.* root component
@@ -41,7 +41,7 @@ src/app/
 └── main.ts          bootstrapApplication entry
 ```
 
-Place new code accordingly: a new feature page goes under `pages/`, a new HTTP service under `services/`, a new bounded feature store under `store/`, and request/response shapes under `dtos/`. Keep DTO field names in sync with the backend `RR.AI-Chat/RR.AI-Chat.Dto/*`.
+Place new code accordingly: a new feature page goes under `pages/`, a new HTTP service under `services/`, a new bounded feature store under `store/`, and request/response shapes under `dtos/`. Keep DTO field names in sync with the backend `enterprise-gpt-api/Enterprise.Gpt.Dto/*`.
 
 ## TypeScript Standards
 

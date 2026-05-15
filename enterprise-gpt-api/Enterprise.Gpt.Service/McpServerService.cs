@@ -3,11 +3,11 @@ using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
-using RR.AI_Chat.Dto;
-using RR.AI_Chat.Service.Settings;
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Service.Settings;
 using System.Net.Http.Headers;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IMcpServerService
     {

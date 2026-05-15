@@ -1,4 +1,4 @@
-namespace RR.AI_Chat.Service.BackgroundJobs
+﻿namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// Represents a unit of background work submitted to the <see cref="IBackgroundJobQueue"/>.

@@ -1,4 +1,4 @@
-﻿namespace RR.AI_Chat.Service.Settings
+﻿namespace Enterprise.Gpt.Service.Settings
 {
     public class McpServerSettings
     {

@@ -1,4 +1,4 @@
-﻿namespace RR.AI_Chat.Dto.Actions.Graph
+﻿namespace Enterprise.Gpt.Dto.Actions.Graph
 {
     public class CreateGraphUserActionDto
     {

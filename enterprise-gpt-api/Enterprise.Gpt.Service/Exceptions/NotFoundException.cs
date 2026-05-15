@@ -1,4 +1,4 @@
-﻿namespace RR.AI_Chat.Service.Exceptions
+﻿namespace Enterprise.Gpt.Service.Exceptions
 {
     public class NotFoundException : Exception
     {

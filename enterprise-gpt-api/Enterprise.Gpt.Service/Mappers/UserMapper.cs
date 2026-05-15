@@ -1,9 +1,9 @@
-using System.Linq.Expressions;
-using RR.AI_Chat.Dto;
-using RR.AI_Chat.Dto.Actions.User;
-using RR.AI_Chat.Entity;
+﻿using System.Linq.Expressions;
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Actions.User;
+using Enterprise.Gpt.Entity;
 
-namespace RR.AI_Chat.Service.Mappers
+namespace Enterprise.Gpt.Service.Mappers
 {
     public static class UserMapper
     {

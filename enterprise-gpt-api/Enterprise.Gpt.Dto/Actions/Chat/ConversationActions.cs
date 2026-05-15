@@ -1,6 +1,6 @@
 ﻿using FluentValidation;
 
-namespace RR.AI_Chat.Dto.Actions.Chat
+namespace Enterprise.Gpt.Dto.Actions.Chat
 {
     public class CreateConversationActionDto
     {

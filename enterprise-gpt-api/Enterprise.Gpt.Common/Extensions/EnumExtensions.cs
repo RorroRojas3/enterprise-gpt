@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Reflection;
 
-namespace RR.AI_Chat.Common.Extensions
+namespace Enterprise.Gpt.Common.Extensions
 {
     public static class EnumExtensions
     {

@@ -1,13 +1,13 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using RR.AI_Chat.Dto;
-using RR.AI_Chat.Dto.Actions.User;
-using RR.AI_Chat.Entity;
-using RR.AI_Chat.Repository;
-using RR.AI_Chat.Service.Exceptions;
-using RR.AI_Chat.Service.Mappers;
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Actions.User;
+using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Mappers;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IUserService
     {

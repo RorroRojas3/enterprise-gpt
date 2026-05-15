@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Diagnostics;
+﻿using Microsoft.AspNetCore.Diagnostics;
 
-namespace RR.AI_Chat.Api.ExceptionHandlers
+namespace Enterprise.Gpt.Api.ExceptionHandlers
 {
     /// <summary>
     /// Handles <see cref="OperationCanceledException"/> instances by mapping them to the

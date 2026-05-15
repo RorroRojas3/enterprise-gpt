@@ -1,4 +1,4 @@
-namespace RR.AI_Chat.Service.BackgroundJobs
+﻿namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// FIFO queue used to hand off background work from request threads to the <see cref="BackgroundJobProcessor"/>.

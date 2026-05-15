@@ -1,8 +1,8 @@
 ﻿using Microsoft.Graph;
 using Microsoft.Graph.Models;
-using RR.AI_Chat.Service.Exceptions;
+using Enterprise.Gpt.Service.Exceptions;
 
-namespace RR.AI_Chat.Service
+namespace Enterprise.Gpt.Service
 {
     public interface IGraphService
     {

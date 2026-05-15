@@ -1,8 +1,8 @@
-﻿using RR.AI_Chat.Dto;
+﻿using Enterprise.Gpt.Dto;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     [Table(nameof(Conversation), Schema = "Core")]
     public class Conversation : BaseModifiedEntity

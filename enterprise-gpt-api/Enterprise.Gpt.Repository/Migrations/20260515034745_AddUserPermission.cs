@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace RR.AI_Chat.Repository.Migrations
+namespace Enterprise.Gpt.Repository.Migrations
 {
     /// <inheritdoc />
     public partial class AddUserPermission : Migration

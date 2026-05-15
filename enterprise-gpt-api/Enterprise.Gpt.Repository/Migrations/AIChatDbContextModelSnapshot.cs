@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RR.AI_Chat.Repository;
+using Enterprise.Gpt.Repository;
 
 #nullable disable
 
-namespace RR.AI_Chat.Repository.Migrations
+namespace Enterprise.Gpt.Repository.Migrations
 {
     [DbContext(typeof(AIChatDbContext))]
     partial class AIChatDbContextModelSnapshot : ModelSnapshot
@@ -23,7 +23,7 @@ namespace RR.AI_Chat.Repository.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.AIService", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.AIService", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -63,7 +63,7 @@ namespace RR.AI_Chat.Repository.Migrations
                         });
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.Conversation", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.Conversation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -110,7 +110,7 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.ToTable("Conversation", "Core");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.ConversationDocument", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocument", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -173,7 +173,7 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.ToTable("ConversationDocument", "Core");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.ConversationDocumentPage", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentPage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -219,7 +219,7 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.ToTable("ConversationDocumentPage", "Core");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.Model", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.Model", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -310,7 +310,7 @@ namespace RR.AI_Chat.Repository.Migrations
                         });
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.User", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -367,7 +367,7 @@ namespace RR.AI_Chat.Repository.Migrations
                         });
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.UserPermission", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.UserPermission", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -420,9 +420,9 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.ToTable("UserPermission", "Core");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.Conversation", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.Conversation", b =>
                 {
-                    b.HasOne("RR.AI_Chat.Entity.User", "User")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.NoAction)
@@ -431,15 +431,15 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.ConversationDocument", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocument", b =>
                 {
-                    b.HasOne("RR.AI_Chat.Entity.Conversation", "Conversation")
+                    b.HasOne("Enterprise.Gpt.Entity.Conversation", "Conversation")
                         .WithMany("Documents")
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("RR.AI_Chat.Entity.User", "User")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.NoAction)
@@ -450,9 +450,9 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.ConversationDocumentPage", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentPage", b =>
                 {
-                    b.HasOne("RR.AI_Chat.Entity.ConversationDocument", "ConversationDocument")
+                    b.HasOne("Enterprise.Gpt.Entity.ConversationDocument", "ConversationDocument")
                         .WithMany("Pages")
                         .HasForeignKey("ConversationDocumentId")
                         .OnDelete(DeleteBehavior.NoAction)
@@ -461,15 +461,15 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.Navigation("ConversationDocument");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.Model", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.Model", b =>
                 {
-                    b.HasOne("RR.AI_Chat.Entity.User", "CreatedBy")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "CreatedBy")
                         .WithMany()
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("RR.AI_Chat.Entity.User", "ModifiedBy")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "ModifiedBy")
                         .WithMany()
                         .HasForeignKey("ModifiedById")
                         .OnDelete(DeleteBehavior.NoAction)
@@ -480,21 +480,21 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.Navigation("ModifiedBy");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.UserPermission", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.UserPermission", b =>
                 {
-                    b.HasOne("RR.AI_Chat.Entity.User", "CreatedBy")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "CreatedBy")
                         .WithMany()
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("RR.AI_Chat.Entity.User", "ModifiedBy")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "ModifiedBy")
                         .WithMany()
                         .HasForeignKey("ModifiedById")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("RR.AI_Chat.Entity.User", "User")
+                    b.HasOne("Enterprise.Gpt.Entity.User", "User")
                         .WithMany("UserPermissions")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.NoAction)
@@ -507,17 +507,17 @@ namespace RR.AI_Chat.Repository.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.Conversation", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.Conversation", b =>
                 {
                     b.Navigation("Documents");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.ConversationDocument", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocument", b =>
                 {
                     b.Navigation("Pages");
                 });
 
-            modelBuilder.Entity("RR.AI_Chat.Entity.User", b =>
+            modelBuilder.Entity("Enterprise.Gpt.Entity.User", b =>
                 {
                     b.Navigation("UserPermissions");
                 });

@@ -5,10 +5,10 @@ End-to-end design for the conversation document upload feature: how a file moves
 **Audience:** engineers maintaining or extending document upload, RAG ingestion, or background-job infrastructure.
 
 **Owning code:**
-- Frontend: [`ai-chat-ui/src/app/components/home/prompt-box/`](../../ai-chat-ui/src/app/components/home/prompt-box/) and [`ai-chat-ui/src/app/services/document.service.ts`](../../ai-chat-ui/src/app/services/document.service.ts)
-- API controller: [`RR.AI-Chat/RR.AI-Chat.Api/Controllers/DocumentsController.cs`](../../RR.AI-Chat/RR.AI-Chat.Api/Controllers/DocumentsController.cs)
-- Background pipeline: [`RR.AI-Chat/RR.AI-Chat.Service/BackgroundJobs/`](../../RR.AI-Chat/RR.AI-Chat.Service/BackgroundJobs/)
-- Processing: [`RR.AI-Chat/RR.AI-Chat.Service/DocumentService.cs`](../../RR.AI-Chat/RR.AI-Chat.Service/DocumentService.cs)
+- Frontend: [`enterprise-ui/src/app/components/home/prompt-box/`](../../enterprise-ui/src/app/components/home/prompt-box/) and [`enterprise-ui/src/app/services/document.service.ts`](../../enterprise-ui/src/app/services/document.service.ts)
+- API controller: [`enterprise-gpt-api/Enterprise.Gpt.Api/Controllers/DocumentsController.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Controllers/DocumentsController.cs)
+- Background pipeline: [`enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/)
+- Processing: [`enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs)
 
 ---
 
@@ -71,9 +71,9 @@ sequenceDiagram
 
 ### 3.1 Triggering upload
 
-The user attaches files via the prompt box. Each file becomes a `FileUploadDto` (`{ id, name, size, file, status?, progress? }`) tracked in component state. When the user sends the message, [`prompt-box.component.ts`](../../ai-chat-ui/src/app/components/home/prompt-box/prompt-box.component.ts) iterates the attached files and calls the upload service for each.
+The user attaches files via the prompt box. Each file becomes a `FileUploadDto` (`{ id, name, size, file, status?, progress? }`) tracked in component state. When the user sends the message, [`prompt-box.component.ts`](../../enterprise-ui/src/app/components/home/prompt-box/prompt-box.component.ts) iterates the attached files and calls the upload service for each.
 
-[`document.service.ts`](../../ai-chat-ui/src/app/services/document.service.ts) wraps the request:
+[`document.service.ts`](../../enterprise-ui/src/app/services/document.service.ts) wraps the request:
 
 ```typescript
 uploadFile(conversationId: string, file: File): Observable<JobDto> {
@@ -86,7 +86,7 @@ uploadFile(conversationId: string, file: File): Observable<JobDto> {
 }
 ```
 
-The MSAL HTTP interceptor attaches the bearer token automatically (see [`ai-chat-ui/src/app/app.config.ts`](../../ai-chat-ui/src/app/app.config.ts) and the `protectedResourceMap` in `MSALInterceptorConfigFactory`).
+The MSAL HTTP interceptor attaches the bearer token automatically (see [`enterprise-ui/src/app/app.config.ts`](../../enterprise-ui/src/app/app.config.ts) and the `protectedResourceMap` in `MSALInterceptorConfigFactory`).
 
 ### 3.2 Polling for status
 
@@ -135,7 +135,7 @@ export interface JobStatusDto {
 
 ## 4. API surface
 
-[`DocumentsController`](../../RR.AI-Chat/RR.AI-Chat.Api/Controllers/DocumentsController.cs) exposes two relevant endpoints; both require Bearer authentication.
+[`DocumentsController`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Controllers/DocumentsController.cs) exposes two relevant endpoints; both require Bearer authentication.
 
 ### 4.1 `POST /api/documents/conversations/{conversationId}`
 
@@ -185,7 +185,7 @@ return Ok(new JobStatusDto
 
 ## 5. Background pipeline
 
-All four pieces live under [`RR.AI-Chat.Service/BackgroundJobs/`](../../RR.AI-Chat/RR.AI-Chat.Service/BackgroundJobs/). They are wired in [`Program.cs`](../../RR.AI-Chat/RR.AI-Chat.Api/Program.cs):
+All four pieces live under [`Enterprise.Gpt.Service/BackgroundJobs/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/). They are wired in [`Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs):
 
 ```csharp
 builder.Services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
@@ -237,7 +237,7 @@ The `ContinueWith` is fire-and-forget — its only job is to remove completed ta
 
 ## 6. DocumentService — what runs inside the job
 
-[`CreateConversationDocumentAsync`](../../RR.AI-Chat/RR.AI-Chat.Service/DocumentService.cs) executes the actual pipeline. Status checkpoints are reported via `IJobStatusStore.Update` at four phases (the initial `Queued/0` is set by the controller's `Register` call):
+[`CreateConversationDocumentAsync`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs) executes the actual pipeline. Status checkpoints are reported via `IJobStatusStore.Update` at four phases (the initial `Queued/0` is set by the controller's `Register` call):
 
 | Phase        | Progress | What happens |
 |--------------|---------:|--------------|
@@ -296,7 +296,7 @@ public enum JobStatus
 }
 ```
 
-Defined in [`RR.AI-Chat.Dto/Enums/JobStatus.cs`](../../RR.AI-Chat/RR.AI-Chat.Dto/Enums/JobStatus.cs). Numeric values are stable — do not renumber.
+Defined in [`Enterprise.Gpt.Dto/Enums/JobStatus.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/JobStatus.cs). Numeric values are stable — do not renumber.
 
 ### 7.2 `state` derivation
 
@@ -319,7 +319,7 @@ Terminal snapshots stay queryable for `BackgroundJobs:RetentionMinutes` (default
 
 ## 8. Configuration
 
-[`appsettings.json`](../../RR.AI-Chat/RR.AI-Chat.Api/appsettings.json):
+[`appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json):
 
 ```json
 "BackgroundJobs": {

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>RR.AI_Chat.Service</RootNamespace>
+    <RootNamespace>Enterprise.Gpt.Service</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -24,8 +24,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RR.AI-Chat.Dto\RR.AI-Chat.Dto.csproj" />
-    <ProjectReference Include="..\RR.AI-Chat.Repository\RR.AI-Chat.Repository.csproj" />
+    <ProjectReference Include="..\Enterprise.Gpt.Dto\Enterprise.Gpt.Dto.csproj" />
+    <ProjectReference Include="..\Enterprise.Gpt.Repository\Enterprise.Gpt.Repository.csproj" />
   </ItemGroup>
 
   <ItemGroup>

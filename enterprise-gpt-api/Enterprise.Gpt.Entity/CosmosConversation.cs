@@ -1,7 +1,7 @@
-﻿using RR.AI_Chat.Common.Enums;
+﻿using Enterprise.Gpt.Common.Enums;
 using System.Text.Json.Serialization;
 
-namespace RR.AI_Chat.Entity
+namespace Enterprise.Gpt.Entity
 {
     public class CosmosConversation
     {
