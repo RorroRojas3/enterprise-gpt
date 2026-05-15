@@ -81,25 +81,11 @@ namespace RR.AI_Chat.Api.Controllers
             });
         }
 
-        [HttpGet("conversations/{conversationId}/histories")]
-        public async Task<IActionResult> GenerateConversationHistoryFileAsync(
-            Guid conversationId,
-            [FromQuery] DocumentFormats documentFormat,
-            CancellationToken cancellationToken)
-        {
-            var dto = await _service.GenerateConversationHistoryAsync(conversationId, documentFormat, cancellationToken);
-            if (dto is null)
-            {
-                return NotFound();
-            }
-
-            return File(dto.Content, dto.ContentType, dto.FileName);
-        }
-
         [HttpGet("file-extensions")]
         public IActionResult GetFileExtensions()
         {
             var fileExtensions = Enum.GetValues<FileExtensions>()
+                .Where(x => x == FileExtensions.Pdf || x == FileExtensions.Doc || x == FileExtensions.Docx || x == FileExtensions.Pptx)
                 .Select(e => e.GetDescription())
                 .ToList();
 

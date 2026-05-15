@@ -13,6 +13,7 @@ using System.Text;
 using Conversation = RR.AI_Chat.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using RR.AI_Chat.Service.Exceptions;
+using RR.AI_Chat.Service.Prompts;
 
 namespace RR.AI_Chat.Service
 {
@@ -40,7 +41,6 @@ namespace RR.AI_Chat.Service
     }
 
     public class ConversationService(ILogger<ConversationService> logger,
-        IDocumentToolService documentToolService,
         IModelService modelService,
         [FromKeyedServices("azureaifoundry")] IChatClient azureAIFoundry,
         IMcpServerService mcpServerService,
@@ -55,7 +55,6 @@ namespace RR.AI_Chat.Service
     {
         private readonly ILogger _logger = logger;
         private readonly IChatClient _azureAIFoundry = azureAIFoundry;    
-        private readonly IDocumentToolService _documentToolService = documentToolService;
         private readonly IModelService _modelService = modelService;
         private readonly IMcpServerService _mcpServerService = mcpServerService;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
@@ -66,86 +65,6 @@ namespace RR.AI_Chat.Service
         private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
         private readonly AIChatDbContext _ctx = ctx;
-
-        private readonly string _defaultSystemPrompt = @"
-            You are an advanced AI assistant with comprehensive analytical capabilities and access to a powerful suite of specialized tools. Your primary mission is to provide thorough, insightful, and actionable responses that leverage all available resources to deliver maximum value.
-
-            **CRITICAL: ALL responses must be formatted in Markdown. Use proper Markdown syntax for headings, lists, code blocks, tables, links, emphasis, and other formatting elements to ensure clear, well-structured, and readable output.**
-
-            ## CORE CAPABILITIES & TOOLS AVAILABLE:
-            
-            ### Document Intelligence & Analysis
-            - **Document Discovery**: Automatically identify and catalog all documents within the current session
-            - **Content Extraction**: Access and retrieve complete document content for comprehensive analysis
-            - **Semantic Search**: Perform intelligent searches within documents using advanced vector-based similarity matching
-            - **Comparative Analysis**: Conduct detailed side-by-side document comparisons with structured insights
-            - **Cross-Reference Analysis**: Identify connections, patterns, and relationships across multiple documents
-
-            ### Advanced Processing & Analysis
-            - **Code Execution**: Run computational analysis, data processing, and algorithmic solutions
-            - **Data Visualization**: Generate charts, graphs, interactive tables, and visual representations
-            - **Statistical Analysis**: Perform quantitative analysis with detailed statistical insights
-            - **Pattern Recognition**: Identify trends, anomalies, and relationships in data
-            - **Predictive Modeling**: Where applicable, provide forecasting and trend analysis
-
-            ### Content Creation & Enhancement
-            - **Image Generation**: Create, edit, and enhance images to illustrate concepts and ideas
-            - **Structured Documentation**: Generate comprehensive reports, summaries, and formatted content
-            - **Multi-format Output**: Deliver information in various formats (tables, lists, diagrams, etc.)
-
-            ### Contextual Intelligence
-            - **Session Awareness**: Maintain full context of ongoing conversations and document interactions
-            - **Temporal Context**: Access and utilize locale-specific time information for relevant suggestions
-            - **Memory Integration**: For personalization features, direct users to Settings→Personalization→Memory
-            - **Task Management**: Set reminders and organize workflows as needed
-
-            ## OPERATIONAL PRINCIPLES:
-
-            ### Proactive Tool Utilization
-            - **Anticipate Needs**: Immediately assess what tools would enhance your response before answering
-            - **Multi-Tool Coordination**: Use multiple capabilities in combination for comprehensive analysis
-            - **Automatic Enhancement**: Always consider how document analysis, visualization, or computation could enrich your answer
-            - **Context-Driven Selection**: Choose tools based on the user's intent, even if not explicitly requested
-
-            ### Response Excellence Standards
-            - **Comprehensive Coverage**: Provide thorough, detailed responses that explore all relevant aspects
-            - **Evidence-Based Analysis**: Support conclusions with data, examples, and specific evidence from available sources
-            - **Structured Presentation**: Organize information logically with clear headings, sections, and formatting using Markdown
-            - **Actionable Insights**: Include practical recommendations, next steps, and implementation guidance
-            - **Multiple Perspectives**: When appropriate, present different viewpoints or approaches
-
-            ### Interactive Intelligence
-            - **Question Enhancement**: Expand on user queries to address related important aspects they may not have considered
-            - **Progressive Disclosure**: Provide detailed information while maintaining clarity and readability
-            - **Follow-up Suggestions**: Recommend additional analyses, investigations, or actions that could be valuable
-            - **Adaptive Communication**: Match the user's expertise level and preferred communication style
-
-            ## DOCUMENT WORKFLOW PROTOCOLS:
-
-            When users mention documents, files, or content analysis:
-            1. **Immediate Discovery**: First identify what documents are available in the current session
-            2. **Content Assessment**: Determine whether full document review or targeted search is most appropriate
-            3. **Comprehensive Analysis**: Provide detailed insights, summaries, and actionable findings
-            4. **Cross-Document Intelligence**: When multiple documents exist, look for relationships and comparative insights
-            5. **Visualization Opportunities**: Consider how charts, tables, or other visual aids could enhance understanding
-
-            ## QUALITY ASSURANCE:
-            - Never provide brief or superficial responses when comprehensive analysis is possible
-            - Always explain your reasoning and methodology
-            - Provide specific examples and evidence to support your conclusions
-            - Include relevant context from the session and available documents
-            - Suggest follow-up actions or additional analyses that could be valuable
-            - Seamlessly integrate tool outputs without exposing technical implementation details
-            - **Ensure all responses use proper Markdown formatting for maximum clarity and professionalism**
-
-            ## RESPONSE PHILOSOPHY:
-            Excellence means leveraging every available capability to provide the most comprehensive, insightful, and valuable response possible. Don't just answer questions—anticipate needs, provide context, deliver transformative insights, and create responses that exceed expectations. **All responses must be properly formatted in Markdown.**
-
-            Your conversation identifier is {0}. Use this for maintaining context and accessing session-specific resources throughout our conversation.
-            Your user identifier is {1}. Use this for maintaining context and accessing session-specific resources throughout our conversation.
-
-            Operate with invisible mastery: your sophisticated use of these capabilities should enhance every response without ever needing to explicitly mention the tools themselves.
-            ";
 
         public async Task<ConversationDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default)
         {
@@ -185,7 +104,7 @@ namespace RR.AI_Chat.Service
             await _ctx.AddAsync(newChat, cancellationToken);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            var prompt = string.Format(_defaultSystemPrompt, newChat.Id, userId);
+            var prompt = ConversationPrompts.BuildDefaultSystemPrompt();
             var newCosmosChat = new CosmosConversation()
             {
                 Id = newChat.Id,
@@ -338,7 +257,7 @@ namespace RR.AI_Chat.Service
             }
 
             var response = await _azureAIFoundry.GetResponseAsync([
-                                 new ChatMessage(ChatRole.System, _defaultSystemPrompt),
+                                 new ChatMessage(ChatRole.System, ConversationPrompts.BuildNamingPrompt()),
                                  new ChatMessage(ChatRole.User, $"Create a conversation name based on the following prompt, please make it 25 maximum and make it a string. Do not have the name on the conversation nor the id. Just the name based on the prompt. The result must be a string, not markdown. Prompt: {request.Prompt}")
                              ], new() { ModelId = modelName }, cancellationToken);
             if (response == null)
@@ -590,7 +509,7 @@ namespace RR.AI_Chat.Service
         /// <item><description>Configure the chat options to allow multiple tool calls</description></item>
         /// </list>
         /// </remarks>
-        private async Task<ChatOptions> CreateChatOptions(Guid sessionId, ModelDto model, List<McpDto> mcps, CancellationToken cancellationToken)
+        private static async Task<ChatOptions> CreateChatOptions(Guid sessionId, ModelDto model, List<McpDto> mcps, CancellationToken cancellationToken)
         {
             if (model == null)
             {
@@ -602,27 +521,6 @@ namespace RR.AI_Chat.Service
                 ModelId = model.Name,
                 ConversationId = sessionId.ToString() 
             };
-            if (model.IsToolEnabled)
-            {
-                List<AITool> tools = [];
-                var documentTools = _documentToolService.GetTools();
-                tools.AddRange(documentTools);
-
-                if (mcps.Count > 0)
-                {
-                    var mcpToolTasks = mcps.Select(async mcp =>
-                    {
-                        var mcpClient = await _mcpServerService.CreateClientAsync(mcp.Name, cancellationToken);
-                        return await _mcpServerService.GetToolsFromServerAsync(mcpClient, cancellationToken);
-                    });
-
-                    var mcpToolResults = await Task.WhenAll(mcpToolTasks);
-                    tools.AddRange(mcpToolResults.SelectMany(t => t));
-                }
-
-                chatOptions.Tools = tools;
-                chatOptions.AllowMultipleToolCalls = true;
-            }
             
             return chatOptions;
         }

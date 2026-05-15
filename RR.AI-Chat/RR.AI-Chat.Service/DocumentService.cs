@@ -1,23 +1,18 @@
 ﻿using Microsoft.Data.SqlTypes;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using RR.AI_Chat.Common.Extensions;
 using RR.AI_Chat.Dto;
 using RR.AI_Chat.Dto.Enums;
 using RR.AI_Chat.Entity;
 using RR.AI_Chat.Repository;
 using RR.AI_Chat.Service.BackgroundJobs;
-using RR.AI_Chat.Service.Common.Interface;
 
 namespace RR.AI_Chat.Service
 {
     public interface IDocumentService
     {
         Task<ConversationDocumentDto> CreateConversationDocumentAsync(string jobId, FileDto fileDataDto, Guid userId, Guid chatId, CancellationToken cancellationToken);
-
-        Task<FileDto?> GenerateConversationHistoryAsync(Guid chatId, DocumentFormats documentFormat, CancellationToken cancellationToken);
 
         Task<List<DocumentExtractorDto>> ExtractTextAsync(FileDto fileDto, CancellationToken cancellationToken);
 
@@ -29,15 +24,6 @@ namespace RR.AI_Chat.Service
         IBlobStorageService blobStorageService,
         IConfiguration configuration,
         IDocumentIntelligenceService documentIntelligenceService,
-        ITokenService tokenService,
-        IHtmlService htmlService,
-        IPdfService pdfService,
-        IWordService wordService,
-        IMarkdownService markdownService,
-        [FromKeyedServices("excel")] IFileService excelService,
-        [FromKeyedServices("common")] IFileService commonFileService,
-        [FromKeyedServices("word")] IFileService wordFileService,
-        IAzureCosmosService cosmosService,
         IJobStatusStore jobStatusStore,
         AIChatDbContext ctx) : IDocumentService
     {
@@ -46,15 +32,6 @@ namespace RR.AI_Chat.Service
         private readonly IBlobStorageService _blobStorageService = blobStorageService;
         private readonly IConfiguration _configuration = configuration;
         private readonly IDocumentIntelligenceService _documentIntelligenceService = documentIntelligenceService;
-        private readonly ITokenService _tokenService = tokenService;
-        private readonly IHtmlService _htmlService = htmlService;
-        private readonly IPdfService _pdfService = pdfService;
-        private readonly IWordService _wordService = wordService;
-        private readonly IMarkdownService _markdownService = markdownService;
-        private readonly IFileService _excelService = excelService;
-        private readonly IFileService _commonFileService = commonFileService;
-        private readonly IFileService _wordFileService = wordFileService;
-        private readonly IAzureCosmosService _cosmosService = cosmosService;
         private readonly IJobStatusStore _jobStatusStore = jobStatusStore;
         private readonly AIChatDbContext _ctx = ctx;
 
@@ -151,55 +128,7 @@ namespace RR.AI_Chat.Service
 
             return document.MapToChatDocumentDto();
         }
-
-        public async Task<FileDto?> GenerateConversationHistoryAsync(Guid chatId, DocumentFormats documentFormat, CancellationToken cancellationToken)
-        {
-            var oid = _tokenService.GetOid();
-
-            var chat = await _cosmosService.GetItemAsync<CosmosConversation>(chatId.ToString(), oid.ToString(), cancellationToken);
-            if (chat == null)
-            {
-                throw new InvalidOperationException($"Chat with id {chatId} not found.");
-            }
-
-            var html = _htmlService.GenerateConversationHistoryAsync(chat.Messages);
-            if (string.IsNullOrWhiteSpace(html))
-            {
-                return null;
-            }
-
-            byte[]? bytes = documentFormat switch
-            {
-                DocumentFormats.Pdf => _pdfService.GeneratePdfFromHtml(html),
-                DocumentFormats.Word => _wordService.GenerateWordFromHtml(html),
-                DocumentFormats.Markdown => _markdownService.GenerateMarkdownFromHtml(html),
-                _ => null
-            };
-            if (bytes == null || bytes.Length == 0)
-            {
-                return null;
-            }
-
-            var fileName = documentFormat switch
-            {
-                DocumentFormats.Pdf => $"conversation-history-{chatId}.pdf",
-                DocumentFormats.Word => $"conversation-history-{chatId}.docx",
-                DocumentFormats.Markdown => $"conversation-history-{chatId}.md",
-                _ => null
-            };
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                return null;
-            }
-
-            return new FileDto
-            {
-                FileName = fileName,
-                Content = bytes,
-                ContentType = documentFormat.GetDescription(),
-                Length = bytes.Length
-            };
-        }
+        
 
         public async Task<PageEmbeddingDto> GeneratePageEmbeddingAsync(DocumentExtractorDto documentExtractor, CancellationToken cancellationToken)
         {
@@ -238,36 +167,9 @@ namespace RR.AI_Chat.Service
             ArgumentNullException.ThrowIfNull(fileDto, nameof(fileDto));
 
             List<DocumentExtractorDto> dto = [];
-            if (fileDto.FileExtension == FileExtensions.Cs ||
-                fileDto.FileExtension == FileExtensions.Csproj ||
-                fileDto.FileExtension == FileExtensions.Css ||
-                fileDto.FileExtension == FileExtensions.Html ||
-                fileDto.FileExtension == FileExtensions.Js ||
-                fileDto.FileExtension == FileExtensions.Json ||
-                fileDto.FileExtension == FileExtensions.Jsx ||
-                fileDto.FileExtension == FileExtensions.Log ||
-                fileDto.FileExtension == FileExtensions.Md ||
-                fileDto.FileExtension == FileExtensions.Ps1 ||
-                fileDto.FileExtension == FileExtensions.Py ||
-                fileDto.FileExtension == FileExtensions.Scss ||
-                fileDto.FileExtension == FileExtensions.Sql ||
-                fileDto.FileExtension == FileExtensions.Ts ||
-                fileDto.FileExtension == FileExtensions.Tsx ||
-                fileDto.FileExtension == FileExtensions.Txt ||
-                fileDto.FileExtension == FileExtensions.Xml ||
-                fileDto.FileExtension == FileExtensions.Yaml ||
-                fileDto.FileExtension == FileExtensions.Yml)
-            {
-                dto = _commonFileService.ExtractText(fileDto.Content, fileDto.FileName);
-            }
-            else if (fileDto.FileExtension == FileExtensions.Csv ||
-                fileDto.FileExtension == FileExtensions.Xls ||
-                fileDto.FileExtension == FileExtensions.Xlsm ||
-                fileDto.FileExtension == FileExtensions.Xlsx)
-            {
-                dto = _excelService.ExtractText(fileDto.Content, fileDto.FileName);
-            }
-            else if (fileDto.FileExtension == FileExtensions.Pdf ||
+            if (fileDto.FileExtension == FileExtensions.Doc || 
+                     fileDto.FileExtension == FileExtensions.Docx ||
+                     fileDto.FileExtension == FileExtensions.Pdf ||
                      fileDto.FileExtension == FileExtensions.Pptx)
             {
                 var analyzeResult = await _documentIntelligenceService.ReadAsync(fileDto.Content, cancellationToken);
@@ -276,11 +178,6 @@ namespace RR.AI_Chat.Service
                         PageNumber = page.PageNumber,
                         PageText = string.Join("\n", page.Lines.Select(line => line.Content))
                     })];
-            }
-            else if (fileDto.FileExtension == FileExtensions.Doc ||
-                     fileDto.FileExtension == FileExtensions.Docx)
-            {
-                dto = _wordFileService.ExtractText(fileDto.Content, fileDto.FileName);
             }
             else
             {

@@ -14,7 +14,6 @@ using RR.AI_Chat.Api.ExceptionHandlers;
 using RR.AI_Chat.Repository;
 using RR.AI_Chat.Service;
 using RR.AI_Chat.Service.BackgroundJobs;
-using RR.AI_Chat.Service.Common.Interface;
 using RR.AI_Chat.Service.Settings;
 using System.ClientModel;
 
@@ -175,18 +174,10 @@ builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<IGraphService, GraphService>();
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
 builder.Services.AddSingleton<IDocumentIntelligenceService, DocumentIntelligenceService>();
-builder.Services.AddSingleton<IHtmlService, HtmlService>();
-builder.Services.AddSingleton<IPdfService, PdfService>();
-builder.Services.AddSingleton<IWordService, WordService>();
-builder.Services.AddSingleton<IMarkdownService, MarkdownService>();
-builder.Services.AddKeyedSingleton<IFileService, ExcelService>("excel");
-builder.Services.AddKeyedSingleton<IFileService, CommonFileService>("common");
-builder.Services.AddKeyedSingleton<IFileService, WordService>("word");
 
 // Keep other services as Scoped
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
-builder.Services.AddScoped<IDocumentToolService, DocumentToolService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IMcpServerService, McpServerService>();
 builder.Services.AddScoped<IUserService, UserService>();
