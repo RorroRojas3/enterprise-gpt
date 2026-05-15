@@ -2,14 +2,14 @@
 
 Multi-model AI chat platform with two subprojects:
 
-- **`ai-chat-ui/`** — Angular 21 SPA frontend (standalone components, signals, `@ngrx/signals`, MSAL, Bootstrap 5, SCSS).
-- **`RR.AI-Chat/`** — .NET 10 Web API backend, layered solution: `RR.AI-Chat.Api` → `RR.AI-Chat.Service` → `RR.AI-Chat.Repository` → `RR.AI-Chat.Entity`, with shared `RR.AI-Chat.Dto` and `RR.AI-Chat.Common` projects.
+- **`enterprise-ui/`** — Angular 21 SPA frontend (standalone components, signals, `@ngrx/signals`, MSAL, Bootstrap 5, SCSS).
+- **`enterprise-gpt-api/`** — .NET 10 Web API backend, layered solution: `Enterprise.Gpt.Api` → `Enterprise.Gpt.Service` → `Enterprise.Gpt.Repository` → `Enterprise.Gpt.Entity`, with shared `Enterprise.Gpt.Dto` and `Enterprise.Gpt.Common` projects.
 
 ## Per-folder instructions
 
-When working in **`ai-chat-ui/`**, follow [`ai-chat-ui/CLAUDE.md`](ai-chat-ui/CLAUDE.md). It is auto-loaded for that subdirectory and is the source of truth for Angular conventions in this repo (verified against the official Angular 21 best practices via the `angular-cli` MCP).
+When working in **`enterprise-ui/`**, follow [`enterprise-ui/CLAUDE.md`](enterprise-ui/CLAUDE.md). It is auto-loaded for that subdirectory and is the source of truth for Angular conventions in this repo (verified against the official Angular 21 best practices via the `angular-cli` MCP).
 
-When working in **`RR.AI-Chat/`**, follow [`RR.AI-Chat/CLAUDE.md`](RR.AI-Chat/CLAUDE.md). It is auto-loaded for that subdirectory and is the source of truth for .NET 10 / C# 14 conventions in this repo (verified against official Microsoft Learn docs via the `microsoft-learn` MCP).
+When working in **`enterprise-gpt-api/`**, follow [`enterprise-gpt-api/CLAUDE.md`](enterprise-gpt-api/CLAUDE.md). It is auto-loaded for that subdirectory and is the source of truth for .NET 10 / C# 14 conventions in this repo (verified against official Microsoft Learn docs via the `microsoft-learn` MCP).
 
 ## Skills (backend)
 

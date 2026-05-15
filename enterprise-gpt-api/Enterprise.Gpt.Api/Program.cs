@@ -1,0 +1,233 @@
+﻿using Azure;
+using Azure.AI.DocumentIntelligence;
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using Azure.Storage.Blobs;
+using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Azure.Cosmos;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Graph;
+using Microsoft.Identity.Web;
+using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Settings;
+using System.ClientModel;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApi(options =>
+    {
+        builder.Configuration.Bind("AzureAd", options);
+
+        // Explicitly validate audience to ensure token is for this API
+        options.TokenValidationParameters.ValidateAudience = true;
+        options.TokenValidationParameters.ValidAudiences =
+        [
+            builder.Configuration["AzureAd:ClientId"],
+            $"api://{builder.Configuration["AzureAd:ClientId"]}"
+        ];
+    },
+    options => builder.Configuration.Bind("AzureAd", options))
+    .EnableTokenAcquisitionToCallDownstreamApi(options =>
+    {
+        builder.Configuration.Bind("AzureAd", options);
+    })
+    .AddInMemoryTokenCaches();
+
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.SuppressModelStateInvalidFilter = true;
+    });
+
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddDbContext<AIChatDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sqlOptions =>
+    {
+        sqlOptions.UseCompatibilityLevel(170);
+    })); 
+
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddHttpContextAccessor();
+
+// Add CORS
+var corsOrigins = builder.Configuration.GetSection("CorsOrigins").Get<string[]>();
+corsOrigins ??= [];
+builder.Services.AddCors(builder => builder.AddPolicy("AllowSpecificOrigins", policy =>
+{
+    policy.WithOrigins(corsOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()
+            .WithExposedHeaders("Content-Disposition");
+}));
+
+
+// 1) Azure AI Foundry under key "azureaifoundry"
+var azureAIFoundryUrl = builder.Configuration.GetValue<string>("AzureAIFoundry:Url") ?? string.Empty;
+var azureAIFoundryKey = builder.Configuration.GetValue<string>("AzureAIFoundry:ApiKey") ?? string.Empty;
+var azureAIFoundryDefaultModel = builder.Configuration.GetValue<string>("AzureAIFoundry:DefaultModel") ?? string.Empty;
+builder.Services.AddKeyedChatClient(
+        "azureaifoundry",
+        sp => new AzureOpenAIClient(new Uri(azureAIFoundryUrl), new ApiKeyCredential(azureAIFoundryKey))
+                  .GetChatClient(azureAIFoundryDefaultModel)
+                  .AsIChatClient()
+    )
+    .UseOpenTelemetry()
+    .UseFunctionInvocation(null, x =>
+    {
+        x.AllowConcurrentInvocation = false;
+        x.IncludeDetailedErrors = true;
+        x.MaximumIterationsPerRequest = 5;
+        x.MaximumConsecutiveErrorsPerRequest = 5;
+    });
+
+// AI Embedding Generators
+var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;
+IEmbeddingGenerator<string, Embedding<float>> ollamaGenerator =
+    new AzureOpenAIClient(new Uri(azureAIFoundryUrl), new ApiKeyCredential(azureAIFoundryKey))
+        .GetEmbeddingClient(embeddingModel)
+        .AsIEmbeddingGenerator();
+builder.Services.AddEmbeddingGenerator(ollamaGenerator);
+
+// Background job pipeline (replaces Hangfire). BackgroundJobProcessor consumes IBackgroundJobQueue,
+// caps concurrent jobs via SemaphoreSlim, and updates IJobStatusStore for client polling.
+builder.Services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
+builder.Services.AddSingleton<IJobStatusStore, JobStatusStore>();
+builder.Services.AddHostedService<BackgroundJobProcessor>();
+
+// Add Microsoft Graph Service
+builder.Services.AddSingleton(sp =>
+{
+    var tenantId = builder.Configuration["AzureAd:TenantId"];
+    var clientId = builder.Configuration["AzureAd:ClientId"];
+    var clientSecret = builder.Configuration["AzureAd:ClientSecret"];
+
+    var clientSecretCredential = new ClientSecretCredential(
+        tenantId,
+        clientId,
+        clientSecret
+    );
+
+    return new GraphServiceClient(clientSecretCredential);
+});
+
+// Azure Storage
+builder.Services.AddSingleton(x =>
+{
+    var connectionString = builder.Configuration["AzureStorage:ConnectionString"];
+    return new BlobServiceClient(connectionString);
+});
+
+// Azure Document Intelligence 
+builder.Services.AddSingleton(sp =>
+{
+    var config = builder.Configuration.GetSection("DocumentIntelligence");
+    var endpoint = config["Endpoint"];
+    var apiKey = config["ApiKey"];
+
+    var credential = new AzureKeyCredential(apiKey!);
+    return new DocumentIntelligenceClient(new Uri(endpoint!), credential);
+});
+
+// Register Azure Cosmos DB
+var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"];
+var cosmosDatabaseId = builder.Configuration["CosmosDb:DatabaseId"];
+var cosmosContainerId = builder.Configuration["CosmosDb:ContainerId"];
+var cosmosClientOptions = new CosmosClientOptions
+{
+    SerializerOptions = new CosmosSerializationOptions
+    {
+        PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
+    }
+};
+builder.Services.AddSingleton(sp => new CosmosClient(cosmosConnectionString, cosmosClientOptions));
+builder.Services.AddScoped<IAzureCosmosService>(provider =>
+{
+    var cosmosClient = provider.GetRequiredService<CosmosClient>();
+    return new AzureCosmosService(cosmosClient, cosmosDatabaseId!, cosmosContainerId!);
+});
+
+// Register configuration settings
+builder.Services.Configure<List<McpServerSettings>>(builder.Configuration.GetSection("McpServers"));
+
+// Exception handlers (chained — first to return true wins; GlobalExceptionHandler is the fallback)
+builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
+builder.Services.AddExceptionHandler<OperationCanceledExceptionHandler>();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+// Required by app.UseExceptionHandler() in .NET 10: provides a ProblemDetails fallback
+// for the rare case where every IExceptionHandler returns false.
+builder.Services.AddProblemDetails();
+
+// Singletons
+builder.Services.AddSingleton<IConversationLockService, ConversationLockService>();
+builder.Services.AddSingleton<ITokenService, TokenService>();
+builder.Services.AddSingleton<IGraphService, GraphService>();
+builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
+builder.Services.AddSingleton<IDocumentIntelligenceService, DocumentIntelligenceService>();
+
+// Keep other services as Scoped
+builder.Services.AddScoped<IConversationService, ConversationService>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IModelService, ModelService>();
+builder.Services.AddScoped<IMcpServerService, McpServerService>();
+builder.Services.AddScoped<IUserService, UserService>();
+
+// Fluent Validators
+builder.Services.AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies());
+
+var app = builder.Build();
+
+// Apply database migrations at startup
+using var scope = app.Services.CreateScope();
+var services = scope.ServiceProvider;
+try
+{
+    var context = services.GetRequiredService<AIChatDbContext>();
+
+    // This will create the database if it doesn't exist and apply all pending migrations
+    context.Database.Migrate();
+
+    app.Logger.LogInformation("Database migrations applied successfully");
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "An error occurred while migrating the database");
+    throw; // Rethrow to prevent app startup if migration fails
+}
+
+// Apply cosmos DB migrations or setup if needed
+var cosmosClient = services.GetRequiredService<CosmosClient>();
+var database = await cosmosClient.CreateDatabaseIfNotExistsAsync(cosmosDatabaseId);
+await database.Database.CreateContainerIfNotExistsAsync(cosmosContainerId, "/userId");
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
+app.UseExceptionHandler();
+
+app.UseHttpsRedirection();
+
+app.UseCors("AllowSpecificOrigins");
+
+app.UseAuthentication();
+
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
