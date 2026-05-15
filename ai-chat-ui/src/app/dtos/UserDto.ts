@@ -1,5 +1,10 @@
+import { Permissions } from './Permissions';
+
 export interface UserDto {
-  id?: string;
-  email?: string;
-  displayName?: string;
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  fullName: string;
+  permissions: Permissions[];
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RR.AI_Chat.Dto;
 using RR.AI_Chat.Dto.Actions.User;
@@ -10,12 +10,12 @@ namespace RR.AI_Chat.Service
 {
     public interface IUserService
     {
-        Task CreateUserAsync(CancellationToken cancellationToken);
+        Task<(UserDto User, bool Created)> CreateUserAsync(CancellationToken cancellationToken);
 
         Task<UserDto> UpdateUserAsync(UpdateUserActionDto request, CancellationToken cancellationToken);
 
         Task DeactivateUserAsync(Guid oid, CancellationToken cancellationToken);
-    }   
+    }
 
     public class UserService(ILogger<UserService> logger,
         ITokenService tokenService,
@@ -28,14 +28,17 @@ namespace RR.AI_Chat.Service
         private readonly AIChatDbContext _ctx = ctx;
 
         /// <inheritdoc />
-        public async Task CreateUserAsync(CancellationToken cancellationToken)
+        public async Task<(UserDto User, bool Created)> CreateUserAsync(CancellationToken cancellationToken)
         {
             var oid = _tokenService.GetOid();
 
-            var userExist = await IsUserInDatabaseAsync(oid, cancellationToken);
-            if (userExist)
+            var existing = await _ctx.Users
+                .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                .FirstOrDefaultAsync(u => u.Id == oid && !u.DateDeactivated.HasValue, cancellationToken);
+
+            if (existing is not null)
             {
-                return;
+                return (MapToDto(existing), Created: false);
             }
 
             var date = DateTimeOffset.UtcNow;
@@ -50,17 +53,21 @@ namespace RR.AI_Chat.Service
                 DateModified = date
             };
 
-            await _ctx.Users.AddAsync(newUser, cancellationToken);
+            _ctx.Users.Add(newUser);
             await _ctx.SaveChangesAsync(cancellationToken);
+
+            return (MapToDto(newUser), Created: true);
         }
 
+        /// <inheritdoc />
         public async Task<UserDto> UpdateUserAsync(UpdateUserActionDto request, CancellationToken cancellationToken)
         {
             var oid = _tokenService.GetOid();
 
             var user = await _ctx.Users
-                        .Where(x => x.Id == oid && !x.DateDeactivated.HasValue)
-                        .FirstOrDefaultAsync(cancellationToken) ?? throw new NotFoundException($"User {oid} not found"); ;
+                        .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                        .FirstOrDefaultAsync(x => x.Id == oid && !x.DateDeactivated.HasValue, cancellationToken)
+                ?? throw new NotFoundException($"User {oid} not found");
 
             user.FirstName = request.FirstName;
             user.LastName = request.LastName;
@@ -68,21 +75,34 @@ namespace RR.AI_Chat.Service
             user.DateModified = DateTimeOffset.UtcNow;
 
             await _ctx.SaveChangesAsync(cancellationToken);
-            return new()
-            {
-                Id = user.Id,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Email = user.Email
-            };
+            return MapToDto(user);
         }
 
+        /// <inheritdoc />
         public async Task DeactivateUserAsync(Guid oid, CancellationToken cancellationToken)
         {
             var rows = await _ctx.Users
                         .Where(x => x.Id == oid && !x.DateDeactivated.HasValue)
-                        .ExecuteUpdateAsync(update => 
+                        .ExecuteUpdateAsync(update =>
                             update.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), cancellationToken);
         }
+
+        #region Private methods
+
+        private static UserDto MapToDto(User user)
+        {
+            return new UserDto
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                Permissions = user.UserPermissions
+                    .Select(p => p.Permission)
+                    .ToList()
+            };
+        }
+
+        #endregion
     }
 }

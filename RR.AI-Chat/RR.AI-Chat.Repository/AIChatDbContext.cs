@@ -18,11 +18,14 @@ namespace RR.AI_Chat.Repository
         public DbSet<ConversationDocumentPage> ConversationDocumentPages { get; set; }
 
         public DbSet<User> Users { get; set; }
+
+        public DbSet<UserPermission> UserPermissions { get; set; }
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.ApplyConfiguration(new UserConfiguration());
+            modelBuilder.ApplyConfiguration(new UserPermissionConfiguration());
             modelBuilder.ApplyConfiguration(new AIServiceConfiguration());
             modelBuilder.ApplyConfiguration(new ModelConfiguration());
 

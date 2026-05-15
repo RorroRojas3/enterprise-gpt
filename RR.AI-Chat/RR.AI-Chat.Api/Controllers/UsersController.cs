@@ -15,8 +15,10 @@ namespace RR.AI_Chat.Api.Controllers
         [HttpPost("me")]
         public async Task<IActionResult> CreateUser(CancellationToken cancellationToken)
         {
-            await _userService.CreateUserAsync(cancellationToken);
-            return Created();
+            var (user, created) = await _userService.CreateUserAsync(cancellationToken);
+            return created
+                ? StatusCode(StatusCodes.Status201Created, user)
+                : Ok(user);
         }
 
         [HttpPut]

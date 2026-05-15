@@ -9,6 +9,7 @@ import {
   EMPTY,
   filter,
   forkJoin,
+  of,
   Subject,
   switchMap,
   takeUntil,
@@ -139,8 +140,9 @@ export class AppComponent implements OnInit, OnDestroy {
             );
             return EMPTY;
           }),
-          switchMap(() =>
+          switchMap((user) =>
             forkJoin([
+              of(user),
               this.modelService.getModels(),
               this.conversationService.searchConversations(''),
               this.mcpService.getMcpServers(),
@@ -148,8 +150,8 @@ export class AppComponent implements OnInit, OnDestroy {
             ]),
           ),
         )
-        .subscribe(([models, conversations, mcps, fileExtensions]) => {
-          this.userStore.setInitialized();
+        .subscribe(([user, models, conversations, mcps, fileExtensions]) => {
+          this.userStore.setUser(user);
           this.modelStore.setModels(models);
           this.storeService.updateMenuConversations(conversations.items);
           this.mcpStore.setMcps(mcps);

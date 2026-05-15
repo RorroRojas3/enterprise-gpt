@@ -83,6 +83,7 @@ C# 14 is the default on net10.0. Use it freely:
 - Single-line `using` directives. Opening brace on a new line for blocks (per `.editorconfig`).
 - Pattern matching and switch expressions where they read better than `if/else`.
 - Use `nameof(...)` instead of string literals for member references.
+- **Initialize empty collections/lists/arrays with the collection expression `[]`** — never `new List<T>()`, `new T[0]`, `new Dictionary<TKey, TValue>()`, or `new()` in this position. Applies to property defaults, parameter defaults, local initializers, and DTO/record `init` defaults. C# 12's collection expression `[]` is the project standard; it infers the concrete type from the declared type (e.g., `ICollection<Foo> Items { get; set; } = [];` → `List<Foo>`).
 
 ## Nullable Reference Types
 
@@ -294,6 +295,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Use `Async` suffix on every async method
 - Use `is null` / `is not null` (never `== null`)
 - Use `nameof(...)` over string literals for member references
+- Initialize empty collections/lists/arrays with `[]` (collection expression)
 - Write new DTOs as `record` types
 - Write new error mappings as `IExceptionHandler` implementations
 
@@ -308,6 +310,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Don't add data annotations to entities — fluent `IEntityTypeConfiguration<T>` only
 - Don't edit EF migrations once they're in source control — add a new one
 - Don't use `AddAsync` / `AddRangeAsync` — they don't hit the DB; use synchronous `_context.Add(...)` / `_context.AddRange(...)` and let `SaveChangesAsync(cancellationToken)` do the round-trip
+- Don't initialize empty collections with `new List<T>()` / `new T[0]` / `new()` — use the collection expression `[]`
 - Don't add Serilog / App Insights / Key Vault without explicit ask
 - Don't change `<TargetFramework>`, `<Nullable>`, `<ImplicitUsings>`, or add `<LangVersion>`
 - Don't reference primary-constructor parameters bare in member bodies — assign to `_underscore` fields
