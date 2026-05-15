@@ -43,7 +43,7 @@ For deeper topical guidance, invoke the bundled skills via the Skill tool:
 | Service | `RR.AI-Chat.Service/<Domain>Service.cs` with `I<Domain>Service` interface; register in `Program.cs` |
 | Endpoint | Controller in `RR.AI-Chat.Api/Controllers/<Domain>Controller.cs` (controller-based, never Minimal APIs) |
 | Middleware | `RR.AI-Chat.Api/Middlewares/` |
-| Entity → DTO mapping | Extension method on the entity (e.g., `Conversation.MapToChatDto()`) |
+| Entity ↔ DTO mapping | Static class in `RR.AI-Chat.Service/Mappers/<Entity>Mapper.cs` (e.g., [`UserMapper`](RR.AI-Chat.Service/Mappers/UserMapper.cs)) — see **Mappers** section |
 
 ## C# 14 / .NET 10 — Modern Features You Can Use
 
@@ -180,6 +180,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - **Async, cancellation-aware queries always** — `ToListAsync(cancellationToken)`, `SaveChangesAsync(cancellationToken)`, etc.
 - Watch for N+1: `Include()` aggressively when you need related entities; project to DTOs with `Select` when you don't.
 - **Never use `AddAsync` / `AddRangeAsync`.** Use the synchronous `_context.Add(entity)` / `_context.AddRange(entities)` — these only mutate the in-memory change tracker and do **not** hit the database. The async variants exist solely for `HiLoValueGenerator` (sequence-based key generation), which this codebase doesn't use. The DB round-trip happens at `SaveChangesAsync(cancellationToken)`.
+- **Add via `_ctx.Add(entity)`, not `_ctx.<DbSet>.Add(entity)`.** EF Core resolves the target set from the entity's CLR type — qualifying with the DbSet adds nothing and ties the call site to a specific `DbSet` property name. Same rule for `AddRange` / `Update` / `UpdateRange` / `Remove` / `RemoveRange` / `Attach` — call them on the `DbContext`, not on the DbSet. (Reads still use the DbSet, e.g. `_ctx.Users.Where(...)` — only state-change methods follow this rule.)
 
 ## Cosmos DB (secondary store)
 
@@ -215,6 +216,60 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Request DTOs go in `Actions/<Domain>/<Domain>Actions.cs`, validators colocated.
 - Response DTOs are top-level in `RR.AI-Chat.Dto/`.
 - Use `[JsonPropertyName("camelCase")]` to match the frontend's expected JSON.
+
+## Mappers
+
+All Entity ↔ DTO conversions live in a dedicated static class under [`RR.AI-Chat.Service/Mappers/`](RR.AI-Chat.Service/Mappers/), one file per entity, named `<Entity>Mapper.cs`. Services depend on these mappers rather than duplicating projection / construction logic inline. **Don't** put `MapTo*` methods on the entity class itself ([`Conversation.MapToChatDto`](RR.AI-Chat.Entity/Conversation.cs) and [`ConversationDocument.MapToChatDocumentDto`](RR.AI-Chat.Entity/ConversationDocument.cs) are migration debt — move them when you touch them).
+
+**Naming rules:**
+
+| Direction | Method name | Form |
+|---|---|---|
+| Entity → DTO (materialized) | `MapTo<NameOfDto>` | `this`-extension on the entity (`user.MapToUserDto()`) |
+| Entity → DTO (LINQ projection) | `MapTo<NameOfDto>Expression` | Static `Expression<Func<TEntity, TDto>>` property, used inside `IQueryable.Select(...)` |
+| Action DTO → Entity | `From<ActionDtoName>To<EntityName>` | `this`-extension on the action DTO. For updates, mutate the tracked entity in place; for creates, return a new entity instance |
+
+**Worked example** — [`RR.AI-Chat.Service/Mappers/UserMapper.cs`](RR.AI-Chat.Service/Mappers/UserMapper.cs):
+
+```csharp
+public static class UserMapper
+{
+    public static UserDto MapToUserDto(this User user) =>
+        new()
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            // Caller must have filtered-Include'd UserPermissions
+            Permissions = [.. user.UserPermissions.Select(p => p.Permission)]
+        };
+
+    public static Expression<Func<User, UserDto>> MapToUserDtoExpression { get; } =
+        user => new UserDto
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            Permissions = user.UserPermissions
+                .Where(p => !p.DateDeactivated.HasValue)
+                .Select(p => p.Permission)
+                .ToList()
+        };
+
+    public static void FromUpdateUserActionDtoToUser(this UpdateUserActionDto dto, User user)
+    {
+        user.FirstName = dto.FirstName;
+        user.LastName = dto.LastName;
+        user.Email = dto.Email;
+    }
+}
+```
+
+**When to use which:**
+
+- Read-only DTO query (no entity needed by the caller) → `IQueryable.Select(UserMapper.MapToUserDtoExpression)`. Filters nested collections at the SQL layer; no need for `Include`.
+- You already have a materialized entity (e.g. just created it, or you `Include`d it because you'll mutate it) → call `.MapToUserDto()` on it.
+- Applying a request DTO to an existing entity → `request.FromUpdateUserActionDtoToUser(user)` then set audit columns + `SaveChangesAsync`.
+
+**XML doc** every public mapper method (this is part of the public service-layer contract — see `csharp-docs` skill).
 
 ## Logging & Observability
 
@@ -298,6 +353,8 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Initialize empty collections/lists/arrays with `[]` (collection expression)
 - Write new DTOs as `record` types
 - Write new error mappings as `IExceptionHandler` implementations
+- Centralize Entity ↔ DTO mappings in `RR.AI-Chat.Service/Mappers/<Entity>Mapper.cs` using `MapTo<Dto>` (materialized), `MapTo<Dto>Expression` (projection), and `From<ActionDto>To<Entity>` (apply update)
+- Call change-tracking methods on the `DbContext` (`_ctx.Add(entity)`, `_ctx.Remove(entity)`, `_ctx.Update(entity)`), not on the `DbSet`
 
 **Don't**
 - Don't introduce a separate repository layer — services use `AIChatDbContext` directly
@@ -310,10 +367,13 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Don't add data annotations to entities — fluent `IEntityTypeConfiguration<T>` only
 - Don't edit EF migrations once they're in source control — add a new one
 - Don't use `AddAsync` / `AddRangeAsync` — they don't hit the DB; use synchronous `_context.Add(...)` / `_context.AddRange(...)` and let `SaveChangesAsync(cancellationToken)` do the round-trip
+- Don't qualify change-tracking calls with the DbSet — write `_ctx.Add(user)`, not `_ctx.Users.Add(user)` (same for `AddRange`, `Update`, `Remove`, `Attach`)
 - Don't initialize empty collections with `new List<T>()` / `new T[0]` / `new()` — use the collection expression `[]`
+- Don't duplicate Entity ↔ DTO construction inline in service methods, and don't define `MapTo*` on the entity class — use the matching `<Entity>Mapper` (see **Mappers**)
 - Don't add Serilog / App Insights / Key Vault without explicit ask
 - Don't change `<TargetFramework>`, `<Nullable>`, `<ImplicitUsings>`, or add `<LangVersion>`
 - Don't reference primary-constructor parameters bare in member bodies — assign to `_underscore` fields
+- Don't put `MapTo*` extensions on the entity class itself or inline projection logic in services — centralize in `RR.AI-Chat.Service/Mappers/<Entity>Mapper.cs`
 
 > **`appsettings.Development.json`** does not exist; **no test projects** exist; **no health-check endpoints** exist. Add these only when explicitly asked.
 
@@ -323,3 +383,4 @@ Documented so future Claude sessions don't copy these patterns when writing new 
 
 - **Class-based DTOs** in `RR.AI-Chat.Dto/` (23 files) — should be `record` types. Convert opportunistically when you touch one.
 - **Brace-style namespaces** across all `.cs` files — modern C# convention is file-scoped (`namespace Foo;`). Stay brace-style for consistency until a project-wide migration. Don't mix styles in a single PR.
+- **Inline mappers on entity classes** — [`Conversation.ChatExtensions.MapToChatDto`](RR.AI-Chat.Entity/Conversation.cs) and [`ConversationDocument`'s `MapToChatDocumentDto`](RR.AI-Chat.Entity/ConversationDocument.cs) live on the entity. They should be moved into `RR.AI-Chat.Service/Mappers/ConversationMapper.cs` / `ConversationDocumentMapper.cs` (with the `MapTo<Dto>Expression` form added for the existing `_ctx.Conversations.Select(s => s.MapToChatDto())` call-sites). Migrate when you touch them.

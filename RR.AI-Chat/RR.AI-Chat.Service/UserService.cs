@@ -5,6 +5,7 @@ using RR.AI_Chat.Dto.Actions.User;
 using RR.AI_Chat.Entity;
 using RR.AI_Chat.Repository;
 using RR.AI_Chat.Service.Exceptions;
+using RR.AI_Chat.Service.Mappers;
 
 namespace RR.AI_Chat.Service
 {
@@ -33,12 +34,13 @@ namespace RR.AI_Chat.Service
             var oid = _tokenService.GetOid();
 
             var existing = await _ctx.Users
-                .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
-                .FirstOrDefaultAsync(u => u.Id == oid && !u.DateDeactivated.HasValue, cancellationToken);
+                .Where(u => u.Id == oid && !u.DateDeactivated.HasValue)
+                .Select(UserMapper.MapToUserDtoExpression)
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (existing is not null)
             {
-                return (MapToDto(existing), Created: false);
+                return (existing, Created: false);
             }
 
             var date = DateTimeOffset.UtcNow;
@@ -53,10 +55,10 @@ namespace RR.AI_Chat.Service
                 DateModified = date
             };
 
-            _ctx.Users.Add(newUser);
+            _ctx.Add(newUser);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            return (MapToDto(newUser), Created: true);
+            return (newUser.MapToUserDto(), Created: true);
         }
 
         /// <inheritdoc />
@@ -69,13 +71,11 @@ namespace RR.AI_Chat.Service
                         .FirstOrDefaultAsync(x => x.Id == oid && !x.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException($"User {oid} not found");
 
-            user.FirstName = request.FirstName;
-            user.LastName = request.LastName;
-            user.Email = request.Email;
+            request.FromUpdateUserActionDtoToUser(user);
             user.DateModified = DateTimeOffset.UtcNow;
 
             await _ctx.SaveChangesAsync(cancellationToken);
-            return MapToDto(user);
+            return user.MapToUserDto();
         }
 
         /// <inheritdoc />
@@ -86,23 +86,5 @@ namespace RR.AI_Chat.Service
                         .ExecuteUpdateAsync(update =>
                             update.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), cancellationToken);
         }
-
-        #region Private methods
-
-        private static UserDto MapToDto(User user)
-        {
-            return new UserDto
-            {
-                Id = user.Id,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Email = user.Email,
-                Permissions = user.UserPermissions
-                    .Select(p => p.Permission)
-                    .ToList()
-            };
-        }
-
-        #endregion
     }
 }
