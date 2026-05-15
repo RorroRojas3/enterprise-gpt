@@ -178,6 +178,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
   Once a migration is in source control, **don't** edit it — add a new one.
 - **Async, cancellation-aware queries always** — `ToListAsync(cancellationToken)`, `SaveChangesAsync(cancellationToken)`, etc.
 - Watch for N+1: `Include()` aggressively when you need related entities; project to DTOs with `Select` when you don't.
+- **Never use `AddAsync` / `AddRangeAsync`.** Use the synchronous `_context.Add(entity)` / `_context.AddRange(entities)` — these only mutate the in-memory change tracker and do **not** hit the database. The async variants exist solely for `HiLoValueGenerator` (sequence-based key generation), which this codebase doesn't use. The DB round-trip happens at `SaveChangesAsync(cancellationToken)`.
 
 ## Cosmos DB (secondary store)
 
@@ -306,6 +307,7 @@ New error-handling logic should be implemented as `class FooExceptionHandler : I
 - Don't change the `ErrorDto` wire shape — frontend depends on `{ statusCode, errors[], traceId, timestamp }`
 - Don't add data annotations to entities — fluent `IEntityTypeConfiguration<T>` only
 - Don't edit EF migrations once they're in source control — add a new one
+- Don't use `AddAsync` / `AddRangeAsync` — they don't hit the DB; use synchronous `_context.Add(...)` / `_context.AddRange(...)` and let `SaveChangesAsync(cancellationToken)` do the round-trip
 - Don't add Serilog / App Insights / Key Vault without explicit ask
 - Don't change `<TargetFramework>`, `<Nullable>`, `<ImplicitUsings>`, or add `<LangVersion>`
 - Don't reference primary-constructor parameters bare in member bodies — assign to `_underscore` fields

@@ -15,8 +15,6 @@ namespace RR.AI_Chat.Service
         Task<UserDto> UpdateUserAsync(UpdateUserActionDto request, CancellationToken cancellationToken);
 
         Task DeactivateUserAsync(Guid oid, CancellationToken cancellationToken);
-
-        Task<bool> IsUserInDatabaseAsync(Guid userId, CancellationToken cancellationToken);
     }   
 
     public class UserService(ILogger<UserService> logger,
@@ -85,12 +83,6 @@ namespace RR.AI_Chat.Service
                         .Where(x => x.Id == oid && !x.DateDeactivated.HasValue)
                         .ExecuteUpdateAsync(update => 
                             update.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), cancellationToken);
-        }
-
-        /// <inheritdoc />
-        public async Task<bool> IsUserInDatabaseAsync(Guid userId, CancellationToken cancellationToken)
-        {
-            return await _ctx.Users.Where(x => x.Id == userId && !x.DateDeactivated.HasValue).AnyAsync(cancellationToken);
         }
     }
 }
