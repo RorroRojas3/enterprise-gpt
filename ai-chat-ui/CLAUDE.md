@@ -88,7 +88,27 @@ Place new code accordingly: a new feature page goes under `pages/`, a new HTTP s
 This codebase uses **two coexisting patterns** — match what's already there:
 
 1. **`StoreService`** (`services/store.service.ts`) — a central reactive service that owns active-conversation state: `conversation`, `messages`, `isStreaming`, `stream`, `fileExtensions`, `projectId`, pagination. Exposes signals + setter methods. Use this for cross-component conversation state.
-2. **`@ngrx/signals` `signalStore()`** — feature stores in `store/` (`model.store.ts`, `mcp.store.ts`, `user.store.ts`). Use the `signalStore({ providedIn: 'root' }, withState(...), withMethods(...))` pattern for bounded feature state. Updates with `patchState(store, { ... })`.
+2. **`@ngrx/signals` `signalStore()`** — feature stores in `store/` (`model.store.ts`, `mcp.store.ts`, `user.store.ts`). Bounded feature state. Compose in this order: `withState` → `withComputed` (if needed) → `withMethods`:
+
+   ```ts
+   export const FooStore = signalStore(
+     { providedIn: 'root' },
+     withState(initialState),
+     withComputed((store) => ({
+       /* derived selectors using computed(() => ...) */
+     })),
+     withMethods((store) => ({
+       /* mutators / query helpers — plain synchronous functions */
+     })),
+   );
+   ```
+
+   - State updates use `patchState(store, { ... })` inside `withMethods`.
+   - Derived state goes in `withComputed` using `computed(() => ...)`. Templates bind directly: `@if (userStore.isAdmin()) { ... }`. Don't compute the same derivation in templates.
+   - Methods are **plain synchronous functions** — do not use `rxMethod` from `@ngrx/signals/rxjs-interop`. The project keeps RxJS subscriptions in components/services; stores own only state.
+   - Read signals inside methods/computeds by calling them: `store.user()`.
+   - Every public method gets a JSDoc summary.
+   - Never expose mutable state — consumers read signals or computed selectors only.
 
 Rules:
 - Store API response data in signals so the UI is reactive.

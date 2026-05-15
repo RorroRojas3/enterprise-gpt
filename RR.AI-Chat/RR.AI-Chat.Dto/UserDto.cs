@@ -1,15 +1,26 @@
-﻿namespace RR.AI_Chat.Dto
+using System.Text.Json.Serialization;
+using RR.AI_Chat.Common.Enums;
+
+namespace RR.AI_Chat.Dto
 {
-    public sealed class UserDto
+    public sealed record UserDto
     {
-        public Guid Id { get; set; }
+        [JsonPropertyName("id")]
+        public Guid Id { get; init; }
 
-        public string FirstName { get; set; } = null!;
+        [JsonPropertyName("firstName")]
+        public string FirstName { get; init; } = null!;
 
-        public string LastName { get; set; } = null!;
+        [JsonPropertyName("lastName")]
+        public string LastName { get; init; } = null!;
 
-        public string Email { get; set; } = null!;
+        [JsonPropertyName("email")]
+        public string Email { get; init; } = null!;
 
+        [JsonPropertyName("permissions")]
+        public IReadOnlyList<Permissions> Permissions { get; init; } = [];
+
+        [JsonPropertyName("fullName")]
         public string FullName => $"{FirstName} {LastName}".Trim();
     }
 }

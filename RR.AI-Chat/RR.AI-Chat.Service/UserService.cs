@@ -1,23 +1,22 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RR.AI_Chat.Dto;
 using RR.AI_Chat.Dto.Actions.User;
 using RR.AI_Chat.Entity;
 using RR.AI_Chat.Repository;
 using RR.AI_Chat.Service.Exceptions;
+using RR.AI_Chat.Service.Mappers;
 
 namespace RR.AI_Chat.Service
 {
     public interface IUserService
     {
-        Task CreateUserAsync(CancellationToken cancellationToken);
+        Task<(UserDto User, bool Created)> CreateUserAsync(CancellationToken cancellationToken);
 
         Task<UserDto> UpdateUserAsync(UpdateUserActionDto request, CancellationToken cancellationToken);
 
         Task DeactivateUserAsync(Guid oid, CancellationToken cancellationToken);
-
-        Task<bool> IsUserInDatabaseAsync(Guid userId, CancellationToken cancellationToken);
-    }   
+    }
 
     public class UserService(ILogger<UserService> logger,
         ITokenService tokenService,
@@ -30,14 +29,18 @@ namespace RR.AI_Chat.Service
         private readonly AIChatDbContext _ctx = ctx;
 
         /// <inheritdoc />
-        public async Task CreateUserAsync(CancellationToken cancellationToken)
+        public async Task<(UserDto User, bool Created)> CreateUserAsync(CancellationToken cancellationToken)
         {
             var oid = _tokenService.GetOid();
 
-            var userExist = await IsUserInDatabaseAsync(oid, cancellationToken);
-            if (userExist)
+            var existing = await _ctx.Users
+                .Where(u => u.Id == oid && !u.DateDeactivated.HasValue)
+                .Select(UserMapper.MapToUserDtoExpression)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existing is not null)
             {
-                return;
+                return (existing, Created: false);
             }
 
             var date = DateTimeOffset.UtcNow;
@@ -52,45 +55,36 @@ namespace RR.AI_Chat.Service
                 DateModified = date
             };
 
-            await _ctx.Users.AddAsync(newUser, cancellationToken);
+            _ctx.Add(newUser);
             await _ctx.SaveChangesAsync(cancellationToken);
+
+            return (newUser.MapToUserDto(), Created: true);
         }
 
+        /// <inheritdoc />
         public async Task<UserDto> UpdateUserAsync(UpdateUserActionDto request, CancellationToken cancellationToken)
         {
             var oid = _tokenService.GetOid();
 
             var user = await _ctx.Users
-                        .Where(x => x.Id == oid && !x.DateDeactivated.HasValue)
-                        .FirstOrDefaultAsync(cancellationToken) ?? throw new NotFoundException($"User {oid} not found"); ;
+                        .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                        .FirstOrDefaultAsync(x => x.Id == oid && !x.DateDeactivated.HasValue, cancellationToken)
+                ?? throw new NotFoundException($"User {oid} not found");
 
-            user.FirstName = request.FirstName;
-            user.LastName = request.LastName;
-            user.Email = request.Email;
+            request.FromUpdateUserActionDtoToUser(user);
             user.DateModified = DateTimeOffset.UtcNow;
 
             await _ctx.SaveChangesAsync(cancellationToken);
-            return new()
-            {
-                Id = user.Id,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                Email = user.Email
-            };
+            return user.MapToUserDto();
         }
 
+        /// <inheritdoc />
         public async Task DeactivateUserAsync(Guid oid, CancellationToken cancellationToken)
         {
             var rows = await _ctx.Users
                         .Where(x => x.Id == oid && !x.DateDeactivated.HasValue)
-                        .ExecuteUpdateAsync(update => 
+                        .ExecuteUpdateAsync(update =>
                             update.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), cancellationToken);
-        }
-
-        /// <inheritdoc />
-        public async Task<bool> IsUserInDatabaseAsync(Guid userId, CancellationToken cancellationToken)
-        {
-            return await _ctx.Users.Where(x => x.Id == userId && !x.DateDeactivated.HasValue).AnyAsync(cancellationToken);
         }
     }
 }

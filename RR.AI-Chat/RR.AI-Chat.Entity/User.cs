@@ -18,5 +18,7 @@ namespace RR.AI_Chat.Entity
 
         [NotMapped]
         public string FullName => $"{FirstName} {LastName}";
+
+        public ICollection<UserPermission> UserPermissions { get; set; } = [];
     }
 }

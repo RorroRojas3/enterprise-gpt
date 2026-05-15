@@ -1,4 +1,4 @@
-﻿namespace RR.AI_Chat.Dto.Enums
+namespace RR.AI_Chat.Common.Enums
 {
     public enum Permissions
     {
