@@ -143,7 +143,7 @@ export class AppComponent implements OnInit, OnDestroy {
           switchMap((user) =>
             forkJoin([
               of(user),
-              this.modelService.getModels(),
+              this.modelService.getFavoriteModels(),
               this.conversationService.searchConversations(''),
               this.mcpService.getMcpServers(),
               this.documentService.getFileExtensions(),

@@ -1,10 +1,13 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Model;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Mappers;
 
 namespace Enterprise.Gpt.Service
 {
@@ -20,14 +23,20 @@ namespace Enterprise.Gpt.Service
         Task<ModelDto> UpdateModelAsync(UpdateModelActionDto request, CancellationToken cancellationToken);
 
         Task DeactivateModelAsync(Guid id, CancellationToken cancellationToken);
+
+        Task<List<ModelDto>> GetFavoriteModelsAsync(CancellationToken cancellationToken);
+
+        Task<List<ModelDto>> SetFavoriteModelAsync(SetFavoriteModelActionDto request, CancellationToken cancellationToken);
     }
 
     public class ModelService(ILogger<ModelService> logger,
         ITokenService tokenService,
+        IValidator<SetFavoriteModelActionDto> setFavoriteValidator,
         AIChatDbContext ctx) : IModelService
     {
         private readonly ILogger<ModelService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
+        private readonly IValidator<SetFavoriteModelActionDto> _setFavoriteValidator = setFavoriteValidator;
         private readonly AIChatDbContext _ctx = ctx;
 
         /// <inheritdoc />
@@ -128,6 +137,71 @@ namespace Enterprise.Gpt.Service
                             .SetProperty(p => p.DateDeactivated, date)
                             .SetProperty(p => p.DateModified, date)
                             .SetProperty(p => p.ModifiedById, oid), cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task<List<ModelDto>> GetFavoriteModelsAsync(CancellationToken cancellationToken)
+        {
+            var oid = _tokenService.GetOid();
+
+            var favoriteModelId = await _ctx.UserModels
+                .Where(x => x.UserId == oid && !x.DateDeactivated.HasValue)
+                .Select(x => (Guid?)x.ModelId)
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? Guid.Parse(ModelDefaults.DefaultModelId);
+
+            var models = await _ctx.Models
+                .AsNoTracking()
+                .Select(ModelMapper.MapToModelDtoExpression)
+                .ToListAsync(cancellationToken);
+
+            return [.. models
+                .Select(m => m with { IsFavorite = m.Id == favoriteModelId })
+                .OrderByDescending(m => m.IsFavorite)
+                .ThenBy(m => m.Name)];
+        }
+
+        /// <inheritdoc />
+        public async Task<List<ModelDto>> SetFavoriteModelAsync(SetFavoriteModelActionDto request, CancellationToken cancellationToken)
+        {
+            await _setFavoriteValidator.ValidateAndThrowAsync(request, cancellationToken);
+
+            var oid = _tokenService.GetOid();
+
+            var modelExists = await _ctx.Models
+                .AnyAsync(x => x.Id == request.ModelId && !x.DateDeactivated.HasValue, cancellationToken);
+            if (!modelExists)
+            {
+                throw new NotFoundException("Model not found.");
+            }
+
+            var date = DateTimeOffset.UtcNow;
+            var userModel = await _ctx.UserModels
+                .FirstOrDefaultAsync(x => x.UserId == oid && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (userModel is not null)
+            {
+                userModel.ModelId = request.ModelId;
+                userModel.DateModified = date;
+                userModel.ModifiedById = oid;
+            }
+            else
+            {
+                _ctx.Add(new UserModel
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = oid,
+                    ModelId = request.ModelId,
+                    DateCreated = date,
+                    CreatedById = oid,
+                    DateModified = date,
+                    ModifiedById = oid
+                });
+            }
+
+            await _ctx.SaveChangesAsync(cancellationToken);
+
+            return await GetFavoriteModelsAsync(cancellationToken);
         }
     }
 }

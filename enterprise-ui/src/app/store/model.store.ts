@@ -16,12 +16,16 @@ export const ModelStore = signalStore(
   withState(initialState),
   withMethods((store) => ({
     /**
-     * Sets the list of available models and selects the first one by default.
+     * Sets the list of available models and selects the user's favorite
+     * (falling back to the first model when none is flagged).
      *
      * @param models - Array of ModelDto objects to set as available models
      */
     setModels(models: ModelDto[]): void {
-      patchState(store, { models, selectedModel: models[0] ?? null });
+      patchState(store, {
+        models,
+        selectedModel: models.find((m) => m.isFavorite) ?? models[0] ?? null,
+      });
     },
 
     /**

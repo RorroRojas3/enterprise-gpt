@@ -49,4 +49,18 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .MaximumLength(500);
         }
     }
+
+    public class SetFavoriteModelActionDto
+    {
+        public Guid ModelId { get; set; }
+    }
+
+    public class SetFavoriteModelActionDtoValidator : AbstractValidator<SetFavoriteModelActionDto>
+    {
+        public SetFavoriteModelActionDtoValidator()
+        {
+            RuleFor(x => x.ModelId)
+                .NotEmpty();
+        }
+    }
 }

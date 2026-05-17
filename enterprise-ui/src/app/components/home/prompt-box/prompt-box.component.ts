@@ -25,6 +25,7 @@ import hljs from 'highlight.js';
 import markdown_it_highlightjs from 'markdown-it-highlightjs';
 
 import { DocumentService } from '../../../services/document.service';
+import { ModelService } from '../../../services/model.service';
 import { ModelDto } from '../../../dtos/ModelDto';
 import { AiServiceType } from '../../../dtos/const/AiServiceType';
 import { JobDto } from '../../../dtos/JobDto';
@@ -52,6 +53,7 @@ export class PromptBoxComponent implements OnDestroy {
   private readonly conversationService = inject(ConversationService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly documentService = inject(DocumentService);
+  private readonly modelService = inject(ModelService);
   private readonly location = inject(Location);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -188,12 +190,17 @@ export class PromptBoxComponent implements OnDestroy {
   }
 
   /**
-   * Handles model selection change events and updates the selected model ID in the store.
+   * Handles model selection: updates the store immediately for a snappy UI,
+   * then persists the choice as the user's favorite (last picked).
    *
-   * @param event - The ID of the newly selected model
+   * @param model - The newly selected model
    */
-  onModelChange(event: ModelDto): void {
-    this.modelStore.setSelectedModel(event);
+  onModelChange(model: ModelDto): void {
+    this.modelStore.setSelectedModel(model);
+    this.modelService
+      .setFavoriteModel(model.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((models) => this.modelStore.setModels(models));
   }
 
   /**

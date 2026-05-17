@@ -1,13 +1,15 @@
-﻿namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto
 {
-    public class ModelDto
+    public record ModelDto
     {
-        public Guid Id { get; set; }
+        public Guid Id { get; init; }
 
-        public string Name { get; set; } = null!;
+        public string Name { get; init; } = null!;
 
-        public string Description { get; set; } = null!;
+        public string Description { get; init; } = null!;
 
-        public bool IsToolEnabled { get; set; } = false;
+        public bool IsToolEnabled { get; init; }
+
+        public bool IsFavorite { get; init; }
     }
 }

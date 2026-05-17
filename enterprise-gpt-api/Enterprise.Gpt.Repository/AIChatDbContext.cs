@@ -20,6 +20,8 @@ namespace Enterprise.Gpt.Repository
         public DbSet<User> Users { get; set; }
 
         public DbSet<UserPermission> UserPermissions { get; set; }
+
+        public DbSet<UserModel> UserModels { get; set; }
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -28,6 +30,7 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new UserPermissionConfiguration());
             modelBuilder.ApplyConfiguration(new AIServiceConfiguration());
             modelBuilder.ApplyConfiguration(new ModelConfiguration());
+            modelBuilder.ApplyConfiguration(new UserModelConfiguration());
 
             // Configure global delete behavior
             foreach (var relationship in modelBuilder.Model.GetEntityTypes()
