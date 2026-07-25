@@ -24,11 +24,11 @@ namespace Enterprise.Gpt.Service
 
     public class ModelService(ILogger<ModelService> logger,
         ITokenService tokenService,
-        AIChatDbContext ctx) : IModelService
+        EnterpriseGptDbContext ctx) : IModelService
     {
         private readonly ILogger<ModelService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
-        private readonly AIChatDbContext _ctx = ctx;
+        private readonly EnterpriseGptDbContext _ctx = ctx;
 
         /// <inheritdoc />
         public async Task<List<ModelDto>> GetModelsAsync(CancellationToken cancellationToken)
@@ -81,7 +81,7 @@ namespace Enterprise.Gpt.Service
                 ModifiedById = oid
             };
 
-            await _ctx.AddAsync(newModel, cancellationToken);
+            _ctx.Add(newModel);
             await _ctx.SaveChangesAsync(cancellationToken);
 
             return new ModelDto

@@ -48,7 +48,7 @@ builder.Services.AddControllers()
 
 builder.Services.AddHttpContextAccessor();
 
-builder.Services.AddDbContext<AIChatDbContext>(options =>
+builder.Services.AddDbContext<EnterpriseGptDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sqlOptions =>
     {
         sqlOptions.UseCompatibilityLevel(170);
@@ -192,7 +192,7 @@ using var scope = app.Services.CreateScope();
 var services = scope.ServiceProvider;
 try
 {
-    var context = services.GetRequiredService<AIChatDbContext>();
+    var context = services.GetRequiredService<EnterpriseGptDbContext>();
 
     // This will create the database if it doesn't exist and apply all pending migrations
     context.Database.Migrate();

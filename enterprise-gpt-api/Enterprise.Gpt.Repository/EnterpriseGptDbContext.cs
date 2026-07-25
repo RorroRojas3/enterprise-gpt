@@ -4,10 +4,10 @@ using Enterprise.Gpt.Repository.Configurations;
 
 namespace Enterprise.Gpt.Repository
 {
-    public class AIChatDbContext(DbContextOptions<AIChatDbContext> options) : DbContext(options)
+    public class EnterpriseGptDbContext(DbContextOptions<EnterpriseGptDbContext> options) : DbContext(options)
     {
         #region DbSets
-        public DbSet<AIService> AIServices { get; set; }
+        public DbSet<Provider> Providers { get; set; }
 
         public DbSet<Conversation> Conversations { get; set; }
 
@@ -26,7 +26,7 @@ namespace Enterprise.Gpt.Repository
         {
             modelBuilder.ApplyConfiguration(new UserConfiguration());
             modelBuilder.ApplyConfiguration(new UserPermissionConfiguration());
-            modelBuilder.ApplyConfiguration(new AIServiceConfiguration());
+            modelBuilder.ApplyConfiguration(new ProviderConfiguration());
             modelBuilder.ApplyConfiguration(new ModelConfiguration());
 
             // Configure global delete behavior

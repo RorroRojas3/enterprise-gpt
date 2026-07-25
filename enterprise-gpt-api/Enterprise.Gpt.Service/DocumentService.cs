@@ -25,7 +25,7 @@ namespace Enterprise.Gpt.Service
         IConfiguration configuration,
         IDocumentIntelligenceService documentIntelligenceService,
         IJobStatusStore jobStatusStore,
-        AIChatDbContext ctx) : IDocumentService
+        EnterpriseGptDbContext ctx) : IDocumentService
     {
         private readonly ILogger _logger = logger;
         private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator = embeddingGenerator;
@@ -33,7 +33,7 @@ namespace Enterprise.Gpt.Service
         private readonly IConfiguration _configuration = configuration;
         private readonly IDocumentIntelligenceService _documentIntelligenceService = documentIntelligenceService;
         private readonly IJobStatusStore _jobStatusStore = jobStatusStore;
-        private readonly AIChatDbContext _ctx = ctx;
+        private readonly EnterpriseGptDbContext _ctx = ctx;
 
         public async Task<ConversationDocumentDto> CreateConversationDocumentAsync(string jobId, FileDto fileDataDto, Guid userId, Guid chatId, CancellationToken cancellationToken)
         {

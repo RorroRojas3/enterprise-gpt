@@ -3,10 +3,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Enterprise.Gpt.Entity
 {
-    [Table(nameof(AIService), Schema = "Core.Ref")]
-    public class AIService : BaseEntity
+    [Table(nameof(Provider), Schema = "Core.Ref")]
+    public class Provider : BaseEntity
     {
-        [StringLength(25)]
+        [StringLength(128)]
         public string Name { get; set; } = null!;
     }
 }
