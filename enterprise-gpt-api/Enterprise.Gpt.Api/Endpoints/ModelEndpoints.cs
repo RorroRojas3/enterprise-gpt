@@ -48,14 +48,14 @@ namespace Enterprise.Gpt.Api.Endpoints
             return app;
         }
 
-        private static async Task<Ok<List<ModelDto>>> GetModelsAsync(
+        internal static async Task<Ok<List<ModelDto>>> GetModelsAsync(
             IModelService modelService, CancellationToken cancellationToken)
         {
             var response = await modelService.GetModelsAsync(cancellationToken);
             return TypedResults.Ok(response);
         }
 
-        private static async Task<Ok<List<ModelDto>>> GetAllModelsAsync(
+        internal static async Task<Ok<List<ModelDto>>> GetAllModelsAsync(
             IModelService modelService, CancellationToken cancellationToken)
         {
             var response = await modelService.GetAllModelsAsync(cancellationToken);
@@ -64,28 +64,28 @@ namespace Enterprise.Gpt.Api.Endpoints
 
         // Not-found paths throw NotFoundException in the service and surface as 404
         // through the exception-handler chain, matching the controller-era contract.
-        private static async Task<Ok<ModelDto>> GetModelAsync(
+        internal static async Task<Ok<ModelDto>> GetModelAsync(
             Guid id, IModelService modelService, CancellationToken cancellationToken)
         {
             var response = await modelService.GetModelAsync(id, cancellationToken);
             return TypedResults.Ok(response);
         }
 
-        private static async Task<Created<ModelDto>> CreateModelAsync(
+        internal static async Task<Created<ModelDto>> CreateModelAsync(
             CreateModelActionDto request, IModelService modelService, CancellationToken cancellationToken)
         {
             var response = await modelService.CreateModelAsync(request, cancellationToken);
             return TypedResults.Created($"/api/models/{response.Id}", response);
         }
 
-        private static async Task<Ok<ModelDto>> UpdateModelAsync(
+        internal static async Task<Ok<ModelDto>> UpdateModelAsync(
             Guid id, UpdateModelActionDto request, IModelService modelService, CancellationToken cancellationToken)
         {
             var response = await modelService.UpdateModelAsync(id, request, cancellationToken);
             return TypedResults.Ok(response);
         }
 
-        private static async Task<NoContent> DeactivateModelAsync(
+        internal static async Task<NoContent> DeactivateModelAsync(
             Guid id, IModelService modelService, CancellationToken cancellationToken)
         {
             await modelService.DeactivateModelAsync(id, cancellationToken);

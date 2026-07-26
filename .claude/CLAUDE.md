@@ -1,13 +1,24 @@
 # CLAUDE.md
 
-Reusable project memory for **C#/.NET back ends and Angular front ends**. It loads automatically every session and governs how Claude Code works in this project. Drop it into a repository and follow it for all C# and Angular work.
+Project memory for **Enterprise GPT**. It loads automatically every session and governs how Claude Code works in this repository; the standards sections apply to all C# and Angular work.
+
+## About this application
+
+**Enterprise GPT** is an enterprise ChatGPT/Claude-style AI chat platform: users authenticate with Microsoft Entra ID, hold streaming (SSE) conversations with LLMs, upload documents into conversations (text extraction → embeddings → SQL Server vector search), and administrators manage the model catalog and MCP tool servers.
+
+- `enterprise-gpt-api/` — .NET 10 backend (`Enterprise.Gpt.sln`), layered projects `Enterprise.Gpt.Api → Service → Repository → Entity` plus `Dto` and `Common`; tests under `tests/`.
+  - **Endpoints**: controllers (Conversations, Documents, Mcps, Users) plus **minimal APIs** — `Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs` is the template for new or refactored features. Admin-only routes use `AdminEndpointFilter` (checks `UserPermissions` for `Administrator`).
+  - **Persistence**: `EnterpriseGptDbContext` on SQL Server (EF Core 10, compatibility level 170 / SQL Server 2025, rowversion concurrency, soft deletes via `DateDeactivated`; `Repository/Migrations/` is currently empty pending regeneration) + **Azure Cosmos DB** for conversation message history (partitioned by `userId`).
+  - **LLM access**: Microsoft.Extensions.AI keyed `IChatClient` (Azure AI Foundry) with function invocation; MCP tool servers via `ModelContextProtocol`; document ingestion runs on a custom background-job pipeline (queue + hosted processor).
+- `enterprise-ui/` — Angular 21 frontend: standalone components, `@ngrx/signals` stores in `src/app/store/`, MSAL (Entra ID) auth, Bootstrap 5, SCSS.
+- `docs/` — feature designs (`documents/upload-workflow.md`, `models/model-management.md`, UI mockups).
 
 ## Repository layout (`.claude/`)
 
 - `CLAUDE.md` — this file (always-on standards + delegation rules).
 - `rules/` — detailed standards that **auto-apply by file type** (see [Detailed standards](#detailed-standards--clauderules)).
-- `skills/` — invokable best-practice skills (`angular-developer`, `csharp-async`, `csharp-docs`, `csharp-xunit`, `ngrx-signal-store`).
-- `agents/` — subagents (`angular-code-reviewer`, `csharp-code-reviewer`, `se-technical-writer`).
+- `skills/` — invokable best-practice skills (`angular-developer`, `csharp-async`, `csharp-docs`, `csharp-xunit`, `ef-core`, `ngrx-signal-store`, `microsoft-agent-framework`, `microsoft-docs`, `github-actions-*`).
+- `agents/` — subagents (`angular-code-reviewer`, `csharp-code-reviewer`, `github-actions-reviewer`, `se-technical-writer`).
 - `commands/` — slash commands (`/ngrx-signals-sync`).
 - `settings.json` and `.mcp.json` (repo root) — model and MCP server configuration.
 
@@ -44,8 +55,8 @@ Apply these to all C# you write or review. The detailed source of truth is in `.
 **Validation & error handling**
 
 - `try`/`catch` around `await`s; never silently swallow exceptions.
-- Validate with FluentValidation or DataAnnotations; centralize with global exception middleware.
-- Return errors as Problem Details (RFC 9457).
+- Validate with FluentValidation or DataAnnotations; centralize with the chained `IExceptionHandler`s in `Enterprise.Gpt.Api/ExceptionHandlers/`.
+- **This API does not use RFC 9457 Problem Details.** Errors are a custom `ErrorDto` envelope (`statusCode`, `errors[]`, `traceId`, `timestamp`): `ValidationException` → 400, `NotFoundException` → 404, `OperationCanceledException` → 499, anything else → 500. Follow this pattern for new endpoints.
 
 **Logging & security**
 
@@ -59,9 +70,10 @@ Apply these to all C# you write or review. The detailed source of truth is in `.
 
 **Testing** (see the `csharp-xunit` skill)
 
-- xUnit; tests live in a `[ProjectName].Tests` project; name tests `MethodName_Scenario_ExpectedBehavior`.
-- Follow Arrange-Act-Assert structure but do **not** write `// Arrange` / `// Act` / `// Assert` comments.
-- Data-driven tests with `[Theory]` + `[InlineData]` / `[MemberData]`; isolate with Moq or NSubstitute; run with `dotnet test`.
+- xUnit v3; tests live under `enterprise-gpt-api/tests` in `Enterprise.Gpt.Unit.Test` and `Enterprise.Gpt.Integration.Test`; name tests `MethodName_Scenario_ExpectedBehavior`.
+- Follow Arrange-Act-Assert structure but do **not** write `// Arrange` / `// Act` / `// Assert` comments; assert with plain xUnit `Assert` (no FluentAssertions — v8+ is commercially licensed).
+- Data-driven tests with `[Theory]` + `[InlineData]` / `[MemberData]`; isolate with **NSubstitute**; run with `dotnet test`.
+- Unit tests: services taking `EnterpriseGptDbContext` run on SQLite in-memory via `SqliteDbContextFixture` (its model customizer neutralizes the rowversion and vector columns SQLite cannot handle). Integration tests: `WebApplicationFactory<Program>` + Testcontainers **SQL Server 2025** (`CustomWebApplicationFactory` + `TestAuthHandler`); they need Docker running and carry `[Trait("Category", "Integration")]`.
 
 **Review posture**
 
@@ -69,7 +81,7 @@ Apply these to all C# you write or review. The detailed source of truth is in `.
 
 ## Angular / NgRx state (always)
 
-- Standalone components, `ChangeDetectionStrategy.OnPush`, signals for state. Assume zoneless.
+- Standalone components, `ChangeDetectionStrategy.OnPush`, signals for state. The app currently runs zone.js with `provideZoneChangeDetection` (not zoneless) — keep new code zoneless-ready, but do not assume zoneless behavior.
 - Non-trivial state belongs in an **NgRx Signal Store** (`@ngrx/signals`) — invoke the `ngrx-signal-store` skill rather than hand-rolling a `BehaviorSubject` service.
 - Keep `protectedState` on so only the store's own methods write state; use `patchState` with standalone updaters.
 - Reach for `rxMethod` (not `signalMethod`) whenever requests can overlap — `switchMap` is what prevents a stale response overwriting a fresh one.
@@ -116,9 +128,15 @@ The full guidelines live in `.claude/rules/` and **load automatically when you e
 ## Common commands
 
 ```bash
-dotnet build     # compile
-dotnet test      # run xUnit tests
-dotnet format    # apply .editorconfig formatting
+# In enterprise-gpt-api/
+dotnet build                                    # compile the solution
+dotnet test                                     # all tests (integration needs Docker running)
+dotnet test --filter "Category!=Integration"    # unit tests only
+dotnet format                                   # apply .editorconfig formatting
+
+# In enterprise-ui/
+npm start        # ng serve
+npm test         # ng test (Karma)
 ```
 
 ## Maintenance

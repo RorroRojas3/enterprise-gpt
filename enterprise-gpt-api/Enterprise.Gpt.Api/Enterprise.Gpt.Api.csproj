@@ -46,4 +46,9 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets the unit test project call the internal minimal-API handlers directly. -->
+    <InternalsVisibleTo Include="Enterprise.Gpt.Unit.Test" />
+  </ItemGroup>
+
 </Project>

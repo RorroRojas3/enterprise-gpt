@@ -17,6 +17,7 @@ namespace Enterprise.Gpt.Repository.Configurations
                     Id = new("c36e22ed-262a-47a1-b2ba-06a38355ae0f"),
                     ProviderId = Providers.AzureOpenAI,
                     Name = "rr-gpt-5.6-luna",
+                    DisplayName = "RR GPT 5.6 Luna",
                     IsToolEnabled = true,
                     Description = "OpenAI's GPT-5.6 Luna model.",
                     DateCreated = dateCreated,
