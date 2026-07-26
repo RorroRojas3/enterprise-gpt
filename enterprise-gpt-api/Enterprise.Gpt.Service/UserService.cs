@@ -21,12 +21,12 @@ namespace Enterprise.Gpt.Service
     public class UserService(ILogger<UserService> logger,
         ITokenService tokenService,
         IGraphService graphService,
-        AIChatDbContext ctx) : IUserService
+        EnterpriseGptDbContext ctx) : IUserService
     {
         private readonly ILogger<UserService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IGraphService _graphService = graphService;
-        private readonly AIChatDbContext _ctx = ctx;
+        private readonly EnterpriseGptDbContext _ctx = ctx;
 
         /// <inheritdoc />
         public async Task<(UserDto User, bool Created)> CreateUserAsync(CancellationToken cancellationToken)

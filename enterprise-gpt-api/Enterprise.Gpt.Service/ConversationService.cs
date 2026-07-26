@@ -51,7 +51,7 @@ namespace Enterprise.Gpt.Service
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
         IValidator<UpdateConversationActionDto> updateSessionValidator,
-        AIChatDbContext ctx) : IConversationService
+        EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
         private readonly IChatClient _azureAIFoundry = azureAIFoundry;    
@@ -64,7 +64,7 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<CreateConversationStreamActionDto> _createChatStreamActionValidator = createChatStreamActionValidator;
         private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
-        private readonly AIChatDbContext _ctx = ctx;
+        private readonly EnterpriseGptDbContext _ctx = ctx;
 
         public async Task<ConversationDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default)
         {

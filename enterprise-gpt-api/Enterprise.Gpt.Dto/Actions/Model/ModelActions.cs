@@ -1,52 +1,86 @@
-﻿using FluentValidation;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Model
 {
-    public class CreateModelActionDto
+    public record CreateModelActionDto
     {
-        public string Name { get; set; } = null!;
+        public Guid ProviderId { get; init; }
 
-        public string Description { get; set; } = null!;
+        public string Name { get; init; } = null!;
 
-        public bool IsToolEnabled { get; set; } = false;
+        public string DisplayName { get; init; } = null!;
+
+        public string Description { get; init; } = null!;
+
+        public decimal ContextWindowSize { get; init; }
+
+        public decimal MaxOutputTokens { get; init; }
+
+        public bool IsToolEnabled { get; init; }
+
+        public bool IsDefault { get; init; }
     }
 
     public class CreateModelActionDtoValidator : AbstractValidator<CreateModelActionDto>
     {
         public CreateModelActionDtoValidator()
         {
+            RuleFor(x => x.ProviderId)
+                .NotEmpty();
             RuleFor(x => x.Name)
                 .NotEmpty()
-                .MaximumLength(100);
+                .MaximumLength(256);
+            RuleFor(x => x.DisplayName)
+                .NotEmpty()
+                .MaximumLength(256);
             RuleFor(x => x.Description)
                 .NotEmpty()
-                .MaximumLength(500);
+                .MaximumLength(1024);
+            RuleFor(x => x.ContextWindowSize)
+                .GreaterThan(0);
+            RuleFor(x => x.MaxOutputTokens)
+                .GreaterThan(0);
         }
     }
 
-    public class UpdateModelActionDto
+    public record UpdateModelActionDto
     {
-        public Guid Id { get; set; }
+        public Guid ProviderId { get; init; }
 
-        public string Name { get; set; } = null!;
+        public string Name { get; init; } = null!;
 
-        public string Description { get; set; } = null!;
+        public string DisplayName { get; init; } = null!;
 
-        public bool IsToolEnabled { get; set;} = false;
+        public string Description { get; init; } = null!;
+
+        public decimal ContextWindowSize { get; init; }
+
+        public decimal MaxOutputTokens { get; init; }
+
+        public bool IsToolEnabled { get; init; }
+
+        public bool IsDefault { get; init; }
     }
 
     public class UpdateModelActionDtoValidator : AbstractValidator<UpdateModelActionDto>
     {
         public UpdateModelActionDtoValidator()
         {
-            RuleFor(x => x.Id)
+            RuleFor(x => x.ProviderId)
                 .NotEmpty();
             RuleFor(x => x.Name)
                 .NotEmpty()
-                .MaximumLength(100);
+                .MaximumLength(256);
+            RuleFor(x => x.DisplayName)
+                .NotEmpty()
+                .MaximumLength(256);
             RuleFor(x => x.Description)
                 .NotEmpty()
-                .MaximumLength(500);
+                .MaximumLength(1024);
+            RuleFor(x => x.ContextWindowSize)
+                .GreaterThan(0);
+            RuleFor(x => x.MaxOutputTokens)
+                .GreaterThan(0);
         }
     }
 }

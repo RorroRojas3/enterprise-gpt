@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Enums;
 
 namespace Enterprise.Gpt.Repository.Configurations
 {
@@ -15,35 +15,15 @@ namespace Enterprise.Gpt.Repository.Configurations
                 new Model
                 {
                     Id = new("c36e22ed-262a-47a1-b2ba-06a38355ae0f"),
-                    Name = "gpt-5-mini",
+                    ProviderId = Providers.AzureOpenAI,
+                    Name = "rr-gpt-5.6-luna",
+                    DisplayName = "RR GPT 5.6 Luna",
                     IsToolEnabled = true,
-                    Description = "A mini version of GPT-5, designed for basic tasks and quick responses.",
+                    Description = "OpenAI's GPT-5.6 Luna model.",
                     DateCreated = dateCreated,
                     DateModified = dateCreated,
                     CreatedById = userId,
                     ModifiedById = userId
-                },
-                new Model
-                {
-                    Id = new("fd01b615-1e9f-46af-957f-e4eaeff02766"),
-                    Name = "gpt-5-nano",
-                    IsToolEnabled = true,
-                    Description = "A nano version of GPT-5, optimized for lightweight tasks and minimal resource usage.",
-                    DateCreated = dateCreated,
-                    DateModified = dateCreated,
-                    CreatedById = userId,
-                    ModifiedById = userId
-                },
-                new Model
-                {
-                    Id = new("0b3948f5-70df-4697-a033-ae70971e1796"),
-                    Name = "gpt-5-chat",
-                    IsToolEnabled = true,
-                    Description = "A chat version of GPT-5, optimized for conversational tasks and interactive applications.",
-                    DateCreated = dateCreated,
-                    DateModified = dateCreated,
-                    ModifiedById = userId,
-                    CreatedById = userId
                 }
             );
         }

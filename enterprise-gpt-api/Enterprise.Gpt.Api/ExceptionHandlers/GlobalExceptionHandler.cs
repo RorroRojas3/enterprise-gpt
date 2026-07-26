@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
 using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Service.Exceptions;
 using System.Net;
 using System.Text.Json;
 
@@ -8,7 +9,8 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <summary>
     /// Fallback exception handler that maps the remaining exception types
     /// (<see cref="ArgumentException"/>, <see cref="ArgumentNullException"/>,
-    /// <see cref="InvalidOperationException"/>, <see cref="KeyNotFoundException"/>) and any
+    /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
+    /// <see cref="KeyNotFoundException"/>) and any
     /// otherwise unhandled exception to a standardized <see cref="ErrorDto"/> response.
     /// Always returns <see langword="true"/> so any exception receives a consistent payload.
     /// </summary>
@@ -65,6 +67,13 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 InvalidOperationException => new ErrorDto
                 {
                     StatusCode = HttpStatusCode.BadRequest,
+                    Errors = [exception.Message],
+                    TraceId = context.TraceIdentifier,
+                    Timestamp = DateTimeOffset.UtcNow
+                },
+                NotFoundException => new ErrorDto
+                {
+                    StatusCode = HttpStatusCode.NotFound,
                     Errors = [exception.Message],
                     TraceId = context.TraceIdentifier,
                     Timestamp = DateTimeOffset.UtcNow
