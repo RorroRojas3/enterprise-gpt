@@ -25,7 +25,7 @@ For deeper topical guidance, invoke the bundled skills via the Skill tool:
   - `Enterprise.Gpt.Service` (→ Dto, Repository) — business logic; **services use `AIChatDbContext` directly** (no separate repository pattern)
   - `Enterprise.Gpt.Api` (→ Dto, Repository, Service) — controllers, middlewares, `Program.cs`
 - **Namespace convention:** `Enterprise.Gpt.*` (underscore — hyphen is illegal in identifiers).
-- **API style:** controller-based MVC (**not** Minimal APIs). All controllers under `Enterprise.Gpt.Api/Controllers/`.
+- **API style:** controller-based MVC (**not** Minimal APIs). All controllers under `Enterprise.Gpt.Api/Controllers/`. **Exception:** the **models** feature uses minimal API endpoints in [`Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs`](Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs), with an `IEndpointFilter` admin gate in [`Enterprise.Gpt.Api/Filters/`](Enterprise.Gpt.Api/Filters/) — see [`docs/models/model-management.md`](../docs/models/model-management.md). Don't convert other controllers without explicit ask.
 - **Auth:** JWT Bearer + Microsoft Identity Web (Azure AD / Entra ID).
 - **Data:** EF Core 10 with SQL Server (primary, schemas `Core` and `Core.Ref`) + Cosmos DB (secondary, denormalized views).
 - **LLM:** Azure OpenAI primary via `Microsoft.Extensions.AI`; OpenAI/Anthropic/Ollama via keyed DI.
@@ -41,7 +41,7 @@ For deeper topical guidance, invoke the bundled skills via the Skill tool:
 | Request DTO | `Enterprise.Gpt.Dto/Actions/<Domain>/<Domain>Actions.cs` (with `AbstractValidator<T>` colocated) |
 | Response DTO | `Enterprise.Gpt.Dto/<Domain>Dto.cs` |
 | Service | `Enterprise.Gpt.Service/<Domain>Service.cs` with `I<Domain>Service` interface; register in `Program.cs` |
-| Endpoint | Controller in `Enterprise.Gpt.Api/Controllers/<Domain>Controller.cs` (controller-based, never Minimal APIs) |
+| Endpoint | Controller in `Enterprise.Gpt.Api/Controllers/<Domain>Controller.cs` (controller-based; the models feature is the one minimal-API exception, in `Enterprise.Gpt.Api/Endpoints/`) |
 | Middleware | `Enterprise.Gpt.Api/Middlewares/` |
 | Entity ↔ DTO mapping | Static class in `Enterprise.Gpt.Service/Mappers/<Entity>Mapper.cs` (e.g., [`UserMapper`](Enterprise.Gpt.Service/Mappers/UserMapper.cs)) — see **Mappers** section |
 
@@ -353,7 +353,7 @@ public static class UserMapper
 
 **Don't**
 - Don't introduce a separate repository layer — services use `AIChatDbContext` directly
-- Don't add Minimal APIs alongside controllers
+- Don't add Minimal APIs alongside controllers (the models feature in `Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs` is the one sanctioned exception — don't "fix" it back to a controller)
 - Don't catch base `Exception`; don't swallow exceptions silently
 - Don't call `.Wait()` / `.Result` / `.GetAwaiter().GetResult()`
 - Don't return `void` from async (except event handlers)

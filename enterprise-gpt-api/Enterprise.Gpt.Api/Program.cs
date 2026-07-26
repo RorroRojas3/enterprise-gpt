@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
+using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
@@ -229,5 +230,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapModelEndpoints();
 
 app.Run();
