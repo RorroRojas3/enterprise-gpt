@@ -19,8 +19,6 @@ namespace Enterprise.Gpt.Entity
         [NotMapped]
         public string FullName => $"{FirstName} {LastName}";
 
-        public bool IsAdministrator { get; set; } = false;
-
         public ICollection<UserPermission> UserPermissions { get; set; } = [];
     }
 }
