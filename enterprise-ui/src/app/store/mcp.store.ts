@@ -32,11 +32,9 @@ export const McpStore = signalStore(
      */
     toggleMcpSelection(mcp: McpDto): void {
       const current = store.selectedMcps();
-      const index = current.findIndex((m) => m.name === mcp.name);
+      const index = current.findIndex((m) => m.id === mcp.id);
       const selectedMcps =
-        index > -1
-          ? current.filter((m) => m.name !== mcp.name)
-          : [...current, mcp];
+        index > -1 ? current.filter((m) => m.id !== mcp.id) : [...current, mcp];
       patchState(store, { selectedMcps });
     },
 
@@ -47,7 +45,7 @@ export const McpStore = signalStore(
      * @returns True if the MCP is selected, false otherwise
      */
     isMcpSelected(mcp: McpDto): boolean {
-      return store.selectedMcps().some((m) => m.name === mcp.name);
+      return store.selectedMcps().some((m) => m.id === mcp.id);
     },
   })),
 );

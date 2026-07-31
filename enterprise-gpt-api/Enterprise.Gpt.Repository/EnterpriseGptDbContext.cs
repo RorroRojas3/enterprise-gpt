@@ -20,12 +20,18 @@ namespace Enterprise.Gpt.Repository
         public DbSet<User> Users { get; set; }
 
         public DbSet<UserPermission> UserPermissions { get; set; }
+
+        public DbSet<Permission> Permissions { get; set; }
+
+        public DbSet<McpServer> McpServers { get; set; }
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.ApplyConfiguration(new UserConfiguration());
             modelBuilder.ApplyConfiguration(new UserPermissionConfiguration());
+            modelBuilder.ApplyConfiguration(new PermissionConfiguration());
+            modelBuilder.ApplyConfiguration(new McpServerConfiguration());
             modelBuilder.ApplyConfiguration(new ProviderConfiguration());
             modelBuilder.ApplyConfiguration(new ModelConfiguration());
 

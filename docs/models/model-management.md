@@ -62,11 +62,11 @@ Client ──► RequireAuthorization (JWT) ──► AdminEndpointFilter (admin
 [`AdminEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs) is an `IEndpointFilter` attached per-route with `.AddEndpointFilter<AdminEndpointFilter>()`. Key points:
 
 - **Instantiation:** created per request by the framework from `HttpContext.RequestServices` — constructor-injects the singleton [`ITokenService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/TokenService.cs) and the scoped [`EnterpriseGptDbContext`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/EnterpriseGptDbContext.cs). It must **not** be registered in `Program.cs`.
-- **Check:** the caller's AAD oid (`ITokenService.GetOid()`, which equals `User.Id`) must have a [`UserPermission`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/UserPermission.cs) row with `Permission = Permissions.Administrator` and `DateDeactivated IS NULL`. Permissions are defined in [`Permissions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/Permissions.cs); the legacy `User.IsAdministrator` bool is **not** consulted.
+- **Check:** the caller's AAD oid (`ITokenService.GetOid()`, which equals `User.Id`) must have a [`UserPermission`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/UserPermission.cs) row with `PermissionId = PermissionIds.Administrator` and `DateDeactivated IS NULL`. Permissions are rows in the `Core.Permission` table; built-in ids are defined in [`PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs); the legacy `User.IsAdministrator` bool is **not** consulted.
 - **Denial:** returns 403 with the `ErrorDto` shape (`errors: ["Administrator permission is required."]`).
 - **Ordering:** endpoint filters run after authorization, so a principal always exists when `GetOid()` is called.
 
-To grant admin locally, insert a row: `UserPermission { UserId = <your oid>, Permission = 1, DateDeactivated = NULL }`.
+To grant admin locally, insert a row: `UserPermission { UserId = <your oid>, PermissionId = 'a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d', DateDeactivated = NULL }` (the seeded Administrator permission id).
 
 ## 5. Validation
 

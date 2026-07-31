@@ -33,8 +33,8 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
             RuleForEach(x => x.McpServers)
                 .ChildRules(mcp =>
                 {
-                    mcp.RuleFor(m => m.Name)
-                        .NotEmpty().WithMessage("MCP Server name is required.");
+                    mcp.RuleFor(m => m.Id)
+                        .NotEmpty().WithMessage("MCP Server id is required.");
                 })
                 .When(x => x.McpServers != null && x.McpServers.Count > 0);
         }

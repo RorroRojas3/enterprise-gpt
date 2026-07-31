@@ -1,4 +1,4 @@
-import { Permissions } from './Permissions';
+import { PermissionDto } from './PermissionDto';
 
 export interface UserDto {
   id: string;
@@ -6,5 +6,5 @@ export interface UserDto {
   lastName: string;
   email: string;
   fullName: string;
-  permissions: Permissions[];
+  permissions: PermissionDto[];
 }

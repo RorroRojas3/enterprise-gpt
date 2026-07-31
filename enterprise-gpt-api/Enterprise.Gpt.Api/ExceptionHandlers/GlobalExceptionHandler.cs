@@ -10,7 +10,9 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// Fallback exception handler that maps the remaining exception types
     /// (<see cref="ArgumentException"/>, <see cref="ArgumentNullException"/>,
     /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
-    /// <see cref="KeyNotFoundException"/>) and any
+    /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
+    /// <see cref="McpAuthorizationRequiredException"/>,
+    /// <see cref="McpServerUnavailableException"/>) and any
     /// otherwise unhandled exception to a standardized <see cref="ErrorDto"/> response.
     /// Always returns <see langword="true"/> so any exception receives a consistent payload.
     /// </summary>
@@ -81,6 +83,29 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 KeyNotFoundException => new ErrorDto
                 {
                     StatusCode = HttpStatusCode.NotFound,
+                    Errors = [exception.Message],
+                    TraceId = context.TraceIdentifier,
+                    Timestamp = DateTimeOffset.UtcNow
+                },
+                ForbiddenException => new ErrorDto
+                {
+                    StatusCode = HttpStatusCode.Forbidden,
+                    Errors = [exception.Message],
+                    TraceId = context.TraceIdentifier,
+                    Timestamp = DateTimeOffset.UtcNow
+                },
+                // 403, not 401: a 401 would send clients into token-refresh loops that cannot
+                // fix a consent or Conditional Access requirement.
+                McpAuthorizationRequiredException => new ErrorDto
+                {
+                    StatusCode = HttpStatusCode.Forbidden,
+                    Errors = [exception.Message],
+                    TraceId = context.TraceIdentifier,
+                    Timestamp = DateTimeOffset.UtcNow
+                },
+                McpServerUnavailableException => new ErrorDto
+                {
+                    StatusCode = HttpStatusCode.BadGateway,
                     Errors = [exception.Message],
                     TraceId = context.TraceIdentifier,
                     Timestamp = DateTimeOffset.UtcNow

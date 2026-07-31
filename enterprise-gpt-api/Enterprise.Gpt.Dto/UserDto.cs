@@ -1,5 +1,4 @@
-﻿using System.Text.Json.Serialization;
-using Enterprise.Gpt.Common.Enums;
+using System.Text.Json.Serialization;
 
 namespace Enterprise.Gpt.Dto
 {
@@ -18,7 +17,7 @@ namespace Enterprise.Gpt.Dto
         public string Email { get; init; } = null!;
 
         [JsonPropertyName("permissions")]
-        public IReadOnlyList<Permissions> Permissions { get; init; } = [];
+        public IReadOnlyList<PermissionDto> Permissions { get; init; } = [];
 
         [JsonPropertyName("fullName")]
         public string FullName => $"{FirstName} {LastName}".Trim();

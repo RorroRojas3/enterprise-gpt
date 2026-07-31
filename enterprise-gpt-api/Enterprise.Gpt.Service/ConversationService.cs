@@ -1,4 +1,5 @@
 ﻿using FluentValidation;
+using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,7 +44,7 @@ namespace Enterprise.Gpt.Service
     public class ConversationService(ILogger<ConversationService> logger,
         IModelService modelService,
         [FromKeyedServices("azureaifoundry")] IChatClient azureAIFoundry,
-        IMcpServerService mcpServerService,
+        IMcpToolProvider mcpToolProvider,
         IConversationLockService conversationLockService,
         ITokenService tokenService,
         IAzureCosmosService cosmosService,
@@ -56,7 +57,7 @@ namespace Enterprise.Gpt.Service
         private readonly ILogger _logger = logger;
         private readonly IChatClient _azureAIFoundry = azureAIFoundry;    
         private readonly IModelService _modelService = modelService;
-        private readonly IMcpServerService _mcpServerService = mcpServerService;
+        private readonly IMcpToolProvider _mcpToolProvider = mcpToolProvider;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
@@ -391,31 +392,37 @@ namespace Enterprise.Gpt.Service
 
                 var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
                 var chatClient = _azureAIFoundry;
-                var chatOptions = await CreateChatOptions(id, model, request.McpServers, cancellationToken).ConfigureAwait(false);
+                var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, cancellationToken).ConfigureAwait(false);
                 StringBuilder sb = new();
                 long totalInputTokens = 0, totalOutputTokens = 0;
 
-                await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
+                // The lease set (null when no MCPs are selected) must stay alive for the whole
+                // stream: the attached tools invoke through the leased clients. await using
+                // releases the leases on completion, fault, or client disconnect alike.
+                await using (toolLeases)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (!string.IsNullOrEmpty(message.Text))
+                    await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
                     {
-                        sb.Append(message.Text);
-                    }
+                        cancellationToken.ThrowIfCancellationRequested();
 
-                    if (message.Contents != null &&
-                        message.Contents.Count > 0)
-                    {
-                        // Check for usage content to track token consumption during streaming
-                        var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
-                        if (usageContent != null)
+                        if (!string.IsNullOrEmpty(message.Text))
                         {
-                            totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
-                            totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
+                            sb.Append(message.Text);
                         }
+
+                        if (message.Contents != null &&
+                            message.Contents.Count > 0)
+                        {
+                            // Check for usage content to track token consumption during streaming
+                            var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
+                            if (usageContent != null)
+                            {
+                                totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
+                                totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
+                            }
+                        }
+                        yield return message.Text;
                     }
-                    yield return message.Text;
                 }
 
                 var date = DateTimeOffset.UtcNow;
@@ -493,36 +500,56 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <summary>
-        /// Creates chat options configured with the specified model and tools.
+        /// Creates chat options for the stream and, when MCP servers are selected, resolves
+        /// their tools through <see cref="IMcpToolProvider"/> (permission-checked, cached) and
+        /// attaches them to the options.
         /// </summary>
         /// <param name="sessionId">The unique identifier of the chat session.</param>
         /// <param name="model">The AI model to use for the chat.</param>
-        /// <param name="mcps">A list of MCP server configurations to enable for tool calling.</param>
+        /// <param name="mcps">The MCP servers the user selected for tool calling.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the configured chat options.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="model"/> is null.</exception>
-        /// <remarks>
-        /// If the model has tools enabled, this method will:
-        /// <list type="number">
-        /// <item><description>Add document tools from the document tool service</description></item>
-        /// <item><description>Create MCP clients for each configured MCP server and retrieve their tools</description></item>
-        /// <item><description>Configure the chat options to allow multiple tool calls</description></item>
-        /// </list>
-        /// </remarks>
-        private static async Task<ChatOptions> CreateChatOptions(Guid sessionId, ModelDto model, List<McpDto> mcps, CancellationToken cancellationToken)
+        /// <returns>
+        /// The configured chat options and the tool lease set backing them, or
+        /// <see langword="null"/> leases when no MCP servers were selected. The caller must
+        /// keep the lease set alive for the whole stream and dispose it afterwards.
+        /// </returns>
+        /// <exception cref="ValidationException">MCP servers were selected but <paramref name="model"/> does not support tools.</exception>
+        /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
+        /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
+        private async Task<(ChatOptions ChatOptions, IMcpToolLeaseSet? ToolLeases)> CreateChatOptionsAsync(
+            Guid sessionId, ModelDto model, List<McpDto> mcps, CancellationToken cancellationToken)
         {
-            if (model == null)
-            {
-                throw new ArgumentNullException(nameof(model), "Model cannot be null.");
-            }
+            ArgumentNullException.ThrowIfNull(model);
 
             ChatOptions chatOptions = new()
             {
                 ModelId = model.Name,
-                ConversationId = sessionId.ToString() 
+                ConversationId = sessionId.ToString()
             };
-            
-            return chatOptions;
+
+            var selectedServerIds = mcps.Select(m => m.Id).Distinct().ToArray();
+            if (selectedServerIds.Length == 0)
+            {
+                return (chatOptions, null);
+            }
+
+            if (!model.IsToolEnabled)
+            {
+                throw new ValidationException(
+                [
+                    new ValidationFailure(nameof(CreateConversationStreamActionDto.McpServers),
+                        "The selected model does not support tools; remove the MCP server selection or choose a tool-enabled model.")
+                ]);
+            }
+
+            var toolLeases = await _mcpToolProvider.AcquireToolsAsync(selectedServerIds, cancellationToken).ConfigureAwait(false);
+            if (toolLeases.Tools.Count > 0)
+            {
+                chatOptions.Tools = [.. toolLeases.Tools];
+                chatOptions.AllowMultipleToolCalls = true;
+            }
+
+            return (chatOptions, toolLeases);
         }
     }
 }
