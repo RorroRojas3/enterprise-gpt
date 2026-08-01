@@ -113,7 +113,7 @@ export class ConversationService {
                   prompt,
                   this.modelStore.selectedModel()!.id,
                   this.modelStore.selectedModel()!.aiServiceId,
-                  this.mcpStore.selectedMcps(),
+                  this.mcpStore.selectedMcps().map((m) => ({ id: m.id })),
                 ),
               ),
               signal: abortController.signal,

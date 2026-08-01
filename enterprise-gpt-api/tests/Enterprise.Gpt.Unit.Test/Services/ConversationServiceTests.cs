@@ -139,7 +139,7 @@ public sealed class ConversationServiceTests : IDisposable
         {
             Prompt = "Hello",
             ModelId = model.Id,
-            McpServers = [new McpDto { Id = Guid.NewGuid(), Name = "docs-server" }]
+            McpServers = [new McpServerSelectionDto { Id = Guid.NewGuid() }]
         };
 
         await Assert.ThrowsAsync<ValidationException>(
@@ -193,9 +193,9 @@ public sealed class ConversationServiceTests : IDisposable
             ModelId = model.Id,
             McpServers =
             [
-                new McpDto { Id = firstServerId, Name = "docs-server" },
-                new McpDto { Id = secondServerId, Name = "code-server" },
-                new McpDto { Id = firstServerId, Name = "docs-server-duplicate" }
+                new McpServerSelectionDto { Id = firstServerId },
+                new McpServerSelectionDto { Id = secondServerId },
+                new McpServerSelectionDto { Id = firstServerId }
             ]
         };
 

@@ -517,7 +517,7 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
         /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
         private async Task<(ChatOptions ChatOptions, IMcpToolLeaseSet? ToolLeases)> CreateChatOptionsAsync(
-            Guid sessionId, ModelDto model, List<McpDto> mcps, CancellationToken cancellationToken)
+            Guid sessionId, ModelDto model, List<McpServerSelectionDto> mcps, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(model);
 
