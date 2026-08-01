@@ -83,6 +83,7 @@ namespace Enterprise.Gpt.Service
         /// <param name="userId">The id of the user losing the grant.</param>
         /// <param name="permissionId">The id of the permission to revoke.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <exception cref="ValidationException">The caller is revoking their own Administrator permission.</exception>
         /// <exception cref="NotFoundException">The user holds no active grant of the permission.</exception>
         Task RevokePermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default);
     }
@@ -264,6 +265,19 @@ namespace Enterprise.Gpt.Service
         public async Task RevokePermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default)
         {
             var oid = _tokenService.GetOid();
+
+            // The same invariant UserService.UpdateUserAsync enforces on the bulk permission
+            // diff. Both routes can revoke this grant, so guarding only one would leave the
+            // lockout reachable by calling this endpoint with your own id.
+            if (userId == oid && permissionId == PermissionIds.Administrator)
+            {
+                throw new ValidationException(
+                [
+                    new ValidationFailure(nameof(UserPermission.PermissionId),
+                        "Administrators cannot revoke their own Administrator permission.")
+                ]);
+            }
+
             var date = DateTimeOffset.UtcNow;
 
             var rows = await _ctx.UserPermissions

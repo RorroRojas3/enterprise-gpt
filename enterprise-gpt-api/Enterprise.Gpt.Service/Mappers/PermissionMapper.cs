@@ -19,6 +19,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 Id = permission.Id,
                 Name = permission.Name,
                 Description = permission.Description,
+                IsDefault = permission.IsDefault,
                 McpServerId = permission.McpServerId,
                 DateDeactivated = permission.DateDeactivated
             };
@@ -34,6 +35,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 Id = permission.Id,
                 Name = permission.Name,
                 Description = permission.Description,
+                IsDefault = permission.IsDefault,
                 McpServerId = permission.McpServerId,
                 DateDeactivated = permission.DateDeactivated
             };
@@ -51,7 +53,8 @@ namespace Enterprise.Gpt.Service.Mappers
             return new Permission
             {
                 Name = dto.Name,
-                Description = dto.Description
+                Description = dto.Description,
+                IsDefault = dto.IsDefault
             };
         }
 
@@ -66,6 +69,7 @@ namespace Enterprise.Gpt.Service.Mappers
         {
             permission.Name = dto.Name;
             permission.Description = dto.Description;
+            permission.IsDefault = dto.IsDefault;
         }
     }
 }

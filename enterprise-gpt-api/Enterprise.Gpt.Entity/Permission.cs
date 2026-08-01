@@ -16,6 +16,14 @@ namespace Enterprise.Gpt.Entity
         [StringLength(1024)]
         public string? Description { get; set; }
 
+        /// <summary>
+        /// Whether this permission is granted automatically to every self-provisioned user on
+        /// their first sign-in. The built-in Administrator and MCP-managed permissions can never
+        /// carry this flag because <c>PermissionService.EnsurePermissionIsCustom</c> rejects all
+        /// mutation of those rows, which is what makes the flag safe to expose to administrators.
+        /// </summary>
+        public bool IsDefault { get; set; }
+
         [ForeignKey(nameof(McpServer))]
         public Guid? McpServerId { get; set; }
 

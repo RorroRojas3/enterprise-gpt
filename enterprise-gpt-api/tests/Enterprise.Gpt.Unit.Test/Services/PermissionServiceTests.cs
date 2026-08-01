@@ -480,6 +480,31 @@ public sealed class PermissionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RevokePermissionAsync_CallerRevokingOwnAdministrator_ThrowsValidationException()
+    {
+        await AddGrantAsync(KnownIds.AdministratorPermissionId, KnownIds.SeedUserId);
+
+        await Assert.ThrowsAsync<ValidationException>(() => _service.RevokePermissionAsync(
+            KnownIds.SeedUserId, KnownIds.AdministratorPermissionId, TestContext.Current.CancellationToken));
+
+        var grants = await FindGrantsAsync(KnownIds.SeedUserId, KnownIds.AdministratorPermissionId);
+        Assert.Null(Assert.Single(grants).DateDeactivated);
+    }
+
+    [Fact]
+    public async Task RevokePermissionAsync_AnotherUsersAdministrator_Succeeds()
+    {
+        var user = await AddUserAsync();
+        await AddGrantAsync(KnownIds.AdministratorPermissionId, user.Id);
+
+        await _service.RevokePermissionAsync(
+            user.Id, KnownIds.AdministratorPermissionId, TestContext.Current.CancellationToken);
+
+        var grants = await FindGrantsAsync(user.Id, KnownIds.AdministratorPermissionId);
+        Assert.NotNull(Assert.Single(grants).DateDeactivated);
+    }
+
+    [Fact]
     public async Task GrantPermissionAsync_AfterRevoke_InsertsFreshRowLeavingRevokedHistory()
     {
         var permission = await AddPermissionAsync("aaa-regrant");

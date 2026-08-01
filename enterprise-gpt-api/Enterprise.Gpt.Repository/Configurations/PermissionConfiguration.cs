@@ -39,6 +39,7 @@ namespace Enterprise.Gpt.Repository.Configurations
                     Id = PermissionIds.Administrator,
                     Name = "Administrator",
                     Description = "Full administrative access.",
+                    IsDefault = false,
                     DateCreated = date,
                     DateModified = date,
                     CreatedById = userId,

@@ -250,6 +250,8 @@ app.MapMcpEndpoints();
 
 app.MapPermissionEndpoints();
 
+app.MapUserEndpoints();
+
 app.Run();
 
 /// <summary>

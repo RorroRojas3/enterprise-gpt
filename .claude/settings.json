@@ -6,6 +6,12 @@
   "model": "opus",
   "availableModels": ["opus"],
   "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "microsoft-learn",
+    "terraform",
+    "angular-cli",
+    "context7"
+  ],
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "code-review@claude-plugins-official": true,
