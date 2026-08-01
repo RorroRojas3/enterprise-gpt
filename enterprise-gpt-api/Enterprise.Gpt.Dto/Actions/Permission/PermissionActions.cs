@@ -7,6 +7,11 @@ namespace Enterprise.Gpt.Dto.Actions.Permission
         public string Name { get; init; } = null!;
 
         public string? Description { get; init; }
+
+        /// <summary>
+        /// Whether the permission should be granted automatically to every self-provisioned user.
+        /// </summary>
+        public bool IsDefault { get; init; }
     }
 
     public class CreatePermissionActionDtoValidator : AbstractValidator<CreatePermissionActionDto>
@@ -26,6 +31,11 @@ namespace Enterprise.Gpt.Dto.Actions.Permission
         public string Name { get; init; } = null!;
 
         public string? Description { get; init; }
+
+        /// <summary>
+        /// Whether the permission should be granted automatically to every self-provisioned user.
+        /// </summary>
+        public bool IsDefault { get; init; }
     }
 
     public class UpdatePermissionActionDtoValidator : AbstractValidator<UpdatePermissionActionDto>

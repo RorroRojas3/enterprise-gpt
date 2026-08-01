@@ -2,6 +2,8 @@ export interface PermissionDto {
   id: string;
   name: string;
   description?: string;
+  /** Whether the permission is granted automatically to every user on their first sign-in. */
+  isDefault: boolean;
   mcpServerId?: string;
 }
 

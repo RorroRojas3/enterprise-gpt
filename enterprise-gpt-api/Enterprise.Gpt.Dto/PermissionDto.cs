@@ -12,6 +12,11 @@ namespace Enterprise.Gpt.Dto
 
         public string? Description { get; init; }
 
+        /// <summary>
+        /// Whether the permission is granted automatically to every self-provisioned user.
+        /// </summary>
+        public bool IsDefault { get; init; }
+
         public Guid? McpServerId { get; init; }
 
         public DateTimeOffset? DateDeactivated { get; init; }

@@ -8,10 +8,12 @@ namespace Enterprise.Gpt.Service.Mappers
     public static class UserMapper
     {
         /// <summary>
-        /// Maps a materialized <see cref="User"/> entity to <see cref="UserDto"/>.
-        /// Caller must have already loaded <see cref="User.UserPermissions"/> with the
-        /// <c>DateDeactivated IS NULL</c> filter applied and the <c>Permission</c>
-        /// navigation loaded (e.g. filtered <c>Include(...).ThenInclude(p =&gt; p.Permission)</c>).
+        /// Maps a materialized <see cref="User"/> entity to <see cref="UserDto"/>, projecting only
+        /// active grants. Caller must have loaded <see cref="User.UserPermissions"/> with the
+        /// <c>Permission</c> navigation populated (e.g. <c>Include(...).ThenInclude(p =&gt; p.Permission)</c>).
+        /// The active filter is applied here rather than left to the caller because permission
+        /// mutations soft-delete in place: after a grant diff the tracked collection holds both
+        /// freshly revoked and freshly added rows, and the revoked ones must not surface.
         /// </summary>
         /// <param name="user">The loaded user entity.</param>
         /// <returns>The mapped DTO.</returns>
@@ -23,13 +25,16 @@ namespace Enterprise.Gpt.Service.Mappers
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Email = user.Email,
-                Permissions = [.. user.UserPermissions.Select(p => new PermissionDto
-                {
-                    Id = p.PermissionId,
-                    Name = p.Permission.Name,
-                    Description = p.Permission.Description,
-                    McpServerId = p.Permission.McpServerId
-                })]
+                Permissions = [.. user.UserPermissions
+                    .Where(p => !p.DateDeactivated.HasValue)
+                    .Select(p => new PermissionDto
+                    {
+                        Id = p.PermissionId,
+                        Name = p.Permission.Name,
+                        Description = p.Permission.Description,
+                        IsDefault = p.Permission.IsDefault,
+                        McpServerId = p.Permission.McpServerId
+                    })]
             };
         }
 
@@ -52,6 +57,7 @@ namespace Enterprise.Gpt.Service.Mappers
                         Id = p.PermissionId,
                         Name = p.Permission.Name,
                         Description = p.Permission.Description,
+                        IsDefault = p.Permission.IsDefault,
                         McpServerId = p.Permission.McpServerId
                     })
                     .ToList()

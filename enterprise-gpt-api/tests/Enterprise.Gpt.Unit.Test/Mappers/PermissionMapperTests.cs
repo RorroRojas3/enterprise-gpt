@@ -8,13 +8,14 @@ namespace Enterprise.Gpt.Unit.Test.Mappers;
 public class PermissionMapperTests
 {
     private static Permission CreatePermission(
-        Guid? mcpServerId = null, DateTimeOffset? dateDeactivated = null)
+        Guid? mcpServerId = null, DateTimeOffset? dateDeactivated = null, bool isDefault = false)
     {
         return new Permission
         {
             Id = Guid.NewGuid(),
             Name = "docs-permission",
             Description = "Grants access to docs.",
+            IsDefault = isDefault,
             McpServerId = mcpServerId,
             DateDeactivated = dateDeactivated,
             DateCreated = DateTimeOffset.UtcNow.AddDays(-1),
@@ -27,13 +28,14 @@ public class PermissionMapperTests
     [Fact]
     public void MapToPermissionDto_PopulatedEntity_MapsAllProperties()
     {
-        var permission = CreatePermission(mcpServerId: Guid.NewGuid(), dateDeactivated: DateTimeOffset.UtcNow);
+        var permission = CreatePermission(mcpServerId: Guid.NewGuid(), dateDeactivated: DateTimeOffset.UtcNow, isDefault: true);
 
         var dto = permission.MapToPermissionDto();
 
         Assert.Equal(permission.Id, dto.Id);
         Assert.Equal(permission.Name, dto.Name);
         Assert.Equal(permission.Description, dto.Description);
+        Assert.Equal(permission.IsDefault, dto.IsDefault);
         Assert.Equal(permission.McpServerId, dto.McpServerId);
         Assert.Equal(permission.DateDeactivated, dto.DateDeactivated);
     }
@@ -52,7 +54,7 @@ public class PermissionMapperTests
     [Fact]
     public void MapToPermissionDtoExpression_CompiledDelegate_MatchesMapToPermissionDto()
     {
-        var permission = CreatePermission(mcpServerId: Guid.NewGuid(), dateDeactivated: DateTimeOffset.UtcNow);
+        var permission = CreatePermission(mcpServerId: Guid.NewGuid(), dateDeactivated: DateTimeOffset.UtcNow, isDefault: true);
         var projection = PermissionMapper.MapToPermissionDtoExpression.Compile();
 
         var dto = projection(permission);
@@ -66,13 +68,15 @@ public class PermissionMapperTests
         var request = new CreatePermissionActionDto
         {
             Name = "new-permission",
-            Description = "A new custom permission."
+            Description = "A new custom permission.",
+            IsDefault = true
         };
 
         var permission = request.FromCreatePermissionActionDtoToPermission();
 
         Assert.Equal(request.Name, permission.Name);
         Assert.Equal(request.Description, permission.Description);
+        Assert.True(permission.IsDefault);
         Assert.Null(permission.McpServerId);
         Assert.Equal(Guid.Empty, permission.Id);
         Assert.Equal(default, permission.DateCreated);
@@ -93,13 +97,15 @@ public class PermissionMapperTests
         var request = new UpdatePermissionActionDto
         {
             Name = "renamed-permission",
-            Description = "An updated description."
+            Description = "An updated description.",
+            IsDefault = true
         };
 
         request.FromUpdatePermissionActionDtoToPermission(permission);
 
         Assert.Equal(request.Name, permission.Name);
         Assert.Equal(request.Description, permission.Description);
+        Assert.True(permission.IsDefault);
         Assert.Equal(originalId, permission.Id);
         Assert.Equal(originalMcpServerId, permission.McpServerId);
         Assert.Equal(originalDateCreated, permission.DateCreated);

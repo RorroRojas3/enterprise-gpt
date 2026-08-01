@@ -324,6 +324,149 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ToListAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Restores users, permissions, and grants to their post-seed baseline: removes every user
+    /// beyond the seeded system user and the two <see cref="TestUsers"/> identities, restores
+    /// those two identities' profiles, and rebuilds the admin's <c>Administrator</c> grant.
+    /// Also clears the fake directory. Deletes run in FK order (grants → permissions → users).
+    /// </summary>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    public async Task ResetUsersAsync(CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        await ctx.UserPermissions.ExecuteDeleteAsync(cancellationToken);
+        await ctx.Permissions
+            .Where(x => x.Id != PermissionIds.Administrator)
+            .ExecuteDeleteAsync(cancellationToken);
+        // The seeded system user owns the Administrator permission's audit columns, so it can
+        // never be deleted; the two test identities are restored rather than recreated.
+        await ctx.Users
+            .Where(x => x.Id != KnownIds.SeedUserId
+                && x.Id != TestUsers.AdminUserId
+                && x.Id != TestUsers.RegularUserId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        var date = DateTimeOffset.UtcNow;
+        await ctx.Users
+            .Where(x => x.Id == TestUsers.AdminUserId)
+            .ExecuteUpdateAsync(x => x
+                .SetProperty(p => p.FirstName, "Admin")
+                .SetProperty(p => p.LastName, "Tester")
+                .SetProperty(p => p.Email, "admin.tester@example.com")
+                .SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
+        await ctx.Users
+            .Where(x => x.Id == TestUsers.RegularUserId)
+            .ExecuteUpdateAsync(x => x
+                .SetProperty(p => p.FirstName, "Regular")
+                .SetProperty(p => p.LastName, "Tester")
+                .SetProperty(p => p.Email, "regular.tester@example.com")
+                .SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
+
+        ctx.UserPermissions.Add(new UserPermission
+        {
+            Id = Guid.NewGuid(),
+            UserId = TestUsers.AdminUserId,
+            PermissionId = PermissionIds.Administrator,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = TestUsers.AdminUserId,
+            ModifiedById = TestUsers.AdminUserId
+        });
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        Factory.GraphService.Reset();
+    }
+
+    /// <summary>
+    /// Inserts a permission directly into the database, bypassing the API, for arranging grant
+    /// and default-provisioning scenarios.
+    /// </summary>
+    /// <param name="name">The permission name.</param>
+    /// <param name="isDefault">Whether new users receive it automatically.</param>
+    /// <param name="deactivated">Whether the permission is soft-deleted.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted permission.</returns>
+    public async Task<Guid> AddPermissionAsync(
+        string name, bool isDefault = false, bool deactivated = false, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var permission = new Permission
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Description = $"{name} description",
+            IsDefault = isDefault,
+            DateDeactivated = deactivated ? date : null,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = TestUsers.AdminUserId,
+            ModifiedById = TestUsers.AdminUserId
+        };
+
+        ctx.Permissions.Add(permission);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return permission.Id;
+    }
+
+    /// <summary>
+    /// Inserts a user directly into the database, bypassing the API, for arranging read, update,
+    /// and deactivation scenarios.
+    /// </summary>
+    /// <param name="firstName">The user's first name.</param>
+    /// <param name="lastName">The user's last name.</param>
+    /// <param name="email">The user's email address.</param>
+    /// <param name="deactivated">Whether the user is soft-deleted.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted user.</returns>
+    public async Task<Guid> AddUserAsync(
+        string firstName, string lastName, string email, bool deactivated = false,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            FirstName = firstName,
+            LastName = lastName,
+            Email = email,
+            DateDeactivated = deactivated ? date : null,
+            DateCreated = date,
+            DateModified = date
+        };
+
+        ctx.Users.Add(user);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return user.Id;
+    }
+
+    /// <summary>
+    /// Reads a user row straight from the database, including its grants, for state assertions
+    /// the API does not expose (e.g. soft-delete timestamps on cascaded grants).
+    /// </summary>
+    /// <param name="id">The user id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
+    public async Task<User?> FindUserAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.Users
+            .AsNoTracking()
+            .Include(u => u.UserPermissions)
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+    }
+
     private static async Task SeedTestUsersAsync(EnterpriseGptDbContext ctx)
     {
         var date = DateTimeOffset.UtcNow;

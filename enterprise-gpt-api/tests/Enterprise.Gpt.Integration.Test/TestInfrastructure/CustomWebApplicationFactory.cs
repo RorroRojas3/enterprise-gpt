@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
@@ -17,6 +19,12 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 public class CustomWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
 {
     private readonly string _connectionString = connectionString;
+
+    /// <summary>
+    /// Gets the in-memory directory backing <see cref="IGraphService"/> for the whole run. Tests
+    /// register the directory users their scenario needs and reset it for isolation.
+    /// </summary>
+    public FakeGraphService GraphService { get; } = new();
 
     /// <inheritdoc />
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -63,6 +71,11 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
                 options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
                 options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // The only application service that is substituted: user provisioning calls Microsoft
+            // Graph, which would be a live network request against the fake credentials above.
+            services.RemoveAll<IGraphService>();
+            services.AddSingleton<IGraphService>(GraphService);
         });
     }
 

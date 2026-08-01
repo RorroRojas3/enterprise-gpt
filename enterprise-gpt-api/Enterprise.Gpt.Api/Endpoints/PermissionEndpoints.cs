@@ -61,6 +61,7 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .Produces<ErrorDto>(StatusCodes.Status404NotFound);
             grants.MapDelete("{permissionId:guid}", RevokePermissionAsync)
                 .AddEndpointFilter<AdminEndpointFilter>()
+                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
                 .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
                 .Produces<ErrorDto>(StatusCodes.Status404NotFound);
 
