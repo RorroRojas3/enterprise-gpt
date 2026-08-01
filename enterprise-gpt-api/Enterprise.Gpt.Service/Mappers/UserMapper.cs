@@ -10,7 +10,8 @@ namespace Enterprise.Gpt.Service.Mappers
         /// <summary>
         /// Maps a materialized <see cref="User"/> entity to <see cref="UserDto"/>.
         /// Caller must have already loaded <see cref="User.UserPermissions"/> with the
-        /// <c>DateDeactivated IS NULL</c> filter applied (e.g. filtered <c>Include</c>).
+        /// <c>DateDeactivated IS NULL</c> filter applied and the <c>Permission</c>
+        /// navigation loaded (e.g. filtered <c>Include(...).ThenInclude(p =&gt; p.Permission)</c>).
         /// </summary>
         /// <param name="user">The loaded user entity.</param>
         /// <returns>The mapped DTO.</returns>
@@ -22,7 +23,13 @@ namespace Enterprise.Gpt.Service.Mappers
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Email = user.Email,
-                Permissions = [.. user.UserPermissions.Select(p => p.Permission)]
+                Permissions = [.. user.UserPermissions.Select(p => new PermissionDto
+                {
+                    Id = p.PermissionId,
+                    Name = p.Permission.Name,
+                    Description = p.Permission.Description,
+                    McpServerId = p.Permission.McpServerId
+                })]
             };
         }
 
@@ -40,7 +47,13 @@ namespace Enterprise.Gpt.Service.Mappers
                 Email = user.Email,
                 Permissions = user.UserPermissions
                     .Where(p => !p.DateDeactivated.HasValue)
-                    .Select(p => p.Permission)
+                    .Select(p => new PermissionDto
+                    {
+                        Id = p.PermissionId,
+                        Name = p.Permission.Name,
+                        Description = p.Permission.Description,
+                        McpServerId = p.Permission.McpServerId
+                    })
                     .ToList()
             };
 

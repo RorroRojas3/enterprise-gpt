@@ -15,7 +15,9 @@ using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Settings;
+using Scalar.AspNetCore;
 using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -55,10 +57,8 @@ builder.Services.AddDbContext<EnterpriseGptDbContext>(options =>
         sqlOptions.UseCompatibilityLevel(170);
     })); 
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-builder.Services.AddHttpContextAccessor();
+// OpenAPI document generation (served by Scalar in development).
+builder.Services.AddOpenApi();
 
 // Add CORS
 var corsOrigins = builder.Configuration.GetSection("CorsOrigins").Get<string[]>();
@@ -158,8 +158,14 @@ builder.Services.AddScoped<IAzureCosmosService>(provider =>
     return new AzureCosmosService(cosmosClient, cosmosDatabaseId!, cosmosContainerId!);
 });
 
-// Register configuration settings
-builder.Services.Configure<List<McpServerSettings>>(builder.Configuration.GetSection("McpServers"));
+// MCP client/tool cache: singleton cache of live MCP connections, scoped provider that
+// resolves permissions and acquires OBO tokens per request. The named HttpClient gets an
+// infinite timeout because MCP sessions stream over SSE; connection establishment is
+// bounded separately by McpClientCacheOptions.ConnectionTimeout.
+builder.Services.Configure<McpClientCacheOptions>(builder.Configuration.GetSection("Mcp:Cache"));
+builder.Services.AddSingleton<IMcpClientCache, McpClientCache>();
+builder.Services.AddScoped<IMcpToolProvider, McpToolProvider>();
+builder.Services.AddHttpClient(McpToolProvider.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
 
 // Exception handlers (chained — first to return true wins; GlobalExceptionHandler is the fallback)
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
@@ -181,6 +187,7 @@ builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IMcpServerService, McpServerService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IUserService, UserService>();
 
 // Fluent Validators
@@ -220,8 +227,8 @@ if (!app.Environment.IsEnvironment("Testing"))
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 // .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
@@ -238,6 +245,10 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.MapModelEndpoints();
+
+app.MapMcpEndpoints();
+
+app.MapPermissionEndpoints();
 
 app.Run();
 

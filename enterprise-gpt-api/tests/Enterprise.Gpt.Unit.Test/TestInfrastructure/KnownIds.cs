@@ -22,4 +22,9 @@ public static class KnownIds
     /// The "rr-gpt-5.6-luna" model seeded by <c>ModelConfiguration</c> (active, non-default).
     /// </summary>
     public static readonly Guid SeedModelId = Guid.Parse("c36e22ed-262a-47a1-b2ba-06a38355ae0f");
+
+    /// <summary>
+    /// The built-in Administrator permission seeded by <c>PermissionConfiguration</c>.
+    /// </summary>
+    public static readonly Guid AdministratorPermissionId = PermissionIds.Administrator;
 }

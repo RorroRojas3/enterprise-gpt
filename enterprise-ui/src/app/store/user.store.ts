@@ -6,7 +6,7 @@ import {
   withMethods,
   withState,
 } from '@ngrx/signals';
-import { Permissions } from '../dtos/Permissions';
+import { ADMINISTRATOR_PERMISSION_ID } from '../dtos/PermissionDto';
 import { UserDto } from '../dtos/UserDto';
 
 type UserState = {
@@ -26,7 +26,10 @@ export const UserStore = signalStore(
     /** True when the authenticated user holds the Administrator permission. */
     isAdmin: computed(
       () =>
-        store.user()?.permissions.includes(Permissions.Administrator) ?? false,
+        store
+          .user()
+          ?.permissions.some((p) => p.id === ADMINISTRATOR_PERMISSION_ID) ??
+        false,
     ),
   })),
   withMethods((store) => ({

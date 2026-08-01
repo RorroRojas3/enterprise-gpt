@@ -13,13 +13,24 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
         }
     }
 
+    /// <summary>
+    /// Identifies an MCP server selected for a chat request. Deliberately separate from the
+    /// response-shaped <see cref="McpDto"/>: a request only needs the id, and reusing the
+    /// response DTO would advertise <c>Name</c> as required in the OpenAPI document while the
+    /// validator does not enforce it.
+    /// </summary>
+    public class McpServerSelectionDto
+    {
+        public Guid Id { get; set; }
+    }
+
     public class CreateConversationStreamActionDto
     {
         public string Prompt { get; set; } = null!;
 
         public Guid ModelId { get; set; }
 
-        public List<McpDto> McpServers { get; set; } = [];
+        public List<McpServerSelectionDto> McpServers { get; set; } = [];
     }
 
     public class CreateConversationStreamActionDtoValidator : AbstractValidator<CreateConversationStreamActionDto>
@@ -33,8 +44,8 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
             RuleForEach(x => x.McpServers)
                 .ChildRules(mcp =>
                 {
-                    mcp.RuleFor(m => m.Name)
-                        .NotEmpty().WithMessage("MCP Server name is required.");
+                    mcp.RuleFor(m => m.Id)
+                        .NotEmpty().WithMessage("MCP Server id is required.");
                 })
                 .When(x => x.McpServers != null && x.McpServers.Count > 0);
         }

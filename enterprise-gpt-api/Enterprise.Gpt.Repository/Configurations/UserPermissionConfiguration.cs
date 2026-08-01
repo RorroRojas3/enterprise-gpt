@@ -12,12 +12,13 @@ namespace Enterprise.Gpt.Repository.Configurations
 
             builder.HasKey(x => x.Id);
 
-            builder.Property(x => x.Permission)
-                .HasConversion<int>();
-
             builder.HasOne(x => x.User)
                 .WithMany(u => u.UserPermissions)
                 .HasForeignKey(x => x.UserId);
+
+            builder.HasOne(x => x.Permission)
+                .WithMany(p => p.UserPermissions)
+                .HasForeignKey(x => x.PermissionId);
 
             builder.HasOne(x => x.CreatedBy)
                 .WithMany()
@@ -27,7 +28,7 @@ namespace Enterprise.Gpt.Repository.Configurations
                 .WithMany()
                 .HasForeignKey(x => x.ModifiedById);
 
-            builder.HasIndex(x => new { x.UserId, x.Permission })
+            builder.HasIndex(x => new { x.UserId, x.PermissionId })
                 .HasFilter("[DateDeactivated] IS NULL")
                 .IsUnique();
         }

@@ -1,105 +1,271 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.Identity.Web;
-using ModelContextProtocol;
-using ModelContextProtocol.Client;
+using FluentValidation;
+using FluentValidation.Results;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Service.Settings;
-using System.Net.Http.Headers;
+using Enterprise.Gpt.Dto.Actions.Mcp;
+using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Mappers;
 
 namespace Enterprise.Gpt.Service
 {
     public interface IMcpServerService
     {
         /// <summary>
-        /// Creates and configures an MCP client for the specified server name using the current user's access token.
+        /// Gets the active MCP servers the calling user holds a permission for, ordered by name.
         /// </summary>
-        /// <param name="name">The case-insensitive name of the configured MCP server.</param>
-        /// <param name="cancellationToken">A cancellation token to cancel the client creation.</param>
-        /// <returns>A configured <see cref="McpClient"/> instance for the target server.</returns>
-        /// <exception cref="ArgumentException">Thrown when <paramref name="name"/> is null or empty.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when no MCP server with the given <paramref name="name"/> is found in configuration.</exception>
-        /// <exception cref="OperationCanceledException">Thrown if the operation is canceled.</exception>
-        /// <remarks>
-        /// The client is created with an HTTP transport pointing to the server's URI and authorized with a bearer token
-        /// acquired for the server's configured scope. Exceptions from token acquisition or HTTP/MCP operations may propagate.
-        /// </remarks>
-        Task<McpClient> CreateClientAsync(string name, CancellationToken cancellationToken);
+        /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <returns>The list of permitted servers in the user-facing shape.</returns>
+        Task<List<McpDto>> GetPermittedMcpServersAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Retrieves the list of tools exposed by the connected MCP server.
+        /// Gets every MCP server, active and deactivated, ordered by name. Intended for
+        /// administrators managing the server catalog.
         /// </summary>
-        /// <param name="mcpClient">An initialized <see cref="McpClient"/> connected to the target server.</param>
-        /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
-        /// <returns>A list of tools available on the server.</returns>
-        /// <exception cref="OperationCanceledException">Thrown if the operation is canceled.</exception>
-        /// <remarks>
-        /// This delegates to <see cref="McpClient.ListToolsAsync"/> and returns its results.
-        /// </remarks>
-        Task<IList<McpClientTool>> GetToolsFromServerAsync(McpClient mcpClient, CancellationToken cancellationToken);
+        /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <returns>The list of all servers in the administrative shape.</returns>
+        Task<List<McpServerDto>> GetAllMcpServersAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Gets the MCP servers configured for the application.
+        /// Gets a single active MCP server by id.
         /// </summary>
-        /// <returns>A list of MCP server descriptors containing the server names.</returns>
-        List<McpDto> GetMcpServers();
+        /// <param name="id">The server id.</param>
+        /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <returns>The matching server.</returns>
+        /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
+        Task<McpServerDto> GetMcpServerAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Creates a new MCP server after validating the request, together with its linked
+        /// permission (same name) in one atomic save. Users must be granted that permission
+        /// before they can see or use the server.
+        /// </summary>
+        /// <param name="request">The creation request.</param>
+        /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <returns>The created server.</returns>
+        /// <exception cref="ValidationException">The request fails validation, or the name is already in use by an active server or permission.</exception>
+        Task<McpServerDto> CreateMcpServerAsync(CreateMcpServerActionDto request, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Updates an existing active MCP server after validating the request. Renames are
+        /// synced to the linked permission, and cached clients for the server are invalidated
+        /// so connection changes take effect on the next request.
+        /// </summary>
+        /// <param name="id">The id of the server to update.</param>
+        /// <param name="request">The update request.</param>
+        /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <returns>The updated server.</returns>
+        /// <exception cref="ValidationException">The request fails validation, or the name is already in use by an active server or permission.</exception>
+        /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
+        Task<McpServerDto> UpdateMcpServerAsync(Guid id, UpdateMcpServerActionDto request, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Soft-deletes an MCP server together with its linked permission and every active
+        /// grant of that permission, in one atomic save, then invalidates cached clients.
+        /// </summary>
+        /// <param name="id">The id of the server to deactivate.</param>
+        /// <param name="cancellationToken">A token that propagates cancellation.</param>
+        /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
+        Task DeactivateMcpServerAsync(Guid id, CancellationToken cancellationToken = default);
     }
 
     public class McpServerService(ILogger<McpServerService> logger,
-        ITokenAcquisition tokenAcquisition,
-        IOptions<List<McpServerSettings>> mcpServerSettings,
-        IHttpClientFactory httpClientFactory) : IMcpServerService
+        ITokenService tokenService,
+        EnterpriseGptDbContext ctx,
+        IValidator<CreateMcpServerActionDto> createValidator,
+        IValidator<UpdateMcpServerActionDto> updateValidator,
+        IMcpClientCache mcpClientCache) : IMcpServerService
     {
         private readonly ILogger<McpServerService> _logger = logger;
-        private readonly ITokenAcquisition _tokenAcquisition = tokenAcquisition;
-        private readonly IHttpClientFactory _httpClientFactory = httpClientFactory;
-        private readonly List<McpServerSettings> _mcpServerSettings = mcpServerSettings.Value;
+        private readonly ITokenService _tokenService = tokenService;
+        private readonly EnterpriseGptDbContext _ctx = ctx;
+        private readonly IValidator<CreateMcpServerActionDto> _createValidator = createValidator;
+        private readonly IValidator<UpdateMcpServerActionDto> _updateValidator = updateValidator;
+        private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
 
         /// <inheritdoc />
-        public async Task<McpClient> CreateClientAsync(string name, CancellationToken cancellationToken)
+        public async Task<List<McpDto>> GetPermittedMcpServersAsync(CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrEmpty(name);
+            var oid = _tokenService.GetOid();
 
-            var mcpServer = _mcpServerSettings.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (mcpServer == null)
+            return await _ctx.McpServers
+                .AsNoTracking()
+                .Where(s => !s.DateDeactivated.HasValue
+                    && s.Permissions.Any(p => !p.DateDeactivated.HasValue
+                        && p.UserPermissions.Any(up => up.UserId == oid && !up.DateDeactivated.HasValue)))
+                .OrderBy(s => s.Name)
+                .Select(McpServerMapper.MapToMcpDtoExpression)
+                .ToListAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task<List<McpServerDto>> GetAllMcpServersAsync(CancellationToken cancellationToken = default)
+        {
+            return await _ctx.McpServers
+                .AsNoTracking()
+                .OrderBy(s => s.Name)
+                .Select(McpServerMapper.MapToMcpServerDtoExpression)
+                .ToListAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task<McpServerDto> GetMcpServerAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _ctx.McpServers
+                .AsNoTracking()
+                .Where(s => s.Id == id && !s.DateDeactivated.HasValue)
+                .Select(McpServerMapper.MapToMcpServerDtoExpression)
+                .FirstOrDefaultAsync(cancellationToken) ?? throw new NotFoundException("MCP server not found.");
+        }
+
+        /// <inheritdoc />
+        public async Task<McpServerDto> CreateMcpServerAsync(CreateMcpServerActionDto request, CancellationToken cancellationToken = default)
+        {
+            await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
+            await EnsureNameIsAvailableAsync(request.Name, excludeServerId: null, cancellationToken);
+
+            var oid = _tokenService.GetOid();
+            var date = DateTimeOffset.UtcNow;
+
+            var newServer = request.FromCreateMcpServerActionDtoToMcpServer();
+            newServer.Id = Guid.NewGuid();
+            newServer.DateCreated = date;
+            newServer.CreatedById = oid;
+            newServer.DateModified = date;
+            newServer.ModifiedById = oid;
+
+            // The permission is created in the same SaveChangesAsync so a server can never
+            // exist without its gate.
+            var permission = new Permission
             {
-                _logger.LogError("MCP server with name {name} not found in configuration.", name);
-                throw new InvalidOperationException($"MCP server with name {name} not found in configuration.");
+                Id = Guid.NewGuid(),
+                Name = newServer.Name,
+                Description = $"Access to the {newServer.Name} MCP server.",
+                McpServerId = newServer.Id,
+                DateCreated = date,
+                CreatedById = oid,
+                DateModified = date,
+                ModifiedById = oid
+            };
+
+            _ctx.Add(newServer);
+            _ctx.Add(permission);
+            await _ctx.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("MCP server {McpServerId} and permission {PermissionId} created by {UserId}",
+                newServer.Id, permission.Id, oid);
+
+            return newServer.MapToMcpServerDto(permission.Id);
+        }
+
+        /// <inheritdoc />
+        public async Task<McpServerDto> UpdateMcpServerAsync(Guid id, UpdateMcpServerActionDto request, CancellationToken cancellationToken = default)
+        {
+            await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
+
+            var server = await _ctx.McpServers
+                .Include(s => s.Permissions.Where(p => !p.DateDeactivated.HasValue))
+                .FirstOrDefaultAsync(s => s.Id == id && !s.DateDeactivated.HasValue, cancellationToken)
+                ?? throw new NotFoundException("MCP server not found.");
+
+            if (!string.Equals(server.Name, request.Name, StringComparison.Ordinal))
+            {
+                await EnsureNameIsAvailableAsync(request.Name, excludeServerId: id, cancellationToken);
             }
 
-            var scopes = new[] { mcpServer.Scope };
-            var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(scopes);
+            var oid = _tokenService.GetOid();
+            var date = DateTimeOffset.UtcNow;
 
-            var httpClient = _httpClientFactory.CreateClient();
-            httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", accessToken);
-            httpClient.BaseAddress = mcpServer.Uri;
+            request.FromUpdateMcpServerActionDtoToMcpServer(server);
+            server.DateModified = date;
+            server.ModifiedById = oid;
 
-            var transport = new HttpClientTransport(new()
+            // Keep the linked permission's name/description in sync so administrators keep
+            // recognizing it in grant listings after a rename.
+            var permission = server.Permissions.FirstOrDefault();
+            if (permission is not null)
             {
-                Endpoint = mcpServer.Uri,
-                Name = mcpServer.Name,
-            }, httpClient);
+                permission.Name = server.Name;
+                permission.Description = $"Access to the {server.Name} MCP server.";
+                permission.DateModified = date;
+                permission.ModifiedById = oid;
+            }
 
-            var mcpClient = await McpClient.CreateAsync(transport, null, null, cancellationToken).ConfigureAwait(false);
+            await _ctx.SaveChangesAsync(cancellationToken);
 
-            return mcpClient;
+            // Connection details may have changed; cached clients must not outlive them.
+            _mcpClientCache.InvalidateServer(id);
+
+            _logger.LogInformation("MCP server {McpServerId} updated by {UserId}", id, oid);
+
+            return server.MapToMcpServerDto(permission?.Id);
         }
 
         /// <inheritdoc />
-        public async Task<IList<McpClientTool>> GetToolsFromServerAsync(McpClient mcpClient, CancellationToken cancellationToken)
+        public async Task DeactivateMcpServerAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            var tools = await mcpClient.ListToolsAsync(new RequestOptions(), cancellationToken).ConfigureAwait(false);
-            return tools;
+            var server = await _ctx.McpServers
+                .Include(s => s.Permissions.Where(p => !p.DateDeactivated.HasValue))
+                    .ThenInclude(p => p.UserPermissions.Where(up => !up.DateDeactivated.HasValue))
+                .FirstOrDefaultAsync(s => s.Id == id && !s.DateDeactivated.HasValue, cancellationToken)
+                ?? throw new NotFoundException("MCP server not found.");
+
+            var oid = _tokenService.GetOid();
+            var date = DateTimeOffset.UtcNow;
+
+            // Tracked entities so server, permission, and grants deactivate in one atomic
+            // save, preserving the invariant that an active grant implies an active permission.
+            server.DateDeactivated = date;
+            server.DateModified = date;
+            server.ModifiedById = oid;
+
+            foreach (var permission in server.Permissions)
+            {
+                permission.DateDeactivated = date;
+                permission.DateModified = date;
+                permission.ModifiedById = oid;
+
+                foreach (var grant in permission.UserPermissions)
+                {
+                    grant.DateDeactivated = date;
+                    grant.DateModified = date;
+                    grant.ModifiedById = oid;
+                }
+            }
+
+            await _ctx.SaveChangesAsync(cancellationToken);
+
+            _mcpClientCache.InvalidateServer(id);
+
+            _logger.LogInformation("MCP server {McpServerId} deactivated by {UserId}", id, oid);
         }
 
-        /// <inheritdoc />
-        public List<McpDto> GetMcpServers()
+        /// <summary>
+        /// Throws when the name is already used by an active MCP server or an active
+        /// permission, so callers get a clear 400 instead of an opaque unique-index violation
+        /// at save time. Server and permission names share one uniqueness space because every
+        /// server auto-creates a same-named permission.
+        /// </summary>
+        private async Task EnsureNameIsAvailableAsync(string name, Guid? excludeServerId, CancellationToken cancellationToken)
         {
-            return [.. _mcpServerSettings.Select(s => new McpDto
+            var serverNameTaken = await _ctx.McpServers
+                .AnyAsync(s => s.Name == name && !s.DateDeactivated.HasValue
+                    && (excludeServerId == null || s.Id != excludeServerId), cancellationToken);
+
+            var permissionNameTaken = await _ctx.Permissions
+                .AnyAsync(p => p.Name == name && !p.DateDeactivated.HasValue
+                    && (excludeServerId == null || p.McpServerId != excludeServerId), cancellationToken);
+
+            if (serverNameTaken || permissionNameTaken)
             {
-                Name = s.Name
-            })];
+                throw new ValidationException(
+                [
+                    new ValidationFailure(nameof(McpServer.Name), $"The name '{name}' is already in use by an MCP server or permission.")
+                ]);
+            }
         }
     }
 }

@@ -68,6 +68,7 @@ namespace Enterprise.Gpt.Service
 
             var user = await _ctx.Users
                         .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                            .ThenInclude(p => p.Permission)
                         .FirstOrDefaultAsync(x => x.Id == oid && !x.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException($"User {oid} not found");
 
