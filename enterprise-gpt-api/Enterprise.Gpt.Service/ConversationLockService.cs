@@ -1,188 +1,179 @@
-﻿using System.Collections.Concurrent;
-
 namespace Enterprise.Gpt.Service
 {
-    public interface IConversationLockService
+    /// <summary>
+    /// Process-local implementation of <see cref="IConversationLockService"/> backed by a
+    /// reference-counted registry of per-conversation semaphores.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Entries are created on first use and removed the instant their last holder releases,
+    /// so the registry stays bounded by the number of <em>concurrently active</em> conversations
+    /// rather than by the number of conversations ever seen. Reference counting is used in place
+    /// of a background eviction sweep because a sweep cannot observe "no one is using this entry"
+    /// atomically with respect to acquisition: an evicted-and-disposed semaphore can be handed to
+    /// a caller that fetched it a moment earlier, after which the next caller creates a fresh
+    /// entry and two turns run against the same conversation — precisely the outcome this
+    /// service exists to prevent.
+    /// </para>
+    /// <para>
+    /// Registered as a singleton; see <see cref="IConversationLockService"/> for the scale-out caveat.
+    /// </para>
+    /// </remarks>
+    public sealed class ConversationLockService : IConversationLockService, IDisposable
     {
         /// <summary>
-        /// Checks whether a conversation is currently locked and busy.
+        /// A single conversation's semaphore together with the number of outstanding
+        /// holders and pending acquirers. <see cref="RefCount"/> is guarded by the owning
+        /// service's gate, never by the semaphore itself.
         /// </summary>
-        /// <param name="conversationId">The unique identifier of the conversation to check.</param>
-        /// <returns><c>true</c> if the conversation is currently locked; otherwise, <c>false</c>.</returns>
-        bool IsConversationBusy(Guid conversationId);
-
-        /// <summary>
-        /// Acquires an exclusive lock for the specified conversation, waiting indefinitely if necessary.
-        /// </summary>
-        /// <param name="conversationId">The unique identifier of the conversation to lock.</param>
-        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result is an <see cref="IDisposable"/> that releases the lock when disposed.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via the <paramref name="cancellationToken"/>.</exception>
-        Task<IDisposable> AcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Attempts to acquire an exclusive lock for the specified conversation without waiting.
-        /// </summary>
-        /// <param name="conversationId">The unique identifier of the conversation to lock.</param>
-        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation. The task result is an <see cref="IDisposable"/> that releases the lock when disposed, 
-        /// or <c>null</c> if the lock could not be acquired immediately.
-        /// </returns>
-        Task<IDisposable?> TryAcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default);
-    }
-
-    public class ConversationLockService : IConversationLockService, IDisposable
-    {
-        private class LockInfo
+        private sealed class LockEntry
         {
             /// <summary>
-            /// Gets the semaphore used to control access to the session.
+            /// Gets the binary semaphore that serialises turns for the conversation.
             /// </summary>
-            public SemaphoreSlim Semaphore { get; }
+            public SemaphoreSlim Semaphore { get; } = new(1, 1);
 
             /// <summary>
-            /// Gets or sets the last time this lock was accessed.
+            /// Gets or sets the number of callers currently holding or acquiring this entry.
             /// </summary>
-            public DateTime LastAccessed { get; set; }
-
-            /// <summary>
-            /// Initializes a new instance of the <see cref="LockInfo"/> class.
-            /// </summary>
-            public LockInfo()
-            {
-                Semaphore = new SemaphoreSlim(1, 1);
-                LastAccessed = DateTime.UtcNow;
-            }
+            public int RefCount { get; set; }
         }
 
         /// <summary>
-        /// Releases a conversation lock when disposed.
+        /// Releases a conversation lock and drops the caller's reference to its registry entry.
         /// </summary>
-        private class LockReleaser(ConversationLockService service, Guid conversationId, SemaphoreSlim semaphore) : IDisposable
+        private sealed class LockReleaser(ConversationLockService service, Guid conversationId, LockEntry entry) : IDisposable
         {
-            private bool _disposed;
+            private int _disposed;
 
             /// <summary>
-            /// Releases the semaphore and updates the last accessed time for the conversation.
+            /// Releases the semaphore and returns the entry to the registry. Safe to call more
+            /// than once and from more than one thread; only the first call has any effect.
             /// </summary>
+            /// <remarks>
+            /// The interlocked guard is load-bearing rather than defensive: a concurrent double
+            /// dispose would otherwise call <see cref="SemaphoreSlim.Release()"/> twice, raising
+            /// the count to two and admitting a second concurrent turn.
+            /// </remarks>
             public void Dispose()
             {
-                if (_disposed) return;
-                _disposed = true;
-                semaphore.Release();
-                service.UpdateLastAccessed(conversationId);
+                if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                {
+                    return;
+                }
+
+                entry.Semaphore.Release();
+                service.Return(conversationId, entry);
             }
         }
 
-        private readonly ConcurrentDictionary<Guid, LockInfo> _conversationLocks = new();
-        private readonly Timer _cleanupTimer;
-        private readonly TimeSpan _lockExpirationTime = TimeSpan.FromMinutes(10);
+        private readonly Dictionary<Guid, LockEntry> _locks = [];
+        private readonly Lock _gate = new();
         private bool _disposed;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ConversationLockService"/> class.
+        /// Gets the number of conversations currently holding a registry entry. Exposed for tests
+        /// so they can assert that the registry drains rather than leaks.
         /// </summary>
-        /// <remarks>
-        /// Starts a background timer that runs every 5 minutes to clean up stale locks.
-        /// </remarks>
-        public ConversationLockService()
+        internal int ActiveLockCount
         {
-            _cleanupTimer = new Timer(CleanupStaleLocksCallback, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
-        }
-
-        /// <inheritdoc />
-        public bool IsConversationBusy(Guid conversationId)
-        {
-            if (_conversationLocks.TryGetValue(conversationId, out var lockInfo))
+            get
             {
-                return lockInfo.Semaphore.CurrentCount == 0;
-            }
-            return false;
-        }
-
-        /// <inheritdoc />
-        public async Task<IDisposable> AcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default)
-        {
-            var lockInfo = GetOrCreateLockInfo(conversationId);
-            await lockInfo.Semaphore.WaitAsync(cancellationToken);
-            return new LockReleaser(this, conversationId, lockInfo.Semaphore);
-        }
-
-        /// <inheritdoc />
-        public async Task<IDisposable?> TryAcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default)
-        {
-            var lockInfo = GetOrCreateLockInfo(conversationId);
-            var acquired = await lockInfo.Semaphore.WaitAsync(0, cancellationToken);
-            return acquired ? new LockReleaser(this, conversationId, lockInfo.Semaphore) : null;
-        }
-
-        /// <summary>
-        /// Gets or creates lock information for the specified conversation.
-        /// </summary>
-        /// <param name="conversationId">The unique identifier of the conversation.</param>
-        /// <returns>The <see cref="LockInfo"/> associated with the conversation.</returns>
-        private LockInfo GetOrCreateLockInfo(Guid conversationId)
-        {
-            var lockInfo = _conversationLocks.GetOrAdd(conversationId, _ => new LockInfo());
-            lockInfo.LastAccessed = DateTime.UtcNow;
-            return lockInfo;
-        }
-
-        /// <summary>
-        /// Updates the last accessed time for the specified conversation.
-        /// </summary>
-        /// <param name="conversationId">The unique identifier of the conversation.</param>
-        private void UpdateLastAccessed(Guid conversationId)
-        {
-            if (_conversationLocks.TryGetValue(conversationId, out var lockInfo))
-            {
-                lockInfo.LastAccessed = DateTime.UtcNow;
-            }
-        }
-
-        /// <summary>
-        /// Callback method that removes stale locks that have not been accessed recently and are not currently held.
-        /// </summary>
-        /// <param name="state">Not used.</param>
-        private void CleanupStaleLocksCallback(object? state)
-        {
-            var now = DateTime.UtcNow;
-            var staleKeys = _conversationLocks
-                .Where(kvp => kvp.Value.Semaphore.CurrentCount > 0 && // Not currently locked
-                             now - kvp.Value.LastAccessed > _lockExpirationTime)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            foreach (var key in staleKeys)
-            {
-                if (_conversationLocks.TryRemove(key, out var lockInfo))
+                lock (_gate)
                 {
-                    lockInfo.Semaphore.Dispose();
+                    return _locks.Count;
                 }
             }
         }
 
+        /// <inheritdoc />
+        public async ValueTask<IDisposable?> TryAcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default)
+        {
+            var entry = Rent(conversationId);
+
+            var acquired = false;
+            try
+            {
+                acquired = await entry.Semaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Covers the not-acquired and cancelled paths alike; the successful path hands the
+                // reference on to the releaser, which returns it on disposal.
+                if (!acquired)
+                {
+                    Return(conversationId, entry);
+                }
+            }
+
+            return acquired ? new LockReleaser(this, conversationId, entry) : null;
+        }
+
         /// <summary>
-        /// Releases all resources used by the <see cref="ConversationLockService"/>.
+        /// Takes a reference to the conversation's registry entry, creating it if necessary.
+        /// </summary>
+        /// <param name="conversationId">The unique identifier of the conversation.</param>
+        /// <returns>The entry, with its reference count already incremented on the caller's behalf.</returns>
+        /// <exception cref="ObjectDisposedException">Thrown when the service has already been disposed.</exception>
+        private LockEntry Rent(Guid conversationId)
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+
+                if (!_locks.TryGetValue(conversationId, out var entry))
+                {
+                    entry = new LockEntry();
+                    _locks[conversationId] = entry;
+                }
+
+                entry.RefCount++;
+
+                return entry;
+            }
+        }
+
+        /// <summary>
+        /// Drops one reference to the conversation's registry entry, removing and disposing it
+        /// once the last reference is gone.
+        /// </summary>
+        /// <param name="conversationId">The unique identifier of the conversation.</param>
+        /// <param name="entry">The entry the caller holds a reference to.</param>
+        private void Return(Guid conversationId, LockEntry entry)
+        {
+            lock (_gate)
+            {
+                if (--entry.RefCount > 0)
+                {
+                    return;
+                }
+
+                _locks.Remove(conversationId);
+            }
+
+            // Reaching zero under the gate means no other caller holds or can obtain this entry:
+            // a concurrent Rent for the same id would have had to take the gate first, and would
+            // have found the entry still present and incremented it above zero.
+            entry.Semaphore.Dispose();
+        }
+
+        /// <summary>
+        /// Marks the service as disposed and abandons the registry.
         /// </summary>
         /// <remarks>
-        /// Disposes the cleanup timer and all semaphores, then clears the lock dictionary.
+        /// Every entry in the registry has at least one reference by construction, so there is
+        /// nothing here to dispose: entries are left for their own <see cref="LockReleaser"/> to
+        /// release and reclaim. Disposing a held semaphore here would fault the release path of a
+        /// request still unwinding during host shutdown, and a <see cref="SemaphoreSlim"/> with no
+        /// allocated wait handle holds no unmanaged resource worth reclaiming at process exit.
         /// </remarks>
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
-
-            _cleanupTimer?.Dispose();
-
-            foreach (var lockInfo in _conversationLocks.Values)
+            lock (_gate)
             {
-                lockInfo.Semaphore.Dispose();
+                _disposed = true;
+                _locks.Clear();
             }
-            _conversationLocks.Clear();
-
-            GC.SuppressFinalize(this);
         }
     }
 }

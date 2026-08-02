@@ -9,6 +9,7 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
+using Microsoft.Azure.Cosmos;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
@@ -37,8 +38,6 @@ namespace Enterprise.Gpt.Service
         IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
 
         Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, CancellationToken cancellationToken);
-
-        bool IsConversationBusy(Guid id);
     }
 
     public class ConversationService(ILogger<ConversationService> logger,
@@ -93,7 +92,9 @@ namespace Enterprise.Gpt.Service
 
             var userId = _tokenService.GetOid();
 
-            var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
+            // The Cosmos write is inside the transaction so a failure there rolls the relational row
+            // back rather than leaving a conversation the user can open but never stream.
+            await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
             var date = DateTimeOffset.UtcNow;
             var newChat = new Conversation()
             {
@@ -123,9 +124,8 @@ namespace Enterprise.Gpt.Service
                     DateCreated = date,
                 }]
             };
-            await _ctx.SaveChangesAsync(cancellationToken);
 
-            await _cosmosService.CreateItemAsync(newChat, userId.ToString(), cancellationToken);
+            await _cosmosService.CreateItemAsync(newCosmosChat, userId.ToString(), cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -147,12 +147,13 @@ namespace Enterprise.Gpt.Service
                 return;
             }
 
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-            if (cosmosConversation != null)
-            {
-                cosmosConversation.DateDeactivated = date;
-                await _cosmosService.UpdateItemAsync(cosmosConversation, cosmosConversation.Id.ToString(), userId.ToString(), cancellationToken);
-            }
+            // Patched rather than read-modify-replaced so a turn streaming concurrently cannot
+            // have its appended messages reverted by this write. Returns false when the document
+            // is absent, which is tolerated for the same reason the previous null check was.
+            await _cosmosService.PatchItemAsync(id.ToString(), userId.ToString(),
+            [
+                PatchOperation.Set("/dateDeactivated", date),
+            ], cancellationToken);
 
             await _ctx.ConversationDocumentChunks
                 .Where(c => c.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
@@ -194,16 +195,16 @@ namespace Enterprise.Gpt.Service
                 return;
             }
 
-            // Deactivate all chunks for documents in these conversations
-            var conversationIdsInClause = string.Join(", ", conversationIds.Select(id => $"'{id}'"));
-            var cosmosQuery =
-                $"SELECT * FROM c WHERE c.id IN ({conversationIdsInClause}) " +
-                $"AND c.UserId = '{userId}' AND IS_NULL(c.DateDeactivated)";
-            var chats = await _cosmosService.GetItemsAsync<CosmosConversation>(cosmosQuery);
-            foreach (var chat in chats)
+            // Patched by identifier rather than queried and replaced. Besides removing the
+            // read-modify-write window, this drops a cross-partition query whose predicates
+            // (c.UserId, c.DateDeactivated) did not match the documents' camelCase property names
+            // and so never selected anything. SQL has already narrowed the ids to this user's.
+            foreach (var conversationId in conversationIds)
             {
-                chat.DateDeactivated = date;
-                await _cosmosService.UpdateItemAsync(chat, chat.Id.ToString(), userId.ToString(), cancellationToken);
+                await _cosmosService.PatchItemAsync(conversationId.ToString(), userId.ToString(),
+                [
+                    PatchOperation.Set("/dateDeactivated", date),
+                ], cancellationToken);
             }
 
             await _ctx.ConversationDocumentChunks
@@ -268,11 +269,19 @@ namespace Enterprise.Gpt.Service
             }
 
             var name = response.Messages.Last().Text?.Trim() ?? string.Empty;
+            var date = DateTimeOffset.UtcNow;
             conversation.Name = name;
-            conversation.DateModified = DateTimeOffset.UtcNow;
+            conversation.DateModified = date;
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            await _cosmosService.UpdateItemAsync(conversation, conversation.Id.ToString(), conversation.UserId.ToString(), cancellationToken);
+            // Patch the two fields that changed. Passing the SQL entity to a full-document replace
+            // here overwrote the Cosmos document with the relational shape and destroyed the
+            // transcript — and this runs from inside a live stream, on the conversation's first turn.
+            await _cosmosService.PatchItemAsync(conversation.Id.ToString(), conversation.UserId.ToString(),
+            [
+                PatchOperation.Set("/name", name),
+                PatchOperation.Set("/dateModified", date),
+            ], cancellationToken);
         }
 
         public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default)
@@ -331,142 +340,195 @@ namespace Enterprise.Gpt.Service
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(request.Id.ToString(), userId.ToString(), cancellationToken);
-            if (cosmosConversation != null)
-            {
-                cosmosConversation.Name = request.Name;
-                cosmosConversation.DateModified = date;
-                await _cosmosService.UpdateItemAsync(cosmosConversation, cosmosConversation.Id.ToString(), userId.ToString(), cancellationToken);
-            }
+            await _cosmosService.PatchItemAsync(request.Id.ToString(), userId.ToString(),
+            [
+                PatchOperation.Set("/name", request.Name),
+                PatchOperation.Set("/dateModified", date),
+            ], cancellationToken);
 
             return await GetConversationAsync(request.Id, cancellationToken);
         }
 
         /// <inheritdoc />
-        public bool IsConversationBusy(Guid id) => _conversationLockService.IsConversationBusy(id);
-
-        /// <inheritdoc />
-        public async IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        /// <remarks>
+        /// Deliberately not an iterator method: in an <c>async IAsyncEnumerable</c> the whole body
+        /// is deferred to the first <c>MoveNextAsync</c>, so the argument checks and validation
+        /// would not run until the caller enumerated. Lock acquisition stays inside the iterator
+        /// on purpose — hoisting it here would strand the lock for a caller that took the
+        /// enumerable and never enumerated it — but it still happens before the first fragment is
+        /// produced, which is what lets the controller answer contention with a clean 409.
+        /// </remarks>
+        public IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request, nameof(request));
+            ArgumentNullException.ThrowIfNull(request);
 
             _createChatStreamActionValidator.ValidateAndThrow(request);
 
-            var lockReleaser = await _conversationLockService.TryAcquireLockAsync(id, cancellationToken);
-            if (lockReleaser == null)
-            {
-                _logger.LogWarning("Conversation {ConversationId} is already being processed.", id);
-                throw new InvalidOperationException($"Conversation {id} is currently being processed. Please wait for the current request to complete.");
-            }
-
             var userId = _tokenService.GetOid();
-            using (lockReleaser)
+
+            return StreamConversationCoreAsync(id, request, userId, cancellationToken);
+        }
+
+        /// <summary>
+        /// Runs a single chat turn under the conversation lock: loads history, streams the model
+        /// response to the caller, then persists the turn.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="request">The validated stream request.</param>
+        /// <param name="userId">The object identifier of the calling user, resolved by the caller.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>An asynchronous sequence of response fragments as the model produces them.</returns>
+        /// <exception cref="ConversationBusyException">Thrown when another turn is already in flight for this conversation.</exception>
+        /// <exception cref="NotFoundException">Thrown when the conversation does not exist for this user.</exception>
+        private async IAsyncEnumerable<string?> StreamConversationCoreAsync(Guid id, CreateConversationStreamActionDto request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            // using var, rather than a separate acquire and using block: it makes acquisition and
+            // release inseparable, so no statement can be introduced between them that could throw
+            // and strand the lock. A stranded conversation lock is unrecoverable short of a restart.
+            using var lockReleaser = await _conversationLockService.TryAcquireLockAsync(id, cancellationToken)
+                ?? throw LogAndCreateBusy(id);
+
+            var conversation = await _ctx.Conversations
+                            .AsNoTracking()
+                            .SingleOrDefaultAsync(x => x.Id == id &&
+                                x.UserId == userId &&
+                                !x.DateDeactivated.HasValue, cancellationToken);
+            if (conversation == null)
             {
-                var conversation = await _ctx.Conversations
-                                .AsNoTracking()
-                                .SingleOrDefaultAsync(x => x.Id == id &&
-                                    x.UserId == userId &&
-                                    !x.DateDeactivated.HasValue, cancellationToken);
-                if (conversation == null)
-                {
-                    _logger.LogError("Conversation with id {Id} not found.", id);
-                    throw new NotFoundException($"Conversation with id {id} not found.");
-                }
-
-                var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-                if (cosmosConversation == null)
-                {
-                    _logger.LogError("Conversation {Id} not found.", id);
-                    throw new NotFoundException($"Conversation {id} not found.");
-                }
-
-                if (cosmosConversation.Messages.Count == 1)
-                {
-                    await UpdateConversationNameAsync(id, request, cancellationToken);
-                }
-
-                var conversations = new List<ChatMessage>(cosmosConversation.Messages.Select(x => new ChatMessage(MappingService.MapToChatRole(x.Role), x.Content)))
-                {
-                    new(ChatRole.User, request.Prompt)
-                };
-
-                var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
-                var chatClient = _azureAIFoundry;
-                var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, cancellationToken).ConfigureAwait(false);
-                StringBuilder sb = new();
-                long totalInputTokens = 0, totalOutputTokens = 0;
-
-                // The lease set (null when no MCPs are selected) must stay alive for the whole
-                // stream: the attached tools invoke through the leased clients. await using
-                // releases the leases on completion, fault, or client disconnect alike.
-                await using (toolLeases)
-                {
-                    await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        if (!string.IsNullOrEmpty(message.Text))
-                        {
-                            sb.Append(message.Text);
-                        }
-
-                        if (message.Contents != null &&
-                            message.Contents.Count > 0)
-                        {
-                            // Check for usage content to track token consumption during streaming
-                            var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
-                            if (usageContent != null)
-                            {
-                                totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
-                                totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
-                            }
-                        }
-                        yield return message.Text;
-                    }
-                }
-
-                var date = DateTimeOffset.UtcNow;
-
-                await _ctx.Conversations
-                    .Where(s => s.Id == id)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(x => x.InputTokens, x => x.InputTokens + totalInputTokens)
-                        .SetProperty(x => x.OutputTokens, x => x.OutputTokens + totalOutputTokens)
-                        .SetProperty(x => x.DateModified, date),
-                        cancellationToken);
-
-                cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-                if (cosmosConversation != null)
-                {
-                    cosmosConversation.DateModified = date;
-                    cosmosConversation.TotalTokens = cosmosConversation.TotalTokens + totalInputTokens + totalOutputTokens;
-                    cosmosConversation.Messages.Add(new()
-                    {
-                        Id = Guid.NewGuid(),
-                        Content = request.Prompt,
-                        DateCreated = date,
-                        Model = model.Name,
-                        Role = ChatRoles.User,
-                        Tokens = 0,
-                    });
-                    cosmosConversation.Messages.Add(new()
-                    {
-                        Id = Guid.NewGuid(),
-                        Content = sb.ToString(),
-                        DateCreated = date,
-                        Model = model.Name,
-                        Role = ChatRoles.Assistant,
-                        Usage = new CosmosConversationUsage
-                        {
-                            InputTokens = totalInputTokens,
-                            OutputTokens = totalOutputTokens
-                        }
-                    });
-                }
-
-
-                await _cosmosService.UpdateItemAsync(cosmosConversation, id.ToString(), userId.ToString(), cancellationToken);
+                _logger.LogError("Conversation with id {Id} not found.", id);
+                throw new NotFoundException($"Conversation with id {id} not found.");
             }
+
+            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
+            if (cosmosConversation == null)
+            {
+                _logger.LogError("Conversation {Id} not found.", id);
+                throw new NotFoundException($"Conversation {id} not found.");
+            }
+
+            // Only the seeded system prompt so far, i.e. this is the conversation's first turn:
+            // name it from the opening prompt before answering it.
+            if (cosmosConversation.Messages.Count == 1)
+            {
+                await UpdateConversationNameAsync(id, request, cancellationToken);
+            }
+
+            // Conversations created before the transcript was persisted correctly were written
+            // from the relational entity, which has no messages array at all. Every correctly
+            // created conversation carries at least the system prompt, so an empty transcript here
+            // means the property is absent rather than empty — and Cosmos rejects an append whose
+            // parent path does not exist, so such a document has to be seeded instead.
+            var transcriptExists = cosmosConversation.Messages.Count > 0;
+
+            var conversations = new List<ChatMessage>(cosmosConversation.Messages.Select(x => new ChatMessage(MappingService.MapToChatRole(x.Role), x.Content)))
+            {
+                new(ChatRole.User, request.Prompt)
+            };
+
+            var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
+            var chatClient = _azureAIFoundry;
+            var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, cancellationToken).ConfigureAwait(false);
+            StringBuilder sb = new();
+            long totalInputTokens = 0, totalOutputTokens = 0;
+
+            // The lease set (null when no MCPs are selected) must stay alive for the whole
+            // stream: the attached tools invoke through the leased clients. await using
+            // releases the leases on completion, fault, or client disconnect alike.
+            await using (toolLeases)
+            {
+                await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (!string.IsNullOrEmpty(message.Text))
+                    {
+                        sb.Append(message.Text);
+                    }
+
+                    if (message.Contents != null &&
+                        message.Contents.Count > 0)
+                    {
+                        // Check for usage content to track token consumption during streaming
+                        var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
+                        if (usageContent != null)
+                        {
+                            totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
+                            totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
+                        }
+                    }
+                    yield return message.Text;
+                }
+            }
+
+            var date = DateTimeOffset.UtcNow;
+
+            await _ctx.Conversations
+                .Where(s => s.Id == id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.InputTokens, x => x.InputTokens + totalInputTokens)
+                    .SetProperty(x => x.OutputTokens, x => x.OutputTokens + totalOutputTokens)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            var userMessage = new CosmosConversationMessage
+            {
+                Id = Guid.NewGuid(),
+                Content = request.Prompt,
+                DateCreated = date,
+                Model = model.Name,
+                Role = ChatRoles.User,
+                Tokens = 0,
+            };
+            var assistantMessage = new CosmosConversationMessage
+            {
+                Id = Guid.NewGuid(),
+                Content = sb.ToString(),
+                DateCreated = date,
+                Model = model.Name,
+                Role = ChatRoles.Assistant,
+                Usage = new CosmosConversationUsage
+                {
+                    InputTokens = totalInputTokens,
+                    OutputTokens = totalOutputTokens
+                }
+            };
+
+            // Appended server-side rather than re-read, mutated and replaced. A full-document
+            // replace would silently revert anything written since the read at the top of this
+            // method — a rename or a soft delete landing mid-stream — and would rewrite the entire
+            // transcript on every turn, which grows the request toward the 2 MB item ceiling.
+            // Operations apply in order, so seeding the array first leaves the second append valid.
+            var persisted = await _cosmosService.PatchItemAsync(id.ToString(), userId.ToString(),
+            [
+                transcriptExists
+                    ? PatchOperation.Add("/messages/-", userMessage)
+                    : PatchOperation.Set<List<CosmosConversationMessage>>("/messages", [userMessage]),
+                PatchOperation.Add("/messages/-", assistantMessage),
+                PatchOperation.Increment("/messageCount", 2),
+                PatchOperation.Increment("/totalTokens", totalInputTokens + totalOutputTokens),
+                PatchOperation.Set("/dateModified", date),
+            ], cancellationToken);
+
+            if (!persisted)
+            {
+                // The token counters have already been committed to SQL, so failing silently here
+                // would bill the turn and lose it. Nothing can be returned to the caller at this
+                // point — the answer has been streamed — so this has to be caught in the logs.
+                _logger.LogError("Conversation {Id} document is missing; the completed turn was not persisted.", id);
+            }
+        }
+
+        /// <summary>
+        /// Logs the contention and builds the exception to throw for a conversation that already
+        /// has a turn in flight.
+        /// </summary>
+        /// <param name="id">The unique identifier of the contended conversation.</param>
+        /// <returns>The exception to throw.</returns>
+        private ConversationBusyException LogAndCreateBusy(Guid id)
+        {
+            _logger.LogWarning("Conversation {ConversationId} is already being processed.", id);
+
+            return new ConversationBusyException($"Conversation {id} is currently being processed. Please wait for the current request to complete.");
         }
 
         /// <inheritdoc />

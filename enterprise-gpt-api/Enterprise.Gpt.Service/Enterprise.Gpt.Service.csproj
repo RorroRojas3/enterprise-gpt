@@ -41,6 +41,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ConversationLockService.ActiveLockCount is exposed to the unit tests so they can assert
+         that the lock registry drains rather than leaks entries. -->
+    <InternalsVisibleTo Include="Enterprise.Gpt.Unit.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Files\conversation-history.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
