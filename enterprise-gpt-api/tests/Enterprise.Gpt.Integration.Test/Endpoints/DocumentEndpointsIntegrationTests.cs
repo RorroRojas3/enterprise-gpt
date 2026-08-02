@@ -1,0 +1,413 @@
+using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text;
+using Xunit;
+
+namespace Enterprise.Gpt.Integration.Test.Endpoints;
+
+[Collection(IntegrationTestCollection.Name)]
+[Trait("Category", "Integration")]
+public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fixture) : IAsyncLifetime
+{
+    private static readonly TimeSpan _jobTimeout = TimeSpan.FromSeconds(30);
+
+    private readonly IntegrationTestFixture _fixture = fixture;
+
+    /// <inheritdoc />
+    public async ValueTask InitializeAsync()
+    {
+        await _fixture.ResetConversationsAndDocumentsAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    #region Helpers
+    private static MultipartFormDataContent Upload(string fileName, byte[] content, string contentType = "application/octet-stream")
+    {
+        var fileContent = new ByteArrayContent(content);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+
+        return new MultipartFormDataContent { { fileContent, "file", fileName } };
+    }
+
+    private static MultipartFormDataContent TextUpload(string fileName = "notes.txt", int sentences = 60)
+    {
+        var builder = new StringBuilder();
+        for (var i = 1; i <= sentences; i++)
+        {
+            builder.Append($"Sentence {i} describes an entirely unremarkable and deliberately verbose subject. ");
+        }
+
+        return Upload(fileName, Encoding.UTF8.GetBytes(builder.ToString()), "text/plain");
+    }
+
+    private static async Task<ErrorDto> ReadErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatusCode)
+    {
+        Assert.Equal(expectedStatusCode, response.StatusCode);
+
+        var error = await response.Content.ReadFromJsonAsync<ErrorDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(error);
+        Assert.Equal(expectedStatusCode, error.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(error.TraceId));
+        return error;
+    }
+
+    /// <summary>
+    /// Polls the status endpoint until the job reaches a terminal state, mirroring what the client does.
+    /// </summary>
+    private static async Task<JobStatusDto> WaitForTerminalStateAsync(HttpClient client, string jobId)
+    {
+        var deadline = DateTimeOffset.UtcNow + _jobTimeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var response = await client.GetAsync($"api/documents/upload-status/{jobId}", TestContext.Current.CancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var status = await response.Content.ReadFromJsonAsync<JobStatusDto>(TestContext.Current.CancellationToken);
+            Assert.NotNull(status);
+
+            if (status.State is "Succeeded" or "Failed")
+            {
+                return status;
+            }
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"Job {jobId} did not reach a terminal state within {_jobTimeout}.");
+    }
+
+    private static async Task<JobDto> PostUploadAsync(HttpClient client, Guid conversationId, MultipartFormDataContent content)
+    {
+        var response = await client.PostAsync($"api/documents/conversations/{conversationId}", content, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        var job = await response.Content.ReadFromJsonAsync<JobDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(job);
+        return job;
+    }
+    #endregion
+
+    #region Authorization
+    [Fact]
+    public async Task Upload_Anonymous_ReturnsUnauthorized()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.PostAsync($"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Upload_UserWithoutTheUploadFilePermission_ReturnsForbidden()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.RevokePermissionAsync(TestUsers.RegularUserId, PermissionIds.UploadFile, TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync($"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
+        Assert.Contains("Upload File", Assert.Single(error.Errors));
+    }
+
+    [Fact]
+    public async Task GetFileExtensions_Anonymous_ReturnsUnauthorized()
+    {
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.GetAsync("api/documents/file-extensions", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+    #endregion
+
+    #region Validation
+    [Fact]
+    public async Task Upload_UnsupportedExtension_ReturnsBadRequestImmediately()
+    {
+        // Rejected on the request rather than as a job that fails minutes later.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{conversationId}",
+            Upload("data.xlsx", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
+            TestContext.Current.CancellationToken);
+
+        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        Assert.Contains(error.Errors, e => e.Contains("not supported"));
+    }
+
+    [Fact]
+    public async Task Upload_ContentNotMatchingTheExtension_ReturnsBadRequest()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{conversationId}",
+            Upload("report.pdf", Encoding.UTF8.GetBytes("definitely not a pdf")),
+            TestContext.Current.CancellationToken);
+
+        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        Assert.Contains(error.Errors, e => e.Contains("do not match its extension"));
+    }
+
+    [Fact]
+    public async Task Upload_EmptyFile_ReturnsBadRequest()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{conversationId}",
+            Upload("notes.txt", []),
+            TestContext.Current.CancellationToken);
+
+        await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Upload_FileLargerThanTheConfiguredLimit_ReturnsBadRequest()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        // The test host configures Documents:MaxFileSizeBytes as 64 KB.
+        var oversize = Encoding.UTF8.GetBytes(new string('a', 100_000));
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{conversationId}",
+            Upload("notes.txt", oversize, "text/plain"),
+            TestContext.Current.CancellationToken);
+
+        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        Assert.Contains(error.Errors, e => e.Contains("maximum upload size"));
+    }
+
+    [Fact]
+    public async Task Upload_ConversationBelongingToAnotherUser_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Upload_UnknownConversation_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{Guid.NewGuid()}", TextUpload(), TestContext.Current.CancellationToken);
+
+        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Upload_DeactivatedConversation_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+    }
+    #endregion
+
+    #region Ingestion
+    [Fact]
+    public async Task Upload_ValidTextFile_RunsTheWholePipelineAndPersistsChunks()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.Equal(nameof(JobStatus.Processed), status.Status);
+        Assert.Equal(100, status.Progress);
+        Assert.NotNull(status.DocumentId);
+        Assert.Null(status.ErrorMessage);
+
+        var document = await _fixture.FindDocumentAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.NotNull(document);
+        Assert.Equal("notes.txt", document.Name);
+        Assert.Equal(".txt", document.Extension);
+        Assert.Equal(conversationId, document.ConversationId);
+        Assert.Equal(TestUsers.RegularUserId, document.UserId);
+
+        var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.True(chunks.Count > 1);
+        Assert.Equal([.. Enumerable.Range(0, chunks.Count)], chunks.Select(c => c.Index));
+        Assert.All(chunks, chunk => Assert.True(chunk.TokenCount is > 0 and <= 64));
+        Assert.All(chunks, chunk => Assert.False(string.IsNullOrWhiteSpace(chunk.Text)));
+        // A plain text file has no page or slide structure to attribute a chunk to.
+        Assert.All(chunks, chunk => Assert.Null(chunk.SourceNumber));
+    }
+
+    [Fact]
+    public async Task Upload_ValidTextFile_StoresTheBlobUnderTheDocumentId()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.Contains(
+            $"{TestUsers.RegularUserId}/{conversationId}/{status.DocumentId}.txt",
+            _fixture.Factory.BlobStorage.UploadedPaths);
+    }
+
+    [Fact]
+    public async Task Upload_SameFileNameTwice_BothSucceedWithoutColliding()
+    {
+        // A name-keyed blob path made the second upload collide with the first and fail the job.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var first = await WaitForTerminalStateAsync(client, (await PostUploadAsync(client, conversationId, TextUpload())).Id);
+        var second = await WaitForTerminalStateAsync(client, (await PostUploadAsync(client, conversationId, TextUpload())).Id);
+
+        Assert.Equal("Succeeded", first.State);
+        Assert.Equal("Succeeded", second.State);
+        Assert.NotEqual(first.DocumentId, second.DocumentId);
+    }
+
+    [Fact]
+    public async Task Upload_MarkdownFile_IsIngested()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload("guide.md"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.NotNull(status.DocumentId);
+
+        var document = await _fixture.FindDocumentAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.NotNull(document);
+        Assert.Equal(".md", document.Extension);
+    }
+
+    [Fact]
+    public async Task Upload_PowerPointFile_IsIngestedWithSlideNumbers()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var content = PresentationFixture.Create(slideCount: 4);
+
+        var job = await PostUploadAsync(client, conversationId,
+            Upload("deck.pptx", content, "application/vnd.openxmlformats-officedocument.presentationml.presentation"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.NotNull(status.DocumentId);
+
+        var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.NotEmpty(chunks);
+        Assert.All(chunks, chunk => Assert.True(chunk.SourceNumber is >= 1 and <= 4));
+    }
+
+    [Fact]
+    public async Task Upload_FileWithoutReadableText_FailsTheJobWithAnExplanation()
+    {
+        // Whitespace passes the binary-content check but yields nothing to index.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId,
+            Upload("blank.txt", Encoding.UTF8.GetBytes("   \n\n\t  "), "text/plain"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Failed", status.State);
+        Assert.Equal(nameof(JobStatus.Failed), status.Status);
+        Assert.NotNull(status.ErrorMessage);
+        Assert.Contains("No readable text", status.ErrorMessage);
+    }
+    #endregion
+
+    #region Status
+    [Fact]
+    public async Task GetJobStatus_UnknownJob_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync($"api/documents/upload-status/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetJobStatus_JobQueuedByAnotherUser_ReturnsNotFound()
+    {
+        // The snapshot carries the created document id and the failure detail, so it must not be readable
+        // by anyone but the uploader.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var owner = _fixture.Factory.CreateUserClient();
+        using var otherUser = _fixture.Factory.CreateAdminClient();
+
+        var job = await PostUploadAsync(owner, conversationId, TextUpload());
+
+        var response = await otherUser.GetAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        // The owner still sees it, so the 404 is authorization rather than the job having gone missing.
+        var ownerResponse = await owner.GetAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetJobStatus_QueuedJob_ExposesTheLegacyFieldsOlderClientsRelyOn()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal(job.Id, status.Id);
+        Assert.Contains(status.State, new[] { "Enqueued", "Processing", "Succeeded", "Failed" });
+        Assert.False(string.IsNullOrWhiteSpace(status.Status));
+        Assert.InRange(status.Progress, 0, 100);
+        Assert.NotEqual(default, status.UpdatedAt);
+    }
+    #endregion
+
+    #region Supported formats
+    [Fact]
+    public async Task GetFileExtensions_ReturnsEveryFormatTheExtractorsCanRead()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var extensions = await client.GetFromJsonAsync<List<string>>("api/documents/file-extensions", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(extensions);
+        Assert.Equal<string[]>([".doc", ".docx", ".md", ".pdf", ".pptx", ".txt"], [.. extensions.Order()]);
+    }
+    #endregion
+}

@@ -10,7 +10,7 @@ namespace Enterprise.Gpt.Entity
 
         public Conversation Conversation { get; set; } = null!;
 
-        public List<ConversationDocumentPage> Pages { get; set; } = [];
+        public List<ConversationDocumentChunk> Chunks { get; set; } = [];
     }
 
     public static class ChatDocumentExtensions

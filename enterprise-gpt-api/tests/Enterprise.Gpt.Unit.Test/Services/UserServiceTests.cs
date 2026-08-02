@@ -119,6 +119,19 @@ public sealed class UserServiceTests : IDisposable
             .FirstOrDefaultAsync(x => x.Id == id, TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// Deactivates the seeded built-in default permission so a test can exercise the
+    /// "no default permissions exist" case that the seed would otherwise make unreachable.
+    /// </summary>
+    private async Task DeactivateSeededDefaultsAsync()
+    {
+        using var ctx = _fixture.CreateContext();
+        await ctx.Permissions
+            .Where(p => p.IsDefault)
+            .ExecuteUpdateAsync(p => p.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow),
+                TestContext.Current.CancellationToken);
+    }
+
     [Fact]
     public async Task GetOrCreateCurrentUserAsync_UserAlreadyExists_ReturnsExistingWithoutCallingGraph()
     {
@@ -131,8 +144,63 @@ public sealed class UserServiceTests : IDisposable
 
         Assert.False(created);
         Assert.Equal(oid, user.Id);
-        Assert.Equal(permission.Id, Assert.Single(user.Permissions).Id);
+        Assert.Contains(user.Permissions, p => p.Id == permission.Id);
         await _graphService.DidNotReceiveWithAnyArgs().GetUserAsync(default, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task GetOrCreateCurrentUserAsync_ExistingUserMissingADefaultPermission_GrantsItOnSignIn()
+    {
+        // IsDefault is only consulted at provisioning time, so a default added after a user's first sign-in
+        // would never reach them without this reconciliation.
+        var oid = Guid.NewGuid();
+        await AddUserAsync(oid);
+        _tokenService.GetOid().Returns(oid);
+
+        var (user, created) = await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(created);
+        Assert.Contains(user.Permissions, p => p.Id == KnownIds.UploadFilePermissionId);
+
+        var persisted = await FindUserAsync(oid);
+        Assert.NotNull(persisted);
+        Assert.Single(persisted.UserPermissions, x => x.PermissionId == KnownIds.UploadFilePermissionId && !x.DateDeactivated.HasValue);
+    }
+
+    [Fact]
+    public async Task GetOrCreateCurrentUserAsync_ExistingUserAlreadyHoldingEveryDefault_DoesNotDuplicateGrants()
+    {
+        var oid = Guid.NewGuid();
+        await AddUserAsync(oid, permissionIds: KnownIds.UploadFilePermissionId);
+        _tokenService.GetOid().Returns(oid);
+
+        await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
+
+        var persisted = await FindUserAsync(oid);
+        Assert.NotNull(persisted);
+        Assert.Single(persisted.UserPermissions, x => x.PermissionId == KnownIds.UploadFilePermissionId);
+    }
+
+    [Fact]
+    public async Task GetOrCreateCurrentUserAsync_ExistingUserWithARevokedDefault_DoesNotReinstateIt()
+    {
+        // A revoked grant is an administrator's decision; reconciliation must not undo it.
+        var oid = Guid.NewGuid();
+        await AddUserAsync(oid, permissionIds: KnownIds.UploadFilePermissionId);
+
+        using (var ctx = _fixture.CreateContext())
+        {
+            await ctx.UserPermissions
+                .Where(x => x.UserId == oid && x.PermissionId == KnownIds.UploadFilePermissionId)
+                .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, DateTimeOffset.UtcNow),
+                    TestContext.Current.CancellationToken);
+        }
+
+        _tokenService.GetOid().Returns(oid);
+
+        var (user, _) = await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(user.Permissions, p => p.Id == KnownIds.UploadFilePermissionId);
     }
 
     [Fact]
@@ -150,18 +218,25 @@ public sealed class UserServiceTests : IDisposable
         Assert.Equal(oid, user.Id);
         Assert.Equal("Ada", user.FirstName);
         Assert.Equal("ada.lovelace@example.com", user.Email);
-        var granted = Assert.Single(user.Permissions);
-        Assert.Equal(defaultPermission.Id, granted.Id);
-        Assert.True(granted.IsDefault);
+
+        // The seeded built-in Upload File permission is itself a default, so it is granted alongside the
+        // one this test adds; the specialized permission must not be.
+        Assert.Equal(
+            new[] { defaultPermission.Id, KnownIds.UploadFilePermissionId }.Order(),
+            user.Permissions.Select(p => p.Id).Order());
+        Assert.All(user.Permissions, p => Assert.True(p.IsDefault));
 
         var persisted = await FindUserAsync(oid);
         Assert.NotNull(persisted);
-        Assert.Equal(defaultPermission.Id, Assert.Single(persisted.UserPermissions).PermissionId);
+        Assert.Equal(
+            new[] { defaultPermission.Id, KnownIds.UploadFilePermissionId }.Order(),
+            persisted.UserPermissions.Select(p => p.PermissionId).Order());
     }
 
     [Fact]
     public async Task GetOrCreateCurrentUserAsync_NewUserAndNoDefaultPermissions_ProvisionsWithNoGrants()
     {
+        await DeactivateSeededDefaultsAsync();
         var oid = Guid.NewGuid();
         _tokenService.GetOid().Returns(oid);
         _graphService.GetUserAsync(oid, Arg.Any<CancellationToken>()).Returns(CreateGraphUser(oid));
@@ -175,6 +250,7 @@ public sealed class UserServiceTests : IDisposable
     [Fact]
     public async Task GetOrCreateCurrentUserAsync_DeactivatedDefaultPermission_IsNotGranted()
     {
+        await DeactivateSeededDefaultsAsync();
         await AddPermissionAsync("stale-default", isDefault: true, dateDeactivated: DateTimeOffset.UtcNow);
         var oid = Guid.NewGuid();
         _tokenService.GetOid().Returns(oid);
@@ -282,7 +358,7 @@ public sealed class UserServiceTests : IDisposable
         var (user, created) = await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
 
         Assert.False(created);
-        Assert.Equal(assigned.Id, Assert.Single(user.Permissions).Id);
+        Assert.Contains(user.Permissions, p => p.Id == assigned.Id);
     }
 
     [Fact]
@@ -304,13 +380,14 @@ public sealed class UserServiceTests : IDisposable
         Assert.Equal(targetOid, user.Id);
         Assert.Equal("Grace", user.FirstName);
         Assert.Equal(request.Email, user.Email);
+        // The seeded built-in Upload File permission is a default, so it joins the requested one.
         Assert.Equal(
-            new[] { requested.Id, defaultPermission.Id }.OrderBy(x => x),
-            user.Permissions.Select(p => p.Id).OrderBy(x => x));
+            new[] { requested.Id, defaultPermission.Id, KnownIds.UploadFilePermissionId }.Order(),
+            user.Permissions.Select(p => p.Id).Order());
 
         var persisted = await FindUserAsync(targetOid);
         Assert.NotNull(persisted);
-        Assert.Equal(2, persisted.UserPermissions.Count);
+        Assert.Equal(3, persisted.UserPermissions.Count);
         Assert.All(persisted.UserPermissions, x => Assert.Equal(KnownIds.SeedUserId, x.CreatedById));
     }
 
@@ -329,7 +406,7 @@ public sealed class UserServiceTests : IDisposable
 
         var user = await _service.CreateUserAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(permission.Id, Assert.Single(user.Permissions).Id);
+        Assert.Single(user.Permissions, p => p.Id == permission.Id);
     }
 
     [Fact]
@@ -367,7 +444,7 @@ public sealed class UserServiceTests : IDisposable
         var persisted = await FindUserAsync(targetOid);
         Assert.NotNull(persisted);
         Assert.Null(persisted.DateDeactivated);
-        Assert.Equal(permission.Id, Assert.Single(persisted.UserPermissions).PermissionId);
+        Assert.Single(persisted.UserPermissions, x => x.PermissionId == permission.Id);
     }
 
     [Fact]
@@ -388,7 +465,7 @@ public sealed class UserServiceTests : IDisposable
 
         var user = await _service.CreateUserAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(permission.Id, Assert.Single(user.Permissions).Id);
+        Assert.Single(user.Permissions, p => p.Id == permission.Id);
 
         var persisted = await FindUserAsync(targetOid);
         Assert.NotNull(persisted);

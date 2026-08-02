@@ -18,7 +18,7 @@ using Enterprise.Gpt.Service.Prompts;
 
 namespace Enterprise.Gpt.Service
 {
-    public interface IConversationService 
+    public interface IConversationService
     {
         Task<ConversationDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -31,7 +31,7 @@ namespace Enterprise.Gpt.Service
         Task UpdateConversationNameAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken = default);
 
         Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default);
-        
+
         Task<ConversationDto> UpdateConversationAsync(UpdateConversationActionDto request, CancellationToken cancellationToken = default);
 
         IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
@@ -55,7 +55,7 @@ namespace Enterprise.Gpt.Service
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
-        private readonly IChatClient _azureAIFoundry = azureAIFoundry;    
+        private readonly IChatClient _azureAIFoundry = azureAIFoundry;
         private readonly IModelService _modelService = modelService;
         private readonly IMcpToolProvider _mcpToolProvider = mcpToolProvider;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
@@ -102,7 +102,7 @@ namespace Enterprise.Gpt.Service
                 DateCreated = date,
                 DateModified = date
             };
-            await _ctx.AddAsync(newChat, cancellationToken);
+            _ctx.Add(newChat);
             await _ctx.SaveChangesAsync(cancellationToken);
 
             var prompt = ConversationPrompts.BuildDefaultSystemPrompt();
@@ -154,9 +154,9 @@ namespace Enterprise.Gpt.Service
                 await _cosmosService.UpdateItemAsync(cosmosConversation, cosmosConversation.Id.ToString(), userId.ToString(), cancellationToken);
             }
 
-            await _ctx.ConversationDocumentPages
-                .Where(p => p.ConversationDocument.ConversationId == id && !p.DateDeactivated.HasValue)
-                .ExecuteUpdateAsync(p => p
+            await _ctx.ConversationDocumentChunks
+                .Where(c => c.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
@@ -194,7 +194,7 @@ namespace Enterprise.Gpt.Service
                 return;
             }
 
-            // Deactivate all pages for documents in these conversations
+            // Deactivate all chunks for documents in these conversations
             var conversationIdsInClause = string.Join(", ", conversationIds.Select(id => $"'{id}'"));
             var cosmosQuery =
                 $"SELECT * FROM c WHERE c.id IN ({conversationIdsInClause}) " +
@@ -206,9 +206,9 @@ namespace Enterprise.Gpt.Service
                 await _cosmosService.UpdateItemAsync(chat, chat.Id.ToString(), userId.ToString(), cancellationToken);
             }
 
-            await _ctx.ConversationDocumentPages
-                .Where(p => conversationIds.Contains(p.ConversationDocument.ConversationId) && !p.DateDeactivated.HasValue)
-                .ExecuteUpdateAsync(p => p
+            await _ctx.ConversationDocumentChunks
+                .Where(c => conversationIds.Contains(c.ConversationDocument.ConversationId) && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
@@ -364,8 +364,8 @@ namespace Enterprise.Gpt.Service
             {
                 var conversation = await _ctx.Conversations
                                 .AsNoTracking()
-                                .SingleOrDefaultAsync(x => x.Id == id && 
-                                    x.UserId == userId && 
+                                .SingleOrDefaultAsync(x => x.Id == id &&
+                                    x.UserId == userId &&
                                     !x.DateDeactivated.HasValue, cancellationToken);
                 if (conversation == null)
                 {
@@ -426,7 +426,7 @@ namespace Enterprise.Gpt.Service
                 }
 
                 var date = DateTimeOffset.UtcNow;
-                
+
                 await _ctx.Conversations
                     .Where(s => s.Id == id)
                     .ExecuteUpdateAsync(s => s
@@ -438,7 +438,7 @@ namespace Enterprise.Gpt.Service
                 cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
                 if (cosmosConversation != null)
                 {
-                    cosmosConversation.DateModified = date;   
+                    cosmosConversation.DateModified = date;
                     cosmosConversation.TotalTokens = cosmosConversation.TotalTokens + totalInputTokens + totalOutputTokens;
                     cosmosConversation.Messages.Add(new()
                     {
@@ -463,7 +463,7 @@ namespace Enterprise.Gpt.Service
                         }
                     });
                 }
-                
+
 
                 await _cosmosService.UpdateItemAsync(cosmosConversation, id.ToString(), userId.ToString(), cancellationToken);
             }
@@ -489,10 +489,10 @@ namespace Enterprise.Gpt.Service
                             })
                             .ToList() ?? [];
 
-            return new() 
-            { 
-                Id = id, 
-                Name = cosmosConversation.Name, 
+            return new()
+            {
+                Id = id,
+                Name = cosmosConversation.Name,
                 DateCreated = cosmosConversation.DateCreated,
                 DateModified = cosmosConversation.DateModified,
                 Messages = messages

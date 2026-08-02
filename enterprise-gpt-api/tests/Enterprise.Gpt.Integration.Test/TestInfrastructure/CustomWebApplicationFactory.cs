@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Enterprise.Gpt.Service;
@@ -25,6 +26,17 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     /// register the directory users their scenario needs and reset it for isolation.
     /// </summary>
     public FakeGraphService GraphService { get; } = new();
+
+    /// <summary>
+    /// Gets the in-memory blob store backing <see cref="IBlobStorageService"/> for the whole run, so
+    /// upload tests can assert on the stored path without an Azure Storage account.
+    /// </summary>
+    public FakeBlobStorageService BlobStorage { get; } = new();
+
+    /// <summary>
+    /// Gets the stub embedding generator, so upload tests can assert that chunks are embedded in batches.
+    /// </summary>
+    public FakeEmbeddingGenerator EmbeddingGenerator { get; } = new();
 
     /// <inheritdoc />
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -54,8 +66,17 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["CosmosDb:DatabaseId"] = "test-db",
             ["CosmosDb:ContainerId"] = "test-container",
             ["AzureStorage:ConnectionString"] = "UseDevelopmentStorage=true",
+            ["AzureStorage:DocumentsContainer"] = "test-documents",
             ["DocumentIntelligence:Endpoint"] = "https://localhost/",
             ["DocumentIntelligence:ApiKey"] = "test-key",
+            ["DocumentIntelligence:OCRModelId"] = "prebuilt-read",
+            // Small enough that an oversize upload can be arranged without allocating 50 MB.
+            ["Documents:MaxFileSizeBytes"] = "65536",
+            ["Documents:MaxQueuedBytes"] = "1048576",
+            // Small so a modest fixture still spans several chunks and several embedding batches.
+            ["Documents:EmbeddingBatchSize"] = "2",
+            ["Documents:Chunking:MaxTokens"] = "64",
+            ["Documents:Chunking:OverlapTokens"] = "16",
             ["CorsOrigins:0"] = "https://localhost"
         };
         foreach (var (key, value) in settings)
@@ -72,10 +93,18 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
                 options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
-            // The only application service that is substituted: user provisioning calls Microsoft
-            // Graph, which would be a live network request against the fake credentials above.
+            // Only the services that would otherwise make live network calls against the fake
+            // credentials above are substituted: Microsoft Graph for user provisioning, and blob
+            // storage plus the embedding generator for document ingestion. Extraction, chunking and
+            // persistence all run for real.
             services.RemoveAll<IGraphService>();
             services.AddSingleton<IGraphService>(GraphService);
+
+            services.RemoveAll<IBlobStorageService>();
+            services.AddSingleton<IBlobStorageService>(BlobStorage);
+
+            services.RemoveAll<IEmbeddingGenerator<string, Embedding<float>>>();
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(EmbeddingGenerator);
         });
     }
 

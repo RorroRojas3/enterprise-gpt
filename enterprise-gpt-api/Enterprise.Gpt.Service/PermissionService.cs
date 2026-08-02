@@ -298,16 +298,27 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <summary>
-        /// Throws when the permission is the built-in Administrator or is managed by an MCP
-        /// server; those rows follow their own lifecycles and must not be edited directly.
+        /// Throws when the permission is one of the built-ins or is managed by an MCP server;
+        /// those rows follow their own lifecycles and must not be edited directly.
         /// </summary>
         private static void EnsurePermissionIsCustom(Permission permission)
         {
+            // Both built-ins are referenced by fixed id from code — Administrator by AdminEndpointFilter
+            // and Upload File by DocumentEndpoints — so renaming or deleting either would silently break
+            // the endpoints that depend on them.
             if (permission.Id == PermissionIds.Administrator)
             {
                 throw new ValidationException(
                 [
                     new ValidationFailure(nameof(Permission.Id), "The built-in Administrator permission cannot be modified.")
+                ]);
+            }
+
+            if (permission.Id == PermissionIds.UploadFile)
+            {
+                throw new ValidationException(
+                [
+                    new ValidationFailure(nameof(Permission.Id), "The built-in Upload File permission cannot be modified.")
                 ]);
             }
 

@@ -1,5 +1,6 @@
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.User;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
@@ -120,7 +121,10 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         Assert.NotNull(user);
         Assert.Equal(TestUsers.AdminUserId, user.Id);
         Assert.Equal("Admin Tester", user.FullName);
-        Assert.Equal(KnownIds.AdministratorPermissionId, Assert.Single(user.Permissions).Id);
+        Assert.Contains(user.Permissions, p => p.Id == KnownIds.AdministratorPermissionId);
+        // Signing in reconciles the seeded Upload File default, which existing users never received at
+        // provisioning time.
+        Assert.Contains(user.Permissions, p => p.Id == PermissionIds.UploadFile);
     }
 
     [Fact]
@@ -142,13 +146,18 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         Assert.Equal(oid, user.Id);
         Assert.Equal("Ada", user.FirstName);
         Assert.Equal("ada.lovelace@example.com", user.Email);
-        var granted = Assert.Single(user.Permissions);
-        Assert.Equal(defaultPermissionId, granted.Id);
-        Assert.True(granted.IsDefault);
+        // The seeded built-in Upload File permission is itself a default, so it joins the one this test
+        // adds; the specialized permission must not.
+        Assert.Equal(
+            new[] { defaultPermissionId, PermissionIds.UploadFile }.Order(),
+            user.Permissions.Select(p => p.Id).Order());
+        Assert.All(user.Permissions, p => Assert.True(p.IsDefault));
 
         var persisted = await _fixture.FindUserAsync(oid, TestContext.Current.CancellationToken);
         Assert.NotNull(persisted);
-        Assert.Equal(defaultPermissionId, Assert.Single(persisted.UserPermissions).PermissionId);
+        Assert.Equal(
+            new[] { defaultPermissionId, PermissionIds.UploadFile }.Order(),
+            persisted.UserPermissions.Select(p => p.PermissionId).Order());
     }
 
     [Fact]
@@ -234,7 +243,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var user = await response.Content.ReadFromJsonAsync<UserDto>(TestContext.Current.CancellationToken);
         Assert.NotNull(user);
         Assert.Equal(oid, user.Id);
-        Assert.Equal(permissionId, Assert.Single(user.Permissions).Id);
+        Assert.Contains(user.Permissions, p => p.Id == permissionId);
     }
 
     [Fact]
@@ -261,8 +270,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         Assert.Equal(oid, created.Id);
         Assert.Equal("Grace Hopper", created.FullName);
         Assert.Equal(
-            new[] { permissionId, defaultPermissionId }.OrderBy(x => x),
-            created.Permissions.Select(p => p.Id).OrderBy(x => x));
+            new[] { permissionId, defaultPermissionId, PermissionIds.UploadFile }.Order(),
+            created.Permissions.Select(p => p.Id).Order());
 
         var persisted = await _fixture.FindUserAsync(oid, TestContext.Current.CancellationToken);
         Assert.NotNull(persisted);

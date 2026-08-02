@@ -27,4 +27,11 @@ public static class KnownIds
     /// The built-in Administrator permission seeded by <c>PermissionConfiguration</c>.
     /// </summary>
     public static readonly Guid AdministratorPermissionId = PermissionIds.Administrator;
+
+    /// <summary>
+    /// The built-in Upload File permission seeded by <c>PermissionConfiguration</c>. It is seeded with
+    /// <c>IsDefault</c> set, so every provisioning path grants it and tests asserting on exact permission
+    /// sets must account for it.
+    /// </summary>
+    public static readonly Guid UploadFilePermissionId = PermissionIds.UploadFile;
 }
