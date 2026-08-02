@@ -15,7 +15,7 @@ namespace Enterprise.Gpt.Repository
 
         public DbSet<ConversationDocument> ConversationDocuments { get; set; }
 
-        public DbSet<ConversationDocumentPage> ConversationDocumentPages { get; set; }
+        public DbSet<ConversationDocumentChunk> ConversationDocumentChunks { get; set; }
 
         public DbSet<User> Users { get; set; }
 
@@ -34,6 +34,8 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new McpServerConfiguration());
             modelBuilder.ApplyConfiguration(new ProviderConfiguration());
             modelBuilder.ApplyConfiguration(new ModelConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationDocumentConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationDocumentChunkConfiguration());
 
             // Configure global delete behavior
             foreach (var relationship in modelBuilder.Model.GetEntityTypes()

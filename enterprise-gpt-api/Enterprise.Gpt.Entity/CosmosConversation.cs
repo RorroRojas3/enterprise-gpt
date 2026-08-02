@@ -20,8 +20,10 @@ namespace Enterprise.Gpt.Entity
         [JsonPropertyName("messageCount")]
         public long MessageCount => Messages.Count;
 
+        // Deliberately the Cosmos projection, not the SQL ConversationDocument entity: that entity carries
+        // a Chunks collection whose SqlVector<float> embeddings would be serialized into the transcript.
         [JsonPropertyName("documents")]
-        public List<ConversationDocument> Documents { get; set; } = [];
+        public List<CosmosConversationDocument> Documents { get; set; } = [];
 
         [JsonPropertyName("messages")]
         public List<CosmosConversationMessage> Messages { get; set; } = [];
@@ -39,7 +41,7 @@ namespace Enterprise.Gpt.Entity
     public class CosmosConversationDocument
     {
         [JsonPropertyName("id")]
-        public Guid Id { get; set; } 
+        public Guid Id { get; set; }
 
         [JsonPropertyName("name")]
         public string Name { get; set; } = null!;
@@ -78,7 +80,7 @@ namespace Enterprise.Gpt.Entity
         public CosmosConversationUsage? Usage { get; set; }
     }
 
-    public class CosmosConversationUsage 
+    public class CosmosConversationUsage
     {
         [JsonPropertyName("inputTokens")]
         public long InputTokens { get; set; }

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Enterprise.Gpt.Dto.Enums;
@@ -30,24 +30,77 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         }
 
         /// <inheritdoc />
-        public void Register(string jobId)
+        public void Register(string jobId, Guid userId)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
-            _snapshots[jobId] = new JobStatusSnapshot(jobId, JobStatus.Queued, 0, DateTimeOffset.UtcNow);
+            _snapshots[jobId] = new JobStatusSnapshot(jobId, userId, JobStatus.Queued, 0, DateTimeOffset.UtcNow, "Waiting to start");
         }
 
         /// <inheritdoc />
-        public void Update(string jobId, JobStatus status, int progress)
+        public void Report(string jobId, JobStatus status, int progress, string? message = null, int? completedUnits = null, int? totalUnits = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
-            _snapshots[jobId] = new JobStatusSnapshot(jobId, status, progress, DateTimeOffset.UtcNow);
+
+            var clamped = Math.Clamp(progress, 0, 100);
+
+            // AddOrUpdate rather than an indexer assignment: the percentage is derived from the value
+            // already stored, and reports for one job can race (the extraction heartbeat fires on a timer
+            // while the pipeline advances stages).
+            _snapshots.AddOrUpdate(
+                jobId,
+                // A report for a job that was never registered has no owner to attribute it to. Guid.Empty
+                // matches no user, so the snapshot exists for diagnostics but is not readable by anyone.
+                _ => new JobStatusSnapshot(jobId, Guid.Empty, status, clamped, DateTimeOffset.UtcNow, message, completedUnits, totalUnits),
+                (_, existing) => IsTerminal(existing.Status)
+                    // A completed or failed job never moves again. Reviving it would also make it
+                    // permanently un-evictable, since eviction only considers terminal snapshots.
+                    ? existing
+                    : existing with
+                    {
+                        Status = status,
+                        Progress = Math.Max(existing.Progress, clamped),
+                        LastUpdated = DateTimeOffset.UtcNow,
+                        Message = message ?? existing.Message,
+                        CompletedUnits = completedUnits ?? existing.CompletedUnits,
+                        TotalUnits = totalUnits ?? existing.TotalUnits,
+                    });
+        }
+
+        /// <inheritdoc />
+        public void Complete(string jobId, Guid documentId, string message)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
+
+            _snapshots.AddOrUpdate(
+                jobId,
+                _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatus.Processed, 100, DateTimeOffset.UtcNow, message, DocumentId: documentId),
+                (_, existing) => existing with
+                {
+                    Status = JobStatus.Processed,
+                    Progress = 100,
+                    LastUpdated = DateTimeOffset.UtcNow,
+                    Message = message,
+                    DocumentId = documentId,
+                });
         }
 
         /// <inheritdoc />
         public void Fail(string jobId, string errorMessage)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
-            _snapshots[jobId] = new JobStatusSnapshot(jobId, JobStatus.Failed, 100, DateTimeOffset.UtcNow, errorMessage);
+
+            // Progress is deliberately left where it stopped rather than jumped to 100: a failure is not a
+            // completion, and where it stopped tells the user which stage broke.
+            _snapshots.AddOrUpdate(
+                jobId,
+                _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatus.Failed, 0, DateTimeOffset.UtcNow, errorMessage, ErrorMessage: errorMessage),
+                (_, existing) => existing with
+                {
+                    Status = JobStatus.Failed,
+                    LastUpdated = DateTimeOffset.UtcNow,
+                    Message = errorMessage,
+                    ErrorMessage = errorMessage,
+                });
         }
 
         /// <inheritdoc />

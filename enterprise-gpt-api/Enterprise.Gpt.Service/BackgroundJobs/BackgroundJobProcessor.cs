@@ -25,7 +25,7 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         /// </summary>
         /// <param name="queue">The work-item source.</param>
         /// <param name="store">The snapshot store updated on failure.</param>
-        /// <param name="scopeFactory">Used to create a fresh DI scope per job (required for scoped services such as <c>AIChatDbContext</c>).</param>
+        /// <param name="scopeFactory">Used to create a fresh DI scope per job (required for scoped services such as <c>EnterpriseGptDbContext</c>).</param>
         /// <param name="configuration">Reads <c>BackgroundJobs:MaxConcurrent</c>; values <c>&lt;= 0</c> resolve to <c>Environment.ProcessorCount * 2</c>.</param>
         /// <param name="logger">Diagnostic logger.</param>
         public BackgroundJobProcessor(
@@ -103,13 +103,28 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Background job {JobId} failed", item.JobId);
-                _store.Fail(item.JobId, ex.Message);
+                _store.Fail(item.JobId, DescribeFailure(ex));
             }
             finally
             {
                 _gate.Release();
             }
         }
+
+        /// <summary>
+        /// Produces a message safe to hand back to the caller.
+        /// </summary>
+        /// <remarks>
+        /// Validation messages are written for the user and say something actionable, so they are passed
+        /// through. Everything else is replaced: exception messages from data access and Azure SDK clients
+        /// routinely embed connection strings, endpoints and request URLs with credentials in them, and the
+        /// job status endpoint is not an appropriate place for any of that. The full exception is logged.
+        /// </remarks>
+        private static string DescribeFailure(Exception exception) => exception switch
+        {
+            FluentValidation.ValidationException validation => string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)),
+            _ => "Processing failed because of an unexpected error. Please try again, or contact support if the problem persists.",
+        };
 
         /// <inheritdoc />
         public override void Dispose()

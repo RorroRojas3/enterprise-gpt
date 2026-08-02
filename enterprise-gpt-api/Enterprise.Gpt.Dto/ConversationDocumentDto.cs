@@ -5,7 +5,7 @@ namespace Enterprise.Gpt.Dto
     public class ConversationDocumentDto
     {
         [JsonPropertyName("id")]
-        public Guid Id { get; set; } 
+        public Guid Id { get; set; }
 
         [JsonPropertyName("conversationId")]
         public Guid ConversationId { get; set; }

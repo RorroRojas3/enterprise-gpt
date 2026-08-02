@@ -25,6 +25,13 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .Build();
 
     /// <summary>
+    /// The permissions seeded by <c>PermissionConfiguration</c>. Resets must leave these in place: the
+    /// schema is created once for the whole run, so deleting a seeded row would remove it permanently and
+    /// every later test would run against a database missing a built-in permission.
+    /// </summary>
+    private static readonly Guid[] _builtInPermissionIds = [PermissionIds.Administrator, PermissionIds.UploadFile];
+
+    /// <summary>
     /// Gets the shared application factory. Populated once the container has started.
     /// </summary>
     public CustomWebApplicationFactory Factory { get; private set; } = null!;
@@ -154,8 +161,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .Where(x => x.UserId != TestUsers.AdminUserId || x.PermissionId != PermissionIds.Administrator)
             .ExecuteDeleteAsync(cancellationToken);
         await ctx.Permissions
-            .Where(x => x.Id != PermissionIds.Administrator)
+            .Where(x => !_builtInPermissionIds.Contains(x.Id))
             .ExecuteDeleteAsync(cancellationToken);
+        await ctx.Permissions
+            .Where(x => _builtInPermissionIds.Contains(x.Id))
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         await ctx.McpServers
             .ExecuteDeleteAsync(cancellationToken);
     }
@@ -338,8 +348,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
         await ctx.UserPermissions.ExecuteDeleteAsync(cancellationToken);
         await ctx.Permissions
-            .Where(x => x.Id != PermissionIds.Administrator)
+            .Where(x => !_builtInPermissionIds.Contains(x.Id))
             .ExecuteDeleteAsync(cancellationToken);
+        await ctx.Permissions
+            .Where(x => _builtInPermissionIds.Contains(x.Id))
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         // The seeded system user owns the Administrator permission's audit columns, so it can
         // never be deleted; the two test identities are restored rather than recreated.
         await ctx.Users
@@ -465,6 +478,139 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .AsNoTracking()
             .Include(u => u.UserPermissions)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes every conversation and, with them, every uploaded document and chunk. Called per test for
+    /// isolation. Deletes run in FK order (chunks → documents → conversations).
+    /// </summary>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    public async Task ResetConversationsAndDocumentsAsync(CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        await ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocuments.ExecuteDeleteAsync(cancellationToken);
+        await ctx.Conversations.ExecuteDeleteAsync(cancellationToken);
+
+        // Other test classes' resets clear grants wholesale, and the collection runs serially, so the
+        // upload grants are restored here rather than assumed to have survived.
+        await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
+
+        Factory.BlobStorage.Reset();
+    }
+
+    private static async Task EnsureUploadFileGrantsAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
+    {
+        Guid[] userIds = [TestUsers.AdminUserId, TestUsers.RegularUserId];
+
+        var granted = await ctx.UserPermissions
+            .AsNoTracking()
+            .Where(x => x.PermissionId == PermissionIds.UploadFile && userIds.Contains(x.UserId))
+            .Select(x => x.UserId)
+            .ToListAsync(cancellationToken);
+
+        var date = DateTimeOffset.UtcNow;
+        foreach (var userId in userIds.Except(granted))
+        {
+            ctx.UserPermissions.Add(new UserPermission
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                PermissionId = PermissionIds.UploadFile,
+                DateCreated = date,
+                DateModified = date,
+                CreatedById = TestUsers.AdminUserId,
+                ModifiedById = TestUsers.AdminUserId
+            });
+        }
+
+        await ctx.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Inserts a conversation directly into the database, bypassing the API, for arranging upload
+    /// scenarios.
+    /// </summary>
+    /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="deactivated">Whether the conversation is soft-deleted.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted conversation.</returns>
+    public async Task<Guid> AddConversationAsync(
+        Guid? userId = null, bool deactivated = false, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var conversation = new Conversation
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId ?? TestUsers.RegularUserId,
+            Name = "Integration Conversation",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated ? date : null
+        };
+
+        ctx.Conversations.Add(conversation);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return conversation.Id;
+    }
+
+    /// <summary>
+    /// Reads the persisted chunks of a document, ordered by their position in the document.
+    /// </summary>
+    /// <param name="documentId">The document id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked chunk entities.</returns>
+    public async Task<List<ConversationDocumentChunk>> FindDocumentChunksAsync(
+        Guid documentId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ConversationDocumentChunks
+            .AsNoTracking()
+            .Where(x => x.ConversationDocumentId == documentId)
+            .OrderBy(x => x.Index)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a document by id.
+    /// </summary>
+    /// <param name="documentId">The document id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
+    public async Task<ConversationDocument?> FindDocumentAsync(
+        Guid documentId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ConversationDocuments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Revokes a user's grant of a permission, for arranging authorization-failure scenarios against
+    /// permissions that are granted by default.
+    /// </summary>
+    /// <param name="userId">The user whose grant is revoked.</param>
+    /// <param name="permissionId">The permission to revoke.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    public async Task RevokePermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        await ctx.UserPermissions
+            .Where(x => x.UserId == userId && x.PermissionId == permissionId)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     private static async Task SeedTestUsersAsync(EnterpriseGptDbContext ctx)

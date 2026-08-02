@@ -44,6 +44,20 @@ namespace Enterprise.Gpt.Repository.Configurations
                     DateModified = date,
                     CreatedById = userId,
                     ModifiedById = userId
+                },
+                // IsDefault is what grants this to every user at provisioning time; UserService also
+                // reconciles missing default grants on sign-in, so users created before this row existed
+                // pick it up too.
+                new Permission
+                {
+                    Id = PermissionIds.UploadFile,
+                    Name = "Upload File",
+                    Description = "Upload documents into a conversation.",
+                    IsDefault = true,
+                    DateCreated = date,
+                    DateModified = date,
+                    CreatedById = userId,
+                    ModifiedById = userId
                 }
             );
         }

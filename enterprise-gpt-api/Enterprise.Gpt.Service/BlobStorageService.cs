@@ -51,7 +51,7 @@ namespace Enterprise.Gpt.Service
         Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, Azure.Storage.Sas.BlobSasPermissions permissions);
     }
 
-    public class BlobStorageService(ILogger<BlobStorageService> logger, 
+    public class BlobStorageService(ILogger<BlobStorageService> logger,
         BlobServiceClient blobServiceClient) : IBlobStorageService
     {
         private readonly ILogger<BlobStorageService> _logger = logger;
@@ -60,7 +60,7 @@ namespace Enterprise.Gpt.Service
         /// <inheritdoc />
         public async Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Downloading blob '{Blob}' from container '{Container}'", blob, container); 
+            _logger.LogInformation("Downloading blob '{Blob}' from container '{Container}'", blob, container);
 
             var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
             var downloadInfo = await blobClient.DownloadAsync(cancellationToken);

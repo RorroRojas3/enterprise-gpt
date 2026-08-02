@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Enterprise.Gpt.Dto;
@@ -110,6 +111,11 @@ namespace Enterprise.Gpt.Service
             var existing = await FindCurrentUserAsync(oid, cancellationToken);
             if (existing is not null)
             {
+                if (await ReconcileDefaultPermissionsAsync(oid, cancellationToken))
+                {
+                    existing = await FindCurrentUserAsync(oid, cancellationToken) ?? existing;
+                }
+
                 return (existing, Created: false);
             }
 
@@ -403,6 +409,97 @@ namespace Enterprise.Gpt.Service
             return isDeactivated
                 ? throw new ForbiddenException("This account has been deactivated.")
                 : null;
+        }
+
+        /// <summary>
+        /// Grants any default permission the caller is missing, and reports whether anything changed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>IsDefault</c> is only consulted when a user is provisioned, so a default permission added
+        /// after a user's first sign-in would never reach them. Reconciling here — on an endpoint the client
+        /// already calls at every bootstrap — makes the grant model self-healing without a startup sweep or
+        /// a one-off data migration, and covers both new built-ins and defaults an administrator creates.
+        /// </para>
+        /// <para>
+        /// Only permissions that were <em>never</em> granted are filled in. The check deliberately ignores
+        /// whether an existing grant is still active: a revoked grant leaves a soft-deleted row behind, and
+        /// treating that as missing would silently reinstate a permission an administrator took away.
+        /// </para>
+        /// <para>
+        /// The cost is one extra query per bootstrap, which is a deliberate trade against the alternative
+        /// of users silently lacking permissions they should hold. It is an <c>EXISTS</c> over the indexed
+        /// grant foreign key and returns nothing in the steady state.
+        /// </para>
+        /// </remarks>
+        private async Task<bool> ReconcileDefaultPermissionsAsync(Guid oid, CancellationToken cancellationToken)
+        {
+            var missing = await _ctx.Permissions
+                .Where(p => p.IsDefault
+                    && !p.DateDeactivated.HasValue
+                    && !p.UserPermissions.Any(up => up.UserId == oid))
+                .Select(p => p.Id)
+                .ToListAsync(cancellationToken);
+
+            if (missing.Count == 0)
+            {
+                return false;
+            }
+
+            var date = DateTimeOffset.UtcNow;
+            foreach (var permissionId in missing)
+            {
+                // Built without the Permission navigation because there is no tracked User to hang it off
+                // here; the caller re-reads the profile afterwards, so nothing depends on the graph.
+                _ctx.Add(new UserPermission
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = oid,
+                    PermissionId = permissionId,
+                    DateCreated = date,
+                    CreatedById = oid,
+                    DateModified = date,
+                    ModifiedById = oid
+                });
+            }
+
+            try
+            {
+                await _ctx.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                // Two bootstraps racing can both see the same grant missing; the filtered unique index on
+                // (UserId, PermissionId) fails the loser. The winner inserted the row, which is the outcome
+                // either caller wanted, so this is logged and swallowed rather than surfaced as a 500.
+                // Narrowed to the duplicate-key case on purpose: a timeout, a deadlock or a broken foreign
+                // key are real faults and must not be reported as a benign race.
+                foreach (var entry in _ctx.ChangeTracker.Entries<UserPermission>().Where(e => e.State == EntityState.Added).ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                _logger.LogInformation(ex, "Default permissions for user {UserId} were reconciled concurrently by another request", oid);
+                return true;
+            }
+
+            _logger.LogInformation("Granted {GrantCount} missing default permission(s) to existing user {UserId}", missing.Count, oid);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Indicates whether a save failed because it violated a unique index, as opposed to any other
+        /// database fault.
+        /// </summary>
+        /// <remarks>
+        /// SQL Server reports 2601 for a unique index and 2627 for a unique constraint. Deliberately scoped
+        /// to that provider rather than pulling a second one into this project: anything else is treated as
+        /// a real fault and rethrown, which is the safe direction to be wrong in.
+        /// </remarks>
+        private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+        {
+            return exception.InnerException is SqlException { Number: 2601 or 2627 };
         }
 
         /// <summary>

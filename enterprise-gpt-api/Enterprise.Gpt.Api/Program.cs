@@ -16,6 +16,9 @@ using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Chunking;
+using Enterprise.Gpt.Service.Converters;
+using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Settings;
 using Scalar.AspNetCore;
 using System.ClientModel;
@@ -55,7 +58,7 @@ builder.Services.AddDbContext<EnterpriseGptDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sqlOptions =>
     {
         sqlOptions.UseCompatibilityLevel(170);
-    })); 
+    }));
 
 // OpenAPI document generation (served by Scalar in development).
 builder.Services.AddOpenApi();
@@ -99,6 +102,15 @@ IEmbeddingGenerator<string, Embedding<float>> ollamaGenerator =
         .GetEmbeddingClient(embeddingModel)
         .AsIEmbeddingGenerator();
 builder.Services.AddEmbeddingGenerator(ollamaGenerator);
+
+// Document ingestion options, validated at startup so a bad chunk size or size limit fails the app
+// rather than every upload.
+builder.Services.AddOptions<DocumentOptions>()
+    .Bind(builder.Configuration.GetSection(DocumentOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options => options.Chunking.OverlapTokens < options.Chunking.MaxTokens,
+        "Documents:Chunking:OverlapTokens must be smaller than Documents:Chunking:MaxTokens.")
+    .ValidateOnStart();
 
 // Background job pipeline (replaces Hangfire). BackgroundJobProcessor consumes IBackgroundJobQueue,
 // caps concurrent jobs via SemaphoreSlim, and updates IJobStatusStore for client polling.
@@ -182,6 +194,17 @@ builder.Services.AddSingleton<IGraphService, GraphService>();
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
 builder.Services.AddSingleton<IDocumentIntelligenceService, DocumentIntelligenceService>();
 
+// Document text extraction. Registering an IDocumentTextExtractor is all it takes to support a new
+// format: the factory, the upload validator and the file-extensions endpoint all read the set of
+// accepted formats from these registrations. The chunker is a singleton because constructing its
+// tokenizer loads a large vocabulary.
+builder.Services.AddSingleton<ILegacyWordConverter, DocSharpLegacyWordConverter>();
+builder.Services.AddSingleton<IDocumentTextExtractor, DocumentIntelligenceTextExtractor>();
+builder.Services.AddSingleton<IDocumentTextExtractor, PresentationTextExtractor>();
+builder.Services.AddSingleton<IDocumentTextExtractor, PlainTextExtractor>();
+builder.Services.AddSingleton<IDocumentTextExtractorFactory, DocumentTextExtractorFactory>();
+builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
+
 // Keep other services as Scoped
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
@@ -243,6 +266,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapDocumentEndpoints();
 
 app.MapModelEndpoints();
 

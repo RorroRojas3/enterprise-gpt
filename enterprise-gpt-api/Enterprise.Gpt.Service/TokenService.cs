@@ -22,7 +22,7 @@ namespace Enterprise.Gpt.Service
         Guid GetOid();
     }
 
-    public class TokenService(ILogger<TokenService> logger, 
+    public class TokenService(ILogger<TokenService> logger,
         IHttpContextAccessor httpContextAccessor) : ITokenService
     {
         private readonly ILogger<TokenService> _logger = logger;
@@ -30,8 +30,8 @@ namespace Enterprise.Gpt.Service
         private const string _oidClaimType = "http://schemas.microsoft.com/identity/claims/objectidentifier";
 
         /// <inheritdoc />
-        public Guid GetOid() 
-        {  
+        public Guid GetOid()
+        {
             var user = _httpContextAccessor.HttpContext?.User;
             if (user == null)
             {
