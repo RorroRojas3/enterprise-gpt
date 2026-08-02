@@ -48,7 +48,39 @@ namespace Enterprise.Gpt.Service
         /// <param name="partitionKey">The partition key value of the item.</param>
         /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
         /// <returns>A task that represents the asynchronous operation. The task result contains the updated item.</returns>
+        /// <remarks>
+        /// This replaces the whole document unconditionally, so anything written between the read
+        /// that produced <paramref name="item"/> and this call is silently lost. Prefer
+        /// <see cref="PatchItemAsync"/> whenever only some fields change — it needs no prior read
+        /// and therefore has no lost-update window.
+        /// </remarks>
         Task<T> UpdateItemAsync<T>(T item, string id, string partitionKey, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Applies a set of partial-update operations to an item without reading and rewriting it.
+        /// </summary>
+        /// <param name="id">The unique identifier of the item to patch.</param>
+        /// <param name="partitionKey">The partition key value of the item.</param>
+        /// <param name="operations">The patch operations to apply. Cosmos DB permits at most 10 per call.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>
+        /// A task that represents the asynchronous operation. The task result is <see langword="true"/>
+        /// if the item was patched, or <see langword="false"/> if no item with that identifier exists.
+        /// </returns>
+        /// <remarks>
+        /// Patching is the only way to mutate a document without a read-modify-write window.
+        /// Use it for appends and counters so concurrent writers cannot lose each other's updates.
+        /// </remarks>
+        /// <example>
+        /// <code language="csharp">
+        /// await cosmosService.PatchItemAsync(id, userId,
+        /// [
+        ///     PatchOperation.Add("/messages/-", message),
+        ///     PatchOperation.Increment("/totalTokens", tokens),
+        /// ], cancellationToken);
+        /// </code>
+        /// </example>
+        Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken);
 
         /// <summary>
         /// Deletes an item from the Cosmos DB container.
@@ -69,6 +101,11 @@ namespace Enterprise.Gpt.Service
     /// </remarks>
     public class AzureCosmosService : IAzureCosmosService
     {
+        /// <summary>
+        /// The maximum number of operations Cosmos DB accepts in a single patch request.
+        /// </summary>
+        private const int MaxPatchOperations = 10;
+
         private readonly CosmosClient _cosmosClient;
         private readonly Container _container;
 
@@ -138,6 +175,28 @@ namespace Enterprise.Gpt.Service
         {
             var response = await _container.ReplaceItemAsync(item, id, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
             return response;
+        }
+
+        /// <inheritdoc/>
+        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during the patch.</exception>
+        public async Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxPatchOperations);
+
+            // Suppressing the content response matters more here than on other writes: the patched
+            // resource is a whole conversation transcript, and returning it on every appended
+            // message would undo most of the bandwidth saved by patching instead of replacing.
+            var options = new PatchItemRequestOptions { EnableContentResponseOnWrite = false };
+
+            try
+            {
+                await _container.PatchItemAsync<dynamic>(id, new PartitionKey(partitionKey), operations, options, cancellationToken);
+                return true;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return false;
+            }
         }
 
         /// <inheritdoc/>

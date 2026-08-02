@@ -9,6 +9,7 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <summary>
     /// Fallback exception handler that maps the remaining exception types
     /// (<see cref="ArgumentException"/>, <see cref="ArgumentNullException"/>,
+    /// <see cref="ConversationBusyException"/>,
     /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
     /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
     /// <see cref="McpAuthorizationRequiredException"/>,
@@ -40,6 +41,15 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 exception.Message,
                 httpContext.TraceIdentifier);
 
+            // Mirrors OperationCanceledExceptionHandler: once the response has started — a chat
+            // stream that faults after its first fragment, say — the status and headers are
+            // immutable and appending a JSON envelope would corrupt the body the client is already
+            // reading. Setting either would itself throw and mask the original exception.
+            if (httpContext.Response.HasStarted)
+            {
+                return true;
+            }
+
             var error = MapToError(httpContext, exception);
 
             httpContext.Response.ContentType = "application/json";
@@ -62,6 +72,16 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 ArgumentException => new ErrorDto
                 {
                     StatusCode = HttpStatusCode.BadRequest,
+                    Errors = [exception.Message],
+                    TraceId = context.TraceIdentifier,
+                    Timestamp = DateTimeOffset.UtcNow
+                },
+                // Ordered before InvalidOperationException only for readability; the type is
+                // unrelated, but contention is a temporary state the caller can retry out of,
+                // so it must not collapse into the 400 bucket alongside validation failures.
+                ConversationBusyException => new ErrorDto
+                {
+                    StatusCode = HttpStatusCode.Conflict,
                     Errors = [exception.Message],
                     TraceId = context.TraceIdentifier,
                     Timestamp = DateTimeOffset.UtcNow
