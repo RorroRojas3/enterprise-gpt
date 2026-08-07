@@ -49,16 +49,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         return Upload(fileName, Encoding.UTF8.GetBytes(builder.ToString()), "text/plain");
     }
 
-    private static async Task<ErrorDto> ReadErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatusCode)
-    {
-        Assert.Equal(expectedStatusCode, response.StatusCode);
-
-        var error = await response.Content.ReadFromJsonAsync<ErrorDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(error);
-        Assert.Equal(expectedStatusCode, error.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(error.TraceId));
-        return error;
-    }
 
     /// <summary>
     /// Polls the status endpoint until the job reaches a terminal state, mirroring what the client does.
@@ -107,7 +97,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.PostAsync($"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
     }
 
     [Fact]
@@ -119,8 +110,13 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.PostAsync($"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Contains("Upload File", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Contains("Upload File", problem.Detail);
+
+        // The machine-readable half of the denial: a client can name the missing grant without
+        // parsing the sentence in detail.
+        var permissions = problem.Extensions["permissions"].EnumerateArray().Select(x => x.GetString());
+        Assert.Equal(["Upload File"], permissions);
     }
 
     [Fact]
@@ -130,7 +126,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.GetAsync("api/documents/file-extensions", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
     }
     #endregion
 
@@ -147,8 +144,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
             Upload("data.xlsx", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
             TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains(error.Errors, e => e.Contains("not supported"));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains(problem.Errors["FileName"], message => message.Contains("not supported"));
     }
 
     [Fact]
@@ -162,8 +159,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
             Upload("report.pdf", Encoding.UTF8.GetBytes("definitely not a pdf")),
             TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains(error.Errors, e => e.Contains("do not match its extension"));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains(problem.Errors["Content"], message => message.Contains("do not match its extension"));
     }
 
     [Fact]
@@ -177,7 +174,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
             Upload("notes.txt", []),
             TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Fact]
@@ -194,8 +191,11 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
             Upload("notes.txt", oversize, "text/plain"),
             TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains(error.Errors, e => e.Contains("maximum upload size"));
+        // The size cap is enforced by MaxUploadSizeEndpointFilter, not a validator, so this 400
+        // carries a detail rather than an errors dictionary.
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Contains("maximum upload size", problem.Detail);
+        Assert.Equal(64 * 1024, problem.Extensions["maxBytes"].GetInt64());
     }
 
     [Fact]
@@ -207,7 +207,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var response = await client.PostAsync(
             $"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var response = await client.PostAsync(
             $"api/documents/conversations/{Guid.NewGuid()}", TextUpload(), TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -230,7 +230,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var response = await client.PostAsync(
             $"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
     #endregion
 
@@ -358,7 +358,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.GetAsync($"api/documents/upload-status/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Upload job not found.", problem.Detail);
     }
 
     [Fact]
@@ -374,7 +375,9 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await otherUser.GetAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // Identical to the unknown-job detail, so the response cannot confirm the id exists.
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Upload job not found.", problem.Detail);
 
         // The owner still sees it, so the 404 is authorization rather than the job having gone missing.
         var ownerResponse = await owner.GetAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);

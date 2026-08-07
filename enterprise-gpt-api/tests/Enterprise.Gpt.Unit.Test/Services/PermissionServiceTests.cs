@@ -6,6 +6,7 @@ using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Actions.Permission;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
@@ -16,6 +17,7 @@ public sealed class PermissionServiceTests : IDisposable
 {
     private readonly SqliteDbContextFixture _fixture = new();
     private readonly ITokenService _tokenService = Substitute.For<ITokenService>();
+    private readonly IUserPermissionCache _permissionCache = Substitute.For<IUserPermissionCache>();
     private readonly PermissionService _service;
 
     public PermissionServiceTests()
@@ -26,7 +28,8 @@ public sealed class PermissionServiceTests : IDisposable
             _tokenService,
             _fixture.Context,
             new CreatePermissionActionDtoValidator(),
-            new UpdatePermissionActionDtoValidator());
+            new UpdatePermissionActionDtoValidator(),
+            _permissionCache);
     }
 
     public void Dispose()
@@ -348,6 +351,10 @@ public sealed class PermissionServiceTests : IDisposable
         Assert.NotNull(persistedPermission.DateDeactivated);
         Assert.Equal(persistedPermission.DateDeactivated, persistedGrant.DateDeactivated);
         Assert.Equal(revokedGrant.DateDeactivated, untouchedGrant.DateDeactivated);
+
+        // Only the holder of the active grant; the already-revoked grant's user is not affected.
+        _permissionCache.Received(1).Invalidate(
+            Arg.Is<IEnumerable<Guid>>(ids => ids != null && ids.SequenceEqual(new[] { user.Id })));
     }
 
     [Fact]
@@ -390,6 +397,8 @@ public sealed class PermissionServiceTests : IDisposable
         Assert.Equal(KnownIds.SeedUserId, persisted.ModifiedById);
         Assert.Equal(persisted.DateCreated, persisted.DateModified);
         Assert.Null(persisted.DateDeactivated);
+
+        _permissionCache.Received(1).Invalidate(user.Id);
     }
 
     [Fact]
@@ -465,6 +474,10 @@ public sealed class PermissionServiceTests : IDisposable
         var persisted = Assert.Single(grants);
         Assert.NotNull(persisted.DateDeactivated);
         Assert.Equal(KnownIds.SeedUserId, persisted.ModifiedById);
+
+        // ExecuteUpdateAsync bypasses the change tracker, so nothing else would catch a missing
+        // eviction here — a revoked grant would keep authorizing for a whole entry lifetime.
+        _permissionCache.Received(1).Invalidate(user.Id);
     }
 
     [Fact]

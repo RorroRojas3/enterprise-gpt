@@ -8,6 +8,7 @@ using Enterprise.Gpt.Dto.Actions.User;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Mappers;
 
@@ -94,7 +95,8 @@ namespace Enterprise.Gpt.Service
         IGraphService graphService,
         EnterpriseGptDbContext ctx,
         IValidator<CreateUserActionDto> createValidator,
-        IValidator<UpdateUserActionDto> updateValidator) : IUserService
+        IValidator<UpdateUserActionDto> updateValidator,
+        IUserPermissionCache permissionCache) : IUserService
     {
         private readonly ILogger<UserService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
@@ -102,11 +104,16 @@ namespace Enterprise.Gpt.Service
         private readonly EnterpriseGptDbContext _ctx = ctx;
         private readonly IValidator<CreateUserActionDto> _createValidator = createValidator;
         private readonly IValidator<UpdateUserActionDto> _updateValidator = updateValidator;
+        private readonly IUserPermissionCache _permissionCache = permissionCache;
 
         /// <inheritdoc />
         public async Task<(UserDto User, bool Created)> GetOrCreateCurrentUserAsync(CancellationToken cancellationToken = default)
         {
             var oid = _tokenService.GetOid();
+
+            // Captured before any grant is read, so a revoke committing mid-request cannot be undone
+            // by the Set calls below republishing the pre-revoke snapshot.
+            var stamp = _permissionCache.CaptureInvalidationStamp();
 
             var existing = await FindCurrentUserAsync(oid, cancellationToken);
             if (existing is not null)
@@ -115,6 +122,11 @@ namespace Enterprise.Gpt.Service
                 {
                     existing = await FindCurrentUserAsync(oid, cancellationToken) ?? existing;
                 }
+
+                // Populating here is what the cache exists for: the UI posts this endpoint on every
+                // bootstrap, so the entry is warm before any gated route is hit. Must run after the
+                // reconcile re-read so it reflects newly granted defaults.
+                _permissionCache.Set(oid, stamp, existing.Permissions.Select(p => p.Id));
 
                 return (existing, Created: false);
             }
@@ -165,13 +177,18 @@ namespace Enterprise.Gpt.Service
                     throw;
                 }
 
+                _permissionCache.Set(oid, stamp, raced.Permissions.Select(p => p.Id));
+
                 return (raced, Created: false);
             }
 
             _logger.LogInformation("User {UserId} self-provisioned with {DefaultPermissionCount} default permissions",
                 oid, defaultPermissions.Count);
 
-            return (newUser.MapToUserDto(), Created: true);
+            var created = newUser.MapToUserDto();
+            _permissionCache.Set(oid, stamp, created.Permissions.Select(p => p.Id));
+
+            return (created, Created: true);
         }
 
         /// <inheritdoc />
@@ -285,6 +302,11 @@ namespace Enterprise.Gpt.Service
 
             await _ctx.SaveChangesAsync(cancellationToken);
 
+            // Invalidated rather than Set: the revive path assembles this set by diffing, and a cold
+            // entry that reloads on the target user's next request is strictly safer. It also clears
+            // any empty-set entry a probing request cached before the user was pre-created.
+            _permissionCache.Invalidate(oid);
+
             _logger.LogInformation("User {TargetUserId} pre-created with {PermissionCount} permissions by {UserId}",
                 oid, granted, adminOid);
 
@@ -335,6 +357,8 @@ namespace Enterprise.Gpt.Service
             // in one atomic save.
             await _ctx.SaveChangesAsync(cancellationToken);
 
+            _permissionCache.Invalidate(id);
+
             _logger.LogInformation("User {TargetUserId} updated by {UserId}", id, oid);
 
             return user.MapToUserDto();
@@ -363,9 +387,9 @@ namespace Enterprise.Gpt.Service
             user.DateDeactivated = date;
             user.DateModified = date;
 
-            // Grants must deactivate with the user: AdminEndpointFilter authorizes purely on
-            // Core.UserPermission and never checks whether the user is still active, so leaving a
-            // deactivated administrator's grant alive would leave them with full admin access.
+            // Grants must deactivate with the user: authorization runs purely on Core.UserPermission
+            // and never checks whether the user is still active, so leaving a deactivated
+            // administrator's grant alive would leave them with full admin access.
             foreach (var grant in user.UserPermissions)
             {
                 grant.DateDeactivated = date;
@@ -374,6 +398,10 @@ namespace Enterprise.Gpt.Service
             }
 
             await _ctx.SaveChangesAsync(cancellationToken);
+
+            // The cache stores grants, not user state, so this eviction is half of what actually
+            // removes a deactivated administrator's access — the grant cascade above is the other.
+            _permissionCache.Invalidate(id);
 
             _logger.LogInformation("User {TargetUserId} deactivated by {UserId} along with {GrantCount} grants",
                 id, oid, user.UserPermissions.Count);

@@ -12,6 +12,7 @@ using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Api.Problems;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.BackgroundJobs;
@@ -179,15 +180,30 @@ builder.Services.AddSingleton<IMcpClientCache, McpClientCache>();
 builder.Services.AddScoped<IMcpToolProvider, McpToolProvider>();
 builder.Services.AddHttpClient(McpToolProvider.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
 
+// Per-user permission cache: keyed by Entra object id, written at sign-in (POST api/users/me) and
+// lazily on a filter cache miss, invalidated per user by the services that mutate grants. Entries
+// also carry an absolute lifetime because invalidation is per-instance: in a scaled-out deployment
+// a grant changed on another instance is only picked up when the entry expires. Validated at
+// startup because a non-positive lifetime silently degrades the cache into a per-request query.
+builder.Services.AddOptions<UserPermissionCacheOptions>()
+    .Bind(builder.Configuration.GetSection(UserPermissionCacheOptions.SectionName))
+    .Validate(options => options.EntryLifetime > TimeSpan.Zero,
+        "Permissions:Cache:EntryLifetime must be greater than zero.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IUserPermissionCache, UserPermissionCache>();
+
 // Exception handlers (chained — first to return true wins; GlobalExceptionHandler is the fallback)
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 builder.Services.AddExceptionHandler<OperationCanceledExceptionHandler>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-// Required by app.UseExceptionHandler() in .NET 10: provides a ProblemDetails fallback
-// for the rare case where every IExceptionHandler returns false.
-builder.Services.AddProblemDetails();
+// The write path for every error this API emits: the handlers above and the endpoint filters both
+// go through IProblemDetailsService, so traceId and instance are applied in exactly one place.
+builder.Services.AddEnterpriseProblemDetails();
 
 // Singletons
+// TimeProvider is injected rather than read statically so the permission cache's absolute expiry
+// is testable without wall-clock delays.
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IConversationLockService, ConversationLockService>();
 builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<IGraphService, GraphService>();
@@ -254,12 +270,18 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-// .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
-app.UseExceptionHandler();
-
 app.UseHttpsRedirection();
 
 app.UseCors("AllowSpecificOrigins");
+
+// .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
+app.UseExceptionHandler();
+
+// Must stay inside UseExceptionHandler. An exception propagates past this middleware without its
+// post-processing running, so the bodiless 499 the cancellation handler produces is never decorated
+// with a problem body the disconnected client could not read anyway. Ahead of authentication so it
+// wraps the 401 challenge, and ahead of endpoint execution so it wraps the routing 404.
+app.UseStatusCodePages();
 
 app.UseAuthentication();
 

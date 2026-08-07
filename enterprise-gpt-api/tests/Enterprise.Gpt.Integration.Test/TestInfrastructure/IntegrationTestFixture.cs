@@ -6,6 +6,7 @@ using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service.Caching;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -168,6 +169,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         await ctx.McpServers
             .ExecuteDeleteAsync(cancellationToken);
+
+        ClearPermissionCache();
     }
 
     /// <summary>
@@ -259,6 +262,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         };
         ctx.UserPermissions.Add(grant);
         await ctx.SaveChangesAsync(cancellationToken);
+
+        ClearPermissionCache();
 
         return grant.Id;
     }
@@ -390,6 +395,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
 
         Factory.GraphService.Reset();
+        ClearPermissionCache();
+
     }
 
     /// <summary>
@@ -499,6 +506,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
 
         Factory.BlobStorage.Reset();
+        ClearPermissionCache();
+
     }
 
     private static async Task EnsureUploadFileGrantsAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
@@ -611,6 +620,18 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.UserPermissions
             .Where(x => x.UserId == userId && x.PermissionId == permissionId)
             .ExecuteDeleteAsync(cancellationToken);
+
+        ClearPermissionCache();
+    }
+
+    /// <summary>
+    /// Evicts the singleton permission cache. These helpers write grants straight through the
+    /// DbContext, so the eviction <see cref="Enterprise.Gpt.Service.IPermissionService"/> performs on
+    /// the production path never runs and a later test would authorize against a stale grant set.
+    /// </summary>
+    private void ClearPermissionCache()
+    {
+        Factory.Services.GetRequiredService<IUserPermissionCache>().Clear();
     }
 
     private static async Task SeedTestUsersAsync(EnterpriseGptDbContext ctx)

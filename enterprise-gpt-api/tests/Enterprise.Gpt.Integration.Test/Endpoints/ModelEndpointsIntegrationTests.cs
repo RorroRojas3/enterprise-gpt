@@ -2,6 +2,7 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Model;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Xunit;
 
@@ -57,16 +58,6 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         };
     }
 
-    private static async Task<ErrorDto> ReadErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatusCode)
-    {
-        Assert.Equal(expectedStatusCode, response.StatusCode);
-
-        var error = await response.Content.ReadFromJsonAsync<ErrorDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(error);
-        Assert.Equal(expectedStatusCode, error.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(error.TraceId));
-        return error;
-    }
 
     [Fact]
     public async Task GetModels_AnonymousUser_ReturnsUnauthorized()
@@ -75,7 +66,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.GetAsync("api/models", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
     }
 
     [Fact]
@@ -102,8 +94,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.GetAsync("api/models/all", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 
     [Fact]
@@ -141,8 +133,25 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.GetAsync($"api/models/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Model not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Model not found.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task GetModel_AcceptHeaderTheProblemWriterRejects_StillReturnsABody()
+    {
+        // DefaultProblemDetailsWriter declines anything outside JSON and writes nothing, so the
+        // handlers fall back to an explicit write. Without it a browser hitting an API URL directly
+        // would get a bare status.
+        using var client = _fixture.Factory.CreateUserClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/models/{Guid.NewGuid()}");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Model not found.", problem.Detail);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
     }
 
     [Fact]
@@ -152,7 +161,10 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.GetAsync("api/models/not-a-guid", TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // No route matches, so this 404 comes from the status code pages middleware rather than an
+        // endpoint — hence the RFC 9110 title instead of a domain problem type.
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Not Found", problem.Title);
     }
 
     [Fact]
@@ -185,8 +197,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.PostAsJsonAsync("api/models", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.True(error.Errors.Count >= 2);
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.True(problem.Errors.Count >= 2);
     }
 
     [Fact]
@@ -197,8 +209,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.PostAsJsonAsync("api/models", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Provider not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Provider not found.", problem.Detail);
     }
 
     [Fact]
@@ -208,8 +220,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.PostAsJsonAsync("api/models", CreateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 
     [Fact]
@@ -265,8 +277,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.PutAsJsonAsync($"api/models/{id}", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.True(error.Errors.Count >= 2);
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.True(problem.Errors.Count >= 2);
     }
 
     [Fact]
@@ -277,8 +289,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         var response = await client.PutAsJsonAsync(
             $"api/models/{Guid.NewGuid()}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Model not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Model not found.", problem.Detail);
     }
 
     [Fact]
@@ -290,8 +302,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.PutAsJsonAsync($"api/models/{id}", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Provider not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Provider not found.", problem.Detail);
     }
 
     [Fact]
@@ -302,8 +314,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.PutAsJsonAsync($"api/models/{id}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 
     [Fact]
@@ -354,8 +366,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var secondResponse = await client.DeleteAsync($"api/models/{id}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(secondResponse, HttpStatusCode.NotFound);
-        Assert.Equal("Model not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(secondResponse, HttpStatusCode.NotFound);
+        Assert.Equal("Model not found.", problem.Detail);
     }
 
     [Fact]
@@ -365,8 +377,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.DeleteAsync($"api/models/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Model not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Model not found.", problem.Detail);
     }
 
     [Fact]
@@ -377,7 +389,7 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         var response = await client.DeleteAsync($"api/models/{id}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 }

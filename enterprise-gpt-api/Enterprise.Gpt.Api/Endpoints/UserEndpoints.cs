@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.User;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Api.Endpoints
@@ -10,9 +11,9 @@ namespace Enterprise.Gpt.Api.Endpoints
     /// Minimal API endpoints for user management. Replaces the former <c>UsersController</c>.
     /// Only <c>me</c> — the self-provisioning call the UI makes on load — is open to every
     /// authenticated user; listing, pre-creation, updates, and deactivation are gated by
-    /// <see cref="AdminEndpointFilter"/>. Migrating off MVC is what makes that gating possible at
-    /// all: the filter is an <see cref="IEndpointFilter"/> and cannot be applied to a controller,
-    /// which previously left deactivation open to any authenticated caller.
+    /// <see cref="PermissionEndpointFilter"/> on the built-in Administrator permission. Migrating
+    /// off MVC is what makes that gating possible at all: endpoint filters cannot be applied to a
+    /// controller, which previously left deactivation open to any authenticated caller.
     /// </summary>
     public static class UserEndpoints
     {
@@ -25,33 +26,35 @@ namespace Enterprise.Gpt.Api.Endpoints
         {
             var group = app.MapGroup("api/users")
                 .RequireAuthorization()
-                .WithTags("Users");
+                .WithTags("Users")
+                // Every route in the group is authorized, so the challenge applies uniformly.
+                .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             group.MapPost("me", GetOrCreateCurrentUserAsync)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapGet("", SearchUsersAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapGet("{id:guid}", GetUserAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPost("", CreateUserAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPut("{id:guid}", UpdateUserAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapDelete("{id:guid}", DeactivateUserAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             return app;
         }

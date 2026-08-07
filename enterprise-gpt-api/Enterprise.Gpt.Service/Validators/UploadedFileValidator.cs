@@ -62,6 +62,9 @@ namespace Enterprise.Gpt.Service.Validators
 
             RuleFor(x => x.Content.LongLength)
                 .LessThanOrEqualTo(maxSizeBytes)
+                // Without the name, the expression path becomes the wire-visible key in the problem
+                // details errors dictionary — "Content.LongLength" rather than the DTO's property.
+                .WithName(nameof(FileDto.Content))
                 .WithMessage($"The file exceeds the maximum upload size of {FormatSize(maxSizeBytes)}.")
                 .When(x => x.Content is { Length: > 0 });
 

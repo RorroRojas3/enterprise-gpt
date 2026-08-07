@@ -10,13 +10,13 @@ Authorization is carried entirely by rows in `Core.UserPermission`. A user is an
 
 **What changed:** the former `UsersController` was deleted and replaced by [`UserEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs), a `MapGroup("api/users")` minimal-API group, following the pattern established by [`ModelEndpoints`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs) (see [Model Management](../models/model-management.md)).
 
-The migration was not cosmetic. [`AdminEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs) is an `IEndpointFilter`, which cannot be attached to an MVC controller action — so while user management lived on a controller, **every authenticated caller could deactivate any user**. Moving to minimal APIs is what made per-route admin gating possible at all.
+The migration was not cosmetic. Admin gating is an **endpoint filter** ([`PermissionEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs)), which cannot be attached to an MVC controller action — so while user management lived on a controller, **every authenticated caller could deactivate any user**. Moving to minimal APIs is what made per-route admin gating possible at all.
 
 The public URL the frontend depends on (`POST /api/users/me`) is unchanged; [`user.service.ts`](../../enterprise-ui/src/app/services/user.service.ts) required no edits.
 
 ## 2. API surface
 
-Every route requires an authenticated caller (`RequireAuthorization()` on the group); anonymous requests get `401` before any handler runs. All routes except `me` additionally pass through `AdminEndpointFilter`.
+Every route requires an authenticated caller (`RequireAuthorization()` on the group); anonymous requests get `401` before any handler runs. All routes except `me` additionally carry `PermissionEndpointFilter.Require(PermissionIds.Administrator)`, which authorizes off the [permission cache](../permissions/permission-cache.md) rather than the database.
 
 | Verb | Route | Access | Success | Failure modes |
 |---|---|---|---|---|
@@ -27,7 +27,20 @@ Every route requires an authenticated caller (`RequireAuthorization()` on the gr
 | PUT | `/api/users/{id:guid}` | **admin** | 200 `UserDto` | 400 validation / self-revocation of Administrator, 403 not admin, 404 unknown user / unknown permission |
 | DELETE | `/api/users/{id:guid}` | **admin** | 204 — soft delete, cascading to grants | 400 self-deactivation, 403 not admin, 404 unknown/already deactivated |
 
-All error responses use the [`ErrorDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ErrorDto.cs) envelope `{ statusCode, errors[], traceId, timestamp }`. **This API does not emit RFC 9457 Problem Details** — do not add `ProblemDetails` returns to these endpoints.
+All error responses are **RFC 9457 Problem Details**, served as `application/problem+json` — `{ type, title, status, detail, instance, traceId }`, plus an `errors` dictionary on validation failures. `type` comes from [`ProblemTypes`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemTypes.cs): `/problems/validation-error` for the 400s, `/problems/forbidden` for a deactivated account, `/problems/permission-required` for a missing admin grant (with a `permissions` extension), `/problems/resource-not-found` for the 404s. Match those URIs verbatim — they are identifiers, not links, and changing one is a breaking API change. The 400s matter most here: the `errors` dictionary is keyed by the failing property, so a self-revocation attempt and a malformed email are distinguishable without parsing prose.
+
+```json
+{
+  "type": "/problems/validation-error",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "instance": "/api/users",
+  "traceId": "00-a1b2c3d4e5f60718293a4b5c6d7e8f90-1122334455667788-01",
+  "errors": {
+    "Email": ["'Email' is not a valid email address."]
+  }
+}
+```
 
 `GET /api/users` accepts three optional query parameters:
 
@@ -116,7 +129,8 @@ Request DTOs — [`UserActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/
 ## 3. Request flow
 
 ```
-Client ──► RequireAuthorization (JWT) ──► AdminEndpointFilter (admin routes only)
+Client ──► RequireAuthorization (JWT) ──► PermissionEndpointFilter (admin routes only)
+       ──► IUserPermissionCache (no query on a hit)
        ──► UserEndpoints handler ──► IUserService ──► FluentValidation
        ──► IGraphService (provisioning paths only) ──► EF Core ──► SQL
 ```
@@ -156,6 +170,7 @@ Details worth knowing:
 - **The duplicate-insert race is swallowed on purpose.** MSAL can emit more than one "signed in" notification per session, so two first-sign-in calls can both pass the existence check and both insert the same primary key. The loser clears the change tracker, re-reads the winner's row, and returns `200` — not a duplicate-key 500.
 - **Email resolution:** `mail` is preferred, falling back to `userPrincipalName`; a directory user with neither yields a 404 rather than a null in the non-nullable `Email` column. The message names the *object id*, not the address, because both exception handlers log `Message` and the repo standard forbids PII in logs.
 - **Grants are created against the new user.** EF orders the `User` insert ahead of its `UserPermission` children in the same `SaveChangesAsync`, so the self-referencing `CreatedById`/`ModifiedById` foreign keys resolve.
+- **This call also warms the permission cache.** The response already carries the caller's active grants, so `GetOrCreateCurrentUserAsync` publishes that set into [`IUserPermissionCache`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs) on every path (existing, created, and race-loser). Because the UI posts this endpoint on each bootstrap, the entry is warm before any gated route is hit. The write is ordered against concurrent evictions by an invalidation stamp captured *before* the grants are read, so a sign-in racing a revoke cannot republish the pre-revoke set — see [Permission Cache §4.1](../permissions/permission-cache.md#41-warm-fill-at-sign-in).
 
 A self-provisioned user receives **exactly** the permissions flagged `IsDefault` — nothing else (§5).
 
@@ -243,11 +258,16 @@ Every admin route authorizes off a single grant, so the failure mode this featur
 | …nor via the single-grant route | `PermissionService.RevokePermissionAsync` (`DELETE /api/users/{userId}/permissions/{permissionId}`) | 400 |
 | An administrator cannot deactivate their own account | `UserService.DeactivateUserAsync` | 400 |
 | Deactivating a user cascades soft-delete to every active grant they hold | `UserService.DeactivateUserAsync`, same `SaveChangesAsync` | 204 |
+| …and evicts their cached grant set, so this instance observes the cascade at once | `UserService.DeactivateUserAsync`, after the save | 204 |
 | The built-in Administrator permission itself cannot be edited or deactivated | `PermissionService.EnsurePermissionIsCustom` | 400 |
 
 **Why the self-revocation guard is duplicated.** Both routes can remove the same grant. Guarding only the bulk diff would leave the lockout reachable by calling `DELETE /api/users/{me}/permissions/{administrator}` — the guard has to live wherever the revocation can happen, which is why it appears in both `UserService` and `PermissionService`. The check is scoped to `targetUserId == callerOid`: administrators can freely revoke *other* administrators.
 
-**Why deactivation must cascade.** `AdminEndpointFilter` authorizes purely on `Core.UserPermission` and never joins `Core.User` — it asks "is there an active Administrator grant for this oid?" and nothing else. Leaving a deactivated administrator's grant alive would leave them with full admin access despite having no active account. The integration suite pins this: `DeactivateUser_DeactivatedAdministrator_LosesAdminAccess` calls `GET /api/users` as a second admin before and after deactivation and asserts `200` then `403`.
+**Why deactivation must cascade.** `PermissionEndpointFilter` authorizes purely on `Core.UserPermission` and never joins `Core.User` — it asks "is there an active Administrator grant for this oid?" and nothing else. Leaving a deactivated administrator's grant alive would leave them with full admin access despite having no active account. The integration suite pins this: `DeactivateUser_DeactivatedAdministrator_LosesAdminAccess` calls `GET /api/users` as a second admin before and after deactivation and asserts `200` then `403`.
+
+**Deactivation now has two halves.** Since authorization reads the [permission cache](../permissions/permission-cache.md) rather than the database, the grant cascade alone is not enough: a cached entry written before the deactivation would keep serving the revoked grants. `DeactivateUserAsync` therefore also calls `IUserPermissionCache.Invalidate(id)` after the save. The two are complementary — the cascade removes the rows, the eviction makes the removal visible on the next request.
+
+That eviction is **per instance**. In a scaled-out deployment, other instances keep serving their cached entry until it expires, so a deactivated administrator can retain admin access elsewhere for up to `Permissions:Cache:EntryLifetime` (default 5 minutes). The same applies to every revoke in this section. See [Permission Cache §5.1](../permissions/permission-cache.md#51-entrylifetime--the-scale-out-staleness-bound).
 
 Taken together, no single API call can reduce the system to zero active administrators: the caller must be an administrator to reach any of these routes, and none of them can strip the caller's own grant. That property holds only through the API — direct SQL, or disabling the last administrator's account in Entra ID, will still get you there.
 
@@ -260,7 +280,7 @@ Only two places in the codebase consult `Core.User.DateDeactivated`:
 - `UserService.FindCurrentUserAsync` — makes `POST /api/users/me` return 403 for a deactivated account.
 - `PermissionService.GrantPermissionAsync` — refuses to grant to a deactivated user.
 
-Admin routes are additionally cut off, but indirectly: the grant cascade of §7 removes the `UserPermission` row that `AdminEndpointFilter` reads.
+Admin routes are additionally cut off, but indirectly: the grant cascade of §7 removes the `UserPermission` row behind the Administrator grant, and the accompanying cache eviction makes that removal effective on the instance that served the call — after up to `Permissions:Cache:EntryLifetime` on any other instance.
 
 Everything else — conversations, documents, chat completions — resolves the caller with `ITokenService.GetOid()` and never looks the user up in `Core.User`. **A deactivated user holding an unexpired access token keeps chatting, keeps uploading documents, and keeps reading their conversation history until that token expires.** Deactivation blocks the *next* sign-in and all administrative access; it does not terminate a live session.
 
@@ -299,7 +319,8 @@ Resolving permissions up front is a deliberate choice over letting the insert fa
 |---|---|
 | Endpoints (minimal API group) | [`Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs) |
 | Grant/revoke endpoints | [`Enterprise.Gpt.Api/Endpoints/PermissionEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/PermissionEndpoints.cs) |
-| Admin gate | [`Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs) |
+| Admin gate | [`Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) |
+| Cached grant sets ([reference](../permissions/permission-cache.md)) | [`Enterprise.Gpt.Service/Caching/UserPermissionCache.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs), [`Settings/UserPermissionCacheOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/UserPermissionCacheOptions.cs) |
 | User business logic | [`Enterprise.Gpt.Service/UserService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/UserService.cs) |
 | Permission/grant business logic | [`Enterprise.Gpt.Service/PermissionService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/PermissionService.cs) |
 | Microsoft Graph lookups | [`Enterprise.Gpt.Service/GraphService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/GraphService.cs) |
@@ -362,7 +383,7 @@ VALUES
      SYSDATETIMEOFFSET(), @oid, SYSDATETIMEOFFSET(), @oid);
 ```
 
-The permission id must match `PermissionIds.Administrator` verbatim. From there, use `POST /api/users` or the grant routes to promote everyone else — this SQL should be needed exactly once per environment.
+The permission id must match `PermissionIds.Administrator` verbatim. Because this write bypasses `PermissionService`, it also bypasses cache eviction: if you already signed in at step 1, sign out and back in (or wait out `Permissions:Cache:EntryLifetime`) before the grant is honoured. From there, use `POST /api/users` or the grant routes to promote everyone else — this SQL should be needed exactly once per environment.
 
 ## 12. Known gaps and extension points
 
@@ -370,7 +391,9 @@ The permission id must match `PermissionIds.Administrator` verbatim. From there,
 - **Profiles never refresh from Graph.** After the row exists, `POST /api/users/me` returns it verbatim. A name change or mailbox move in Entra ID is not picked up until an administrator runs `PUT /api/users/{id}` or a pre-creation revive.
 - **Concurrent pre-creation is not guarded.** The duplicate-insert recovery in §4.1 exists only on the `me` path. Two administrators racing `POST /api/users` for the same email can both miss the existence check and one will fail the save — surfacing as a 500 rather than a 400/409.
 - **Concurrency conflicts surface as 500.** The `rowversion Version` column turns racing writes into `DbUpdateConcurrencyException`, which the fallback handler maps to 500. A 409 arm in `GlobalExceptionHandler` would make that honest (same gap as [model management](../models/model-management.md)).
-- **Missing-OID tokens.** A principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500. A 401 arm would be more honest; this is pre-existing and also reachable through `AdminEndpointFilter`.
+- **Missing-OID tokens.** A principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500. A 401 arm would be more honest; this is pre-existing and also reachable through `PermissionEndpointFilter`.
+- **Grant changes converge per instance only.** `PermissionService`, `UserService`, and `McpServerService` evict the affected users from the permission cache immediately, but only on the instance that served the mutation. Everywhere else the change lands when the entry expires. Fanning `Invalidate(userId)` out over Redis or Service Bus is the intended fix — see [Permission Cache §5.1](../permissions/permission-cache.md#51-entrylifetime--the-scale-out-staleness-bound).
+- **Out-of-band grant SQL bypasses eviction.** The bootstrap `INSERT` in §11.3 writes `Core.UserPermission` directly, so nothing evicts the cache. If the new administrator already has a cached entry, the grant takes effect on their next sign-in or after `Permissions:Cache:EntryLifetime`.
 - **Search does not scale.** `EF.Functions.Like($"%{name}%")` cannot seek an index — every search is a table scan over active users. Fine for hundreds of users; revisit with full-text search or a prefix-only match if the directory grows.
 - **No "last administrator" guard beyond self-protection.** The API cannot reach zero administrators (§7), but nothing prevents an operator from doing so with direct SQL, and nothing warns an administrator that they are the last one.
 - **Defaults are not retroactive.** Consider a `POST /api/permissions/{id}/backfill` (admin) if administrators need to push a newly flagged default onto existing users; today they must grant it user by user.

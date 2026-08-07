@@ -10,7 +10,7 @@ This feature is the **one sanctioned minimal-API exception** in an otherwise con
 
 ## 2. API surface
 
-All endpoints require an authenticated user (`RequireAuthorization()` on the group). Admin-gated rows additionally pass through [`AdminEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs).
+All endpoints require an authenticated user (`RequireAuthorization()` on the group). Admin-gated rows additionally carry [`PermissionEndpointFilter.Require(PermissionIds.Administrator)`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs).
 
 | Verb | Route | Access | Success | Failure modes |
 |---|---|---|---|---|
@@ -21,7 +21,38 @@ All endpoints require an authenticated user (`RequireAuthorization()` on the gro
 | PUT | `/api/models/{id:guid}` | **admin** | 200 `ModelDto` | 400 validation, 403 not admin, 404 unknown model/provider |
 | DELETE | `/api/models/{id:guid}` | **admin** | 204 — soft delete (sets `DateDeactivated`) | 403 not admin, 404 unknown/already deactivated |
 
-All error responses use the standard [`ErrorDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ErrorDto.cs) wire shape `{ statusCode, errors[], traceId, timestamp }`.
+All error responses are **RFC 9457 Problem Details**, served as `application/problem+json`:
+
+```json
+{
+  "type": "/problems/resource-not-found",
+  "title": "Resource not found",
+  "status": 404,
+  "detail": "Model not found.",
+  "instance": "/api/models/3f2a91b5-...",
+  "traceId": "00-a1b2c3d4e5f60718293a4b5c6d7e8f90-1122334455667788-01"
+}
+```
+
+`type` identifies the failure class and comes from [`ProblemTypes`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemTypes.cs) — `/problems/resource-not-found` for the 404s, `/problems/permission-required` for the 403s, `/problems/validation-error` for the 400s. Treat these as **opaque identifiers to match verbatim**, not URLs to fetch; changing one is a breaking API change. `traceId` (the W3C traceparent) and `instance` (the request path) are on every problem.
+
+Validation failures add an `errors` dictionary keyed by the failing property, so a client can attach each message to its own form field:
+
+```json
+{
+  "type": "/problems/validation-error",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "instance": "/api/models",
+  "traceId": "00-a1b2c3d4e5f60718293a4b5c6d7e8f90-1122334455667788-01",
+  "errors": {
+    "Name": ["'Name' must not be empty."],
+    "ContextWindowSize": ["'Context Window Size' must be greater than '0'."]
+  }
+}
+```
+
+Failures with no application-specific type — a bare `ArgumentException`, an unhandled 500, the framework's own 401/404/405 — carry the RFC 9110 status-section link instead (e.g. `https://tools.ietf.org/html/rfc9110#section-15.5.1`).
 
 ### 2.1 Wire-shape contracts
 
@@ -49,24 +80,35 @@ Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto
 ## 3. Request flow
 
 ```
-Client ──► RequireAuthorization (JWT) ──► AdminEndpointFilter (admin routes only)
+Client ──► RequireAuthorization (JWT) ──► PermissionEndpointFilter (admin routes only)
        ──► ModelEndpoints handler ──► IModelService ──► FluentValidation ──► EF Core ──► SQL
 ```
 
 1. [`ModelEndpoints`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs) handlers are thin: bind route/body/DI/`CancellationToken` (all inferred), call the service, wrap in `TypedResults` (`Ok`/`Created`/`NoContent`).
 2. [`ModelService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ModelService.cs) owns all business logic and throws precise exceptions; nothing is caught at the endpoint layer.
-3. The exception-handler chain translates: FluentValidation `ValidationException` → 400 ([`ValidationExceptionHandler`](../../enterprise-gpt-api/Enterprise.Gpt.Api/ExceptionHandlers/ValidationExceptionHandler.cs)); `NotFoundException` → 404 ([`GlobalExceptionHandler`](../../enterprise-gpt-api/Enterprise.Gpt.Api/ExceptionHandlers/GlobalExceptionHandler.cs)); cancellation → 499.
+3. The exception-handler chain translates each exception into a problem: FluentValidation `ValidationException` → 400 `/problems/validation-error` ([`ValidationExceptionHandler`](../../enterprise-gpt-api/Enterprise.Gpt.Api/ExceptionHandlers/ValidationExceptionHandler.cs)); `NotFoundException` → 404 `/problems/resource-not-found` ([`GlobalExceptionHandler`](../../enterprise-gpt-api/Enterprise.Gpt.Api/ExceptionHandlers/GlobalExceptionHandler.cs)); cancellation → 499 with no body, since a disconnected client cannot read one.
 
-## 4. Admin enforcement — `AdminEndpointFilter`
+Endpoints declare those responses with `.ProducesProblem(status)` and `.ProducesValidationProblem()` — never `.Produces<T>(status)` — and the group carries a single `.ProducesProblem(401)` because every route in it is authorized. Follow that convention for new routes; it is what keeps the OpenAPI document and the runtime shape from drifting apart.
 
-[`AdminEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs) is an `IEndpointFilter` attached per-route with `.AddEndpointFilter<AdminEndpointFilter>()`. Key points:
+## 4. Admin enforcement — `PermissionEndpointFilter`
 
-- **Instantiation:** created per request by the framework from `HttpContext.RequestServices` — constructor-injects the singleton [`ITokenService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/TokenService.cs) and the scoped [`EnterpriseGptDbContext`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/EnterpriseGptDbContext.cs). It must **not** be registered in `Program.cs`.
-- **Check:** the caller's AAD oid (`ITokenService.GetOid()`, which equals `User.Id`) must have a [`UserPermission`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/UserPermission.cs) row with `PermissionId = PermissionIds.Administrator` and `DateDeactivated IS NULL`. Permissions are rows in the `Core.Permission` table; built-in ids are defined in [`PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs); the legacy `User.IsAdministrator` bool is **not** consulted.
-- **Denial:** returns 403 with the `ErrorDto` shape (`errors: ["Administrator permission is required."]`).
+Admin routes are gated by the same generic filter every other permission uses, mapped with the built-in Administrator id:
+
+```csharp
+group.MapGet("all", GetAllModelsAsync)
+    .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+    .ProducesProblem(StatusCodes.Status403Forbidden);
+```
+
+[`PermissionEndpointFilter.Require`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) is a **static factory returning a filter delegate**, not an `IEndpointFilter` type: the generic `AddEndpointFilter<T>` activates its type from the container and so cannot carry permission ids. Key points:
+
+- **Check:** the caller's Entra oid (`ITokenService.GetOid()`, which equals `User.Id`) must hold an active grant of `PermissionIds.Administrator` — a [`UserPermission`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/UserPermission.cs) row with `DateDeactivated IS NULL`. Permissions are rows in the `Core.Permission` table; built-in ids are defined in [`PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs); the legacy `User.IsAdministrator` bool is **not** consulted.
+- **Where the grants come from:** the singleton [`IUserPermissionCache`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs), not the database. The entry is written at sign-in and loaded lazily on a miss, so a warm admin request runs **no permission query and constructs no `EnterpriseGptDbContext`** for authorization. See [Permission Cache](../permissions/permission-cache.md) — including the [scale-out staleness bound](../permissions/permission-cache.md#51-entrylifetime--the-scale-out-staleness-bound), which is the one behaviour to understand before deploying more than one instance.
+- **Multiple permissions:** `Require(params Guid[])` is **AND** — a caller must hold every listed grant. Ids are validated against `PermissionIds.Names` at *map* time, so an unknown id fails startup rather than emitting a nameless 403.
+- **Denial:** returns 403 as a problem of type `/problems/permission-required`, title `"Permission required"`, `detail` `"Administrator permission is required."`, plus a `permissions: ["Administrator"]` extension. The message names the whole requirement rather than the missing part, so the response does not vary with which grants the caller happens to hold.
 - **Ordering:** endpoint filters run after authorization, so a principal always exists when `GetOid()` is called.
 
-To grant admin locally, insert a row: `UserPermission { UserId = <your oid>, PermissionId = 'a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d', DateDeactivated = NULL }` (the seeded Administrator permission id).
+To grant admin locally, insert a row: `UserPermission { UserId = <your oid>, PermissionId = 'a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d', DateDeactivated = NULL }` (the seeded Administrator permission id). Because that write bypasses `PermissionService`, it also bypasses cache eviction — sign out and back in, or wait out `Permissions:Cache:EntryLifetime`, before the new grant takes effect.
 
 ## 5. Validation
 
@@ -89,7 +131,7 @@ At most one model has `IsDefault = 1`. When create/update sets `isDefault: true`
 | Concern | File |
 |---|---|
 | Endpoints (minimal API group) | [`Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs) |
-| Admin gate | [`Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/AdminEndpointFilter.cs) |
+| Admin gate | [`Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) — see [Permission Cache](../permissions/permission-cache.md) |
 | Business logic | [`Enterprise.Gpt.Service/ModelService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ModelService.cs) |
 | Entity ↔ DTO mapping | [`Enterprise.Gpt.Service/Mappers/ModelMapper.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Mappers/ModelMapper.cs) |
 | Response DTO | [`Enterprise.Gpt.Dto/ModelDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelDto.cs) |
@@ -103,6 +145,6 @@ At most one model has `IsDefault = 1`. When create/update sets `isDefault: true`
 - **Reactivation endpoint:** `PUT` targets active rows only, so a deactivated model currently has no "toggle back on" path; add e.g. `POST /api/models/{id}/activate` (admin) that clears `DateDeactivated`.
 - **Concurrent default races (two distinct gaps):** (a) racing updates that demote the same row hit the rowversion check and surface as `DbUpdateConcurrencyException` → 500; a 409 `IExceptionHandler` arm would make that honest. (b) Two concurrent *creates* with `isDefault: true` can each miss the other's uncommitted row and both succeed, leaving **two defaults with no error** — only a filtered unique index (`WHERE IsDefault = 1`) closes this at the DB level (add when regenerating migrations; note EF must order the demotion before the insert within the transaction).
 - **Seed data:** the seed in [`ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) predates the new validation rules — `DisplayName` is unset (blocks migration generation for [`EnterpriseGptDbContext`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/EnterpriseGptDbContext.cs); the `Migrations/` folder is currently empty) and `ContextWindowSize`/`MaxOutputTokens` are `0`, which the validators reject — the seeded model can't round-trip through `PUT` until real values are seeded.
-- **Missing-OID tokens:** a principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500; a 401 arm in `GlobalExceptionHandler` would make that honest (pre-existing behavior, also reachable via `AdminEndpointFilter`).
-- **Admin UI:** the frontend only consumes `GET /api/models`; the admin CRUD surface has no UI yet. Reuse `AdminEndpointFilter` for any future admin-only endpoints (provider CRUD, user permission management).
+- **Missing-OID tokens:** a principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500; a 401 arm in `GlobalExceptionHandler` would make that honest (pre-existing behavior, also reachable via `PermissionEndpointFilter`).
+- **Admin UI:** the frontend only consumes `GET /api/models`; the admin CRUD surface has no UI yet. Reuse `PermissionEndpointFilter.Require(PermissionIds.Administrator)` for any future admin-only endpoints (provider CRUD, user permission management).
 - **Frontend field drift:** `enterprise-ui`'s `ModelDto` still declares a stale `aiServiceId`; the backend now returns `providerId`. Align when building the admin UI.

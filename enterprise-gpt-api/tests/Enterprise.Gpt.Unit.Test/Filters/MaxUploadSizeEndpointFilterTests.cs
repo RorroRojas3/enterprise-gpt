@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Dto;
-using System.Net;
+using Enterprise.Gpt.Api.Problems;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Filters;
@@ -77,11 +77,12 @@ public sealed class MaxUploadSizeEndpointFilterTests
 
         Assert.False(invoked);
 
-        var error = Assert.IsAssignableFrom<IValueHttpResult<ErrorDto>>(result);
-        Assert.NotNull(error.Value);
-        Assert.Equal(HttpStatusCode.BadRequest, error.Value.StatusCode);
-        Assert.Contains("maximum upload size", Assert.Single(error.Value.Errors));
-        Assert.Contains("64 KB", Assert.Single(error.Value.Errors));
+        var problem = Assert.IsType<ProblemHttpResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.StatusCode);
+        Assert.Equal(ProblemTypes.UploadTooLarge.Type, problem.ProblemDetails.Type);
+        Assert.Contains("maximum upload size", problem.ProblemDetails.Detail);
+        Assert.Contains("64 KB", problem.ProblemDetails.Detail);
+        Assert.Equal(MaxBytes, problem.ProblemDetails.Extensions["maxBytes"]);
     }
 
     [Fact]

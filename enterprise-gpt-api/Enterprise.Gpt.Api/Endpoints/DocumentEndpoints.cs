@@ -5,6 +5,7 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Settings;
 
@@ -29,24 +30,29 @@ namespace Enterprise.Gpt.Api.Endpoints
         {
             var group = app.MapGroup("api/documents")
                 .RequireAuthorization()
-                .WithTags("Documents");
+                .WithTags("Documents")
+                // Every route in the group is authorized, so the challenge applies uniformly.
+                .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             var maxFileSizeBytes = app.ServiceProvider.GetRequiredService<IOptions<DocumentOptions>>().Value.MaxFileSizeBytes;
 
             group.MapPost("conversations/{conversationId:guid}", CreateConversationDocumentAsync)
-                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.UploadFile, "Upload File"))
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.UploadFile))
                 // Minimal APIs opt IFormFile endpoints into antiforgery validation, which throws at
                 // request time unless the middleware is registered or the endpoint opts out. This API is
                 // authenticated by bearer token and never by cookie, so a forged cross-site request cannot
                 // carry the caller's credentials and CSRF does not apply.
                 .DisableAntiforgery()
                 .AddEndpointFilter(MaxUploadSizeEndpointFilter.Require(maxFileSizeBytes))
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                // Not ProducesValidationProblem: this route's 400 is also raised by
+                // MaxUploadSizeEndpointFilter, which carries no errors dictionary. OpenAPI allows one
+                // schema per status, and ProblemDetails is the one true of both.
+                .ProducesProblem(StatusCodes.Status400BadRequest)
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             group.MapGet("upload-status/{jobId}", GetJobStatus)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             group.MapGet("file-extensions", GetFileExtensions);
 
@@ -73,17 +79,18 @@ namespace Enterprise.Gpt.Api.Endpoints
             return TypedResults.Accepted($"/api/documents/upload-status/{response.Id}", response);
         }
 
-        internal static Results<Ok<JobStatusDto>, NotFound> GetJobStatus(
+        internal static Ok<JobStatusDto> GetJobStatus(
             string jobId, IJobStatusStore jobStatusStore, ITokenService tokenService)
         {
             var snapshot = jobStatusStore.Get(jobId);
 
             // Scoped to the caller who queued it. The snapshot carries the created document id and the
             // failure detail, so another user reading it would learn both. 404 rather than 403 keeps a
-            // job id from being confirmed as valid, matching how conversations are handled.
+            // job id from being confirmed as valid, matching how conversations are handled. The message
+            // is deliberately generic so the not-yours case and the never-existed case read alike.
             if (snapshot is null || snapshot.UserId != tokenService.GetOid())
             {
-                return TypedResults.NotFound();
+                throw new NotFoundException("Upload job not found.");
             }
 
             return TypedResults.Ok(new JobStatusDto
