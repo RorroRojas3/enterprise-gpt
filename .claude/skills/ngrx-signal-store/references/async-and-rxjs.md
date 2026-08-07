@@ -12,7 +12,8 @@ features such as `withRequestStatus` in `references/custom-features.md`.
 **Contents:** [rxMethod](#rxmethod) · [the signal-in idiom](#the-signal-in-idiom-declarative-auto-refetch) ·
 [the canonical load pipeline](#the-canonical-load-pipeline) · [choosing the flattening operator](#choosing-the-flattening-operator) ·
 [tapResponse](#tapresponse-keeps-the-stream-alive) · [signalMethod](#signalmethod) ·
-[rxMethod vs signalMethod](#rxmethod-vs-signalmethod) · [cleanup, injectors, and the deprecation](#cleanup-injectors-and-the-deprecation)
+[rxMethod vs signalMethod](#rxmethod-vs-signalmethod) · [cleanup, injectors, and the deprecation](#cleanup-injectors-and-the-deprecation) ·
+[resource extensions (experimental)](#resource-extensions-experimental)
 
 ## rxMethod
 
@@ -254,3 +255,39 @@ ngOnInit(): void {
   logNumber.destroy(); // kill the reactive method and all of its calls
 }
 ```
+
+## Resource extensions (experimental)
+
+`@ngrx/signals/resource` is an **experimental** entry point — its APIs may change in future versions
+without standard breaking-change announcements. It customizes an Angular `Resource` composably:
+`extendResource` wraps an existing resource and patches only the behavior that should change, fully
+preserving the original resource type (including `WritableResource`).
+
+It exists because two common needs are not configurable at the resource level: while a resource
+reloads, `value()` resets to `undefined` until the new data arrives; and in the error state, reading
+`value()` throws.
+
+```ts
+import { httpResource } from '@angular/common/http';
+import {
+  extendResource,
+  withPreviousValueOnLoading,
+  withValueOnError,
+} from '@ngrx/signals/resource';
+
+readonly todosResource = extendResource(
+  httpResource<Todo[]>(() => `/api/todos`),
+  withPreviousValueOnLoading(), // keep the previous page's data while the next one loads
+  withValueOnError(undefined)   // value() returns undefined on error instead of throwing
+);
+```
+
+Built-in extensions: `withPreviousValueOnLoading()`, `withValueOnLoading(fallback)`,
+`withPreviousValueOnError()`, `withValueOnError(fallback)`. Extensions are plain objects with a
+`type` symbol and an `apply` function; when several applied extensions share the same `type`, the
+last one wins.
+
+`provideResourceExtensions(...extensions)` registers global defaults for an injector scope
+(application, route, or component): every resource wrapped with `extendResource` in that scope gets
+them automatically, per-resource extensions are appended after the global ones, and child scopes
+compose with — rather than discard — parent configuration.
