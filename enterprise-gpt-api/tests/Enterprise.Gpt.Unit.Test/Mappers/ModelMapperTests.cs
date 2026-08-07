@@ -14,8 +14,8 @@ public class ModelMapperTests
         {
             Id = Guid.NewGuid(),
             ProviderId = Guid.NewGuid(),
-            Name = "gpt-test",
-            DisplayName = "GPT Test",
+            Name = "GPT Test",
+            DeploymentName = "gpt-test",
             Description = "A test model.",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
@@ -34,7 +34,7 @@ public class ModelMapperTests
         Assert.Equal(expected.Id, actual.Id);
         Assert.Equal(expected.ProviderId, actual.ProviderId);
         Assert.Equal(expected.Name, actual.Name);
-        Assert.Equal(expected.DisplayName, actual.DisplayName);
+        Assert.Equal(expected.DeploymentName, actual.DeploymentName);
         Assert.Equal(expected.Description, actual.Description);
         Assert.Equal(expected.ContextWindowSize, actual.ContextWindowSize);
         Assert.Equal(expected.MaxOutputTokens, actual.MaxOutputTokens);
@@ -83,8 +83,8 @@ public class ModelMapperTests
         var request = new CreateModelActionDto
         {
             ProviderId = Guid.NewGuid(),
-            Name = "gpt-new",
-            DisplayName = "GPT New",
+            Name = "GPT New",
+            DeploymentName = "gpt-new",
             Description = "A brand new model.",
             ContextWindowSize = 200000m,
             MaxOutputTokens = 32768m,
@@ -96,7 +96,7 @@ public class ModelMapperTests
 
         Assert.Equal(request.ProviderId, model.ProviderId);
         Assert.Equal(request.Name, model.Name);
-        Assert.Equal(request.DisplayName, model.DisplayName);
+        Assert.Equal(request.DeploymentName, model.DeploymentName);
         Assert.Equal(request.Description, model.Description);
         Assert.Equal(request.ContextWindowSize, model.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, model.MaxOutputTokens);
@@ -120,8 +120,8 @@ public class ModelMapperTests
         var request = new UpdateModelActionDto
         {
             ProviderId = Guid.NewGuid(),
-            Name = "gpt-updated",
-            DisplayName = "GPT Updated",
+            Name = "GPT Updated",
+            DeploymentName = "gpt-updated",
             Description = "An updated model.",
             ContextWindowSize = 64000m,
             MaxOutputTokens = 8192m,
@@ -133,7 +133,7 @@ public class ModelMapperTests
 
         Assert.Equal(request.ProviderId, model.ProviderId);
         Assert.Equal(request.Name, model.Name);
-        Assert.Equal(request.DisplayName, model.DisplayName);
+        Assert.Equal(request.DeploymentName, model.DeploymentName);
         Assert.Equal(request.Description, model.Description);
         Assert.Equal(request.ContextWindowSize, model.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, model.MaxOutputTokens);

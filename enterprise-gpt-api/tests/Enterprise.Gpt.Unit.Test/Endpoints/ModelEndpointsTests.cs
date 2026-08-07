@@ -18,7 +18,7 @@ public class ModelEndpointsTests
             Id = Guid.NewGuid(),
             ProviderId = Guid.NewGuid(),
             Name = name,
-            DisplayName = $"{name} display",
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
@@ -67,8 +67,8 @@ public class ModelEndpointsTests
         var request = new CreateModelActionDto
         {
             ProviderId = Guid.NewGuid(),
-            Name = "gpt-new",
-            DisplayName = "GPT New",
+            Name = "GPT New",
+            DeploymentName = "gpt-new",
             Description = "A new model.",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
@@ -91,8 +91,8 @@ public class ModelEndpointsTests
         var request = new UpdateModelActionDto
         {
             ProviderId = Guid.NewGuid(),
-            Name = "gpt-updated",
-            DisplayName = "GPT Updated",
+            Name = "GPT Updated",
+            DeploymentName = "gpt-updated",
             Description = "An updated model.",
             ContextWindowSize = 64000m,
             MaxOutputTokens = 8192m,

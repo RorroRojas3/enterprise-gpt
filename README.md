@@ -127,20 +127,21 @@ dotnet user-secrets init
 Add your AI service configurations:
 
 ```bash
-# For OpenAI
-dotnet user-secrets set "OpenAI:ApiKey" "your-openai-api-key"
-
 # For Azure AI Foundry
 dotnet user-secrets set "AzureAIFoundry:Url" "https://your-endpoint.openai.azure.com/"
 dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-azure-api-key"
+dotnet user-secrets set "AzureAIFoundry:DefaultModel" "your-chat-deployment-name"
 dotnet user-secrets set "AzureAIFoundry:EmbeddingModel" "text-embedding-ada-002"
 
-# For Anthropic
-dotnet user-secrets set "Anthropic:ApiKey" "your-anthropic-api-key"
-
-# For custom Ollama URL (optional, defaults to http://localhost:11434/)
-dotnet user-secrets set "OllamaUrl" "http://localhost:11434/"
+# For Amazon Bedrock (optional; leave AmazonBedrock:Enabled false to skip it entirely)
+dotnet user-secrets set "AmazonBedrock:Enabled" "true"
+dotnet user-secrets set "AmazonBedrock:Region" "us-east-1"
+dotnet user-secrets set "AmazonBedrock:ApiKey" "your-bedrock-api-key"
+dotnet user-secrets set "AmazonBedrock:DefaultModelId" "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 ```
+
+Enabling Bedrock also needs two database changes that are not applied automatically and fail
+silently if skipped — see [docs/models/amazon-bedrock.md](docs/models/amazon-bedrock.md).
 
 ### 4. Run the API
 
@@ -217,17 +218,21 @@ export const environment = {
 
 ### Environment Variables Reference
 
-| Variable                              | Description                         | Required | Default                 |
-| ------------------------------------- | ----------------------------------- | -------- | ----------------------- |
-| `OpenAI:ApiKey`                       | OpenAI API key for GPT models       | No\*     | -                       |
-| `AzureAIFoundry:Url`                  | Azure OpenAI endpoint URL           | No\*     | -                       |
-| `AzureAIFoundry:ApiKey`               | Azure OpenAI API key                | No\*     | -                       |
-| `AzureAIFoundry:EmbeddingModel`       | Embedding model name                | No       | text-embedding-ada-002  |
-| `Anthropic:ApiKey`                    | Anthropic API key for Claude models | No\*     | -                       |
-| `OllamaUrl`                           | Ollama server URL                   | No       | http://localhost:11434/ |
-| `ConnectionStrings:DefaultConnection` | SQL Server connection string        | Yes      | See above               |
+| Variable                              | Description                                                   | Required | Default                |
+| ------------------------------------- | ------------------------------------------------------------- | -------- | ---------------------- |
+| `AzureAIFoundry:Url`                  | Azure OpenAI endpoint URL                                     | Yes      | -                      |
+| `AzureAIFoundry:ApiKey`               | Azure OpenAI API key                                          | Yes      | -                      |
+| `AzureAIFoundry:DefaultModel`         | Chat deployment used when a request names none                | Yes      | -                      |
+| `AzureAIFoundry:EmbeddingModel`       | Embedding model name                                          | Yes      | -                      |
+| `AmazonBedrock:Enabled`               | Registers the Bedrock chat client                             | No       | false                  |
+| `AmazonBedrock:Region`                | AWS region system name, e.g. `us-east-1`                      | If enabled | -                    |
+| `AmazonBedrock:ApiKey`                | Bedrock API key, sent as an HTTP bearer token                 | If enabled | -                    |
+| `AmazonBedrock:DefaultModelId`        | Bedrock model or inference profile id used when none is named | If enabled | -                    |
+| `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
 
-\*At least one AI service must be configured.
+Azure AI Foundry is required — it also backs document-embedding generation. Amazon Bedrock is optional
+and off by default; when `AmazonBedrock:Enabled` is `true` the remaining Bedrock settings are validated
+at startup and the app refuses to boot if any is missing or the region is unknown.
 
 ## 🧪 Database Setup
 

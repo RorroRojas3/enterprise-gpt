@@ -58,4 +58,11 @@ internal static class ProblemTypes
     /// <summary>An MCP server could not be reached. Accompanied by a <c>serverName</c> extension.</summary>
     public static readonly ProblemType McpServerUnavailable =
         new($"{BaseUri}mcp-server-unavailable", "MCP server unavailable");
+
+    /// <summary>
+    /// The selected model's provider has no chat client in this deployment. Accompanied by a
+    /// <c>providerId</c> extension.
+    /// </summary>
+    public static readonly ProblemType ProviderNotConfigured =
+        new($"{BaseUri}provider-not-configured", "Provider not configured");
 }

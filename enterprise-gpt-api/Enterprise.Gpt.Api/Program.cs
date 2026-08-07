@@ -1,4 +1,7 @@
-﻿using Azure;
+﻿using Amazon;
+using Amazon.BedrockRuntime;
+using Amazon.Runtime;
+using Azure;
 using Azure.AI.DocumentIntelligence;
 using Azure.AI.OpenAI;
 using Azure.Identity;
@@ -8,15 +11,18 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
 using Enterprise.Gpt.Service.Extraction;
@@ -77,24 +83,81 @@ builder.Services.AddCors(builder => builder.AddPolicy("AllowSpecificOrigins", po
 }));
 
 
+// Chat providers. Each is registered under the DI key its Core.Ref.Provider row maps to in
+// Providers.ServiceKeys; IChatClientResolver is what turns a model's ProviderId into one of these at
+// request time. Shared here so a second provider cannot drift from the first on tool invocation.
+static void ConfigureFunctionInvocation(FunctionInvokingChatClient client)
+{
+    client.AllowConcurrentInvocation = false;
+    client.IncludeDetailedErrors = true;
+    client.MaximumIterationsPerRequest = 5;
+    client.MaximumConsecutiveErrorsPerRequest = 5;
+}
+
 // 1) Azure AI Foundry under key "azureaifoundry"
 var azureAIFoundryUrl = builder.Configuration.GetValue<string>("AzureAIFoundry:Url") ?? string.Empty;
 var azureAIFoundryKey = builder.Configuration.GetValue<string>("AzureAIFoundry:ApiKey") ?? string.Empty;
 var azureAIFoundryDefaultModel = builder.Configuration.GetValue<string>("AzureAIFoundry:DefaultModel") ?? string.Empty;
 builder.Services.AddKeyedChatClient(
-        "azureaifoundry",
+        ChatClientKeys.AzureAIFoundry,
         sp => new AzureOpenAIClient(new Uri(azureAIFoundryUrl), new ApiKeyCredential(azureAIFoundryKey))
                   .GetChatClient(azureAIFoundryDefaultModel)
                   .AsIChatClient()
     )
     .UseOpenTelemetry()
-    .UseFunctionInvocation(null, x =>
+    .UseFunctionInvocation(null, ConfigureFunctionInvocation);
+
+// 2) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
+// gated on the same flag, so an environment that does not use Bedrock needs no Bedrock settings and a
+// half-filled section still fails at startup rather than on the first conversation.
+builder.Services.AddOptions<AmazonBedrockOptions>()
+    .Bind(builder.Configuration.GetSection(AmazonBedrockOptions.SectionName))
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.ApiKey),
+        "AmazonBedrock:ApiKey is required when AmazonBedrock:Enabled is true.")
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.DefaultModelId),
+        "AmazonBedrock:DefaultModelId is required when AmazonBedrock:Enabled is true.")
+    // Not GetBySystemName: it fabricates an endpoint for an unknown name instead of failing, which
+    // would turn a typo into a DNS error on the first request. The list is baked into the pinned
+    // AWSSDK.Core, so a region AWS launches after that pin is rejected here until the package is
+    // bumped — the exception message is the only place that trade-off is visible.
+    .Validate(options => !options.Enabled || RegionEndpoint.EnumerableAllRegions.Any(region => region.SystemName == options.Region),
+        "AmazonBedrock:Region must be a known AWS region system name, for example us-east-1. Regions added to AWS after the pinned AWSSDK.Core version are not recognized until it is upgraded.")
+    .ValidateOnStart();
+
+if (builder.Configuration.GetValue<bool>($"{AmazonBedrockOptions.SectionName}:Enabled"))
+{
+    // Registered in its own right rather than constructed inside the chat-client factory: the MEAI
+    // adapter's Dispose is a deliberate no-op because it does not own the runtime client, so a client
+    // created inside that closure would be owned by nobody and never disposed.
+    builder.Services.AddSingleton<IAmazonBedrockRuntime>(sp =>
     {
-        x.AllowConcurrentInvocation = false;
-        x.IncludeDetailedErrors = true;
-        x.MaximumIterationsPerRequest = 5;
-        x.MaximumConsecutiveErrorsPerRequest = 5;
+        var bedrockOptions = sp.GetRequiredService<IOptions<AmazonBedrockOptions>>().Value;
+        var bedrockConfig = new AmazonBedrockRuntimeConfig
+        {
+            RegionEndpoint = RegionEndpoint.GetBySystemName(bedrockOptions.Region),
+            // The SDK's default token chain reads SSO profiles only — it never looks at
+            // AWS_BEARER_TOKEN_BEDROCK — so a Bedrock API key has to be handed over here.
+            // Pinning the preference is what stops SigV4, which the service's auth resolver
+            // lists first, from winning on a host that carries ambient AWS credentials.
+            AWSTokenProvider = new StaticTokenProvider(bedrockOptions.ApiKey, null),
+            AuthSchemePreference = ["httpBearerAuth"]
+        };
+
+        // Anonymous credentials keep the SigV4 identity resolver from probing IMDS; the bearer
+        // token is what authorizes the request.
+        return new AmazonBedrockRuntimeClient(new AnonymousAWSCredentials(), bedrockConfig);
     });
+
+    builder.Services.AddKeyedChatClient(
+            ChatClientKeys.AmazonBedrock,
+            sp => sp.GetRequiredService<IAmazonBedrockRuntime>()
+                    .AsIChatClient(sp.GetRequiredService<IOptions<AmazonBedrockOptions>>().Value.DefaultModelId)
+        )
+        .UseOpenTelemetry()
+        .UseFunctionInvocation(null, ConfigureFunctionInvocation);
+}
+
+builder.Services.AddSingleton<IChatClientResolver, ChatClientResolver>();
 
 // AI Embedding Generators
 var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;

@@ -8,7 +8,7 @@ namespace Enterprise.Gpt.Dto.Actions.Model
 
         public string Name { get; init; } = null!;
 
-        public string DisplayName { get; init; } = null!;
+        public string DeploymentName { get; init; } = null!;
 
         public string Description { get; init; } = null!;
 
@@ -30,9 +30,9 @@ namespace Enterprise.Gpt.Dto.Actions.Model
             RuleFor(x => x.Name)
                 .NotEmpty()
                 .MaximumLength(256);
-            RuleFor(x => x.DisplayName)
+            RuleFor(x => x.DeploymentName)
                 .NotEmpty()
-                .MaximumLength(256);
+                .MaximumLength(512);
             RuleFor(x => x.Description)
                 .NotEmpty()
                 .MaximumLength(1024);
@@ -49,7 +49,7 @@ namespace Enterprise.Gpt.Dto.Actions.Model
 
         public string Name { get; init; } = null!;
 
-        public string DisplayName { get; init; } = null!;
+        public string DeploymentName { get; init; } = null!;
 
         public string Description { get; init; } = null!;
 
@@ -71,9 +71,9 @@ namespace Enterprise.Gpt.Dto.Actions.Model
             RuleFor(x => x.Name)
                 .NotEmpty()
                 .MaximumLength(256);
-            RuleFor(x => x.DisplayName)
+            RuleFor(x => x.DeploymentName)
                 .NotEmpty()
-                .MaximumLength(256);
+                .MaximumLength(512);
             RuleFor(x => x.Description)
                 .NotEmpty()
                 .MaximumLength(1024);

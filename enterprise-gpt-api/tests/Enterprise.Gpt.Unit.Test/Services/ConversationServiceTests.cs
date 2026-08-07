@@ -9,6 +9,7 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -31,6 +32,7 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly IConversationLockService _lockService = Substitute.For<IConversationLockService>();
     private readonly IAzureCosmosService _cosmosService = Substitute.For<IAzureCosmosService>();
     private readonly FakeChatClient _chatClient = new();
+    private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
     private readonly ConversationService _service;
 
     public ConversationServiceTests()
@@ -38,10 +40,11 @@ public sealed class ConversationServiceTests : IDisposable
         _tokenService.GetOid().Returns(KnownIds.SeedUserId);
         _lockService.TryAcquireLockAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(Substitute.For<IDisposable>());
+        _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_chatClient);
         _service = new ConversationService(
             NullLogger<ConversationService>.Instance,
             _modelService,
-            _chatClient,
+            _chatClientResolver,
             _mcpToolProvider,
             _lockService,
             _tokenService,
@@ -108,8 +111,8 @@ public sealed class ConversationServiceTests : IDisposable
         {
             Id = Guid.NewGuid(),
             ProviderId = KnownIds.SeedProviderId,
-            Name = "gpt-test",
-            DisplayName = "GPT Test",
+            Name = "GPT Test",
+            DeploymentName = "gpt-test",
             Description = "A test model.",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
@@ -181,6 +184,31 @@ public sealed class ConversationServiceTests : IDisposable
             Arg.Any<CancellationToken>());
         await _cosmosService.DidNotReceiveWithAnyArgs().UpdateItemAsync(
             default(CosmosConversation)!, default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The naming path is the only place that reads the deployment name straight from SQL with a
+    /// hand-rolled projection rather than through <c>IModelService</c>, so a Name/DeploymentName
+    /// mix-up there survives a green build unless it is pinned here. The seeded model carries the
+    /// label in <c>Name</c> and the deployment in <c>DeploymentName</c>, so the two are separable.
+    /// </summary>
+    [Fact]
+    public async Task UpdateConversationNameAsync_WhenNamed_SendsTheDeploymentNameToTheModelsProvider()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        _chatClient.NamingResponse = "Named Conversation";
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = KnownIds.SeedModelId,
+            McpServers = []
+        };
+
+        await _service.UpdateConversationNameAsync(conversation.Id, request, TestContext.Current.CancellationToken);
+
+        Assert.Equal("rr-gpt-5.6-luna", _chatClient.CapturedNamingOptions?.ModelId);
+        _chatClientResolver.Received(1).Resolve(KnownIds.SeedProviderId);
     }
 
     [Fact]
@@ -364,10 +392,67 @@ public sealed class ConversationServiceTests : IDisposable
         var capturedOptions = _chatClient.CapturedOptions;
         Assert.NotNull(capturedOptions);
         Assert.Null(capturedOptions.Tools);
-        Assert.Equal(model.Name, capturedOptions.ModelId);
+        Assert.Equal(model.DeploymentName, capturedOptions.ModelId);
         Assert.Equal(conversation.Id.ToString(), capturedOptions.ConversationId);
         await _mcpToolProvider.DidNotReceiveWithAnyArgs()
             .AcquireToolsAsync(default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The client is chosen from the model's provider, not injected once at construction, so a
+    /// catalog spanning several providers reaches the right one on every turn.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenCalled_ResolvesChatClientForTheModelsProvider()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        _chatClientResolver.Received(1).Resolve(model.ProviderId);
+    }
+
+    /// <summary>
+    /// Resolution happens after the lock is taken and the conversation is loaded, but still ahead of
+    /// tool acquisition and every write — so a model whose provider has no client costs the caller a
+    /// clean 503 and leaves no half-written turn behind. The lock is released by the iterator's
+    /// <c>using</c> on the way out.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenProviderHasNoChatClient_ThrowsWithoutAcquiringToolsOrWriting()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var releaser = Substitute.For<IDisposable>();
+        _lockService.TryAcquireLockAsync(conversation.Id, Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IDisposable?>(releaser));
+        _chatClientResolver.Resolve(model.ProviderId)
+            .Returns(_ => throw new ProviderNotConfiguredException(model.ProviderId));
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = Guid.NewGuid() }]
+        };
+
+        var exception = await Assert.ThrowsAsync<ProviderNotConfiguredException>(
+            () => StreamToEndAsync(conversation.Id, request));
+
+        Assert.Equal(model.ProviderId, exception.ProviderId);
+        await _mcpToolProvider.DidNotReceiveWithAnyArgs()
+            .AcquireToolsAsync(default!, TestContext.Current.CancellationToken);
+        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
+            default!, default!, default!, TestContext.Current.CancellationToken);
+        releaser.Received(1).Dispose();
     }
 
     [Fact]
@@ -421,6 +506,13 @@ public sealed class ConversationServiceTests : IDisposable
         public ChatOptions? CapturedOptions { get; private set; }
 
         /// <summary>
+        /// Gets the options handed to the conversation-naming call. Held apart from
+        /// <see cref="CapturedOptions"/> because naming runs inline inside a stream, so a single
+        /// field would be overwritten by the turn that follows it.
+        /// </summary>
+        public ChatOptions? CapturedNamingOptions { get; private set; }
+
+        /// <summary>
         /// Gets or sets the name the conversation-naming path should return. Left <see langword="null"/>,
         /// that path throws, so tests that do not expect naming to run still fail loudly.
         /// </summary>
@@ -433,6 +525,8 @@ public sealed class ConversationServiceTests : IDisposable
             {
                 throw new NotSupportedException("The naming path should not run in these tests.");
             }
+
+            CapturedNamingOptions = options;
 
             return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, NamingResponse)));
         }

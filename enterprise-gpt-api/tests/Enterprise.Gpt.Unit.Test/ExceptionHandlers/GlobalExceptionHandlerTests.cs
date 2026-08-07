@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service.Exceptions;
 using Xunit;
 using static Enterprise.Gpt.Unit.Test.TestInfrastructure.ProblemDetailsTestHelpers;
@@ -61,6 +62,25 @@ public class GlobalExceptionHandlerTests
         Assert.Equal("MCP server 'docs' is unavailable.", problem.Detail);
         Assert.Equal(ProblemTypes.McpServerUnavailable.Type, problem.Type);
         Assert.Equal("docs", ReadExtension(problem, "serverName"));
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_ProviderNotConfiguredException_Returns503WithTheProviderId()
+    {
+        // 503 rather than the 400 the InvalidOperationException arm above it produces: rebasing this
+        // exception on InvalidOperationException would silently downgrade the contract, and only this
+        // assertion would notice.
+        var httpContext = CreateHttpContext();
+        var exception = new ProviderNotConfiguredException(Providers.AmazonBedrock);
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(exception.Message, problem.Detail);
+        Assert.Equal(ProblemTypes.ProviderNotConfigured.Type, problem.Type);
+        Assert.Equal(Providers.AmazonBedrock.ToString(), ReadExtension(problem, "providerId"));
     }
 
     [Fact]

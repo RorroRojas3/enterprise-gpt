@@ -19,7 +19,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 Id = model.Id,
                 ProviderId = model.ProviderId,
                 Name = model.Name,
-                DisplayName = model.DisplayName,
+                DeploymentName = model.DeploymentName,
                 Description = model.Description,
                 ContextWindowSize = model.ContextWindowSize,
                 MaxOutputTokens = model.MaxOutputTokens,
@@ -39,7 +39,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 Id = model.Id,
                 ProviderId = model.ProviderId,
                 Name = model.Name,
-                DisplayName = model.DisplayName,
+                DeploymentName = model.DeploymentName,
                 Description = model.Description,
                 ContextWindowSize = model.ContextWindowSize,
                 MaxOutputTokens = model.MaxOutputTokens,
@@ -61,7 +61,7 @@ namespace Enterprise.Gpt.Service.Mappers
             {
                 ProviderId = dto.ProviderId,
                 Name = dto.Name,
-                DisplayName = dto.DisplayName,
+                DeploymentName = dto.DeploymentName,
                 Description = dto.Description,
                 ContextWindowSize = dto.ContextWindowSize,
                 MaxOutputTokens = dto.MaxOutputTokens,
@@ -81,7 +81,7 @@ namespace Enterprise.Gpt.Service.Mappers
         {
             model.ProviderId = dto.ProviderId;
             model.Name = dto.Name;
-            model.DisplayName = dto.DisplayName;
+            model.DeploymentName = dto.DeploymentName;
             model.Description = dto.Description;
             model.ContextWindowSize = dto.ContextWindowSize;
             model.MaxOutputTokens = dto.MaxOutputTokens;

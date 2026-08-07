@@ -110,7 +110,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             Id = Guid.NewGuid(),
             ProviderId = KnownIds.SeedProviderId,
             Name = name,
-            DisplayName = $"{name} display",
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 1000m,
             MaxOutputTokens = 100m,

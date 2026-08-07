@@ -12,8 +12,15 @@ namespace Enterprise.Gpt.Entity
         [StringLength(256)]
         public string Name { get; set; } = null!;
 
-        [StringLength(256)]
-        public string DisplayName { get; set; } = null!;
+        /// <summary>
+        /// Gets or sets the provider-side identifier sent as <c>ChatOptions.ModelId</c>: an Azure
+        /// OpenAI deployment name, or a Bedrock model id, inference profile id, or ARN.
+        /// </summary>
+        /// <remarks>
+        /// Sized for the longest of those — a Bedrock inference-profile ARN overruns 256 characters.
+        /// </remarks>
+        [StringLength(512)]
+        public string DeploymentName { get; set; } = null!;
 
         [StringLength(1024)]
         public string Description { get; set; } = null!;

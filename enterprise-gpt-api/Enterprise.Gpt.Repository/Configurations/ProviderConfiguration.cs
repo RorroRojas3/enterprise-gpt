@@ -16,6 +16,12 @@ namespace Enterprise.Gpt.Repository.Configurations
                     Id = Providers.AzureOpenAI,
                     Name = nameof(Providers.AzureOpenAI),
                     DateCreated = date,
+                },
+                new Provider
+                {
+                    Id = Providers.AmazonBedrock,
+                    Name = nameof(Providers.AmazonBedrock),
+                    DateCreated = date,
                 }
             );
         }

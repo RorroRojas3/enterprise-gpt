@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Amazon Bedrock. The MEAI package supplies IAmazonBedrockRuntime.AsIChatClient(), which wraps
+         Converse/ConverseStream; BedrockRuntime itself is a direct dependency because Program.cs
+         constructs AmazonBedrockRuntimeClient and its config to wire bearer-token auth. -->
+    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101" />
+    <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" Version="4.0.101.7" />
     <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
