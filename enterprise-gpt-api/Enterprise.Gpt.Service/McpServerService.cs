@@ -77,7 +77,8 @@ namespace Enterprise.Gpt.Service
         EnterpriseGptDbContext ctx,
         IValidator<CreateMcpServerActionDto> createValidator,
         IValidator<UpdateMcpServerActionDto> updateValidator,
-        IMcpClientCache mcpClientCache) : IMcpServerService
+        IMcpClientCache mcpClientCache,
+        IUserPermissionCache permissionCache) : IMcpServerService
     {
         private readonly ILogger<McpServerService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
@@ -85,12 +86,16 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<CreateMcpServerActionDto> _createValidator = createValidator;
         private readonly IValidator<UpdateMcpServerActionDto> _updateValidator = updateValidator;
         private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
+        private readonly IUserPermissionCache _permissionCache = permissionCache;
 
         /// <inheritdoc />
         public async Task<List<McpDto>> GetPermittedMcpServersAsync(CancellationToken cancellationToken = default)
         {
             var oid = _tokenService.GetOid();
 
+            // Deliberately reads the database rather than IUserPermissionCache: the McpServers query
+            // has to run regardless, so the cache would save no round trip — only an EXISTS over an
+            // indexed foreign key — while making a user-visible list eventually consistent.
             return await _ctx.McpServers
                 .AsNoTracking()
                 .Where(s => !s.DateDeactivated.HasValue
@@ -236,9 +241,16 @@ namespace Enterprise.Gpt.Service
                 }
             }
 
+            // Collected from the already-included graph, so the cascade costs no extra query.
+            Guid[] affectedUserIds = [.. server.Permissions
+                .SelectMany(p => p.UserPermissions)
+                .Select(g => g.UserId)
+                .Distinct()];
+
             await _ctx.SaveChangesAsync(cancellationToken);
 
             _mcpClientCache.InvalidateServer(id);
+            _permissionCache.Invalidate(affectedUserIds);
 
             _logger.LogInformation("MCP server {McpServerId} deactivated by {UserId}", id, oid);
         }

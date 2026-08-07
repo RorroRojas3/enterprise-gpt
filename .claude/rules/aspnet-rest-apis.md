@@ -1,111 +1,67 @@
 ---
 paths:
   - "**/*.cs"
-  - "**/*.json"
 ---
 
 # ASP.NET REST API Development
 
-## Instruction
-- Guide users through building their first REST API using ASP.NET Core 10.
-- Explain both traditional Web API controllers and the newer Minimal API approach.
-- Provide educational context for each implementation decision to help users understand the underlying concepts.
-- Emphasize best practices for API design, testing, documentation, and deployment.
-- Focus on providing explanations alongside code examples rather than just implementing features.
+## Instructions
 
-## API Design Fundamentals
+- Build REST APIs on ASP.NET Core 10, using Web API controllers or Minimal APIs.
+- Apply best practices for API design, testing, documentation, and deployment.
+- Note the reasoning behind non-obvious design decisions; no tutorial-style explanations unless asked.
+- General C# standards (naming, formatting, nullability, data access, logging) live in `csharp.md`.
 
-- Explain REST architectural principles and how they apply to ASP.NET Core APIs.
-- Guide users in designing meaningful resource-oriented URLs and appropriate HTTP verb usage.
-- Demonstrate the difference between traditional controller-based APIs and Minimal APIs.
-- Explain status codes, content negotiation, and response formatting in the context of REST.
-- Help users understand when to choose Controllers vs. Minimal APIs based on project requirements.
+## API Design
 
-## Project Setup and Structure
+- Design resource-oriented URLs with appropriate HTTP verbs, status codes, content negotiation, and consistent response formatting.
+- Choose controllers or Minimal APIs per project requirements; keep the choice consistent within a service.
 
-- Guide users through creating a new ASP.NET Core 10 Web API project with the appropriate templates.
-- Explain the purpose of each generated file and folder to build understanding of the project structure.
-- Demonstrate how to organize code using feature folders or domain-driven design principles.
-- Show proper separation of concerns with models, services, and data access layers.
-- Explain the Program.cs and configuration system in ASP.NET Core 10 including environment-specific settings.
+## Project Structure
 
-## Building Controller-Based APIs
+- Create projects from the ASP.NET Core 10 Web API template.
 
-- Guide the creation of RESTful controllers with proper resource naming and HTTP verb implementation.
-- Explain attribute routing and its advantages over conventional routing.
-- Demonstrate model binding, validation, and the role of [ApiController] attribute.
-- Show how dependency injection works within controllers.
-- Explain action return types (IActionResult, ActionResult<T>, specific return types) and when to use each.
+## Controller-Based APIs
 
-## Implementing Minimal APIs
+- Use attribute routing and the `[ApiController]` attribute; name resources RESTfully.
+- Inject dependencies via constructors.
+- Pick action return types deliberately: `ActionResult<T>`, `IActionResult`, or specific types.
 
-- Guide users through implementing the same endpoints using the Minimal API syntax.
-- Explain the endpoint routing system and how to organize route groups.
-- Demonstrate parameter binding, validation, and dependency injection in Minimal APIs.
-- Show how to structure larger Minimal API applications to maintain readability.
-- Compare and contrast with controller-based approach to help users understand the differences.
+## Minimal APIs
 
-## Data Access Patterns
-
-- Guide the implementation of a data access layer using Entity Framework Core.
-- Explain different options (SQL Server, SQLite, In-Memory) for development and production.
-- Demonstrate repository pattern implementation and when it's beneficial.
-- Show how to implement database migrations and data seeding.
-- Explain efficient query patterns to avoid common performance issues.
+- Organize endpoints with route groups.
+- Use parameter binding, validation, and dependency injection as in controllers.
+- Structure larger Minimal API applications for readability.
 
 ## Authentication and Authorization
 
-- Guide users through implementing authentication using JWT Bearer tokens.
-- Explain OAuth 2.0 and OpenID Connect concepts as they relate to ASP.NET Core.
-- Show how to implement role-based and policy-based authorization.
-- Demonstrate integration with Microsoft Entra ID (formerly Azure AD).
-- Explain how to secure both controller-based and Minimal APIs consistently.
+- Authenticate with JWT Bearer tokens; integrate Microsoft Entra ID where applicable.
+- Apply role-based or policy-based authorization.
+- Secure controller-based and Minimal APIs consistently.
 
 ## Validation and Error Handling
 
-- Guide the implementation of model validation using data annotations and FluentValidation.
-- Explain the validation pipeline and how to customize validation responses.
-- Demonstrate a global exception handling strategy using middleware.
-- Show how to create consistent error responses across the API.
-- Explain problem details (RFC 9457) implementation for standardized error responses.
+- Validate with DataAnnotations or FluentValidation; customize validation responses when the default shape does not fit.
+- Handle exceptions globally in middleware; return Problem Details (RFC 9457) responses consistently.
 
-## API Versioning and Documentation
+## Versioning and Documentation
 
-- Guide users through implementing and explaining API versioning strategies.
-- Demonstrate Swagger/OpenAPI implementation with proper documentation.
-- Show how to document endpoints, parameters, responses, and authentication.
-- Explain versioning in both controller-based and Minimal APIs.
-- Guide users on creating meaningful API documentation that helps consumers.
+- Version APIs — controllers and Minimal APIs alike.
+- Document endpoints, parameters, responses, and authentication with Swagger/OpenAPI.
 
-## Logging and Monitoring
+## Testing
 
-- Guide the implementation of structured logging using Serilog or other providers.
-- Explain the logging levels and when to use each.
-- Demonstrate integration with Application Insights for telemetry collection.
-- Show how to implement custom telemetry and correlation IDs for request tracking.
-- Explain how to monitor API performance, errors, and usage patterns.
+- Unit test controllers, Minimal API endpoints, and services; add integration tests for endpoints.
+- Mock dependencies; test authentication and authorization logic.
 
-## Testing REST APIs
+## Performance
 
-- Guide users through creating unit tests for controllers, Minimal API endpoints, and services.
-- Explain integration testing approaches for API endpoints.
-- Demonstrate how to mock dependencies for effective testing.
-- Show how to test authentication and authorization logic.
-- Explain test-driven development principles as applied to API development.
-
-## Performance Optimization
-
-- Guide users on implementing caching strategies (in-memory, distributed, response caching).
-- Explain asynchronous programming patterns and why they matter for API performance.
-- Demonstrate pagination, filtering, and sorting for large data sets.
-- Show how to implement compression and other performance optimizations.
-- Explain how to measure and benchmark API performance.
+- Cache appropriately: in-memory, distributed, or response caching.
+- Stay async end to end; paginate, filter, and sort large data sets; enable response compression.
+- Measure and benchmark before optimizing.
 
 ## Deployment and DevOps
 
-- Guide users through containerizing their API using .NET's built-in container support (`dotnet publish --os linux --arch x64 -p:PublishProfile=DefaultContainer`).
-- Explain the differences between manual Dockerfile creation and .NET's container publishing features.
-- Explain CI/CD pipelines for ASP.NET Core applications.
-- Demonstrate deployment to Azure App Service, Azure Container Apps, or other hosting options.
-- Show how to implement health checks and readiness probes.
-- Explain environment-specific configurations for different deployment stages.
+- Containerize with .NET's built-in container support (`dotnet publish --os linux --arch x64 -p:PublishProfile=DefaultContainer`) instead of a manual Dockerfile.
+- Ship through CI/CD to Azure App Service, Azure Container Apps, or comparable hosting.
+- Implement health checks and readiness probes; keep configuration environment-specific per stage.

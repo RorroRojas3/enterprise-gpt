@@ -45,16 +45,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         };
     }
 
-    private static async Task<ErrorDto> ReadErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatusCode)
-    {
-        Assert.Equal(expectedStatusCode, response.StatusCode);
-
-        var error = await response.Content.ReadFromJsonAsync<ErrorDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(error);
-        Assert.Equal(expectedStatusCode, error.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(error.TraceId));
-        return error;
-    }
 
     /// <summary>
     /// Creates a client for an identity that has no database row yet, so <c>me</c> takes the
@@ -81,7 +71,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
     }
 
     [Theory]
@@ -105,8 +96,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 
     [Fact]
@@ -190,8 +181,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         using var userClient = _fixture.Factory.CreateUserClient();
         var response = await userClient.PostAsync("api/users/me", null, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("This account has been deactivated.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("This account has been deactivated.", problem.Detail);
     }
 
     [Fact]
@@ -203,8 +194,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
             $"api/users/{TestUsers.AdminUserId}/permissions/{KnownIds.AdministratorPermissionId}",
             TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains(error.Errors, x => x.Contains("Administrator", StringComparison.Ordinal));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains("Administrator", Assert.Single(problem.Errors["PermissionId"]), StringComparison.Ordinal);
 
         // The grant survived, so the admin routes still work.
         var stillAdmin = await client.GetAsync("api/users", TestContext.Current.CancellationToken);
@@ -218,7 +209,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.PostAsync("api/users/me", null, TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -286,7 +277,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -298,7 +289,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Fact]
@@ -309,7 +300,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Fact]
@@ -325,7 +316,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -381,7 +372,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var response = await client.GetAsync($"api/users/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -419,8 +410,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var response = await client.PutAsJsonAsync(
             $"api/users/{TestUsers.AdminUserId}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains(error.Errors, x => x.Contains("Administrator", StringComparison.Ordinal));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains("Administrator", Assert.Single(problem.Errors["PermissionIds"]), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -431,7 +422,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var response = await client.PutAsJsonAsync(
             $"api/users/{Guid.NewGuid()}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -448,7 +439,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var response = await client.PutAsJsonAsync(
             $"api/users/{TestUsers.RegularUserId}", request, TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Fact]
@@ -481,7 +472,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var second = await client.DeleteAsync(
             $"api/users/{TestUsers.RegularUserId}", TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(second, HttpStatusCode.NotFound);
+        await ProblemAssert.ReadAsync(second, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -492,7 +483,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var response = await client.DeleteAsync(
             $"api/users/{TestUsers.AdminUserId}", TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Fact]
@@ -517,6 +508,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
         var afterDeactivation = await secondAdminClient.GetAsync("api/users", TestContext.Current.CancellationToken);
 
-        await ReadErrorAsync(afterDeactivation, HttpStatusCode.Forbidden);
+        await ProblemAssert.ReadAsync(afterDeactivation, HttpStatusCode.Forbidden);
     }
 }

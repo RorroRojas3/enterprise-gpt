@@ -6,7 +6,7 @@ End-to-end reference for the conversation document pipeline: how an uploaded fil
 
 A document upload is **two requests and one background job**:
 
-1. `POST /api/documents/conversations/{conversationId}` validates the file *synchronously* and returns `202 Accepted` with a job id. Everything that can be rejected cheaply — permission, conversation ownership, file size, extension, magic bytes — is rejected here, as a normal `ErrorDto` response.
+1. `POST /api/documents/conversations/{conversationId}` validates the file *synchronously* and returns `202 Accepted` with a job id. Everything that can be rejected cheaply — permission, conversation ownership, file size, extension, magic bytes — is rejected here, as a normal problem-details response (§3).
 2. The ingestion pipeline runs on a background job: store → extract → chunk → embed → persist.
 3. `GET /api/documents/upload-status/{jobId}` returns the job's live snapshot until it reaches `Processed` or `Failed`.
 
@@ -105,15 +105,39 @@ All three routes live in the `api/documents` group with `RequireAuthorization()`
 | GET | `/api/documents/upload-status/{jobId}` | the user who queued the job | `200 JobStatusDto` | 404 unknown, evicted, or queued by someone else |
 | GET | `/api/documents/file-extensions` | any authenticated | `200 string[]` — e.g. `[".doc", ".docx", ".md", ".pdf", ".pptx", ".txt"]` | — |
 
-Error bodies use the [`ErrorDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ErrorDto.cs) envelope `{ statusCode, errors[], traceId, timestamp }`. **This API does not emit RFC 9457 Problem Details** — do not add `ProblemDetails` returns here.
+Error bodies are **RFC 9457 Problem Details**, served as `application/problem+json`. The `type` URIs come from [`ProblemTypes`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemTypes.cs) and are opaque identifiers to match verbatim, not links to follow:
+
+| Status | `type` | Raised by | Extra fields |
+|---|---|---|---|
+| 400 | `/problems/validation-error` | [`UploadedFileValidator`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs), as a `ValidationException` | `errors`, keyed by the failing property |
+| 400 | `/problems/upload-too-large` | `MaxUploadSizeEndpointFilter` (§3.2) | `maxBytes` |
+| 403 | `/problems/permission-required` | `PermissionEndpointFilter` (§3.1) | `permissions`, e.g. `["Upload File"]` |
+| 404 | `/problems/resource-not-found` | `NotFoundException` — unknown conversation or unknown job | — |
+| 401 | the RFC 9110 status-section link | the authentication challenge, given a body by `app.UseStatusCodePages()` | — |
+
+Every problem also carries `traceId` (the W3C traceparent) and `instance` (the request path). A rejected upload therefore reads:
+
+```json
+{
+  "type": "/problems/upload-too-large",
+  "title": "Upload too large",
+  "status": 400,
+  "detail": "The file exceeds the maximum upload size of 50 MB.",
+  "instance": "/api/documents/conversations/3f2b91c4-...",
+  "traceId": "00-a1b2c3d4e5f60718293a4b5c6d7e8f90-1122334455667788-01",
+  "maxBytes": 52428800
+}
+```
 
 Status reads are scoped to the user who queued the job. The snapshot carries the created document id and the failure detail, so leaving it globally readable would let anyone holding a job id learn both. The response is `404` rather than `403` so a job id is never confirmed as valid — the same posture taken for conversations.
 
 ### 3.1 The `Upload File` permission gate
 
-The upload route carries `PermissionEndpointFilter.Require(PermissionIds.UploadFile, "Upload File")`. [`PermissionEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) is a **factory returning a filter delegate**, not an `IEndpointFilter` type like `AdminEndpointFilter`: the generic `AddEndpointFilter<T>` activates its type from the container and so cannot carry a permission id.
+The upload route carries `PermissionEndpointFilter.Require(PermissionIds.UploadFile)`. [`PermissionEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) is a **static factory returning a filter delegate**, not an `IEndpointFilter` type: the generic `AddEndpointFilter<T>` activates its type from the container and so cannot carry permission ids. It is the single gate for every permission in the API, admin routes included — `Require(params Guid[])` is **AND**, so a route can demand several grants at once.
 
-The filter runs after authorization (a principal must exist), resolves `ITokenService` and `EnterpriseGptDbContext` from `HttpContext.RequestServices`, and checks for an **active** `Core.UserPermission` row. Administrators are *not* implicitly granted it — they hold exactly the grants the permission service records. On failure it returns `403` with `"Upload File permission is required."` in the standard envelope.
+The filter runs after authorization (a principal must exist) and reads the caller's grant set from the singleton [`IUserPermissionCache`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs). On a hit — the normal case, since `POST /api/users/me` warms the entry at sign-in — it performs **no query and constructs no `EnterpriseGptDbContext`**; on a miss it loads every active `Core.UserPermission` row for the oid once and caches it. Administrators are *not* implicitly granted `Upload File` — they hold exactly the grants the permission service records. On failure the filter returns a `403` problem of type `/problems/permission-required`, with `"Upload File permission is required."` as the `detail` and `permissions: ["Upload File"]` naming the whole requirement — the response does not vary with which grants the caller happens to hold.
+
+Two consequences worth knowing: the display name in that message comes from the static `PermissionIds.Names` map (validated at map time, so an unknown id fails startup), and a revoked `Upload File` grant takes effect immediately on the instance that served the revoke but only within `Permissions:Cache:EntryLifetime` elsewhere. [Permission Cache](../permissions/permission-cache.md) covers both.
 
 The permission is seeded with `IsDefault = true` ([`PermissionConfiguration`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/PermissionConfiguration.cs)), so every user provisioned after it existed receives it, and `UserService` reconciles missing default grants on sign-in for users created before it existed. Its id is fixed in [`PermissionIds.UploadFile`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs) — see §10.2 for the row a real database still needs.
 
@@ -125,7 +149,7 @@ Two pieces of endpoint metadata on the upload route deserve explanation.
 
 **`.AddEndpointFilter(MaxUploadSizeEndpointFilter.Require(maxFileSizeBytes))`** — the size cap is applied by an explicit filter rather than by `[RequestSizeLimit]`. That attribute is an MVC filter; Microsoft documents it as the way to override the limit *in an MVC app*, and its enforcement on a minimal-API endpoint is not something the framework guarantees. A cap that may or may not apply is worse than no cap, so [`MaxUploadSizeEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/MaxUploadSizeEndpointFilter.cs) does the work in two layers:
 
-1. **`Content-Length` check** — rejects the common case with a `400` in the standard `ErrorDto` envelope *before a single byte is buffered*, and the message states the limit.
+1. **`Content-Length` check** — rejects the common case with a `400` of type `/problems/upload-too-large` *before a single byte is buffered*. The `detail` states the limit in human terms and the `maxBytes` extension repeats it as a number, so a client can render the cap without parsing prose.
 2. **Lowering `IHttpMaxRequestBodySizeFeature`** — covers a chunked upload that declares no length, so the server aborts the connection once the body actually exceeds the cap. The feature is skipped when it is already read-only (the body has started being read) or absent (`TestServer` does not implement it).
 
 The limit is read from `IOptions<DocumentOptions>` **once, at map time**, so changing `Documents:MaxFileSizeBytes` requires a restart. The validator's size rule (§3.3) still exists as the in-process backstop for a request that understates its own length.
@@ -385,6 +409,7 @@ Keys outside the `Documents` section that ingestion depends on — none of them 
 | `AzureStorage:DocumentsContainer` | `DocumentService.StoreAsync` | The container **must already exist** — nothing creates it |
 | `AzureAIFoundry:Url`, `:ApiKey` | embedding client in `Program.cs` | |
 | `AzureAIFoundry:EmbeddingModel` | embedding client **and** `TokenTextChunker` | Must be a 1536-dimension model (§6); also selects the tokenizer (§5.4) |
+| `Permissions:Cache:EntryLifetime` | [`UserPermissionCache`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs), behind the `Upload File` gate (§3.1) | `TimeSpan`, default `00:05:00`, validated at startup. How long a revoked `Upload File` grant can still be honoured on an instance that did not serve the revoke — see [Permission Cache](../permissions/permission-cache.md) |
 
 The repository's [`appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) ships only the `Documents` and `BackgroundJobs` sections — the Azure sections come from user secrets or environment configuration. Per the repo standard, prefer Key Vault or a managed identity over API keys in any deployed environment.
 
@@ -473,8 +498,7 @@ The **free tier (F0) processes only the first 2 pages** of a document and caps i
 - **Memory is the real capacity limit.** Queued uploads are capped at `Documents:MaxQueuedBytes` (512 MB by default). In-flight jobs are on top of that: each holds the original bytes and the extracted text, and a `.doc` briefly holds its converted `.docx` too, bounded by `BackgroundJobs:MaxConcurrent`. Size both against the host.
 - **Blobs of soft-deleted documents are never removed.** Deactivating a conversation soft-deletes its documents and chunks but leaves the blobs in the container; there is no reaper. A blob whose *ingestion* failed is deleted immediately, so failed uploads do not accumulate.
 - **No retry on transient faults.** A 429 from the embedding deployment or a 503 from Document Intelligence fails the whole job, discarding every batch already embedded. Adding `Microsoft.Extensions.Http.Resilience` (or Polly) with exponential backoff around both calls is the obvious next step.
-- **OpenAPI overstates the 404 body on the status route.** `GET upload-status/{jobId}` declares `.Produces<ErrorDto>(404)` but the handler returns a bodyless `TypedResults.NotFound()`. The upload route's 400/403/404 responses *do* carry `ErrorDto`.
-- **The frontend has not caught up with the DTO.** [`JobStatusDto.ts`](../../enterprise-ui/src/app/dtos/JobStatusDto.ts) still models only `id`, `state`, `status`, `progress`; the prompt box polls every 5 s and shows the percentage. `message`, `completedUnits`/`totalUnits`, `documentId` and `errorMessage` are on the wire but unused, so failures surface as the word "Failed" instead of the explanation the API already returns.
+- **The frontend has not caught up with the DTO.** [`JobStatusDto.ts`](../../enterprise-ui/src/app/dtos/JobStatusDto.ts) still models only `id`, `state`, `status`, `progress`; the prompt box polls every 5 s and shows the percentage. `message`, `completedUnits`/`totalUnits`, `documentId` and `errorMessage` are on the wire but unused, so failures surface as the word "Failed" instead of the explanation the API already returns. Synchronous rejections read no better: `http.interceptor.ts` still parses the retired custom error envelope, finds no `errors` array in a problem body, and falls back to a hard-coded per-status message — so the `detail` explaining *why* an upload was refused is discarded. Both are deliberate; the frontend is being rewritten and was left on the old contract.
 
 ## 12. Testing
 
@@ -509,6 +533,7 @@ dotnet test                                    # everything; Docker must be runn
 |---|---|
 | Endpoints | [`Enterprise.Gpt.Api/Endpoints/DocumentEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/DocumentEndpoints.cs) |
 | Permission gate | [`Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) |
+| Cached grant sets ([reference](../permissions/permission-cache.md)) | [`Enterprise.Gpt.Service/Caching/UserPermissionCache.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs) |
 | Orchestration | [`Enterprise.Gpt.Service/DocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs) |
 | Upload validation | [`Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs) |
 | Text extraction | [`Enterprise.Gpt.Service/Extraction/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction) |

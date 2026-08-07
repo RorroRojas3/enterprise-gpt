@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Model;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Api.Endpoints
@@ -9,7 +10,8 @@ namespace Enterprise.Gpt.Api.Endpoints
     /// <summary>
     /// Minimal API endpoints for model management. Replaces the former <c>ModelsController</c>.
     /// Read endpoints are available to every authenticated user; mutations and the
-    /// active+inactive listing are gated by <see cref="AdminEndpointFilter"/>.
+    /// active+inactive listing are gated on the built-in Administrator permission via
+    /// <see cref="PermissionEndpointFilter"/>.
     /// </summary>
     public static class ModelEndpoints
     {
@@ -22,28 +24,30 @@ namespace Enterprise.Gpt.Api.Endpoints
         {
             var group = app.MapGroup("api/models")
                 .RequireAuthorization()
-                .WithTags("Models");
+                .WithTags("Models")
+                // Every route in the group is authorized, so the challenge applies uniformly.
+                .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             group.MapGet("", GetModelsAsync);
             group.MapGet("all", GetAllModelsAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapGet("{id:guid}", GetModelAsync)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPost("", CreateModelAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPut("{id:guid}", UpdateModelAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapDelete("{id:guid}", DeactivateModelAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             return app;
         }

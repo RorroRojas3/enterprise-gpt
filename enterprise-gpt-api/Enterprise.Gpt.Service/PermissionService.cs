@@ -7,6 +7,7 @@ using Enterprise.Gpt.Dto.Actions.Permission;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Mappers;
 
@@ -92,13 +93,15 @@ namespace Enterprise.Gpt.Service
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
         IValidator<CreatePermissionActionDto> createValidator,
-        IValidator<UpdatePermissionActionDto> updateValidator) : IPermissionService
+        IValidator<UpdatePermissionActionDto> updateValidator,
+        IUserPermissionCache permissionCache) : IPermissionService
     {
         private readonly ILogger<PermissionService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
         private readonly IValidator<CreatePermissionActionDto> _createValidator = createValidator;
         private readonly IValidator<UpdatePermissionActionDto> _updateValidator = updateValidator;
+        private readonly IUserPermissionCache _permissionCache = permissionCache;
 
         /// <inheritdoc />
         public async Task<List<PermissionDto>> GetPermissionsAsync(CancellationToken cancellationToken = default)
@@ -210,7 +213,12 @@ namespace Enterprise.Gpt.Service
                 grant.ModifiedById = oid;
             }
 
+            // Collected from the already-included graph, so the cascade costs no extra query.
+            Guid[] affectedUserIds = [.. permission.UserPermissions.Select(g => g.UserId).Distinct()];
+
             await _ctx.SaveChangesAsync(cancellationToken);
+
+            _permissionCache.Invalidate(affectedUserIds);
 
             _logger.LogInformation("Permission {PermissionId} deactivated by {UserId}", id, oid);
         }
@@ -257,6 +265,8 @@ namespace Enterprise.Gpt.Service
             });
             await _ctx.SaveChangesAsync(cancellationToken);
 
+            _permissionCache.Invalidate(userId);
+
             _logger.LogInformation("Permission {PermissionId} granted to user {TargetUserId} by {UserId}",
                 permissionId, userId, oid);
         }
@@ -293,6 +303,10 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException("The user holds no active grant of this permission.");
             }
 
+            // ExecuteUpdateAsync bypasses the change tracker, so rows > 0 is the only signal that
+            // anything actually changed.
+            _permissionCache.Invalidate(userId);
+
             _logger.LogInformation("Permission {PermissionId} revoked from user {TargetUserId} by {UserId}",
                 permissionId, userId, oid);
         }
@@ -303,9 +317,9 @@ namespace Enterprise.Gpt.Service
         /// </summary>
         private static void EnsurePermissionIsCustom(Permission permission)
         {
-            // Both built-ins are referenced by fixed id from code — Administrator by AdminEndpointFilter
-            // and Upload File by DocumentEndpoints — so renaming or deleting either would silently break
-            // the endpoints that depend on them.
+            // Both built-ins are referenced by fixed id from code — Administrator by every admin route's
+            // PermissionEndpointFilter and Upload File by DocumentEndpoints — so renaming or deleting
+            // either would silently break the endpoints that depend on them.
             if (permission.Id == PermissionIds.Administrator)
             {
                 throw new ValidationException(

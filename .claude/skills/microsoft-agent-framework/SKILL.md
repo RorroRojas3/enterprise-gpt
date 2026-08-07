@@ -1,6 +1,6 @@
 ---
 name: microsoft-agent-framework
-description: "Create, update, refactor, explain, or review Microsoft Agent Framework solutions using shared guidance plus language-specific references for .NET and Python."
+description: "Create, update, refactor, explain, or review Microsoft Agent Framework solutions using shared guidance plus a language-specific reference for .NET."
 ---
 
 # Microsoft Agent Framework
@@ -14,7 +14,7 @@ Microsoft Agent Framework is the unified successor to Semantic Kernel and AutoGe
 Choose the language workflow before making recommendations or code changes:
 
 1. Use the **.NET** workflow when the repository contains `.cs`, `.csproj`, `.sln`, `.slnx`, or other .NET project files, or when the user explicitly asks for C# or .NET guidance. Follow [references/dotnet.md](references/dotnet.md).
-2. Use the **Python** workflow when the repository contains `.py`, `pyproject.toml`, `requirements.txt`, or the user explicitly asks for Python guidance. Follow [references/python.md](references/python.md).
+2. Use the **Python** workflow when the repository contains `.py`, `pyproject.toml`, `requirements.txt`, or the user explicitly asks for Python guidance. There is no Python reference file yet — ground Python guidance in the live official docs (see below) and the shared guidance in this skill.
 3. If the repository contains both ecosystems, match the language used by the files being edited or the user's stated target.
 4. If the language is ambiguous, inspect the current workspace first and then choose the closest language-specific reference.
 

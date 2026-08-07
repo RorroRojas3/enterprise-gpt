@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Enterprise.Gpt.Dto.Enums
 {
     /// <summary>
@@ -17,5 +19,21 @@ namespace Enterprise.Gpt.Dto.Enums
         /// must use it verbatim.
         /// </summary>
         public static readonly Guid UploadFile = new("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e");
+
+        /// <summary>
+        /// Display names of the built-in permissions, keyed by id.
+        /// </summary>
+        /// <remarks>
+        /// Endpoint filters take permission ids only, so the 403 message has to come from somewhere;
+        /// resolving the name from the database would reintroduce the query the permission cache
+        /// exists to avoid. This covers exactly the ids usable at map time — MCP-derived permissions
+        /// are created per server and are never named in a filter. Must stay in step with the seeded
+        /// <c>Core.Permission</c> names.
+        /// </remarks>
+        public static readonly FrozenDictionary<Guid, string> Names = new Dictionary<Guid, string>
+        {
+            [Administrator] = "Administrator",
+            [UploadFile] = "Upload File"
+        }.ToFrozenDictionary();
     }
 }

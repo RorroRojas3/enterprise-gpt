@@ -1,5 +1,6 @@
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Permission;
+using Enterprise.Gpt.Dto.Actions.User;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
@@ -43,16 +44,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         };
     }
 
-    private static async Task<ErrorDto> ReadErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatusCode)
-    {
-        Assert.Equal(expectedStatusCode, response.StatusCode);
-
-        var error = await response.Content.ReadFromJsonAsync<ErrorDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(error);
-        Assert.Equal(expectedStatusCode, error.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(error.TraceId));
-        return error;
-    }
 
     private async Task<PermissionDto> CreatePermissionAsync(HttpClient adminClient, string name)
     {
@@ -80,7 +71,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
     }
 
     [Theory]
@@ -105,8 +97,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 
     [Fact]
@@ -147,10 +139,10 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var response = await client.PostAsJsonAsync(
             "api/permissions", CreateRequest(name: "Administrator"), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        var problem = await ProblemAssert.ReadValidationAsync(response);
         Assert.Equal(
             "The name 'Administrator' is already in use by a permission or MCP server.",
-            Assert.Single(error.Errors));
+            Assert.Single(problem.Errors["Name"]));
     }
 
     [Fact]
@@ -199,8 +191,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var response = await client.PutAsJsonAsync(
             $"api/permissions/{Guid.NewGuid()}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Permission not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Permission not found.", problem.Detail);
     }
 
     [Fact]
@@ -211,8 +203,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var response = await client.PutAsJsonAsync(
             $"api/permissions/{KnownIds.AdministratorPermissionId}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Equal("The built-in Administrator permission cannot be modified.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("The built-in Administrator permission cannot be modified.", Assert.Single(problem.Errors["Id"]));
     }
 
     [Fact]
@@ -223,8 +215,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var response = await client.DeleteAsync(
             $"api/permissions/{KnownIds.AdministratorPermissionId}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Equal("The built-in Administrator permission cannot be modified.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("The built-in Administrator permission cannot be modified.", Assert.Single(problem.Errors["Id"]));
     }
 
     [Fact]
@@ -237,10 +229,10 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var response = await client.PutAsJsonAsync(
             $"api/permissions/{permissionId}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        var problem = await ProblemAssert.ReadValidationAsync(response);
         Assert.Equal(
             "This permission is managed by its MCP server and cannot be modified directly.",
-            Assert.Single(error.Errors));
+            Assert.Single(problem.Errors["Id"]));
     }
 
     [Fact]
@@ -253,10 +245,10 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var response = await client.DeleteAsync(
             $"api/permissions/{permissionId}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        var problem = await ProblemAssert.ReadValidationAsync(response);
         Assert.Equal(
             "This permission is managed by its MCP server and cannot be modified directly.",
-            Assert.Single(error.Errors));
+            Assert.Single(problem.Errors["Id"]));
     }
 
     [Fact]
@@ -296,8 +288,47 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
 
         var secondResponse = await client.DeleteAsync($"api/permissions/{created.Id}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(secondResponse, HttpStatusCode.NotFound);
-        Assert.Equal("Permission not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(secondResponse, HttpStatusCode.NotFound);
+        Assert.Equal("Permission not found.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task GrantPermission_ThenRevoke_TakesEffectOnTheNextRequest()
+    {
+        // Exercises IPermissionService's own cache invalidation end to end: every mutation here goes
+        // through the API, so none of the fixture's out-of-band helpers (which clear the cache
+        // wholesale) can mask a missing eviction. Administrator is the permission under test because
+        // it is the one every admin route's filter reads.
+        var oid = Guid.NewGuid();
+        _fixture.Factory.GraphService.AddUser(oid, "Cache", "Probe", "cache.probe@example.com");
+        using var adminClient = _fixture.Factory.CreateAdminClient();
+        var createResponse = await adminClient.PostAsJsonAsync("api/users", new CreateUserActionDto
+        {
+            Email = "cache.probe@example.com",
+            PermissionIds = []
+        }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        using var probeClient = _fixture.Factory.CreateClient();
+        probeClient.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, oid.ToString());
+
+        // Warms an entry holding no Administrator grant, so the grant below has something to evict.
+        var beforeGrant = await probeClient.GetAsync("api/permissions", TestContext.Current.CancellationToken);
+        await ProblemAssert.ReadAsync(beforeGrant, HttpStatusCode.Forbidden);
+
+        var route = $"api/users/{oid}/permissions/{KnownIds.AdministratorPermissionId}";
+        var grantResponse = await adminClient.PostAsync(route, content: null, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, grantResponse.StatusCode);
+
+        var afterGrant = await probeClient.GetAsync("api/permissions", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, afterGrant.StatusCode);
+
+        var revokeResponse = await adminClient.DeleteAsync(route, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
+
+        var afterRevoke = await probeClient.GetAsync("api/permissions", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(afterRevoke, HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -367,8 +398,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
 
         var secondRevokeResponse = await client.DeleteAsync(route, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(secondRevokeResponse, HttpStatusCode.NotFound);
-        Assert.Equal("The user holds no active grant of this permission.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(secondRevokeResponse, HttpStatusCode.NotFound);
+        Assert.Equal("The user holds no active grant of this permission.", problem.Detail);
     }
 
     [Fact]
@@ -403,8 +434,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
             $"api/users/{Guid.NewGuid()}/permissions/{created.Id}",
             content: null, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("User not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("User not found.", problem.Detail);
     }
 
     [Fact]
@@ -416,8 +447,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
             $"api/users/{TestUsers.RegularUserId}/permissions/{Guid.NewGuid()}",
             content: null, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Permission not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Permission not found.", problem.Detail);
     }
 
     [Fact]
@@ -431,8 +462,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
             $"api/users/{TestUsers.RegularUserId}/permissions/{permissionId}",
             content: null, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Permission not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Permission not found.", problem.Detail);
     }
 
     [Fact]

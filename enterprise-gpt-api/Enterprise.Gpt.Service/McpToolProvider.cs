@@ -84,9 +84,11 @@ namespace Enterprise.Gpt.Service
 
             var oid = _tokenService.GetOid();
 
-            // One query resolves existence and authorization for every selected server. The
-            // permission check runs on every request — never inside the cache — so a revoked
-            // grant takes effect immediately even while a client is cached.
+            // One query resolves existence and authorization for every selected server. This check
+            // deliberately reads the database rather than IUserPermissionCache: a tool call runs
+            // code on the user's behalf against a third-party server, so a revoked grant must take
+            // effect on the next request rather than when a cache entry expires. The query is
+            // negligible next to establishing the MCP session that follows it.
             var servers = await _ctx.McpServers
                 .AsNoTracking()
                 .Where(s => ids.Contains(s.Id) && !s.DateDeactivated.HasValue)

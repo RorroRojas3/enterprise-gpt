@@ -1,7 +1,7 @@
 ---
 description: Check the upstream NgRx Signals docs for changes and refresh the ngrx-signal-store skill if they have drifted.
 argument-hint: "[--check-only]"
-allowed-tools: Bash(node:*), Bash(curl:*), Bash(git status:*), Bash(git diff:*), Read, Edit, Glob, Grep
+allowed-tools: Bash(node:*), Bash(curl:*), Bash(cp:*), Bash(git status:*), Bash(git diff:*), Read, Edit, Glob, Grep
 ---
 
 Refresh the `ngrx-signal-store` skill against the official NgRx docs.
@@ -57,7 +57,19 @@ node .claude/skills/ngrx-signal-store/scripts/check-updates.mjs --pin
 
 This rewrites the shas, the version, and `pinnedAt` from live upstream. Do not hand-edit shas — the script is there so that no one has to transcribe seventeen hex strings correctly.
 
-## 5. Report, and leave the diff for review
+## 5. Mirror into `.github/skills/` (if present)
+
+If this repo carries the GitHub Copilot mirror (`.github/skills/ngrx-signal-store/` exists), copy every file you touched — including `sources.json` — into it so the two trees stay byte-for-byte identical:
+
+```bash
+cp .claude/skills/ngrx-signal-store/SKILL.md .github/skills/ngrx-signal-store/SKILL.md
+cp .claude/skills/ngrx-signal-store/sources.json .github/skills/ngrx-signal-store/sources.json
+cp .claude/skills/ngrx-signal-store/references/<changed>.md .github/skills/ngrx-signal-store/references/
+```
+
+Skip this step entirely when `.github/skills/` does not exist.
+
+## 6. Report, and leave the diff for review
 
 Summarize: which pages changed, what materially changed in each, which skill files you edited, and anything you deliberately chose not to propagate.
 

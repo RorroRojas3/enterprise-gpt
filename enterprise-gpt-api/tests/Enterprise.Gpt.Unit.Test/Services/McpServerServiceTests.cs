@@ -18,6 +18,7 @@ public sealed class McpServerServiceTests : IDisposable
     private readonly SqliteDbContextFixture _fixture = new();
     private readonly ITokenService _tokenService = Substitute.For<ITokenService>();
     private readonly IMcpClientCache _mcpClientCache = Substitute.For<IMcpClientCache>();
+    private readonly IUserPermissionCache _permissionCache = Substitute.For<IUserPermissionCache>();
     private readonly McpServerService _service;
 
     public McpServerServiceTests()
@@ -29,7 +30,8 @@ public sealed class McpServerServiceTests : IDisposable
             _fixture.Context,
             new CreateMcpServerActionDtoValidator(),
             new UpdateMcpServerActionDtoValidator(),
-            _mcpClientCache);
+            _mcpClientCache,
+            _permissionCache);
     }
 
     public void Dispose()
@@ -474,6 +476,8 @@ public sealed class McpServerServiceTests : IDisposable
         Assert.Equal(KnownIds.SeedUserId, persistedGrant.ModifiedById);
 
         _mcpClientCache.Received(1).InvalidateServer(server.Id);
+        _permissionCache.Received(1).Invalidate(
+            Arg.Is<IEnumerable<Guid>>(ids => ids != null && ids.SequenceEqual(new[] { grant.UserId })));
     }
 
     [Fact]

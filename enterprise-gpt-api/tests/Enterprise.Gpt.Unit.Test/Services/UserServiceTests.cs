@@ -1,12 +1,15 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Enterprise.Gpt.Dto.Actions.User;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 using GraphUser = Microsoft.Graph.Models.User;
@@ -18,6 +21,7 @@ public sealed class UserServiceTests : IDisposable
     private readonly SqliteDbContextFixture _fixture = new();
     private readonly ITokenService _tokenService = Substitute.For<ITokenService>();
     private readonly IGraphService _graphService = Substitute.For<IGraphService>();
+    private readonly IUserPermissionCache _permissionCache = Substitute.For<IUserPermissionCache>();
     private readonly UserService _service;
 
     public UserServiceTests()
@@ -29,7 +33,8 @@ public sealed class UserServiceTests : IDisposable
             _graphService,
             _fixture.Context,
             new CreateUserActionDtoValidator(),
-            new UpdateUserActionDtoValidator());
+            new UpdateUserActionDtoValidator(),
+            _permissionCache);
     }
 
     public void Dispose()
@@ -743,6 +748,131 @@ public sealed class UserServiceTests : IDisposable
         Assert.NotNull(persisted);
         Assert.NotNull(persisted.DateDeactivated);
         Assert.NotNull(Assert.Single(persisted.UserPermissions).DateDeactivated);
+    }
+
+    [Fact]
+    public async Task DeactivateUserAsync_ActiveUser_EvictsTheirCachedPermissions()
+    {
+        // Authorization never checks whether a user is still active, so the grant cascade only
+        // removes access once this eviction lands.
+        var targetOid = Guid.NewGuid();
+        await AddUserAsync(targetOid, permissionIds: KnownIds.AdministratorPermissionId);
+
+        await _service.DeactivateUserAsync(targetOid, TestContext.Current.CancellationToken);
+
+        _permissionCache.Received(1).Invalidate(targetOid);
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_PermissionSetChanged_EvictsTheTargetsCachedPermissions()
+    {
+        var permission = await AddPermissionAsync("update-evicts");
+        var targetOid = Guid.NewGuid();
+        await AddUserAsync(targetOid, permissionIds: permission.Id);
+
+        await _service.UpdateUserAsync(
+            targetOid,
+            new UpdateUserActionDto
+            {
+                FirstName = "Grace",
+                LastName = "Hopper",
+                Email = "grace.hopper@example.com",
+                PermissionIds = []
+            },
+            TestContext.Current.CancellationToken);
+
+        _permissionCache.Received(1).Invalidate(targetOid);
+    }
+
+    [Fact]
+    public async Task CreateUserAsync_ValidRequest_EvictsTheTargetsCachedPermissions()
+    {
+        var oid = Guid.NewGuid();
+        _graphService.GetUserByEmailAsync("new.user@example.com", Arg.Any<CancellationToken>())
+            .Returns(CreateGraphUser(oid, "New", "User", "new.user@example.com"));
+
+        await _service.CreateUserAsync(
+            new CreateUserActionDto { Email = "new.user@example.com", PermissionIds = [] },
+            TestContext.Current.CancellationToken);
+
+        _permissionCache.Received(1).Invalidate(oid);
+    }
+
+    [Fact]
+    public async Task GetOrCreateCurrentUserAsync_ExistingUser_CachesExactlyTheGrantsItReturns()
+    {
+        // Pins the invariant that the warm-fill set matches what the filter's loader would read.
+        var permission = await AddPermissionAsync("signin-cached");
+        var oid = Guid.NewGuid();
+        await AddUserAsync(oid, permissionIds: permission.Id);
+        _tokenService.GetOid().Returns(oid);
+
+        var (user, _) = await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
+
+        _permissionCache.Received(1).Set(
+            oid,
+            Arg.Any<long>(),
+            Arg.Is<IEnumerable<Guid>>(ids => ids != null
+                && ids.OrderBy(x => x).SequenceEqual(user.Permissions.Select(p => p.Id).OrderBy(x => x))));
+    }
+
+    [Fact]
+    public async Task GetOrCreateCurrentUserAsync_NewUser_CachesExactlyTheGrantsItReturns()
+    {
+        var oid = Guid.NewGuid();
+        _tokenService.GetOid().Returns(oid);
+        _graphService.GetUserAsync(oid, Arg.Any<CancellationToken>())
+            .Returns(CreateGraphUser(oid, "New", "User", "new.user@example.com"));
+
+        var (user, created) = await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(created);
+        _permissionCache.Received(1).Set(
+            oid,
+            Arg.Any<long>(),
+            Arg.Is<IEnumerable<Guid>>(ids => ids != null
+                && ids.OrderBy(x => x).SequenceEqual(user.Permissions.Select(p => p.Id).OrderBy(x => x))));
+    }
+
+    [Fact]
+    public async Task GetOrCreateCurrentUserAsync_RevokeCommittingMidRequest_IsNotUndoneByTheWarmFill()
+    {
+        // Drives the real cache and evicts from inside the Graph call — i.e. after the stamp is
+        // captured but before the Set — so the Set must be skipped. Capturing the stamp any later
+        // would republish the pre-revoke snapshot for a whole entry lifetime, and this test is the
+        // only thing that catches that: substitute call ordering cannot, because the grant read
+        // goes to the DbContext rather than to the cache.
+        var oid = Guid.NewGuid();
+        _tokenService.GetOid().Returns(oid);
+
+        var cache = new UserPermissionCache(
+            NullLogger<UserPermissionCache>.Instance,
+            Options.Create(new UserPermissionCacheOptions()),
+            TimeProvider.System);
+        var service = new UserService(
+            NullLogger<UserService>.Instance,
+            _tokenService,
+            _graphService,
+            _fixture.Context,
+            new CreateUserActionDtoValidator(),
+            new UpdateUserActionDtoValidator(),
+            cache);
+
+        _graphService.GetUserAsync(oid, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            cache.Invalidate(oid);
+            return CreateGraphUser(oid, "Mid", "Flight", "mid.flight@example.com");
+        });
+
+        await service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
+
+        var reloadedPermissionId = Guid.NewGuid();
+        var cached = await cache.GetOrLoadAsync(
+            oid,
+            _ => Task.FromResult<IReadOnlyCollection<Guid>>([reloadedPermissionId]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([reloadedPermissionId], cached);
     }
 
     [Fact]

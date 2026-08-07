@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Mcp;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Api.Endpoints
@@ -9,7 +10,8 @@ namespace Enterprise.Gpt.Api.Endpoints
     /// <summary>
     /// Minimal API endpoints for MCP server management. Replaces the former <c>McpsController</c>.
     /// The user-facing listing returns only servers the caller holds a permission for; the
-    /// administrative listing and all mutations are gated by <see cref="AdminEndpointFilter"/>.
+    /// administrative listing and all mutations are gated on the built-in Administrator permission
+    /// via <see cref="PermissionEndpointFilter"/>.
     /// </summary>
     public static class McpEndpoints
     {
@@ -22,29 +24,31 @@ namespace Enterprise.Gpt.Api.Endpoints
         {
             var group = app.MapGroup("api/mcps")
                 .RequireAuthorization()
-                .WithTags("Mcps");
+                .WithTags("Mcps")
+                // Every route in the group is authorized, so the challenge applies uniformly.
+                .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             group.MapGet("", GetPermittedMcpServersAsync);
             group.MapGet("all", GetAllMcpServersAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapGet("{id:guid}", GetMcpServerAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPost("", CreateMcpServerAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapPut("{id:guid}", UpdateMcpServerAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapDelete("{id:guid}", DeactivateMcpServerAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             return app;
         }

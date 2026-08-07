@@ -58,16 +58,6 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         };
     }
 
-    private static async Task<ErrorDto> ReadErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatusCode)
-    {
-        Assert.Equal(expectedStatusCode, response.StatusCode);
-
-        var error = await response.Content.ReadFromJsonAsync<ErrorDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(error);
-        Assert.Equal(expectedStatusCode, error.StatusCode);
-        Assert.False(string.IsNullOrWhiteSpace(error.TraceId));
-        return error;
-    }
 
     [Theory]
     [InlineData("GET", "api/mcps")]
@@ -83,7 +73,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
     }
 
     [Theory]
@@ -105,8 +96,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.Forbidden);
-        Assert.Equal("Administrator permission is required.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal("Administrator permission is required.", problem.Detail);
     }
 
     [Fact]
@@ -148,10 +139,10 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         var response = await client.PostAsJsonAsync(
             "api/mcps", CreateRequest(name: "it-mcp-dup"), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
+        var problem = await ProblemAssert.ReadValidationAsync(response);
         Assert.Equal(
             "The name 'it-mcp-dup' is already in use by an MCP server or permission.",
-            Assert.Single(error.Errors));
+            Assert.Single(problem.Errors["Name"]));
     }
 
     [Fact]
@@ -162,8 +153,7 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.NotEmpty(error.Errors);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Fact]
@@ -174,8 +164,7 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.NotEmpty(error.Errors);
+        await ProblemAssert.ReadValidationAsync(response);
     }
 
     [Theory]
@@ -190,8 +179,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains(error.Errors, x => x.Contains("absolute http or https URI"));
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains(problem.Errors["Url"], message => message.Contains("absolute http or https URI"));
     }
 
     [Fact]
@@ -237,8 +226,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var response = await client.GetAsync($"api/mcps/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("MCP server not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("MCP server not found.", problem.Detail);
     }
 
     [Fact]
@@ -273,8 +262,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         var response = await client.PutAsJsonAsync(
             $"api/mcps/{Guid.NewGuid()}", UpdateRequest(), TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("MCP server not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("MCP server not found.", problem.Detail);
     }
 
     [Fact]
@@ -316,8 +305,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
         var secondResponse = await client.DeleteAsync($"api/mcps/{serverId}", TestContext.Current.CancellationToken);
 
-        var error = await ReadErrorAsync(secondResponse, HttpStatusCode.NotFound);
-        Assert.Equal("MCP server not found.", Assert.Single(error.Errors));
+        var problem = await ProblemAssert.ReadAsync(secondResponse, HttpStatusCode.NotFound);
+        Assert.Equal("MCP server not found.", problem.Detail);
     }
 
     [Fact]

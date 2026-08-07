@@ -2,13 +2,14 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Permission;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Api.Endpoints
 {
     /// <summary>
     /// Minimal API endpoints for permission management and user grants. Every route is gated
-    /// by <see cref="AdminEndpointFilter"/>: permissions are an administrative concern, and
+    /// on the built-in Administrator permission: permissions are an administrative concern, and
     /// regular users receive theirs through the user profile endpoints. Built-in and
     /// MCP-managed permissions reject mutations in the service layer.
     /// </summary>
@@ -24,46 +25,50 @@ namespace Enterprise.Gpt.Api.Endpoints
         {
             var group = app.MapGroup("api/permissions")
                 .RequireAuthorization()
-                .WithTags("Permissions");
+                .WithTags("Permissions")
+                // Every route in the group is authorized, so the challenge applies uniformly.
+                .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             group.MapGet("", GetPermissionsAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapGet("all", GetAllPermissionsAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapGet("{id:guid}", GetPermissionAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPost("", CreatePermissionAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapPut("{id:guid}", UpdatePermissionAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapDelete("{id:guid}", DeactivatePermissionAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             var grants = app.MapGroup("api/users/{userId:guid}/permissions")
                 .RequireAuthorization()
-                .WithTags("Permissions");
+                .WithTags("Permissions")
+                // Every route in the group is authorized, so the challenge applies uniformly.
+                .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             grants.MapPost("{permissionId:guid}", GrantPermissionAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
             grants.MapDelete("{permissionId:guid}", RevokePermissionAsync)
-                .AddEndpointFilter<AdminEndpointFilter>()
-                .Produces<ErrorDto>(StatusCodes.Status400BadRequest)
-                .Produces<ErrorDto>(StatusCodes.Status403Forbidden)
-                .Produces<ErrorDto>(StatusCodes.Status404NotFound);
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
 
             return app;
         }

@@ -6,6 +6,7 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Extraction;
 using System.Text;
 using Xunit;
@@ -91,7 +92,7 @@ public sealed class DocumentEndpointsTests
 
         var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
 
-        var payload = Assert.IsType<Ok<JobStatusDto>>(result.Result).Value;
+        var payload = result.Value;
         Assert.NotNull(payload);
         Assert.Equal("job-1", payload.Id);
         Assert.Equal("Processing", payload.State);
@@ -105,36 +106,39 @@ public sealed class DocumentEndpointsTests
     }
 
     [Fact]
-    public void GetJobStatus_UnknownJob_ReturnsNotFound()
+    public void GetJobStatus_UnknownJob_ThrowsNotFoundException()
     {
         _jobStatusStore.Get("missing").Returns((JobStatusSnapshot?)null);
 
-        var result = DocumentEndpoints.GetJobStatus("missing", _jobStatusStore, _tokenService);
+        var exception = Assert.Throws<NotFoundException>(
+            () => DocumentEndpoints.GetJobStatus("missing", _jobStatusStore, _tokenService));
 
-        Assert.IsType<NotFound>(result.Result);
+        Assert.Equal("Upload job not found.", exception.Message);
     }
 
     [Fact]
-    public void GetJobStatus_JobQueuedByAnotherUser_ReturnsNotFound()
+    public void GetJobStatus_JobQueuedByAnotherUser_ThrowsNotFoundException()
     {
         // The snapshot carries the created document id and the failure detail, so another user reading it
         // would learn both. 404 rather than 403 avoids confirming that the job id is even valid.
         _jobStatusStore.Get("job-1").Returns(Snapshot(userId: Guid.NewGuid()));
 
-        var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
+        var exception = Assert.Throws<NotFoundException>(
+            () => DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService));
 
-        Assert.IsType<NotFound>(result.Result);
+        Assert.Equal("Upload job not found.", exception.Message);
     }
 
     [Fact]
-    public void GetJobStatus_SnapshotWithNoOwner_ReturnsNotFound()
+    public void GetJobStatus_SnapshotWithNoOwner_ThrowsNotFoundException()
     {
         // Snapshots created by a report for an unregistered job carry Guid.Empty and belong to nobody.
         _jobStatusStore.Get("job-1").Returns(Snapshot(userId: Guid.Empty));
 
-        var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
+        var exception = Assert.Throws<NotFoundException>(
+            () => DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService));
 
-        Assert.IsType<NotFound>(result.Result);
+        Assert.Equal("Upload job not found.", exception.Message);
     }
 
     [Fact]
@@ -147,7 +151,7 @@ public sealed class DocumentEndpointsTests
 
         var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
 
-        var payload = Assert.IsType<Ok<JobStatusDto>>(result.Result).Value;
+        var payload = result.Value;
         Assert.NotNull(payload);
         Assert.Equal("Failed", payload.State);
         Assert.Equal("Files of type '.xlsx' are not supported.", payload.ErrorMessage);
@@ -168,7 +172,7 @@ public sealed class DocumentEndpointsTests
 
         var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
 
-        var payload = Assert.IsType<Ok<JobStatusDto>>(result.Result).Value;
+        var payload = result.Value;
         Assert.NotNull(payload);
         Assert.Equal(expectedState, payload.State);
     }

@@ -12,7 +12,7 @@
   },
   "pinned": {
     "packageVersion": "21.1.1",
-    "pinnedAt": "2026-07-13"
+    "pinnedAt": "2026-07-31"
   },
   "pages": [
     {
@@ -41,6 +41,14 @@
       "blobSha": "09fa156ce16768e7bc95894cf3acef372ae010bd",
       "mapsTo": [
         "SKILL.md"
+      ]
+    },
+    {
+      "path": "resource-extensions.md",
+      "blobSha": "da3621751d2038a7d16f7f74f40b874610091aa8",
+      "mapsTo": [
+        "references/async-and-rxjs.md",
+        "references/api-reference.md"
       ]
     },
     {

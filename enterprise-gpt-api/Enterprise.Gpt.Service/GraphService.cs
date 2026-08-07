@@ -69,7 +69,7 @@ namespace Enterprise.Gpt.Service
             {
                 throw new ValidationException(
                 [
-                    new ValidationFailure("email", "That email address matches more than one directory user.")
+                    new ValidationFailure("Email", "That email address matches more than one directory user.")
                 ]);
             }
 

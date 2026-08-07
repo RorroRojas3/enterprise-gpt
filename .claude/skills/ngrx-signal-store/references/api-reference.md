@@ -9,6 +9,7 @@ Lookup table for `@ngrx/signals` and its entry points. Use it to confirm a signa
 - [`@ngrx/signals`](#ngrxsignals)
 - [`@ngrx/signals/entities`](#ngrxsignalsentities)
 - [`@ngrx/signals/rxjs-interop`](#ngrxsignalsrxjs-interop)
+- [`@ngrx/signals/resource` (experimental)](#ngrxsignalsresource-experimental)
 - [`@ngrx/signals/events`](#ngrxsignalsevents)
 - [`@ngrx/signals/testing`](#ngrxsignalstesting)
 - [Things that do not exist in NgRx](#things-that-do-not-exist-in-ngrx)
@@ -145,6 +146,21 @@ The `config?` argument carries `{ collection }` and/or `{ selectId }` — requir
 | `RxMethod<Input>` | Type of an `rxMethod` instance; exposes `destroy()`, and each call returns a ref with its own `destroy()`. |
 
 Calling `rxMethod` (or `signalMethod`) with a signal, computation function, or observable **outside** an injection context without an explicit `injector` is deprecated and will throw in a future version — call it in a constructor/field initializer, or pass `{ injector }`.
+
+## `@ngrx/signals/resource` (experimental)
+
+**Experimental** — APIs are subject to change without standard breaking-change announcements until deemed stable. Utilities that customize an Angular `Resource` composably; see `references/async-and-rxjs.md` for usage.
+
+| Symbol | One-liner |
+| --- | --- |
+| `extendResource(resource, ...extensions)` | Wraps a resource, applies the extensions (after any globally provided ones), and returns it with its original type preserved (including `WritableResource`). |
+| `withPreviousValueOnLoading()` | Keeps the last resolved value while the resource reloads, instead of `value()` resetting to `undefined`. |
+| `withValueOnLoading(fallback)` | `value()` returns the fallback while the resource is loading (initial load and reloads). |
+| `withPreviousValueOnError()` | `value()` returns the last successfully resolved value in the error state, instead of throwing. |
+| `withValueOnError(fallback)` | `value()` returns the fallback in the error state, instead of throwing. |
+| `provideResourceExtensions(...extensions)` | Registers global extensions for an injector scope (application, route, or component); `extendResource` applies them automatically, appending per-resource extensions after, and child scopes compose with parent configuration. |
+
+Extensions are plain objects with a `type` symbol and an `apply` function; when multiple applied extensions share the same `type`, the last one wins.
 
 ## `@ngrx/signals/events`
 

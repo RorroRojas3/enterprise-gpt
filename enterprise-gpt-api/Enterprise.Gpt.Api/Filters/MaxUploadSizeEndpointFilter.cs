@@ -1,12 +1,12 @@
 using Microsoft.AspNetCore.Http.Features;
-using Enterprise.Gpt.Dto;
-using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Enterprise.Gpt.Api.Problems;
 
 namespace Enterprise.Gpt.Api.Filters
 {
     /// <summary>
     /// Endpoint filter factory that caps the request body size for an upload endpoint, rejecting anything
-    /// larger with a 400 in the standard <see cref="ErrorDto"/> shape.
+    /// larger with a 400 <see cref="ProblemDetails"/>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -39,13 +39,20 @@ namespace Enterprise.Gpt.Api.Filters
 
                 if (httpContext.Request.ContentLength > maxBytes)
                 {
-                    return TypedResults.Json(new ErrorDto
+                    var problemDetails = new ProblemDetails
                     {
-                        StatusCode = HttpStatusCode.BadRequest,
-                        Errors = [$"The file exceeds the maximum upload size of {FormatSize(maxBytes)}."],
-                        TraceId = httpContext.TraceIdentifier,
-                        Timestamp = DateTimeOffset.UtcNow
-                    }, statusCode: StatusCodes.Status400BadRequest);
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = ProblemTypes.UploadTooLarge.Title,
+                        Type = ProblemTypes.UploadTooLarge.Type,
+                        Detail = $"The file exceeds the maximum upload size of {FormatSize(maxBytes)}.",
+                        Extensions = { ["maxBytes"] = maxBytes }
+                    };
+
+                    // See PermissionEndpointFilter: TypedResults.Problem's non-JSON fallback skips
+                    // CustomizeProblemDetails, so traceId and instance are applied here instead.
+                    ProblemDetailsRegistration.Enrich(httpContext, problemDetails);
+
+                    return TypedResults.Problem(problemDetails);
                 }
 
                 var sizeFeature = httpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
