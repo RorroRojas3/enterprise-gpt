@@ -41,7 +41,7 @@ public sealed class ModelServiceTests : IDisposable
             Id = Guid.NewGuid(),
             ProviderId = KnownIds.SeedProviderId,
             Name = name,
-            DisplayName = name,
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 1000m,
             MaxOutputTokens = 100m,
@@ -93,7 +93,7 @@ public sealed class ModelServiceTests : IDisposable
         {
             ProviderId = providerId ?? KnownIds.SeedProviderId,
             Name = name,
-            DisplayName = $"{name} display",
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
@@ -109,7 +109,7 @@ public sealed class ModelServiceTests : IDisposable
         {
             ProviderId = providerId ?? KnownIds.SeedProviderId,
             Name = name,
-            DisplayName = $"{name} display",
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 64000m,
             MaxOutputTokens = 8192m,
@@ -154,7 +154,7 @@ public sealed class ModelServiceTests : IDisposable
         Assert.Equal(model.Id, result.Id);
         Assert.Equal(model.ProviderId, result.ProviderId);
         Assert.Equal(model.Name, result.Name);
-        Assert.Equal(model.DisplayName, result.DisplayName);
+        Assert.Equal(model.DeploymentName, result.DeploymentName);
         Assert.Equal(model.Description, result.Description);
         Assert.Equal(model.ContextWindowSize, result.ContextWindowSize);
         Assert.Equal(model.MaxOutputTokens, result.MaxOutputTokens);
@@ -196,7 +196,7 @@ public sealed class ModelServiceTests : IDisposable
         Assert.NotNull(persisted);
         Assert.Equal(request.ProviderId, persisted.ProviderId);
         Assert.Equal(request.Name, persisted.Name);
-        Assert.Equal(request.DisplayName, persisted.DisplayName);
+        Assert.Equal(request.DeploymentName, persisted.DeploymentName);
         Assert.Equal(request.Description, persisted.Description);
         Assert.Equal(KnownIds.SeedUserId, persisted.CreatedById);
         Assert.Equal(KnownIds.SeedUserId, persisted.ModifiedById);
@@ -282,7 +282,7 @@ public sealed class ModelServiceTests : IDisposable
         var result = await _service.UpdateModelAsync(model.Id, request, TestContext.Current.CancellationToken);
 
         Assert.Equal(request.Name, result.Name);
-        Assert.Equal(request.DisplayName, result.DisplayName);
+        Assert.Equal(request.DeploymentName, result.DeploymentName);
         Assert.Equal(request.Description, result.Description);
         Assert.Equal(request.ContextWindowSize, result.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, result.MaxOutputTokens);
@@ -301,7 +301,7 @@ public sealed class ModelServiceTests : IDisposable
     public async Task UpdateModelAsync_InvalidRequest_ThrowsValidationException()
     {
         var model = await AddModelAsync("aaa-original");
-        var request = UpdateRequest() with { DisplayName = string.Empty, MaxOutputTokens = 0m };
+        var request = UpdateRequest() with { DeploymentName = string.Empty, MaxOutputTokens = 0m };
 
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.UpdateModelAsync(model.Id, request, TestContext.Current.CancellationToken));

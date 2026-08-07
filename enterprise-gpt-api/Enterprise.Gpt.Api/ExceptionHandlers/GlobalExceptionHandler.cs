@@ -12,7 +12,8 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
     /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
     /// <see cref="McpAuthorizationRequiredException"/>,
-    /// <see cref="McpServerUnavailableException"/>) and any
+    /// <see cref="McpServerUnavailableException"/>,
+    /// <see cref="ProviderNotConfiguredException"/>) and any
     /// otherwise unhandled exception to an RFC 9457 <see cref="ProblemDetails"/> response.
     /// Always returns <see langword="true"/> so any exception receives a consistent payload.
     /// </summary>
@@ -110,6 +111,12 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 McpServerUnavailableException serverUnavailable => WithServerName(
                     Create(StatusCodes.Status502BadGateway, exception.Message, ProblemTypes.McpServerUnavailable),
                     serverUnavailable.ServerName),
+                // 503, not 500: the request is well formed and the model exists — this deployment just
+                // has no client for its provider, which an operator fixes by configuring one rather
+                // than by the caller changing anything about the request.
+                ProviderNotConfiguredException providerNotConfigured => WithExtension(
+                    Create(StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ProviderNotConfigured),
+                    "providerId", providerNotConfigured.ProviderId),
                 // The real message is suppressed: an unmapped exception may carry connection
                 // strings, file paths, or query text.
                 _ => Create(StatusCodes.Status500InternalServerError, "An unexpected internal server error occurred.")
@@ -126,9 +133,12 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 Detail = detail
             };
 
-        private static ProblemDetails WithServerName(ProblemDetails problemDetails, string serverName)
+        private static ProblemDetails WithServerName(ProblemDetails problemDetails, string serverName) =>
+            WithExtension(problemDetails, "serverName", serverName);
+
+        private static ProblemDetails WithExtension(ProblemDetails problemDetails, string name, object? value)
         {
-            problemDetails.Extensions["serverName"] = serverName;
+            problemDetails.Extensions[name] = value;
             return problemDetails;
         }
     }

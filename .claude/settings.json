@@ -1,10 +1,13 @@
 {
   "permissions": {
-    "allow": []
+    "allow": [
+      "PowerShell(dotnet restore \"c:\\\\Users\\\\Rorro\\\\source\\\\repos\\\\enterprise-gpt\\\\enterprise-gpt-api\\\\Enterprise.Gpt.sln\" --no-cache 2>&1)"
+    ]
   },
   "model": "opus",
-  "availableModels": ["opus"],
-  "effortLevel": "xhigh",
+  "availableModels": [
+    "opus"
+  ],
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "microsoft-learn",
@@ -23,5 +26,6 @@
     "claude-md-management@claude-plugins-official": true,
     "claude-code-setup@claude-plugins-official": true,
     "sonarqube@claude-plugins-official": true
-  }
+  },
+  "effortLevel": "xhigh"
 }

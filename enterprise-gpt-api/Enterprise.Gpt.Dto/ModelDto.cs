@@ -8,7 +8,7 @@ namespace Enterprise.Gpt.Dto
 
         public string Name { get; init; } = null!;
 
-        public string DisplayName { get; init; } = null!;
+        public string DeploymentName { get; init; } = null!;
 
         public string Description { get; init; } = null!;
 

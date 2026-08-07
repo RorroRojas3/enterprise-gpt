@@ -2,7 +2,6 @@
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
@@ -14,6 +13,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
 
@@ -42,7 +42,7 @@ namespace Enterprise.Gpt.Service
 
     public class ConversationService(ILogger<ConversationService> logger,
         IModelService modelService,
-        [FromKeyedServices("azureaifoundry")] IChatClient azureAIFoundry,
+        IChatClientResolver chatClientResolver,
         IMcpToolProvider mcpToolProvider,
         IConversationLockService conversationLockService,
         ITokenService tokenService,
@@ -54,7 +54,7 @@ namespace Enterprise.Gpt.Service
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
-        private readonly IChatClient _azureAIFoundry = azureAIFoundry;
+        private readonly IChatClientResolver _chatClientResolver = chatClientResolver;
         private readonly IModelService _modelService = modelService;
         private readonly IMcpToolProvider _mcpToolProvider = mcpToolProvider;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
@@ -247,21 +247,29 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation for id {id} not found");
             }
 
-            var modelName = await _ctx.Models
+            var model = await _ctx.Models
                         .AsNoTracking()
                         .Where(x => x.Id == request.ModelId && !x.DateDeactivated.HasValue)
-                        .Select(x => x.Name)
+                        .Select(x => new { x.DeploymentName, x.ProviderId })
                         .FirstOrDefaultAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(modelName))
+            // DeploymentName is not checked here: the create and update validators already enforce
+            // NotEmpty on it, and guarding only this path — which runs on a conversation's first turn
+            // alone — would leave every later turn shipping the same empty ModelId anyway.
+            if (model is null)
             {
                 _logger.LogError("Model with id {Id} not found", request.ModelId);
                 throw new InvalidOperationException($"Model with id {request.ModelId} not found");
             }
 
-            var response = await _azureAIFoundry.GetResponseAsync([
+            // Naming runs inline on a conversation's first turn, so it has to reach the same provider
+            // as the turn itself — a deployment without an Azure client would otherwise fail here
+            // before the stream ever produced a token.
+            var chatClient = _chatClientResolver.Resolve(model.ProviderId);
+
+            var response = await chatClient.GetResponseAsync([
                                  new ChatMessage(ChatRole.System, ConversationPrompts.BuildNamingPrompt()),
                                  new ChatMessage(ChatRole.User, $"Create a conversation name based on the following prompt, please make it 25 maximum and make it a string. Do not have the name on the conversation nor the id. Just the name based on the prompt. The result must be a string, not markdown. Prompt: {request.Prompt}")
-                             ], new() { ModelId = modelName }, cancellationToken);
+                             ], new() { ModelId = model.DeploymentName }, cancellationToken);
             if (response == null)
             {
                 _logger.LogError("Failed to create name for chat id {Id}", id);
@@ -426,7 +434,7 @@ namespace Enterprise.Gpt.Service
             };
 
             var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
-            var chatClient = _azureAIFoundry;
+            var chatClient = _chatClientResolver.Resolve(model.ProviderId);
             var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, cancellationToken).ConfigureAwait(false);
             StringBuilder sb = new();
             long totalInputTokens = 0, totalOutputTokens = 0;
@@ -470,12 +478,15 @@ namespace Enterprise.Gpt.Service
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
+            // The deployment name, not the display label: the transcript is append-only, so the value
+            // recorded here has to stay meaningful after a model is renamed in the catalog, and it is
+            // the deployment that identifies which model actually served and billed the turn.
             var userMessage = new CosmosConversationMessage
             {
                 Id = Guid.NewGuid(),
                 Content = request.Prompt,
                 DateCreated = date,
-                Model = model.Name,
+                Model = model.DeploymentName,
                 Role = ChatRoles.User,
                 Tokens = 0,
             };
@@ -484,7 +495,7 @@ namespace Enterprise.Gpt.Service
                 Id = Guid.NewGuid(),
                 Content = sb.ToString(),
                 DateCreated = date,
-                Model = model.Name,
+                Model = model.DeploymentName,
                 Role = ChatRoles.Assistant,
                 Usage = new CosmosConversationUsage
                 {
@@ -585,7 +596,7 @@ namespace Enterprise.Gpt.Service
 
             ChatOptions chatOptions = new()
             {
-                ModelId = model.Name,
+                ModelId = model.DeploymentName,
                 ConversationId = sessionId.ToString()
             };
 

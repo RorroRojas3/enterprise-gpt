@@ -33,7 +33,7 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         {
             ProviderId = providerId ?? KnownIds.SeedProviderId,
             Name = name,
-            DisplayName = $"{name} display",
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
@@ -49,7 +49,7 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         {
             ProviderId = providerId ?? KnownIds.SeedProviderId,
             Name = name,
-            DisplayName = $"{name} display",
+            DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
             ContextWindowSize = 64000m,
             MaxOutputTokens = 8192m,
@@ -261,7 +261,7 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         var fetched = await client.GetFromJsonAsync<ModelDto>($"api/models/{id}", TestContext.Current.CancellationToken);
         Assert.NotNull(fetched);
         Assert.Equal(request.Name, fetched.Name);
-        Assert.Equal(request.DisplayName, fetched.DisplayName);
+        Assert.Equal(request.DeploymentName, fetched.DeploymentName);
         Assert.Equal(request.Description, fetched.Description);
         Assert.Equal(request.ContextWindowSize, fetched.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, fetched.MaxOutputTokens);
@@ -272,7 +272,7 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
     public async Task UpdateModel_InvalidBody_ReturnsBadRequest()
     {
         var id = await _fixture.AddModelAsync("it-original", cancellationToken: TestContext.Current.CancellationToken);
-        var request = UpdateRequest() with { DisplayName = string.Empty, MaxOutputTokens = 0m };
+        var request = UpdateRequest() with { DeploymentName = string.Empty, MaxOutputTokens = 0m };
         using var client = _fixture.Factory.CreateAdminClient();
 
         var response = await client.PutAsJsonAsync($"api/models/{id}", request, TestContext.Current.CancellationToken);

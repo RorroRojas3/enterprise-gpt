@@ -4,9 +4,11 @@ End-to-end reference for the model catalog feature: how models are listed, creat
 
 ## 1. Overview
 
-Models are the LLM deployments users can chat with (e.g. an Azure OpenAI deployment). Each model belongs to a [`Provider`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Provider.cs) and carries routing/limit metadata (`ContextWindowSize`, `MaxOutputTokens`, `IsToolEnabled`) plus a single-default flag (`IsDefault`).
+Models are the LLM deployments users can chat with (an Azure OpenAI deployment, or an Amazon Bedrock model or inference profile). Each model belongs to a [`Provider`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Provider.cs) and carries routing/limit metadata (`ContextWindowSize`, `MaxOutputTokens`, `IsToolEnabled`) plus a single-default flag (`IsDefault`).
 
-This feature is the **one sanctioned minimal-API exception** in an otherwise controller-based API (see [`enterprise-gpt-api/CLAUDE.md`](../../enterprise-gpt-api/CLAUDE.md)). Endpoints live in [`ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs) as a `MapGroup("api/models")` group; the former `ModelsController` was removed. The public URL surface for the frontend (`GET /api/models`) is unchanged.
+`ProviderId` is not decoration: it selects the chat client that serves every turn on the model. See [Amazon Bedrock Provider](amazon-bedrock.md) for how that routing works and what happens when a model names a provider this deployment cannot serve.
+
+Endpoints live in [`ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs) as a `MapGroup("api/models")` group; the former `ModelsController` was removed. `ModelEndpoints` is the template the other minimal-API modules follow (see [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md)). The public URL surface for the frontend (`GET /api/models`) is unchanged.
 
 ## 2. API surface
 
@@ -62,8 +64,8 @@ Response DTO — [`ModelDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelD
 {
   "id": "c36e22ed-...",
   "providerId": "3f2a91b5-...",
-  "name": "rr-gpt-5.6-luna",
-  "displayName": "GPT-5.6 Luna",
+  "name": "RR GPT 5.6 Luna",
+  "deploymentName": "rr-gpt-5.6-luna",
   "description": "OpenAI's GPT-5.6 Luna model.",
   "contextWindowSize": 200000,
   "maxOutputTokens": 16384,
@@ -75,7 +77,25 @@ Response DTO — [`ModelDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelD
 
 `dateDeactivated` is always `null` on user-facing endpoints (they filter to active rows); the admin listing uses it to distinguish toggled-off models.
 
-Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs). `CreateModelActionDto` and `UpdateModelActionDto` share the same shape (`providerId`, `name`, `displayName`, `description`, `contextWindowSize`, `maxOutputTokens`, `isToolEnabled`, `isDefault`). The update DTO carries **no id** — it comes from the route.
+Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs). `CreateModelActionDto` and `UpdateModelActionDto` share the same shape (`providerId`, `name`, `deploymentName`, `description`, `contextWindowSize`, `maxOutputTokens`, `isToolEnabled`, `isDefault`). The update DTO carries **no id** — it comes from the route.
+
+### 2.2 `name` and `deploymentName`
+
+`displayName` was **removed** and `deploymentName` added. This is a breaking change to `ModelDto`, `CreateModelActionDto`, and `UpdateModelActionDto`; the two fields also swapped meaning, so a client that simply renames the property will send the wrong value.
+
+| Field | Length | Meaning |
+|---|---|---|
+| `name` | ≤256 | The human label. What the picker shows. Nothing routes on it, so it is safe to rename. |
+| `deploymentName` | ≤512 | The provider-side identifier, sent to the LLM as `ChatOptions.ModelId`. |
+
+`deploymentName` is an Azure OpenAI deployment name on Azure, and a model id, inference profile id, or ARN on Bedrock — see [Amazon Bedrock Provider §7](amazon-bedrock.md#7-choosing-a-model-id-or-an-inference-profile). It is `nvarchar(512)` rather than 256 because a fully qualified Bedrock inference-profile ARN is far longer than an Azure deployment name.
+
+Before this change, `name` carried the deployment identifier and `displayName` the label — so existing rows have the two values the wrong way round until they are swapped. That swap ships as **no migration and no script**; see [Amazon Bedrock Provider §10.1](amazon-bedrock.md#101-a-plain-rename-leaves-every-existing-row-inverted) for the SQL and for why the failure is silent.
+
+Two knock-on effects worth knowing:
+
+- **Listing order changed.** Both listings still `OrderBy(x => x.Name)`, but `Name` is now the label rather than the deployment id, so models sort the way a user would expect instead of by provider naming convention.
+- **The Cosmos DB message transcript records `deploymentName`**, not the label. The transcript is append-only, so the recorded value has to stay meaningful after a catalog rename, and it is the deployment that identifies which model actually served and billed the turn.
 
 ## 3. Request flow
 
@@ -114,9 +134,19 @@ To grant admin locally, insert a row: `UserPermission { UserId = <your oid>, Per
 
 [`CreateModelActionDtoValidator` / `UpdateModelActionDtoValidator`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs) are colocated with the DTOs and auto-registered by `AddValidatorsFromAssemblies` in [`Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs). `ModelService` injects `IValidator<T>` and calls `ValidateAndThrowAsync` at the top of create/update.
 
-Rules (lengths mirror the [`Model`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs) entity): `providerId` non-empty; `name`/`displayName` required, ≤256; `description` required, ≤1024; `contextWindowSize`/`maxOutputTokens` > 0.
+Rules (lengths mirror the [`Model`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs) entity):
 
-Provider existence is checked in the service (active providers only) and yields a 404 `"Provider not found."` — deliberately a service-level check rather than a validator rule (validators in `Enterprise.Gpt.Dto` have no database access) and rather than an FK failure (which would surface as an opaque 500).
+| Field | Rule |
+|---|---|
+| `providerId` | non-empty |
+| `name` | `NotEmpty`, `MaximumLength(256)` |
+| `deploymentName` | `NotEmpty`, `MaximumLength(512)` |
+| `description` | `NotEmpty`, `MaximumLength(1024)` |
+| `contextWindowSize`, `maxOutputTokens` | greater than 0 |
+
+`deploymentName` being `NotEmpty` is load-bearing beyond the form: the streaming path reads it straight out of SQL and sends it as `ChatOptions.ModelId` without re-checking, so an empty value would reach the provider.
+
+Provider existence is checked in the service (active providers only) and yields a 404 `"Provider not found."` — deliberately a service-level check rather than a validator rule (validators in `Enterprise.Gpt.Dto` have no database access) and rather than an FK failure (which would surface as an opaque 500). The check confirms the provider *row* exists, **not** that this deployment can serve it: creating a Bedrock model while Bedrock is switched off succeeds and fails later with a 503 ([Amazon Bedrock Provider §9](amazon-bedrock.md#9-when-the-provider-is-not-configured--the-503-contract)).
 
 ## 6. Single-default invariant
 
@@ -138,13 +168,16 @@ At most one model has `IsDefault = 1`. When create/update sets `isDefault: true`
 | Request DTOs + validators | [`Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs) |
 | Entity | [`Enterprise.Gpt.Entity/Model.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs) |
 | EF configuration + seed | [`Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) |
+| Provider ids + provider seed | [`Enterprise.Gpt.Dto/Enums/Providers.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs), [`Configurations/ProviderConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProviderConfiguration.cs) |
+| Provider → chat client routing | [`Enterprise.Gpt.Service/Chat/ChatClientResolver.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatClientResolver.cs) — see [Amazon Bedrock Provider](amazon-bedrock.md) |
 | Frontend consumer | [`enterprise-ui/src/app/services/model.service.ts`](../../enterprise-ui/src/app/services/model.service.ts) (`GET /api/models` only) |
 
 ## 9. Known gaps and extension points
 
 - **Reactivation endpoint:** `PUT` targets active rows only, so a deactivated model currently has no "toggle back on" path; add e.g. `POST /api/models/{id}/activate` (admin) that clears `DateDeactivated`.
 - **Concurrent default races (two distinct gaps):** (a) racing updates that demote the same row hit the rowversion check and surface as `DbUpdateConcurrencyException` → 500; a 409 `IExceptionHandler` arm would make that honest. (b) Two concurrent *creates* with `isDefault: true` can each miss the other's uncommitted row and both succeed, leaving **two defaults with no error** — only a filtered unique index (`WHERE IsDefault = 1`) closes this at the DB level (add when regenerating migrations; note EF must order the demotion before the insert within the transaction).
-- **Seed data:** the seed in [`ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) predates the new validation rules — `DisplayName` is unset (blocks migration generation for [`EnterpriseGptDbContext`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/EnterpriseGptDbContext.cs); the `Migrations/` folder is currently empty) and `ContextWindowSize`/`MaxOutputTokens` are `0`, which the validators reject — the seeded model can't round-trip through `PUT` until real values are seeded.
+- **Seed data:** the seed in [`ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) now sets both name columns — `Name = "RR GPT 5.6 Luna"`, `DeploymentName = "rr-gpt-5.6-luna"` — but still leaves `ContextWindowSize`/`MaxOutputTokens` at `0`, which the validators reject, so the seeded model cannot round-trip through `PUT` until real values are seeded.
+- **No schema management:** `Repository/Migrations/` is declared as an empty `<Folder Include>` in [`Enterprise.Gpt.Repository.csproj`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Enterprise.Gpt.Repository.csproj) and **does not exist on disk**, yet `Database.Migrate()` runs at startup (skipped in the `Testing` environment) — so it applies nothing, and `HasData` seeds reach only databases built by `EnsureCreated()`, which in practice means the test databases. Every schema and seed change is therefore an out-of-band operation today, including this release's `DisplayName` → `DeploymentName` swap and the new Bedrock provider row ([Amazon Bedrock Provider §10](amazon-bedrock.md#10-operational-notes--the-schema-is-not-migrated)). Adding the first real migration changes startup behavior — flag it before doing so.
 - **Missing-OID tokens:** a principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500; a 401 arm in `GlobalExceptionHandler` would make that honest (pre-existing behavior, also reachable via `PermissionEndpointFilter`).
 - **Admin UI:** the frontend only consumes `GET /api/models`; the admin CRUD surface has no UI yet. Reuse `PermissionEndpointFilter.Require(PermissionIds.Administrator)` for any future admin-only endpoints (provider CRUD, user permission management).
-- **Frontend field drift:** `enterprise-ui`'s `ModelDto` still declares a stale `aiServiceId`; the backend now returns `providerId`. Align when building the admin UI.
+- **Frontend field drift:** `enterprise-ui`'s [`ModelDto`](../../enterprise-ui/src/app/dtos/ModelDto.ts) still declares a stale `aiServiceId`; the backend returns `providerId`. Because that field never binds, `prompt-box.component.ts`'s `getServiceIcon` falls through to its default for every model — including the new Bedrock ones, which have no icon case of their own. The frontend does not consume `deploymentName` at all, so the rename cost it nothing; the model picker now shows the human label because `name` is one. Align the field and add a Bedrock icon when building the admin UI.
