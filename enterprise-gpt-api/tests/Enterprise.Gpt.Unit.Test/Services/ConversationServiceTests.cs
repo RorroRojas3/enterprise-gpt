@@ -1,3 +1,4 @@
+using Andes.Extensions.AI;
 using FluentValidation;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,7 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly IConversationLockService _lockService = Substitute.For<IConversationLockService>();
     private readonly IAzureCosmosService _cosmosService = Substitute.For<IAzureCosmosService>();
     private readonly FakeChatClient _chatClient = new();
+    private readonly IChatClient _trackedChatClient;
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
     private readonly ConversationService _service;
 
@@ -41,7 +43,17 @@ public sealed class ConversationServiceTests : IDisposable
         _tokenService.GetOid().Returns(KnownIds.SeedUserId);
         _lockService.TryAcquireLockAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(Substitute.For<IDisposable>());
-        _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_chatClient);
+
+        // The real middleware, in the real order, over the fake provider: token accounting is a
+        // property of this pipeline rather than of the service, so a test that stubbed the report
+        // would be asserting its own arrangement. The observer is added by hand because nothing
+        // here builds through a container, which is what would otherwise supply it.
+        _trackedChatClient = _chatClient
+            .AsBuilder()
+            .UseToolTracking(options => options.Observers.Add(new ChatUsageObserver()))
+            .UseFunctionInvocation()
+            .Build();
+        _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_trackedChatClient);
         _service = new ConversationService(
             NullLogger<ConversationService>.Instance,
             _modelService,
@@ -59,6 +71,7 @@ public sealed class ConversationServiceTests : IDisposable
 
     public void Dispose()
     {
+        _trackedChatClient.Dispose();
         _fixture.Dispose();
     }
 
@@ -253,8 +266,13 @@ public sealed class ConversationServiceTests : IDisposable
     /// </summary>
     private IMcpToolLeaseSet SetUpLeaseSet(params McpServer[] servers)
     {
+        return SetUpLeaseSet(new FakeTool(), servers);
+    }
+
+    private IMcpToolLeaseSet SetUpLeaseSet(AITool tool, params McpServer[] servers)
+    {
         var leaseSet = Substitute.For<IMcpToolLeaseSet>();
-        leaseSet.Tools.Returns(new List<AITool> { new FakeTool() });
+        leaseSet.Tools.Returns([tool]);
         leaseSet.Servers.Returns([.. servers.Select(s => new McpServerReference(s.Id, s.Name))]);
         _mcpToolProvider.AcquireToolsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(leaseSet);
@@ -274,17 +292,41 @@ public sealed class ConversationServiceTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken);
     }
 
+    private async Task<List<ConversationUsageToolCall>> ReadToolCallsAsync(Guid conversationId)
+    {
+        using var ctx = _fixture.CreateContext();
+
+        return await ctx.ConversationUsageToolCalls
+            .AsNoTracking()
+            .Where(x => x.ConversationUsage.ConversationId == conversationId)
+            .OrderBy(x => x.Depth)
+            .ThenBy(x => x.Sequence)
+            .ToListAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Drains the turn and returns just the answer fragments, so assertions about what the model
+    /// said are not entangled with the activity events interleaved among them.
+    /// </summary>
     private async Task<List<string?>> StreamToEndAsync(
         Guid conversationId, CreateConversationStreamActionDto request, CancellationToken? cancellationToken = null)
     {
+        var events = await StreamEventsToEndAsync(conversationId, request, cancellationToken);
+
+        return [.. events.Where(e => e.Kind == AssistantUiEventKind.TextDelta).Select(e => e.Text)];
+    }
+
+    private async Task<List<AssistantUiEvent>> StreamEventsToEndAsync(
+        Guid conversationId, CreateConversationStreamActionDto request, CancellationToken? cancellationToken = null)
+    {
         var token = cancellationToken ?? TestContext.Current.CancellationToken;
-        var updates = new List<string?>();
-        await foreach (var text in _service.StreamConversationAsync(conversationId, request, token))
+        var events = new List<AssistantUiEvent>();
+        await foreach (var uiEvent in _service.StreamConversationAsync(conversationId, request, token))
         {
-            updates.Add(text);
+            events.Add(uiEvent);
         }
 
-        return updates;
+        return events;
     }
 
     /// <summary>
@@ -941,6 +983,163 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Empty(usage.McpServers);
     }
 
+    /// <summary>
+    /// Drives one real two-iteration tool loop: the model asks for <paramref name="toolName"/>, the
+    /// function-invocation client runs it, the tool attributes tokens to itself, and the model
+    /// answers. Returns the conversation the turn ran on.
+    /// </summary>
+    private async Task<Conversation> RunToolTurnAsync(
+        string toolName = "GetWeather", long toolInput = 4, long toolOutput = 2)
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var server = await AddMcpServerAsync("Weather");
+
+        SetUpLeaseSet(
+            AIFunctionFactory.Create(
+                () =>
+                {
+                    ChatProgress.ReportUsage(new UsageDetails
+                    {
+                        InputTokenCount = toolInput,
+                        OutputTokenCount = toolOutput,
+                        TotalTokenCount = toolInput + toolOutput
+                    });
+
+                    return "Sunny.";
+                },
+                toolName),
+            server);
+
+        _chatClient.ToolCallName = toolName;
+        _chatClient.ToolTurnUsage = new UsageDetails { InputTokenCount = 5, OutputTokenCount = 3 };
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = server.Id }]
+        });
+
+        return conversation;
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolReportsUsage_RecordsItAsAToolCallRow()
+    {
+        var conversation = await RunToolTurnAsync();
+
+        var toolCall = Assert.Single(await ReadToolCallsAsync(conversation.Id));
+        Assert.Equal("GetWeather", toolCall.ToolName);
+        Assert.Equal(ConversationToolKinds.Function, toolCall.Kind);
+        Assert.Equal(0, toolCall.Depth);
+        Assert.Equal(0, toolCall.Sequence);
+        Assert.Null(toolCall.ParentId);
+        Assert.True(toolCall.Succeeded);
+        Assert.Equal(4, toolCall.InputTokens);
+        Assert.Equal(2, toolCall.OutputTokens);
+        Assert.Equal(6, toolCall.SubtreeTotalTokens);
+    }
+
+    /// <summary>
+    /// The split the whole feature exists for: what the assistant's own turns cost is kept apart
+    /// from what its tools cost, and both are on the same audit row.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolReportsUsage_SplitsAssistantAndToolTokensOnTheUsageRow()
+    {
+        var conversation = await RunToolTurnAsync();
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(16, usage.InputTokens);
+        Assert.Equal(10, usage.OutputTokens);
+        Assert.Equal(4, usage.ToolInputTokens);
+        Assert.Equal(2, usage.ToolOutputTokens);
+        Assert.Equal(26, usage.AssistantTokens);
+        Assert.Equal(32, usage.TotalTokens);
+    }
+
+    /// <summary>
+    /// The conversation's counters have to account for everything the turn was billed for, tools
+    /// included, and stay equal to the sum of its usage rows.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolReportsUsage_BumpsTheConversationCountersByToolTokensToo()
+    {
+        var conversation = await RunToolTurnAsync();
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.AsNoTracking()
+            .SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(20, stored.InputTokens);
+        Assert.Equal(12, stored.OutputTokens);
+        Assert.Equal(32, stored.TotalTokens);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolRuns_StreamsItsActivityAlongsideTheAnswer()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpLeaseSet(AIFunctionFactory.Create(() => "Sunny.", "GetWeather"));
+        _chatClient.ToolCallName = "GetWeather";
+
+        var events = await StreamEventsToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = Guid.NewGuid() }]
+        });
+
+        var started = Assert.Single(events, e => e.Kind == AssistantUiEventKind.ActivityStarted);
+        Assert.Equal("GetWeather", started.DisplayName);
+        Assert.Equal(ToolKind.Function, started.ToolKind);
+        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.ActivityCompleted);
+        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
+    }
+
+    // Only the answer belongs in the transcript: the activity is live status, and replaying it to
+    // the model on the next turn would be neither useful nor what providers expect back.
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolRuns_TranscribesOnlyTheAnswerText()
+    {
+        var conversation = await RunToolTurnAsync();
+
+        await _cosmosService.Received(1).PatchItemAsync(
+            conversation.Id.ToString(),
+            KnownIds.SeedUserId.ToString(),
+            Arg.Is<IReadOnlyList<PatchOperation>>(ops => ops.Count > 0),
+            Arg.Any<CancellationToken>());
+
+        var toolCall = Assert.Single(await ReadToolCallsAsync(conversation.Id));
+        Assert.Equal("GetWeather", toolCall.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenNoToolRuns_RecordsNoToolCallRows()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        Assert.Empty(await ReadToolCallsAsync(conversation.Id));
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(0, usage.ToolInputTokens);
+        Assert.Equal(0, usage.ToolOutputTokens);
+    }
+
     [Fact]
     public async Task StreamConversationAsync_WhenStreamCompletes_RecordsTheAttachedMcpServers()
     {
@@ -1331,6 +1530,8 @@ public sealed class ConversationServiceTests : IDisposable
     /// </summary>
     private sealed class FakeChatClient : IChatClient
     {
+        private int _streamedTurns;
+
         public ChatOptions? CapturedOptions { get; private set; }
 
         /// <summary>
@@ -1373,6 +1574,17 @@ public sealed class ConversationServiceTests : IDisposable
         /// </summary>
         public bool FailAfterUsage { get; set; }
 
+        /// <summary>
+        /// Gets or sets the name of a tool the first streamed turn asks for. Set, the fake drives a
+        /// real two-iteration function-invocation loop: turn one is the call, turn two the answer.
+        /// </summary>
+        public string? ToolCallName { get; set; }
+
+        /// <summary>
+        /// Gets or sets the usage reported for the first turn, the one that only asks for a tool.
+        /// </summary>
+        public UsageDetails? ToolTurnUsage { get; set; }
+
         public Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         {
@@ -1396,6 +1608,25 @@ public sealed class ConversationServiceTests : IDisposable
             CapturedOptions = options;
             CapturedMessages.Clear();
             CapturedMessages.AddRange(messages);
+
+            // The first turn of a scripted tool run asks for the tool and stops; the real
+            // FunctionInvokingChatClient then invokes it and calls back in for the answer.
+            if (ToolCallName is not null && _streamedTurns++ == 0)
+            {
+                yield return new ChatResponseUpdate
+                {
+                    Role = ChatRole.Assistant,
+                    Contents = [new FunctionCallContent("call_1", ToolCallName, new Dictionary<string, object?>())]
+                };
+
+                if (ToolTurnUsage is not null)
+                {
+                    yield return new ChatResponseUpdate { Contents = [new UsageContent(ToolTurnUsage)] };
+                }
+
+                yield break;
+            }
+
             yield return new ChatResponseUpdate(ChatRole.Assistant, "Hello");
             await Task.Yield();
 

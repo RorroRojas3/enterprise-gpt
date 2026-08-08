@@ -1,3 +1,4 @@
+using Andes.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -235,8 +236,14 @@ namespace Enterprise.Gpt.Service
 
                 // Prefixing with the server name keeps tool names unique when several servers
                 // expose a tool with the same name; the SDK still calls the original name.
+                //
+                // WithTracking is what makes these recognizable to the tool-tracking middleware: it
+                // carries the server identity onto the wrapper, so an invocation is reported as an
+                // MCP call attributed to this server rather than as an anonymous function, and it
+                // bridges the server's progress notifications into the streamed status feed. The
+                // renaming happens first so the tracked wrapper preserves the prefixed name.
                 var prefix = SanitizeToolNamePrefix(server.Name);
-                List<AITool> prefixedTools = [.. tools.Select(t => t.WithName($"{prefix}_{t.Name}"))];
+                List<AITool> prefixedTools = [.. tools.Select(t => t.WithName($"{prefix}_{t.Name}")).WithTracking(client)];
 
                 _logger.LogInformation("Connected to MCP server {McpServerId} and listed {ToolCount} tools", server.Id, prefixedTools.Count);
 
@@ -284,7 +291,18 @@ namespace Enterprise.Gpt.Service
             }
         }
 
-        private static string SanitizeToolNamePrefix(string serverName)
+        /// <summary>
+        /// Derives the prefix stamped onto every tool leased from a server, so tool names stay
+        /// unique across servers.
+        /// </summary>
+        /// <param name="serverName">The server's name at lease time.</param>
+        /// <returns>The prefix, with everything outside <c>[A-Za-z0-9_-]</c> replaced by an underscore.</returns>
+        /// <remarks>
+        /// Internal rather than private because it is also the only reliable way to attribute a
+        /// reported tool call back to its server: usage reports carry the tool name the model
+        /// called, which is <c>{prefix}_{tool}</c>.
+        /// </remarks>
+        internal static string SanitizeToolNamePrefix(string serverName)
         {
             return string.Concat(serverName.Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
         }

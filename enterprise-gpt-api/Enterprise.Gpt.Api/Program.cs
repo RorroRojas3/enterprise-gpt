@@ -1,6 +1,7 @@
 ﻿using Amazon;
 using Amazon.BedrockRuntime;
 using Amazon.Runtime;
+using Andes.Extensions.AI;
 using Anthropic;
 using Azure;
 using Azure.AI.DocumentIntelligence;
@@ -81,6 +82,12 @@ builder.Services.AddCors(builder => builder.AddPolicy("AllowSpecificOrigins", po
 }));
 
 
+// Registered before the chat clients because UseToolTracking() collects every IChatProgressObserver
+// in the container when the client is built. This one is how a completed request's usage report
+// reaches the code that started it — including for a turn the user cancelled, whose report never
+// reaches the response stream.
+builder.Services.AddSingleton<IChatProgressObserver, ChatUsageObserver>();
+
 // Chat providers. Each is registered under the DI key its Core.Ref.Provider row maps to in
 // Providers.ServiceKeys; IChatClientResolver is what turns a model's ProviderId into one of these at
 // request time. Shared here so a second provider cannot drift from the first on tool invocation.
@@ -90,6 +97,18 @@ static void ConfigureFunctionInvocation(FunctionInvokingChatClient client)
     client.IncludeDetailedErrors = true;
     client.MaximumIterationsPerRequest = 5;
     client.MaximumConsecutiveErrorsPerRequest = 5;
+}
+
+// Per-tool token accounting and streamed activity, shared by every provider for the same reason as
+// the function-invocation settings above. Both classifiers are installed so a tool is reported as
+// what it is — an MCP server's tool, or an agent exposed as a function — rather than as an
+// anonymous function; they stack, with agents short-circuiting and everything else falling through
+// to the MCP classifier. Nothing turns tool arguments on: the middleware's default is to keep
+// prompt content, arguments and results out of progress events, and that stands.
+static void ConfigureToolTracking(ToolTrackingOptions options)
+{
+    options.UseMcpToolClassification();
+    options.UseAgentToolClassification();
 }
 
 // 1) Azure AI Foundry under key "azureaifoundry"
@@ -106,6 +125,10 @@ builder.Services.AddKeyedChatClient(
     // name for these spans to be exported, and a default that changes with a package bump would take
     // the LLM traces off the Application Insights map without any build error.
     .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+    // Must precede UseFunctionInvocation. The tracker works by wrapping the tools before the
+    // function-invoking client executes them; reversed, that client runs the unwrapped tools and
+    // the tracker sees nothing but text — no scopes, no per-tool usage, no progress.
+    .UseToolTracking(ConfigureToolTracking)
     .UseFunctionInvocation(null, ConfigureFunctionInvocation);
 
 // 2) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
@@ -155,6 +178,7 @@ if (builder.Configuration.GetValue<bool>($"{AmazonBedrockOptions.SectionName}:En
                     .AsIChatClient(sp.GetRequiredService<IOptions<AmazonBedrockOptions>>().Value.DefaultModelId)
         )
         .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+        .UseToolTracking(ConfigureToolTracking)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation);
 }
 
@@ -226,6 +250,7 @@ if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enable
             }
         )
         .UseOpenTelemetry()
+        .UseToolTracking(ConfigureToolTracking)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation)
         // Last in the chain, which is innermost: ChatClientBuilder applies its factories in reverse,
         // so this is the client closest to the SDK and its ChatOptions are the ones the bridge reads.

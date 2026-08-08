@@ -529,6 +529,14 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     private static async Task ClearConversationUsageAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
         await ctx.ConversationUsageMcpServers.ExecuteDeleteAsync(cancellationToken);
+
+        // Tool calls nest through a self-referencing key, and a set-based delete gives no ordering
+        // guarantee over one, so the parent links are broken before the rows go.
+        await ctx.ConversationUsageToolCalls
+            .Where(x => x.ParentId != null)
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.ParentId, (Guid?)null), cancellationToken);
+        await ctx.ConversationUsageToolCalls.ExecuteDeleteAsync(cancellationToken);
+
         await ctx.ConversationUsage.ExecuteDeleteAsync(cancellationToken);
     }
 
@@ -579,6 +587,102 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
 
         return usage.Id;
+    }
+
+    /// <summary>
+    /// Inserts a usage row carrying a nested tool-call tree, as one graph, exactly the way
+    /// <c>ConversationService</c> writes it — which is what makes this exercise the self-referencing
+    /// key and the sequential key generation rather than a hand-wired set of identifiers.
+    /// </summary>
+    /// <param name="conversationId">The conversation the turn belongs to.</param>
+    /// <param name="modelId">The model that served the turn.</param>
+    /// <param name="mcpServerId">The catalog server the MCP child call is attributed to.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted usage row.</returns>
+    public async Task<Guid> AddConversationUsageWithToolCallsAsync(
+        Guid conversationId, Guid modelId, Guid? mcpServerId = null, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var child = new ConversationUsageToolCall
+        {
+            Sequence = 0,
+            Depth = 1,
+            Kind = ConversationToolKinds.McpTool,
+            ToolName = "Weather_forecast",
+            Source = "Weather",
+            McpServerId = mcpServerId,
+            InputTokens = 30,
+            OutputTokens = 20,
+            TotalTokens = 50,
+            SubtreeTotalTokens = 50,
+            DurationMs = 400,
+            Succeeded = true,
+            DateCreated = date
+        };
+        var parent = new ConversationUsageToolCall
+        {
+            Sequence = 0,
+            Depth = 0,
+            Kind = ConversationToolKinds.Agent,
+            ToolName = "ResearchAgent",
+            Source = "Research Agent",
+            CallId = "call_1",
+            InputTokens = 70,
+            OutputTokens = 40,
+            TotalTokens = 110,
+            SubtreeTotalTokens = 160,
+            DurationMs = 1500,
+            Succeeded = true,
+            DateCreated = date,
+            Children = [child]
+        };
+
+        var usage = new ConversationUsage
+        {
+            ConversationId = conversationId,
+            UserId = TestUsers.RegularUserId,
+            ModelId = modelId,
+            ProviderId = KnownIds.SeedProviderId,
+            DeploymentName = "integration-deployment",
+            Kind = ConversationUsageKinds.Chat,
+            Status = ConversationUsageStatuses.Completed,
+            InputTokens = 11,
+            OutputTokens = 7,
+            ToolInputTokens = 100,
+            ToolOutputTokens = 60,
+            DateCreated = date,
+            // Flat, nested row included: this navigation is what gives each row its owning usage
+            // id, and a child reachable only through its parent would be saved without one.
+            ToolCalls = [parent, child]
+        };
+
+        ctx.ConversationUsage.Add(usage);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return usage.Id;
+    }
+
+    /// <summary>
+    /// Reads back a usage row's tool calls, deepest last, for asserting on what was persisted.
+    /// </summary>
+    /// <param name="usageId">The usage row the calls belong to.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The tool calls, ordered by depth then report order.</returns>
+    public async Task<List<ConversationUsageToolCall>> GetConversationUsageToolCallsAsync(
+        Guid usageId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ConversationUsageToolCalls
+            .AsNoTracking()
+            .Where(x => x.ConversationUsageId == usageId)
+            .OrderBy(x => x.Depth)
+            .ThenBy(x => x.Sequence)
+            .ToListAsync(cancellationToken);
     }
 
     private static async Task EnsureUploadFileGrantsAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)

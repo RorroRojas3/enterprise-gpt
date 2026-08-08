@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using Andes.Extensions.AI;
+using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -62,7 +63,24 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
         Task SetConversationFavoriteAsync(Guid id, SetConversationFavoriteActionDto request, CancellationToken cancellationToken = default);
 
-        IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
+        /// <summary>
+        /// Runs one chat turn and streams what the assistant does while it runs: answer text,
+        /// reasoning, and an activity event for every tool, MCP call and agent it invokes.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="request">The prompt, the model to serve it, and the MCP servers to attach.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The turn's events, in the order they occurred.</returns>
+        /// <remarks>
+        /// Validation and the caller's identity are resolved eagerly, so a bad request faults before
+        /// the sequence is produced and the caller can answer it with a normal error response.
+        /// Everything else — the conversation lock, the transcript read, the model call — happens on
+        /// the first move, which is why contention and a missing conversation surface there.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ConversationBusyException">Another turn is already in flight for this conversation.</exception>
+        /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
+        IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
 
         Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, CancellationToken cancellationToken);
     }
@@ -354,8 +372,19 @@ namespace Enterprise.Gpt.Service
 
             var name = response.Messages.Last().Text?.Trim() ?? string.Empty;
             var date = DateTimeOffset.UtcNow;
-            var inputTokens = response.Usage?.InputTokenCount ?? 0;
-            var outputTokens = response.Usage?.OutputTokenCount ?? 0;
+
+            // A non-streaming tracked request carries its report on the response rather than
+            // in-band. Preferred over ChatResponse.Usage because it separates the assistant's own
+            // consumption from anything a tool spent — although naming attaches no tools, so the
+            // two agree today and the usage falls back to the raw response when tracking is not
+            // installed on the client that served it.
+            var report = response.AdditionalProperties?.TryGetValue(
+                ToolTrackingChatClient.UsageReportPropertyName, out ChatUsageReport? usageReport) is true
+                    ? usageReport
+                    : null;
+
+            var inputTokens = report?.AssistantUsage.InputTokenCount ?? response.Usage?.InputTokenCount ?? 0;
+            var outputTokens = report?.AssistantUsage.OutputTokenCount ?? response.Usage?.OutputTokenCount ?? 0;
 
             // Name and counters move together in one statement, and the usage row lands in the same
             // transaction, so a conversation whose totals include the naming call always carries the
@@ -529,7 +558,7 @@ namespace Enterprise.Gpt.Service
         /// enumerable and never enumerated it — but it still happens before the first fragment is
         /// produced, which is what lets the controller answer contention with a clean 409.
         /// </remarks>
-        public IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken)
+        public IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
 
@@ -542,16 +571,16 @@ namespace Enterprise.Gpt.Service
 
         /// <summary>
         /// Runs a single chat turn under the conversation lock: loads history, streams the model
-        /// response to the caller, then persists the turn.
+        /// response and its tool activity to the caller, then persists the turn.
         /// </summary>
         /// <param name="id">The unique identifier of the conversation.</param>
         /// <param name="request">The validated stream request.</param>
         /// <param name="userId">The object identifier of the calling user, resolved by the caller.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-        /// <returns>An asynchronous sequence of response fragments as the model produces them.</returns>
+        /// <returns>An asynchronous sequence of events as the turn produces them.</returns>
         /// <exception cref="ConversationBusyException">Thrown when another turn is already in flight for this conversation.</exception>
         /// <exception cref="NotFoundException">Thrown when the conversation does not exist for this user.</exception>
-        private async IAsyncEnumerable<string?> StreamConversationCoreAsync(Guid id, CreateConversationStreamActionDto request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken)
+        private async IAsyncEnumerable<AssistantUiEvent> StreamConversationCoreAsync(Guid id, CreateConversationStreamActionDto request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // using var, rather than a separate acquire and using block: it makes acquisition and
             // release inseparable, so no statement can be introduced between them that could throw
@@ -607,7 +636,6 @@ namespace Enterprise.Gpt.Service
             var chatClient = _chatClientResolver.Resolve(model.ProviderId);
             var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
             StringBuilder sb = new();
-            long totalInputTokens = 0, totalOutputTokens = 0;
             var completed = false;
 
             // The lease set (null when no MCPs are selected) must stay alive for the whole
@@ -615,6 +643,22 @@ namespace Enterprise.Gpt.Service
             // releases the leases on completion, fault, or client disconnect alike.
             await using (toolLeases)
             {
+                // Collects the tracking middleware's report. Reading the token counts off the
+                // stream instead would lose everything for a turn that never reaches its final
+                // update, which is every cancelled turn.
+                var usageScope = ChatUsageScope.Create();
+
+                // Enumerated by hand rather than with await foreach, and this is the reason: the
+                // scope has to be ambient while the middleware runs, and an async iterator resumes
+                // on whatever execution context its consumer supplies, so anything made ambient
+                // here is gone after the first yield return below. Re-entering the scope around
+                // each move — and around the disposal that finalizes an abandoned request — is what
+                // keeps it in effect for exactly the windows the middleware occupies.
+                var events = chatClient
+                    .GetStreamingResponseAsync(conversations, chatOptions, cancellationToken)
+                    .ToUiEventsAsync(cancellationToken)
+                    .GetAsyncEnumerator(cancellationToken);
+
                 // try/finally rather than straight-line code after the loop: a turn that is
                 // cancelled or faults still consumed — and is still billed for — every token the
                 // model produced up to that point, and this is the only path that runs when the
@@ -622,33 +666,59 @@ namespace Enterprise.Gpt.Service
                 // cannot enclose a yield return, so the outcome is classified from a flag.
                 try
                 {
-                    await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
+                    while (true)
                     {
+                        bool moved;
+                        using (usageScope.Enter())
+                        {
+                            moved = await events.MoveNextAsync();
+                        }
+
+                        if (!moved)
+                        {
+                            break;
+                        }
+
                         cancellationToken.ThrowIfCancellationRequested();
 
-                        if (!string.IsNullOrEmpty(message.Text))
+                        var uiEvent = events.Current;
+
+                        // Only the answer is transcribed. Reasoning arrives as its own event kind
+                        // and is shown live but never persisted: replaying a model's reasoning back
+                        // to it on the next turn is neither useful nor what providers expect.
+                        if (uiEvent.Kind is AssistantUiEventKind.TextDelta && !string.IsNullOrEmpty(uiEvent.Text))
                         {
-                            sb.Append(message.Text);
+                            sb.Append(uiEvent.Text);
                         }
 
-                        if (message.Contents != null &&
-                            message.Contents.Count > 0)
-                        {
-                            // Check for usage content to track token consumption during streaming
-                            var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
-                            if (usageContent != null)
-                            {
-                                totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
-                                totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
-                            }
-                        }
-                        yield return message.Text;
+                        yield return uiEvent;
                     }
 
                     completed = true;
                 }
                 finally
                 {
+                    // Before the report is read: disposal is where the middleware finalizes a
+                    // request that was abandoned rather than drained, and where it hands the
+                    // observer the partial account of what that turn had already spent.
+                    //
+                    // Guarded for the same reason the audit write below is, and it needs its own
+                    // guard because it runs ahead of that one: a provider aborting its response
+                    // stream during teardown would otherwise replace the exception already in
+                    // flight and skip the accounting entirely. Whatever the middleware published
+                    // before the failure survives it.
+                    try
+                    {
+                        using (usageScope.Enter())
+                        {
+                            await events.DisposeAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Disposing the response stream failed for conversation {ConversationId}.", id);
+                    }
+
                     var turn = new TurnOutcome(
                         ConversationId: id,
                         UserId: userId,
@@ -662,8 +732,7 @@ namespace Enterprise.Gpt.Service
                         Prompt: request.Prompt,
                         Answer: sb.ToString(),
                         TranscriptExists: transcriptExists,
-                        InputTokens: totalInputTokens,
-                        OutputTokens: totalOutputTokens);
+                        Report: usageScope.Report);
 
                     // The token that ended the stream is the one that would abort the write
                     // recording it, so finalization runs uncancellable.
@@ -695,8 +764,10 @@ namespace Enterprise.Gpt.Service
         /// <param name="Prompt">The user's prompt.</param>
         /// <param name="Answer">The text the model produced, possibly truncated when the turn was abandoned.</param>
         /// <param name="TranscriptExists">Whether the Cosmos document already has a messages array to append to.</param>
-        /// <param name="InputTokens">Input tokens consumed.</param>
-        /// <param name="OutputTokens">Output tokens produced.</param>
+        /// <param name="Report">
+        /// What the turn consumed, as the tool-tracking middleware accounted for it, or
+        /// <see langword="null"/> when it produced no report at all.
+        /// </param>
         private sealed record TurnOutcome(
             Guid ConversationId,
             Guid UserId,
@@ -706,12 +777,12 @@ namespace Enterprise.Gpt.Service
             string Prompt,
             string Answer,
             bool TranscriptExists,
-            long InputTokens,
-            long OutputTokens);
+            ChatUsageReport? Report);
 
         /// <summary>
         /// Records a finished turn: the conversation's running counters and last model, the usage
-        /// audit row, and — only for a turn that completed — the transcript append.
+        /// audit row with the tool calls underneath it, and — only for a turn that completed — the
+        /// transcript append.
         /// </summary>
         /// <param name="turn">The outcome to record.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
@@ -728,8 +799,26 @@ namespace Enterprise.Gpt.Service
             var assistantMessageId = Guid.NewGuid();
             var conversationId = turn.ConversationId;
             var modelId = turn.Model.Id;
-            var inputTokens = turn.InputTokens;
-            var outputTokens = turn.OutputTokens;
+
+            if (turn.Report is null)
+            {
+                // Tracking is installed on every chat client, so a missing report means the request
+                // faulted before the middleware could account for anything. The turn is still
+                // recorded — at zero — rather than dropped: a conversation with a gap in its audit
+                // trail is worse than one with a zero-token row explaining the gap.
+                _logger.LogWarning(
+                    "No usage report for the {Status} turn on conversation {ConversationId}; recording it with no tokens.",
+                    turn.Status, conversationId);
+            }
+
+            var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, date);
+
+            // The conversation's running counters move by everything the turn consumed — the
+            // assistant's own turns and every tool, MCP call and agent underneath them. Derived
+            // from the same numbers written to the audit row below rather than read separately off
+            // the report, so the counters can never disagree with the sum of the rows.
+            var inputTokens = turnUsage.TotalInputTokens;
+            var outputTokens = turnUsage.TotalOutputTokens;
 
             // One transaction, so a conversation whose counters moved always carries the usage row
             // that accounts for the movement.
@@ -756,8 +845,10 @@ namespace Enterprise.Gpt.Service
                 DeploymentName = turn.Model.DeploymentName,
                 Kind = ConversationUsageKinds.Chat,
                 Status = turn.Status,
-                InputTokens = turn.InputTokens,
-                OutputTokens = turn.OutputTokens,
+                InputTokens = turnUsage.InputTokens,
+                OutputTokens = turnUsage.OutputTokens,
+                ToolInputTokens = turnUsage.ToolInputTokens,
+                ToolOutputTokens = turnUsage.ToolOutputTokens,
                 AssistantMessageId = completed ? assistantMessageId : null,
                 DateCreated = date,
                 McpServers =
@@ -768,7 +859,11 @@ namespace Enterprise.Gpt.Service
                         McpServerName = server.Name,
                         DateCreated = date
                     })
-                ]
+                ],
+                // Saved as one graph rather than row by row: EF assigns the sequential keys and
+                // fixes each child's ParentId from the navigation, so nesting survives without the
+                // random identifiers the comment above exists to avoid.
+                ToolCalls = turnUsage.ToolCalls
             };
 
             _ctx.Add(usage);
@@ -801,8 +896,8 @@ namespace Enterprise.Gpt.Service
                 Role = ChatRoles.Assistant,
                 Usage = new CosmosConversationUsage
                 {
-                    InputTokens = turn.InputTokens,
-                    OutputTokens = turn.OutputTokens
+                    InputTokens = inputTokens,
+                    OutputTokens = outputTokens
                 }
             };
 
@@ -818,7 +913,7 @@ namespace Enterprise.Gpt.Service
                     : PatchOperation.Set<List<CosmosConversationMessage>>("/messages", [userMessage]),
                 PatchOperation.Add("/messages/-", assistantMessage),
                 PatchOperation.Increment("/messageCount", 2),
-                PatchOperation.Increment("/totalTokens", turn.InputTokens + turn.OutputTokens),
+                PatchOperation.Increment("/totalTokens", inputTokens + outputTokens),
                 PatchOperation.Set("/dateModified", date),
             ], cancellationToken);
 
