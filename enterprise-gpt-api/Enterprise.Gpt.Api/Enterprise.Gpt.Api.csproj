@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Anthropic first-party. Unlike Bedrock this needs a single package: the SDK carries the
+         Microsoft.Extensions.AI bridge itself (IAnthropicClient.AsIChatClient), so there is no
+         separate adapter to reference. -->
+    <PackageReference Include="Anthropic" Version="12.40.0" />
     <!-- Amazon Bedrock. The MEAI package supplies IAmazonBedrockRuntime.AsIChatClient(), which wraps
          Converse/ConverseStream; BedrockRuntime itself is a direct dependency because Program.cs
          constructs AmazonBedrockRuntimeClient and its config to wire bearer-token auth. -->
