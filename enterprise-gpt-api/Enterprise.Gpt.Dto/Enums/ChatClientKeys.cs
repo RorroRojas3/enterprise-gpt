@@ -15,4 +15,7 @@ public static class ChatClientKeys
 
     /// <summary>Amazon Bedrock.</summary>
     public const string AmazonBedrock = "amazonbedrock";
+
+    /// <summary>Anthropic.</summary>
+    public const string Anthropic = "anthropic";
 }

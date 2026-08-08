@@ -67,6 +67,47 @@ public sealed class ChatClientResolverTests : IDisposable
     }
 
     /// <summary>
+    /// Anthropic and Amazon Bedrock both serve Claude, so a copy-paste slip in
+    /// <c>Providers.ServiceKeys</c> that pointed Anthropic at the Bedrock key would still produce
+    /// plausible-looking answers in every other test. Asserting the client is the Anthropic one and
+    /// specifically not the Bedrock one is what catches that.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnthropicProvider_ReturnsClientRegisteredUnderTheAnthropicKey()
+    {
+        var azure = Substitute.For<IChatClient>();
+        var bedrock = Substitute.For<IChatClient>();
+        var anthropic = Substitute.For<IChatClient>();
+        var resolver = CreateResolver(
+            (ChatClientKeys.AzureAIFoundry, azure),
+            (ChatClientKeys.AmazonBedrock, bedrock),
+            (ChatClientKeys.Anthropic, anthropic));
+
+        var resolved = resolver.Resolve(Providers.Anthropic);
+
+        Assert.Same(anthropic, resolved);
+        Assert.NotSame(bedrock, resolved);
+    }
+
+    /// <summary>
+    /// The shape of a deployment that leaves <c>Anthropic:Enabled</c> off while an Anthropic-backed
+    /// model still sits in the catalog. Registering Bedrock here is the point: a Claude model must
+    /// not silently fall through to the other provider that happens to serve Claude.
+    /// </summary>
+    [Fact]
+    public void Resolve_AnthropicProviderWithNoRegisteredClient_ThrowsProviderNotConfiguredException()
+    {
+        var resolver = CreateResolver(
+            (ChatClientKeys.AzureAIFoundry, Substitute.For<IChatClient>()),
+            (ChatClientKeys.AmazonBedrock, Substitute.For<IChatClient>()));
+
+        var exception = Assert.Throws<ProviderNotConfiguredException>(
+            () => resolver.Resolve(Providers.Anthropic));
+
+        Assert.Equal(Providers.Anthropic, exception.ProviderId);
+    }
+
+    /// <summary>
     /// The shape of a deployment that leaves <c>AmazonBedrock:Enabled</c> off while a Bedrock-backed
     /// model still sits in the catalog.
     /// </summary>

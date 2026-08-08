@@ -1,6 +1,7 @@
 ﻿using Amazon;
 using Amazon.BedrockRuntime;
 using Amazon.Runtime;
+using Anthropic;
 using Azure;
 using Azure.AI.DocumentIntelligence;
 using Azure.AI.OpenAI;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
+using Enterprise.Gpt.Api.Chat;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Middleware;
@@ -160,6 +162,85 @@ if (builder.Configuration.GetValue<bool>($"{AmazonBedrockOptions.SectionName}:En
         )
         .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation);
+}
+
+// 3) Anthropic under key "anthropic", off unless Anthropic:Enabled is set. Same gating as Bedrock, so
+// a deployment that does not use Anthropic needs no Anthropic settings and a half-filled section
+// fails at startup rather than on the first conversation.
+builder.Services.AddOptions<AnthropicOptions>()
+    .Bind(builder.Configuration.GetSection(AnthropicOptions.SectionName))
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.ApiKey),
+        "Anthropic:ApiKey is required when Anthropic:Enabled is true.")
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.DefaultModelId),
+        "Anthropic:DefaultModelId is required when Anthropic:Enabled is true.")
+    // The section three blocks up takes Bedrock ids, and an 'anthropic.'-prefixed one copied across
+    // is the mistake that section invites. Caught here rather than as a 404 on the first turn.
+    .Validate(options => !options.Enabled
+        || !options.DefaultModelId.StartsWith("anthropic.", StringComparison.OrdinalIgnoreCase),
+        "Anthropic:DefaultModelId must be a bare Anthropic model id; the 'anthropic.' prefix belongs to Bedrock.")
+    .Validate(options => !options.Enabled || options.DefaultMaxOutputTokens > 0,
+        "Anthropic:DefaultMaxOutputTokens must be greater than zero.")
+    .Validate(options => !options.Enabled || options.Timeout > TimeSpan.Zero,
+        "Anthropic:Timeout must be greater than zero.")
+    .Validate(options => !options.Enabled || options.MaxRetries >= 0,
+        "Anthropic:MaxRetries cannot be negative.")
+    // Null-guarded before the lookup: the sets compare case-insensitively, and that comparer throws
+    // on a null rather than reporting a miss, which would surface as a startup crash instead of the
+    // message below.
+    .Validate(options => !options.Enabled
+        || (!string.IsNullOrWhiteSpace(options.Thinking) && AnthropicOptions.ThinkingModes.Contains(options.Thinking)),
+        "Anthropic:Thinking must be 'adaptive' or 'disabled'.")
+    .Validate(options => !options.Enabled
+        || (!string.IsNullOrWhiteSpace(options.Effort) && AnthropicOptions.EffortLevels.Contains(options.Effort)),
+        "Anthropic:Effort must be one of low, medium, high, xhigh, max.")
+    // Disabled thinking is accepted only at 'high' effort or below; above it the model rejects every
+    // request with a 400. Caught here so the combination cannot reach a conversation.
+    .Validate(options => !options.Enabled || options.IsThinkingEffortCombinationValid,
+        "Anthropic:Thinking 'disabled' is not accepted with Anthropic:Effort 'xhigh' or 'max'.")
+    .ValidateOnStart();
+
+if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enabled"))
+{
+    // Registered in its own right, and as a singleton, because the SDK asks for exactly that: each
+    // client carries its own connection and thread pools, so one per request would exhaust both.
+    // Unlike the Bedrock runtime client there is no disposal to place — AnthropicClient is not
+    // IDisposable, and the HTTP resources it holds are released only through the SDK's opt-in
+    // ClientOptions.DisposeHttpResources(), which a process-lifetime singleton never needs.
+    builder.Services.AddSingleton<IAnthropicClient>(sp =>
+    {
+        var anthropicOptions = sp.GetRequiredService<IOptions<AnthropicOptions>>().Value;
+
+        // Assigning ApiKey is also what suppresses the SDK's environment and profile credential
+        // resolution, so an ANTHROPIC_API_KEY that happens to be set on the host cannot authenticate
+        // a deployment whose configured key is wrong.
+        return new AnthropicClient
+        {
+            ApiKey = anthropicOptions.ApiKey,
+            Timeout = anthropicOptions.Timeout,
+            MaxRetries = anthropicOptions.MaxRetries
+        };
+    });
+
+    builder.Services.AddKeyedChatClient(
+            ChatClientKeys.Anthropic,
+            sp =>
+            {
+                var anthropicOptions = sp.GetRequiredService<IOptions<AnthropicOptions>>().Value;
+
+                return sp.GetRequiredService<IAnthropicClient>()
+                         .AsIChatClient(anthropicOptions.DefaultModelId, anthropicOptions.DefaultMaxOutputTokens);
+            }
+        )
+        .UseOpenTelemetry()
+        .UseFunctionInvocation(null, ConfigureFunctionInvocation)
+        // Last in the chain, which is innermost: ChatClientBuilder applies its factories in reverse,
+        // so this is the client closest to the SDK and its ChatOptions are the ones the bridge reads.
+        // Spelled out rather than via ConfigureOptions(...) because only this overload reaches the
+        // container, and the settings have to come from the validated IOptions rather than a second
+        // bind of the same section.
+        .Use((innerClient, services) => new ConfigureOptionsChatClient(
+            innerClient,
+            AnthropicChatDefaults.Create(services.GetRequiredService<IOptions<AnthropicOptions>>().Value)));
 }
 
 builder.Services.AddSingleton<IChatClientResolver, ChatClientResolver>();

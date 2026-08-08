@@ -138,10 +138,21 @@ dotnet user-secrets set "AmazonBedrock:Enabled" "true"
 dotnet user-secrets set "AmazonBedrock:Region" "us-east-1"
 dotnet user-secrets set "AmazonBedrock:ApiKey" "your-bedrock-api-key"
 dotnet user-secrets set "AmazonBedrock:DefaultModelId" "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+# For Anthropic, first-party (optional; leave Anthropic:Enabled false to skip it entirely)
+dotnet user-secrets set "Anthropic:Enabled" "true"
+dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-your-api-key"
+dotnet user-secrets set "Anthropic:DefaultModelId" "claude-opus-5"
 ```
 
+Model ids differ between the two Claude providers: Anthropic takes a **bare** id (`claude-opus-5`),
+Bedrock takes the `anthropic.`-prefixed inference-profile id. Startup validation rejects the prefixed
+form in the `Anthropic` section.
+
 Enabling Bedrock also needs two database changes that are not applied automatically and fail
-silently if skipped — see [docs/models/amazon-bedrock.md](docs/models/amazon-bedrock.md).
+silently if skipped — see [docs/models/amazon-bedrock.md](docs/models/amazon-bedrock.md). Enabling
+Anthropic needs one: its `Core.Ref.Provider` row must be inserted by hand — see
+[docs/models/anthropic.md](docs/models/anthropic.md).
 
 ### 4. Run the API
 
@@ -228,11 +239,25 @@ export const environment = {
 | `AmazonBedrock:Region`                | AWS region system name, e.g. `us-east-1`                      | If enabled | -                    |
 | `AmazonBedrock:ApiKey`                | Bedrock API key, sent as an HTTP bearer token                 | If enabled | -                    |
 | `AmazonBedrock:DefaultModelId`        | Bedrock model or inference profile id used when none is named | If enabled | -                    |
+| `Anthropic:Enabled`                   | Registers the Anthropic chat client                           | No       | false                  |
+| `Anthropic:ApiKey`                    | Anthropic API key (secrets store only)                        | If enabled | -                    |
+| `Anthropic:DefaultModelId`            | Bare Anthropic model id used when none is named               | If enabled | `claude-opus-5`      |
+| `Anthropic:DefaultMaxOutputTokens`    | Output token ceiling applied to every Anthropic turn          | No       | 32768                  |
+| `Anthropic:Thinking`                  | `adaptive` or `disabled`                                      | No       | `adaptive`             |
+| `Anthropic:Effort`                    | `low`, `medium`, `high`, `xhigh`, or `max`                    | No       | `high`                 |
+| `Anthropic:Timeout`                   | Per-request timeout                                           | No       | 10 minutes             |
+| `Anthropic:MaxRetries`                | SDK retries per failed request                                | No       | 2                      |
 | `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
 
 Azure AI Foundry is required — it also backs document-embedding generation. Amazon Bedrock is optional
 and off by default; when `AmazonBedrock:Enabled` is `true` the remaining Bedrock settings are validated
-at startup and the app refuses to boot if any is missing or the region is unknown.
+at startup and the app refuses to boot if any is missing or the region is unknown. Anthropic is optional
+and off by default too; when `Anthropic:Enabled` is `true` every other `Anthropic:*` setting is validated
+at startup, including the rule that `disabled` thinking is not accepted above `high` effort.
+
+`Anthropic:DefaultMaxOutputTokens` is the ceiling on **every** Anthropic turn, not a fallback — the
+catalog model's `maxOutputTokens` is never sent — and with thinking on it covers reasoning and answer
+text together. Size it generously; see [docs/models/anthropic.md](docs/models/anthropic.md).
 
 ## 🧪 Database Setup
 
@@ -409,7 +434,7 @@ this.chatService.getCompletion(sessionId, request).subscribe((response) => {
 ```typescript
 const request = {
   prompt: "Help me debug this code",
-  model: "claude-3-5-sonnet-20241022",
+  model: "claude-opus-5",
   systemPrompt: "You are an expert programmer.",
 };
 
@@ -460,8 +485,12 @@ dotnet user-secrets set "AzureAIFoundry:EmbeddingModel" "text-embedding-ada-002"
 **Setting up Anthropic**:
 
 ```bash
+dotnet user-secrets set "Anthropic:Enabled" "true"
 dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-xxxxxxxxxxxxx"
+dotnet user-secrets set "Anthropic:DefaultModelId" "claude-opus-5"
 ```
+
+The key alone does nothing — `Anthropic:Enabled` is what registers the chat client.
 
 ## 🔧 Development
 
@@ -701,7 +730,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Entity Framework Core](https://docs.microsoft.com/ef/core/) - ORM and database access
 - [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai-preview/) - AI service abstractions
 - [OllamaSharp](https://github.com/awaescher/OllamaSharp) - Ollama .NET client
-- [Anthropic.SDK](https://github.com/tghamm/Anthropic.SDK) - Anthropic .NET SDK
+- [Anthropic](https://github.com/anthropics/anthropic-sdk-csharp) - Official Anthropic .NET SDK
 - [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) - OpenAPI/Swagger documentation
 
 **Frontend (Angular)**
