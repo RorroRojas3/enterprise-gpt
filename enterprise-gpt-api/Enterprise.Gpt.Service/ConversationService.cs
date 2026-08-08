@@ -21,7 +21,15 @@ namespace Enterprise.Gpt.Service
 {
     public interface IConversationService
     {
-        Task<ConversationDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default);
+        /// <summary>
+        /// Reads a single conversation, including the model and MCP servers its most recent turn ran
+        /// with so a client can restore that selection.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The conversation.</returns>
+        /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
+        Task<ConversationDetailDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default);
 
         Task<ConversationDto> CreateConversationAsync(CreateConversationActionDto request, CancellationToken cancellationToken = default);
 
@@ -31,9 +39,28 @@ namespace Enterprise.Gpt.Service
 
         Task UpdateConversationNameAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken = default);
 
-        Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default);
+        /// <summary>
+        /// Searches the caller's active conversations, newest first.
+        /// </summary>
+        /// <param name="name">A substring to match against the conversation name, or <see langword="null"/> for no name filter.</param>
+        /// <param name="skip">The number of conversations to skip.</param>
+        /// <param name="take">The page size.</param>
+        /// <param name="isFavorite">Restricts the results to favourites when <see langword="true"/>, to non-favourites when <see langword="false"/>, and applies no filter when <see langword="null"/>.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>A page of conversations.</returns>
+        Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default);
 
         Task<ConversationDto> UpdateConversationAsync(UpdateConversationActionDto request, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Marks the caller's conversation as a favourite, or clears the mark.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="request">The requested state.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+        /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
+        Task SetConversationFavoriteAsync(Guid id, SetConversationFavoriteActionDto request, CancellationToken cancellationToken = default);
 
         IAsyncEnumerable<string?> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
 
@@ -66,20 +93,56 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
-        public async Task<ConversationDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default)
+        /// <inheritdoc />
+        public async Task<ConversationDetailDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default)
         {
             var userId = _tokenService.GetOid();
 
+            // Projected inline rather than through MapToChatDto: that mapper runs client-side in a
+            // top-level projection, so the whole entity would be materialized to build the DTO.
             var conversation = await _ctx.Conversations
                 .AsNoTracking()
                 .Where(s => s.Id == id && s.UserId == userId && !s.DateDeactivated.HasValue)
-                .Select(s => s.MapToChatDto())
+                .Select(s => new ConversationDetailDto
+                {
+                    Id = s.Id,
+                    ProjectId = s.ProjectId,
+                    ModelId = s.ModelId,
+                    Name = s.Name,
+                    IsFavorite = s.IsFavorite,
+                    DateCreated = s.DateCreated,
+                    DateModified = s.DateModified
+                })
                 .FirstOrDefaultAsync(cancellationToken);
             if (conversation == null)
             {
                 _logger.LogError("Conversation with id {Id} not found", id);
                 throw new NotFoundException($"Conversation with id {id} not found");
             }
+
+            // The servers attached to the newest chat turn, so a client can restore the selection the
+            // conversation was last run with. Naming calls are excluded — they never carry tools, so
+            // a conversation's first turn would otherwise resolve to an empty selection.
+            //
+            // Narrowed to servers that are still active and still permitted, matching what
+            // McpToolProvider.AcquireToolsAsync will accept: handing back a deactivated or revoked
+            // server would have the client replay it into the next turn and take a 404 or a 403 it
+            // cannot act on. The audit row keeps the historical selection either way.
+            //
+            // A second round trip rather than a correlated subquery on the projection above: taking
+            // the newest turn's collection per conversation row translates to SQL APPLY, which not
+            // every provider this model runs on can express.
+            conversation.McpServerIds = await _ctx.ConversationUsage
+                .AsNoTracking()
+                .Where(u => u.ConversationId == id && u.Kind == ConversationUsageKinds.Chat)
+                .OrderByDescending(u => u.DateCreated)
+                .Take(1)
+                .SelectMany(u => u.McpServers
+                    .Where(m => !m.McpServer.DateDeactivated.HasValue
+                        && m.McpServer.Permissions.Any(p => !p.DateDeactivated.HasValue
+                            && p.UserPermissions.Any(up => up.UserId == userId && !up.DateDeactivated.HasValue)))
+                    .Select(m => m.McpServerId))
+                .ToListAsync(cancellationToken);
 
             return conversation;
         }
@@ -191,7 +254,7 @@ namespace Enterprise.Gpt.Service
             var date = DateTimeOffset.UtcNow;
 
             var conversationIds = await _ctx.Conversations
-                .Where(x => request.ChatIds.Contains(x.Id) && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => request.ConversationIds.Contains(x.Id) && x.UserId == userId && !x.DateDeactivated.HasValue)
                 .Select(x => x.Id)
                 .ToListAsync(cancellationToken);
 
@@ -239,7 +302,14 @@ namespace Enterprise.Gpt.Service
 
             _createChatStreamActionValidator.ValidateAndThrow(request);
 
-            var conversation = await _ctx.Conversations.FindAsync([id], cancellationToken);
+            // Read untracked: the write below is an ExecuteUpdate, and a tracked entity carrying the
+            // pre-naming token values alongside it is exactly the mix EF warns about — a later
+            // SaveChanges would write the stale counters back over the increment.
+            var conversation = await _ctx.Conversations
+                .AsNoTracking()
+                .Where(x => x.Id == id)
+                .Select(x => new { x.Id, x.UserId })
+                .FirstOrDefaultAsync(cancellationToken);
             if (conversation == null)
             {
                 _logger.LogError("Conversation with id {Id} not found", id);
@@ -284,9 +354,41 @@ namespace Enterprise.Gpt.Service
 
             var name = response.Messages.Last().Text?.Trim() ?? string.Empty;
             var date = DateTimeOffset.UtcNow;
-            conversation.Name = name;
-            conversation.DateModified = date;
+            var inputTokens = response.Usage?.InputTokenCount ?? 0;
+            var outputTokens = response.Usage?.OutputTokenCount ?? 0;
+
+            // Name and counters move together in one statement, and the usage row lands in the same
+            // transaction, so a conversation whose totals include the naming call always carries the
+            // row that accounts for it. Naming is a real completion against a real deployment and is
+            // billed like any other call; it used to be charged to nobody, which made a
+            // conversation's totals — and every report built on them — understate what was spent.
+            await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
+
+            await _ctx.Conversations
+                .Where(x => x.Id == id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.Name, name)
+                    .SetProperty(x => x.InputTokens, x => x.InputTokens + inputTokens)
+                    .SetProperty(x => x.OutputTokens, x => x.OutputTokens + outputTokens)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            _ctx.Add(new ConversationUsage
+            {
+                ConversationId = conversation.Id,
+                UserId = conversation.UserId,
+                ModelId = request.ModelId,
+                ProviderId = model.ProviderId,
+                DeploymentName = model.DeploymentName,
+                Kind = ConversationUsageKinds.Naming,
+                Status = ConversationUsageStatuses.Completed,
+                InputTokens = inputTokens,
+                OutputTokens = outputTokens,
+                DateCreated = date
+            });
+
             await _ctx.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
             // Patch the two fields that changed. Passing the SQL entity to a full-document replace
             // here overwrote the Cosmos document with the relational shape and destroyed the
@@ -298,8 +400,14 @@ namespace Enterprise.Gpt.Service
             ], cancellationToken);
         }
 
-        public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+        /// <inheritdoc />
+        public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default)
         {
+            // Clamped rather than validated: the paging arguments come straight off the query
+            // string, and take = 0 would divide by zero when computing CurrentPage below.
+            skip = Math.Max(skip, 0);
+            take = Math.Clamp(take, 1, 100);
+
             var userId = _tokenService.GetOid();
 
             var query = _ctx.Conversations
@@ -311,13 +419,18 @@ namespace Enterprise.Gpt.Service
                 query = query.Where(x => !string.IsNullOrWhiteSpace(x.Name) && EF.Functions.Like(x.Name, $"%{name}%"));
             }
 
+            if (isFavorite.HasValue)
+            {
+                query = query.Where(x => x.IsFavorite == isFavorite.Value);
+            }
+
             var totalCount = await query.CountAsync(cancellationToken);
 
             var items = await query
                 .OrderByDescending(x => x.DateCreated)
                 .Skip(skip)
                 .Take(take)
-                .Select(s => s.MapToChatDto())
+                .Select(ChatExtensions.MapToChatDtoExpression)
                 .ToListAsync(cancellationToken);
 
             return new PaginatedResponseDto<ConversationDto>
@@ -370,7 +483,41 @@ namespace Enterprise.Gpt.Service
                 PatchOperation.Set("/dateModified", date),
             ], cancellationToken);
 
-            return await GetConversationAsync(request.Id, cancellationToken);
+            // Re-read through the listing projection rather than GetConversationAsync: this route
+            // returns ConversationDto, so the detail read's extra round trip for the MCP selection
+            // would be spent on a field the response does not carry.
+            return await _ctx.Conversations
+                .AsNoTracking()
+                .Where(x => x.Id == request.Id)
+                .Select(ChatExtensions.MapToChatDtoExpression)
+                .FirstAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task SetConversationFavoriteAsync(Guid id, SetConversationFavoriteActionDto request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            var userId = _tokenService.GetOid();
+            var date = DateTimeOffset.UtcNow;
+
+            // No Cosmos patch: favouriting only affects how conversations are listed, and the
+            // transcript has no use for the flag. Keeping it out also keeps a star click off the
+            // document a live turn may be appending to.
+            // DateModified is deliberately left alone: starring a conversation does not modify it,
+            // and moving the SQL timestamp would put it out of step with the Cosmos document's own,
+            // which the transcript endpoint returns.
+            var rows = await _ctx.Conversations
+                .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.IsFavorite, request.IsFavorite),
+                    cancellationToken);
+
+            if (rows == 0)
+            {
+                _logger.LogWarning("Conversation with id {Id} not found or already deactivated", id);
+                throw new NotFoundException($"Conversation with id {id} not found");
+            }
         }
 
         /// <inheritdoc />
@@ -461,45 +608,177 @@ namespace Enterprise.Gpt.Service
             var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
             StringBuilder sb = new();
             long totalInputTokens = 0, totalOutputTokens = 0;
+            var completed = false;
 
             // The lease set (null when no MCPs are selected) must stay alive for the whole
             // stream: the attached tools invoke through the leased clients. await using
             // releases the leases on completion, fault, or client disconnect alike.
             await using (toolLeases)
             {
-                await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
+                // try/finally rather than straight-line code after the loop: a turn that is
+                // cancelled or faults still consumed — and is still billed for — every token the
+                // model produced up to that point, and this is the only path that runs when the
+                // controller disposes the enumerator because the client disconnected. A catch
+                // cannot enclose a yield return, so the outcome is classified from a flag.
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (!string.IsNullOrEmpty(message.Text))
+                    await foreach (var message in chatClient.GetStreamingResponseAsync(conversations, chatOptions, cancellationToken))
                     {
-                        sb.Append(message.Text);
-                    }
+                        cancellationToken.ThrowIfCancellationRequested();
 
-                    if (message.Contents != null &&
-                        message.Contents.Count > 0)
-                    {
-                        // Check for usage content to track token consumption during streaming
-                        var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
-                        if (usageContent != null)
+                        if (!string.IsNullOrEmpty(message.Text))
                         {
-                            totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
-                            totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
+                            sb.Append(message.Text);
                         }
+
+                        if (message.Contents != null &&
+                            message.Contents.Count > 0)
+                        {
+                            // Check for usage content to track token consumption during streaming
+                            var usageContent = message.Contents.OfType<UsageContent>().FirstOrDefault();
+                            if (usageContent != null)
+                            {
+                                totalInputTokens += usageContent.Details?.InputTokenCount ?? 0;
+                                totalOutputTokens += usageContent.Details?.OutputTokenCount ?? 0;
+                            }
+                        }
+                        yield return message.Text;
                     }
-                    yield return message.Text;
+
+                    completed = true;
+                }
+                finally
+                {
+                    var turn = new TurnOutcome(
+                        ConversationId: id,
+                        UserId: userId,
+                        Model: model,
+                        McpServers: toolLeases?.Servers ?? [],
+                        Status: completed
+                            ? ConversationUsageStatuses.Completed
+                            : cancellationToken.IsCancellationRequested
+                                ? ConversationUsageStatuses.Cancelled
+                                : ConversationUsageStatuses.Failed,
+                        Prompt: request.Prompt,
+                        Answer: sb.ToString(),
+                        TranscriptExists: transcriptExists,
+                        InputTokens: totalInputTokens,
+                        OutputTokens: totalOutputTokens);
+
+                    // The token that ended the stream is the one that would abort the write
+                    // recording it, so finalization runs uncancellable.
+                    try
+                    {
+                        await PersistTurnAsync(turn, CancellationToken.None);
+                    }
+                    catch (Exception ex) when (!completed)
+                    {
+                        // Filtered on !completed: throwing out of a finally while an exception is
+                        // already in flight would replace it, so a cancelled turn would surface as a
+                        // database error rather than the 499 it owes the client. Losing the usage row
+                        // is the lesser harm. A turn that completed has no exception to mask, so its
+                        // failures still propagate.
+                        _logger.LogError(ex, "Failed to record usage for the abandoned turn on conversation {ConversationId}.", id);
+                    }
                 }
             }
+        }
 
+        /// <summary>
+        /// Everything a finished turn needs to record, whether it ran to completion or was abandoned.
+        /// </summary>
+        /// <param name="ConversationId">The conversation the turn belongs to.</param>
+        /// <param name="UserId">The object identifier of the user the turn is charged to.</param>
+        /// <param name="Model">The catalog model that served the turn.</param>
+        /// <param name="McpServers">The MCP servers attached to the turn; empty when none were selected.</param>
+        /// <param name="Status">How the turn ended.</param>
+        /// <param name="Prompt">The user's prompt.</param>
+        /// <param name="Answer">The text the model produced, possibly truncated when the turn was abandoned.</param>
+        /// <param name="TranscriptExists">Whether the Cosmos document already has a messages array to append to.</param>
+        /// <param name="InputTokens">Input tokens consumed.</param>
+        /// <param name="OutputTokens">Output tokens produced.</param>
+        private sealed record TurnOutcome(
+            Guid ConversationId,
+            Guid UserId,
+            ModelDto Model,
+            IReadOnlyList<McpServerReference> McpServers,
+            ConversationUsageStatuses Status,
+            string Prompt,
+            string Answer,
+            bool TranscriptExists,
+            long InputTokens,
+            long OutputTokens);
+
+        /// <summary>
+        /// Records a finished turn: the conversation's running counters and last model, the usage
+        /// audit row, and — only for a turn that completed — the transcript append.
+        /// </summary>
+        /// <param name="turn">The outcome to record.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <remarks>
+        /// An abandoned turn is billed but not transcribed: appending a truncated answer would
+        /// corrupt the history every later turn replays to the model. It still moves the counters
+        /// and writes its usage row, so reports account for tokens the user stopped paying attention
+        /// to but was still charged for.
+        /// </remarks>
+        private async Task PersistTurnAsync(TurnOutcome turn, CancellationToken cancellationToken)
+        {
             var date = DateTimeOffset.UtcNow;
+            var completed = turn.Status == ConversationUsageStatuses.Completed;
+            var assistantMessageId = Guid.NewGuid();
+            var conversationId = turn.ConversationId;
+            var modelId = turn.Model.Id;
+            var inputTokens = turn.InputTokens;
+            var outputTokens = turn.OutputTokens;
+
+            // One transaction, so a conversation whose counters moved always carries the usage row
+            // that accounts for the movement.
+            await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
             await _ctx.Conversations
-                .Where(s => s.Id == id)
+                .Where(s => s.Id == conversationId)
                 .ExecuteUpdateAsync(s => s
-                    .SetProperty(x => x.InputTokens, x => x.InputTokens + totalInputTokens)
-                    .SetProperty(x => x.OutputTokens, x => x.OutputTokens + totalOutputTokens)
+                    .SetProperty(x => x.InputTokens, x => x.InputTokens + inputTokens)
+                    .SetProperty(x => x.OutputTokens, x => x.OutputTokens + outputTokens)
+                    .SetProperty(x => x.ModelId, modelId)
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
+
+            // Id left unset so EF's sequential generator assigns it: this table grows by one row per
+            // model call, and random GUIDs in its clustered key fragment the index that carries the
+            // most rows in the schema.
+            var usage = new ConversationUsage
+            {
+                ConversationId = turn.ConversationId,
+                UserId = turn.UserId,
+                ModelId = turn.Model.Id,
+                ProviderId = turn.Model.ProviderId,
+                DeploymentName = turn.Model.DeploymentName,
+                Kind = ConversationUsageKinds.Chat,
+                Status = turn.Status,
+                InputTokens = turn.InputTokens,
+                OutputTokens = turn.OutputTokens,
+                AssistantMessageId = completed ? assistantMessageId : null,
+                DateCreated = date,
+                McpServers =
+                [
+                    .. turn.McpServers.Select(server => new ConversationUsageMcpServer
+                    {
+                        McpServerId = server.Id,
+                        McpServerName = server.Name,
+                        DateCreated = date
+                    })
+                ]
+            };
+
+            _ctx.Add(usage);
+            await _ctx.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            if (!completed)
+            {
+                return;
+            }
 
             // The deployment name, not the display label: the transcript is append-only, so the value
             // recorded here has to stay meaningful after a model is renamed in the catalog, and it is
@@ -507,23 +786,23 @@ namespace Enterprise.Gpt.Service
             var userMessage = new CosmosConversationMessage
             {
                 Id = Guid.NewGuid(),
-                Content = request.Prompt,
+                Content = turn.Prompt,
                 DateCreated = date,
-                Model = model.DeploymentName,
+                Model = turn.Model.DeploymentName,
                 Role = ChatRoles.User,
                 Tokens = 0,
             };
             var assistantMessage = new CosmosConversationMessage
             {
-                Id = Guid.NewGuid(),
-                Content = sb.ToString(),
+                Id = assistantMessageId,
+                Content = turn.Answer,
                 DateCreated = date,
-                Model = model.DeploymentName,
+                Model = turn.Model.DeploymentName,
                 Role = ChatRoles.Assistant,
                 Usage = new CosmosConversationUsage
                 {
-                    InputTokens = totalInputTokens,
-                    OutputTokens = totalOutputTokens
+                    InputTokens = turn.InputTokens,
+                    OutputTokens = turn.OutputTokens
                 }
             };
 
@@ -532,23 +811,27 @@ namespace Enterprise.Gpt.Service
             // method — a rename or a soft delete landing mid-stream — and would rewrite the entire
             // transcript on every turn, which grows the request toward the 2 MB item ceiling.
             // Operations apply in order, so seeding the array first leaves the second append valid.
-            var persisted = await _cosmosService.PatchItemAsync(id.ToString(), userId.ToString(),
+            var persisted = await _cosmosService.PatchItemAsync(turn.ConversationId.ToString(), turn.UserId.ToString(),
             [
-                transcriptExists
+                turn.TranscriptExists
                     ? PatchOperation.Add("/messages/-", userMessage)
                     : PatchOperation.Set<List<CosmosConversationMessage>>("/messages", [userMessage]),
                 PatchOperation.Add("/messages/-", assistantMessage),
                 PatchOperation.Increment("/messageCount", 2),
-                PatchOperation.Increment("/totalTokens", totalInputTokens + totalOutputTokens),
+                PatchOperation.Increment("/totalTokens", turn.InputTokens + turn.OutputTokens),
                 PatchOperation.Set("/dateModified", date),
             ], cancellationToken);
 
             if (!persisted)
             {
-                // The token counters have already been committed to SQL, so failing silently here
-                // would bill the turn and lose it. Nothing can be returned to the caller at this
-                // point — the answer has been streamed — so this has to be caught in the logs.
-                _logger.LogError("Conversation {Id} document is missing; the completed turn was not persisted.", id);
+                // The token counters and the usage row have already been committed to SQL, so failing
+                // silently here would bill the turn and lose it. Nothing can be returned to the
+                // caller at this point — the answer has been streamed — so this has to be caught in
+                // the logs. Both identifiers are logged because the usage row now asserts an
+                // AssistantMessageId that no transcript contains; reconciling needs the pair.
+                _logger.LogError(
+                    "Conversation {Id} document is missing; the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
+                    turn.ConversationId, usage.Id, assistantMessageId);
             }
         }
 

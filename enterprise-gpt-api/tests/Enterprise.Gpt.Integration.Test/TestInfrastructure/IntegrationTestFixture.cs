@@ -79,6 +79,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
+        await ClearConversationUsageAsync(ctx, cancellationToken);
         await ctx.Models
             .Where(x => x.Id != KnownIds.SeedModelId)
             .ExecuteDeleteAsync(cancellationToken);
@@ -167,6 +168,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.Permissions
             .Where(x => _builtInPermissionIds.Contains(x.Id))
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
+        await ClearConversationUsageAsync(ctx, cancellationToken);
         await ctx.McpServers
             .ExecuteDeleteAsync(cancellationToken);
 
@@ -503,6 +505,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocuments.ExecuteDeleteAsync(cancellationToken);
+        await ClearConversationUsageAsync(ctx, cancellationToken);
         await ctx.Conversations.ExecuteDeleteAsync(cancellationToken);
         await ctx.Projects.ExecuteDeleteAsync(cancellationToken);
 
@@ -514,6 +517,68 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         Factory.Cosmos.Reset();
         ClearPermissionCache();
 
+    }
+
+    /// <summary>
+    /// Removes the usage audit rows, children first. Called from every reset that deletes a table
+    /// they reference — conversations, models, and MCP servers alike — because the audit trail
+    /// intentionally has no cascade behind it.
+    /// </summary>
+    /// <param name="ctx">The context to delete through.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    private static async Task ClearConversationUsageAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
+    {
+        await ctx.ConversationUsageMcpServers.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationUsage.ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Inserts a usage audit row directly into the database, bypassing the API, for arranging the
+    /// read scenarios that restore a conversation's last model and MCP selection.
+    /// </summary>
+    /// <param name="conversationId">The conversation the turn belongs to.</param>
+    /// <param name="modelId">The model that served the turn.</param>
+    /// <param name="dateCreated">When the turn finished; controls which turn counts as newest.</param>
+    /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="mcpServerIds">The MCP servers attached to the turn.</param>
+    /// <param name="kind">The kind of call. Defaults to a chat turn.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted usage row.</returns>
+    public async Task<Guid> AddConversationUsageAsync(
+        Guid conversationId, Guid modelId, DateTimeOffset dateCreated, Guid? userId = null,
+        IReadOnlyCollection<Guid>? mcpServerIds = null, ConversationUsageKinds kind = ConversationUsageKinds.Chat,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var usage = new ConversationUsage
+        {
+            ConversationId = conversationId,
+            UserId = userId ?? TestUsers.RegularUserId,
+            ModelId = modelId,
+            ProviderId = KnownIds.SeedProviderId,
+            DeploymentName = "integration-deployment",
+            Kind = kind,
+            Status = ConversationUsageStatuses.Completed,
+            InputTokens = 10,
+            OutputTokens = 5,
+            DateCreated = dateCreated,
+            McpServers =
+            [
+                .. (mcpServerIds ?? []).Select(id => new ConversationUsageMcpServer
+                {
+                    McpServerId = id,
+                    McpServerName = $"Server {id:N}",
+                    DateCreated = dateCreated
+                })
+            ]
+        };
+
+        ctx.ConversationUsage.Add(usage);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return usage.Id;
     }
 
     private static async Task EnsureUploadFileGrantsAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
@@ -551,10 +616,12 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="userId">The owner. Defaults to the regular test user.</param>
     /// <param name="deactivated">Whether the conversation is soft-deleted.</param>
     /// <param name="projectId">The project the conversation belongs to, if any.</param>
+    /// <param name="modelId">The model its most recent turn ran with, if any.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted conversation.</returns>
     public async Task<Guid> AddConversationAsync(
-        Guid? userId = null, bool deactivated = false, Guid? projectId = null, CancellationToken cancellationToken = default)
+        Guid? userId = null, bool deactivated = false, Guid? projectId = null, Guid? modelId = null,
+        CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -565,6 +632,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             Id = Guid.NewGuid(),
             UserId = userId ?? TestUsers.RegularUserId,
             ProjectId = projectId,
+            ModelId = modelId,
             Name = "Integration Conversation",
             DateCreated = date,
             DateModified = date,

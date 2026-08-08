@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Web;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;
@@ -593,6 +594,155 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         Assert.Equal("Failed", status.State);
         Assert.NotNull(status.ErrorMessage);
         Assert.Contains("No readable text", status.ErrorMessage);
+    }
+    #endregion
+
+    #region Downloads
+    [Fact]
+    public async Task Download_Anonymous_ReturnsUnauthorized()
+    {
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.GetAsync(
+            $"api/documents/conversations/{Guid.NewGuid()}/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
+    }
+
+    [Fact]
+    public async Task Download_OwnedConversationDocument_ReturnsALinkToTheStoredBlob()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var download = await client.GetFromJsonAsync<DocumentDownloadDto>(
+            $"api/documents/conversations/{conversationId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(download);
+        Assert.Equal("notes.txt", download.FileName);
+        Assert.True(download.ExpiresAt > DateTimeOffset.UtcNow);
+        // The same key ingestion wrote, so the link points at this document's blob and not another's.
+        Assert.Contains($"{TestUsers.RegularUserId}/{conversationId}/{status.DocumentId}.txt", download.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task Download_OwnedConversationDocument_RenamesTheBlobBackToTheUploadedFileName()
+    {
+        // The blob is stored under a guid key with no content headers of its own, so the link has to
+        // carry the Content-Disposition and Content-Type overrides or the browser saves the guid.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var download = await client.GetFromJsonAsync<DocumentDownloadDto>(
+            $"api/documents/conversations/{conversationId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(download);
+        var query = HttpUtility.ParseQueryString(new Uri(download.DownloadUrl).Query);
+        Assert.Equal("attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt", query["rscd"]);
+        Assert.Equal("text/plain", query["rsct"]);
+    }
+
+    [Fact]
+    public async Task Download_ConversationDocumentBelongingToAnotherUser_ReturnsNotFound()
+    {
+        // The link needs no credentials of its own, so handing one to the wrong caller would give away
+        // the file outright. 404 rather than 403, matching how the job status endpoint answers.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var owner = _fixture.Factory.CreateUserClient();
+        using var otherUser = _fixture.Factory.CreateAdminClient();
+
+        var job = await PostUploadAsync(owner, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(owner, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var response = await otherUser.GetAsync(
+            $"api/documents/conversations/{conversationId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal($"Document with id '{status.DocumentId}' was not found.", problem.Detail);
+
+        // The owner still gets a link, so the 404 is authorization rather than the document having gone.
+        var ownerResponse = await owner.GetAsync(
+            $"api/documents/conversations/{conversationId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Download_UnknownConversationDocument_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/documents/conversations/{conversationId}/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Download_OwnedProjectDocument_ReturnsALinkToTheStoredBlob()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var download = await client.GetFromJsonAsync<DocumentDownloadDto>(
+            $"api/documents/projects/{projectId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(download);
+        Assert.Equal("notes.txt", download.FileName);
+        Assert.True(download.ExpiresAt > DateTimeOffset.UtcNow);
+        Assert.Contains($"{TestUsers.RegularUserId}/projects/{projectId}/{status.DocumentId}.txt", download.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task Download_ProjectDocumentBelongingToAnotherUser_ReturnsNotFound()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var owner = _fixture.Factory.CreateUserClient();
+        using var otherUser = _fixture.Factory.CreateAdminClient();
+
+        var job = await PostProjectUploadAsync(owner, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(owner, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var response = await otherUser.GetAsync(
+            $"api/documents/projects/{projectId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Download_DeletedProjectDocument_ReturnsNotFound()
+    {
+        // Soft delete has to close the download route too, or a deleted document stays retrievable by id.
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var deleteResponse = await client.DeleteAsync(
+            $"api/projects/{projectId}/documents/{status.DocumentId}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var response = await client.GetAsync(
+            $"api/documents/projects/{projectId}/{status.DocumentId}", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
     #endregion
 

@@ -12,9 +12,10 @@ using Enterprise.Gpt.Service.Settings;
 namespace Enterprise.Gpt.Api.Endpoints
 {
     /// <summary>
-    /// Minimal API endpoints for document upload, into either a conversation or a project. Uploading is
-    /// gated by the <c>Upload File</c> permission, which every user holds by default; reading job status
-    /// and the supported-format list is available to any authenticated caller.
+    /// Minimal API endpoints for document upload and download, into and out of either a conversation or
+    /// a project. Uploading is gated by the <c>Upload File</c> permission, which every user holds by
+    /// default; downloading is gated on owning the parent, and reading job status and the
+    /// supported-format list is available to any authenticated caller.
     /// </summary>
     /// <remarks>
     /// The conversation routes match the <c>DocumentsController</c> they replaced exactly, so existing
@@ -64,6 +65,17 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);
 
+            // Three segments, so neither route collides with upload-status/{jobId} or file-extensions.
+            // Not gated on Upload File: that permission is about adding documents, and owning the
+            // parent conversation or project is what decides whether one can be read back.
+            group.MapGet("conversations/{conversationId:guid}/{documentId:guid}", GetConversationDocumentDownloadAsync)
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+            group.MapGet("projects/{projectId:guid}/{documentId:guid}", GetProjectDocumentDownloadAsync)
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
             group.MapGet("upload-status/{jobId}", GetJobStatus)
                 .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -108,6 +120,36 @@ namespace Enterprise.Gpt.Api.Endpoints
             var response = await documentService.QueueProjectDocumentAsync(projectId, fileDto, cancellationToken);
 
             return TypedResults.Accepted($"/api/documents/upload-status/{response.Id}", response);
+        }
+
+        // The response carries a signed URL rather than the file itself, so storage serves the bytes and
+        // this process allocates nothing per download. Ownership failures throw NotFoundException in the
+        // service and surface as 404, which is also what a document belonging to another user returns.
+        internal static async Task<Ok<DocumentDownloadDto>> GetConversationDocumentDownloadAsync(
+            Guid conversationId, Guid documentId, IDocumentService documentService, HttpResponse httpResponse, CancellationToken cancellationToken)
+        {
+            var response = await documentService.GetConversationDocumentDownloadAsync(conversationId, documentId, cancellationToken);
+
+            PreventCaching(httpResponse);
+
+            return TypedResults.Ok(response);
+        }
+
+        internal static async Task<Ok<DocumentDownloadDto>> GetProjectDocumentDownloadAsync(
+            Guid projectId, Guid documentId, IDocumentService documentService, HttpResponse httpResponse, CancellationToken cancellationToken)
+        {
+            var response = await documentService.GetProjectDocumentDownloadAsync(projectId, documentId, cancellationToken);
+
+            PreventCaching(httpResponse);
+
+            return TypedResults.Ok(response);
+        }
+
+        // The body carries a signed URL that reads the file with no credentials of its own, so a private
+        // browser cache would otherwise write it to disk where it outlives the link's few minutes.
+        private static void PreventCaching(HttpResponse httpResponse)
+        {
+            httpResponse.Headers.CacheControl = "no-store";
         }
 
         internal static Ok<JobStatusDto> GetJobStatus(

@@ -52,6 +52,17 @@ namespace Enterprise.Gpt.Service.Settings
         public int EmbeddingBatchSize { get; set; } = 64;
 
         /// <summary>
+        /// How long an issued document download link stays valid, in minutes. Default: 5.
+        /// </summary>
+        /// <remarks>
+        /// The link carries its own authorization, so anyone holding it can read the file until it
+        /// expires — which is why the window is minutes rather than hours. Signing already back-dates
+        /// the start by five minutes for clock skew, so the whole of this window is usable.
+        /// </remarks>
+        [Range(1, 60)]
+        public int DownloadUrlLifetimeMinutes { get; set; } = 5;
+
+        /// <summary>
         /// Chunking parameters.
         /// </summary>
         public ChunkingOptions Chunking { get; set; } = new();

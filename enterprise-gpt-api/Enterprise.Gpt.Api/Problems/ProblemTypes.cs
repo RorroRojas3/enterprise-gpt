@@ -65,4 +65,11 @@ internal static class ProblemTypes
     /// </summary>
     public static readonly ProblemType ProviderNotConfigured =
         new($"{BaseUri}provider-not-configured", "Provider not configured");
+
+    /// <summary>
+    /// Blob storage cannot sign a download link in this deployment, so the file behind a document
+    /// cannot be handed out.
+    /// </summary>
+    public static readonly ProblemType StorageNotConfigured =
+        new($"{BaseUri}storage-not-configured", "Storage not configured");
 }

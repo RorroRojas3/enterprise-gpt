@@ -63,15 +63,15 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
 
     public class DeactivateConversationsBulkActionDto
     {
-        public List<Guid> ChatIds { get; set; } = [];
+        public List<Guid> ConversationIds { get; set; } = [];
     }
 
     public class DeactivateConversationsBulkActionDtoValidator : AbstractValidator<DeactivateConversationsBulkActionDto>
     {
         public DeactivateConversationsBulkActionDtoValidator()
         {
-            RuleFor(x => x.ChatIds).NotEmpty();
-            RuleForEach(x => x.ChatIds).NotEmpty();
+            RuleFor(x => x.ConversationIds).NotEmpty();
+            RuleForEach(x => x.ConversationIds).NotEmpty();
         }
     }
 
@@ -102,5 +102,18 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
                 .NotEmpty()
                 .When(x => x.ProjectId.HasValue);
         }
+    }
+
+    /// <summary>
+    /// Sets whether a conversation is one of the caller's favourites.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately its own action rather than a field on <see cref="UpdateConversationActionDto"/>:
+    /// that PUT is a full representation, so a client renaming a conversation without echoing the
+    /// flag back would silently un-favourite it.
+    /// </remarks>
+    public class SetConversationFavoriteActionDto
+    {
+        public bool IsFavorite { get; set; }
     }
 }

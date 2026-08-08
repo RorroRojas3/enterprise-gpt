@@ -2,6 +2,7 @@
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
 using Microsoft.Extensions.Logging;
+using Enterprise.Gpt.Service.Exceptions;
 
 namespace Enterprise.Gpt.Service
 {
@@ -44,11 +45,25 @@ namespace Enterprise.Gpt.Service
         /// <param name="blob">The name of the blob for which to generate the SAS URI.</param>
         /// <param name="expiresIn">The duration after which the SAS should expire.</param>
         /// <param name="permissions">The permissions to include in the SAS token.</param>
+        /// <param name="contentDisposition">
+        /// Optional <c>Content-Disposition</c> the service returns instead of the blob's own, signed
+        /// into the token as <c>rscd</c>.
+        /// </param>
+        /// <param name="contentType">
+        /// Optional <c>Content-Type</c> the service returns instead of the blob's own, signed into the
+        /// token as <c>rsct</c>.
+        /// </param>
         /// <returns>A URI containing the SAS token granting the specified permissions.</returns>
-        /// <exception cref="InvalidOperationException">
+        /// <remarks>
+        /// The response-header overrides exist because <see cref="UploadAsync"/> stores metadata but no
+        /// <c>BlobHttpHeaders</c>: without them a browser saves the file under its storage key and as
+        /// <c>application/octet-stream</c>.
+        /// </remarks>
+        /// <exception cref="StorageNotConfiguredException">
         /// Thrown when the underlying client is not configured to generate SAS URIs.
         /// </exception>
-        Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, Azure.Storage.Sas.BlobSasPermissions permissions);
+        Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, Azure.Storage.Sas.BlobSasPermissions permissions,
+            string? contentDisposition = null, string? contentType = null);
     }
 
     public class BlobStorageService(ILogger<BlobStorageService> logger,
@@ -109,7 +124,8 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, BlobSasPermissions permissions)
+        public Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, BlobSasPermissions permissions,
+            string? contentDisposition = null, string? contentType = null)
         {
             _logger.LogInformation("Generating SAS URI for blob '{Blob}' in container '{Container}' with permissions '{Permissions}' expiring in {ExpiresIn}",
                 blob, container, permissions, expiresIn);
@@ -119,7 +135,7 @@ namespace Enterprise.Gpt.Service
             if (!blobClient.CanGenerateSasUri)
             {
                 _logger.LogError("BlobClient cannot generate SAS URI. Ensure the BlobServiceClient is configured with credentials that support SAS generation.");
-                throw new InvalidOperationException("BlobClient cannot generate SAS URI. Ensure the BlobServiceClient is configured with credentials that support SAS generation.");
+                throw new StorageNotConfiguredException();
             }
 
             var sasBuilder = new BlobSasBuilder
@@ -131,10 +147,24 @@ namespace Enterprise.Gpt.Service
                 ExpiresOn = DateTimeOffset.UtcNow.Add(expiresIn)
             };
 
+            // Left unset rather than assigned null: BlobSasBuilder signs every non-null field, so an
+            // empty override would be signed as an empty header and strip the real one.
+            if (!string.IsNullOrWhiteSpace(contentDisposition))
+            {
+                sasBuilder.ContentDisposition = contentDisposition;
+            }
+
+            if (!string.IsNullOrWhiteSpace(contentType))
+            {
+                sasBuilder.ContentType = contentType;
+            }
+
             sasBuilder.SetPermissions(permissions);
 
             var sasUri = blobClient.GenerateSasUri(sasBuilder);
 
+            // The URI itself is deliberately not logged: it grants read access to anyone holding it
+            // until it expires.
             _logger.LogInformation("SAS URI generated successfully for blob '{Blob}' in container '{Container}'", blob, container);
 
             return sasUri;

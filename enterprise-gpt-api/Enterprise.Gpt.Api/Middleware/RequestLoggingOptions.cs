@@ -168,10 +168,13 @@ public sealed class BodyLoggingOptions
     // routes return user-authored titles.
     private static readonly string[] _defaultExcludedPaths = ["/api/conversations", "/api/documents"];
 
+    // downloadUrl is on the list because it is a credential, not a link: the signed document download
+    // URL grants read access to anyone holding it until it expires. /api/documents is excluded from
+    // capture already, so this only matters once an operator narrows ExcludedPaths.
     private static readonly string[] _defaultRedactedPropertyNames =
     [
         "password", "token", "accessToken", "refreshToken", "idToken", "secret",
-        "apiKey", "clientSecret", "connectionString", "authorization"
+        "apiKey", "clientSecret", "connectionString", "authorization", "downloadUrl"
     ];
 
     /// <summary>

@@ -1,6 +1,8 @@
+using Azure.Storage.Sas;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlTypes;
+using System.Collections.Frozen;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -85,6 +87,44 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="ArgumentException">Thrown when <paramref name="jobId"/> is <see langword="null"/> or whitespace.</exception>
         /// <exception cref="ValidationException">Thrown when the document contains no readable text.</exception>
         Task<ProjectDocumentDto> CreateProjectDocumentAsync(string jobId, FileDto file, Guid userId, Guid projectId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Issues a short-lived link to the original file behind a conversation document.
+        /// </summary>
+        /// <remarks>
+        /// The bytes are never proxied through this process: the caller is authorized here, and storage
+        /// serves the download itself. See <see cref="DocumentDownloadDto"/> for what that means for the
+        /// link's confidentiality.
+        /// </remarks>
+        /// <param name="conversationId">The conversation the document belongs to.</param>
+        /// <param name="documentId">The document to download.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>The signed link and the file name to save it under.</returns>
+        /// <exception cref="NotFoundException">
+        /// Thrown when the document does not exist, is deactivated, or belongs to a conversation the
+        /// caller does not own.
+        /// </exception>
+        /// <exception cref="StorageNotConfiguredException">Thrown when storage cannot sign a link.</exception>
+        Task<DocumentDownloadDto> GetConversationDocumentDownloadAsync(Guid conversationId, Guid documentId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Issues a short-lived link to the original file behind a project document.
+        /// </summary>
+        /// <remarks>
+        /// The bytes are never proxied through this process: the caller is authorized here, and storage
+        /// serves the download itself. See <see cref="DocumentDownloadDto"/> for what that means for the
+        /// link's confidentiality.
+        /// </remarks>
+        /// <param name="projectId">The project the document belongs to.</param>
+        /// <param name="documentId">The document to download.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>The signed link and the file name to save it under.</returns>
+        /// <exception cref="NotFoundException">
+        /// Thrown when the document does not exist, is deactivated, or belongs to a project the caller
+        /// does not own.
+        /// </exception>
+        /// <exception cref="StorageNotConfiguredException">Thrown when storage cannot sign a link.</exception>
+        Task<DocumentDownloadDto> GetProjectDocumentDownloadAsync(Guid projectId, Guid documentId, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -132,6 +172,29 @@ namespace Enterprise.Gpt.Service
         private readonly IJobStatusStore _jobStatusStore = jobStatusStore;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
+
+        /// <summary>
+        /// The container every document blob lives in, read on each use rather than cached so a
+        /// reloaded configuration takes effect without a restart.
+        /// </summary>
+        /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
+        private string DocumentsContainer
+        {
+            get
+            {
+                var container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer");
+
+                if (string.IsNullOrWhiteSpace(container))
+                {
+                    // Diagnosable as the operator condition it is. Left to the Azure SDK, a missing
+                    // container name surfaces as an opaque 500 with the message suppressed.
+                    _logger.LogError("AzureStorage:DocumentsContainer is not configured, so no document blob can be read or written");
+                    throw new StorageNotConfiguredException();
+                }
+
+                return container;
+            }
+        }
 
         /// <inheritdoc />
         public async Task<JobDto> QueueConversationDocumentAsync(Guid conversationId, FileDto file, CancellationToken cancellationToken)
@@ -287,6 +350,147 @@ namespace Enterprise.Gpt.Service
             return document.MapToProjectDocumentDto();
         }
 
+        /// <inheritdoc />
+        public async Task<DocumentDownloadDto> GetConversationDocumentDownloadAsync(Guid conversationId, Guid documentId, CancellationToken cancellationToken)
+        {
+            var userId = _tokenService.GetOid();
+
+            // Ownership is read off the conversation rather than ConversationDocument.UserId, so the rule
+            // that decides a document is downloadable is the same one that made it visible. One query
+            // authorizes and reads the blob reference together; projecting to a record keeps the chunk
+            // rows and their embeddings out of it.
+            var document = await _ctx.ConversationDocuments
+                .AsNoTracking()
+                .Where(x => x.Id == documentId
+                    && x.ConversationId == conversationId
+                    && !x.DateDeactivated.HasValue
+                    && x.Conversation.UserId == userId
+                    && !x.Conversation.DateDeactivated.HasValue)
+                .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return BuildDownload(document, documentId, userId);
+        }
+
+        /// <inheritdoc />
+        public async Task<DocumentDownloadDto> GetProjectDocumentDownloadAsync(Guid projectId, Guid documentId, CancellationToken cancellationToken)
+        {
+            var userId = _tokenService.GetOid();
+
+            var document = await _ctx.ProjectDocuments
+                .AsNoTracking()
+                .Where(x => x.Id == documentId
+                    && x.ProjectId == projectId
+                    && !x.DateDeactivated.HasValue
+                    && x.Project.UserId == userId
+                    && !x.Project.DateDeactivated.HasValue)
+                .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return BuildDownload(document, documentId, userId);
+        }
+
+        #region Downloads
+        /// <summary>
+        /// Turns a resolved blob reference into a signed, expiring download link.
+        /// </summary>
+        /// <param name="document">The blob reference, or <see langword="null"/> when the query matched nothing.</param>
+        /// <param name="documentId">The requested document, for the failure message and the audit line.</param>
+        /// <param name="userId">The caller, for the audit line.</param>
+        /// <returns>The link and the file name to save it under.</returns>
+        private DocumentDownloadDto BuildDownload(DocumentBlobRef? document, Guid documentId, Guid userId)
+        {
+            if (document is null)
+            {
+                // One message covers all four ways the query can miss — no such document, deactivated,
+                // wrong owner id in the route, or someone else's parent — so this route cannot be used
+                // to probe for document ids. 404 rather than 403, as everywhere else here.
+                _logger.LogWarning("Download rejected for document {DocumentId}: not found or not owned by user {UserId}", documentId, userId);
+                throw new NotFoundException($"Document with id '{documentId}' was not found.");
+            }
+
+            var lifetime = TimeSpan.FromMinutes(_options.DownloadUrlLifetimeMinutes);
+
+            // Recomputed rather than read back off the URI: the token's expiry is not exposed, and the
+            // two are set from the same clock microseconds apart.
+            var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
+
+            var sasUri = _blobStorageService.GenerateSasUri(
+                DocumentsContainer,
+                document.Path,
+                lifetime,
+                BlobSasPermissions.Read,
+                BuildContentDisposition(document.Name),
+                ResolveContentType(document.Extension));
+
+            // The link is a bearer credential until it expires, so only the document id is recorded.
+            _logger.LogInformation("Issued a download link for document {DocumentId} to user {UserId}, expiring at {ExpiresAt}", documentId, userId, expiresAt);
+
+            return new DocumentDownloadDto
+            {
+                DownloadUrl = sasUri.ToString(),
+                FileName = document.Name,
+                ExpiresAt = expiresAt
+            };
+        }
+
+        /// <summary>
+        /// Builds the RFC 6266 <c>Content-Disposition</c> the download link overrides the blob's with.
+        /// </summary>
+        /// <param name="fileName">The original file name.</param>
+        /// <returns>An <c>attachment</c> disposition naming the file.</returns>
+        /// <remarks>
+        /// Both forms are emitted: <c>filename*</c> carries the real name so a non-ASCII one survives,
+        /// and the quoted <c>filename</c> is the fallback. The fallback is the only part that is not
+        /// percent-encoded, so quotes, backslashes and control characters are stripped out of it rather
+        /// than allowed to terminate the header early.
+        /// </remarks>
+        private static string BuildContentDisposition(string fileName)
+        {
+            var fallback = string.Concat(fileName.Where(c =>
+                c is >= ' ' and <= '~' and not '"' and not '\\' and not '/' and not ':'));
+
+            if (fallback.Length == 0)
+            {
+                fallback = "download";
+            }
+
+            return $"attachment; filename=\"{fallback}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
+        }
+
+        /// <summary>
+        /// Maps a stored file extension to the content type the download link is served under.
+        /// </summary>
+        /// <param name="extension">The lower-cased extension, including the leading dot.</param>
+        /// <returns>A content type, or <c>application/octet-stream</c> for anything unrecognised.</returns>
+        /// <remarks>
+        /// Derived from the extension rather than from the <c>MimeType</c> column, because that column is
+        /// whatever the client declared at upload time and nothing validates it — and this value is signed
+        /// into the link as the header storage will actually return. Serving an uploader's chosen media
+        /// type back to them would put the burden of preventing stored XSS entirely on the
+        /// <c>attachment</c> disposition. The extension is derived server-side from the file name and is
+        /// validated, so it is the trustworthy half. Falling back to a byte stream is safe: every link is
+        /// an attachment, so the type only decides which application opens the saved file.
+        /// </remarks>
+        private static string ResolveContentType(string extension) =>
+            _contentTypes.GetValueOrDefault(extension, "application/octet-stream");
+
+        private static readonly FrozenDictionary<string, string> _contentTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".doc"] = "application/msword",
+            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            [".md"] = "text/markdown",
+            [".pdf"] = "application/pdf",
+            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            [".txt"] = "text/plain"
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// The columns a download needs, projected server-side so no chunk or embedding data is read.
+        /// </summary>
+        private sealed record DocumentBlobRef(string Name, string Extension, string Path);
+        #endregion
+
         #region Pipeline stages
         /// <summary>
         /// Registers a job and enqueues the ingestion work for it.
@@ -363,9 +567,7 @@ namespace Enterprise.Gpt.Service
         {
             _jobStatusStore.Report(jobId, JobStatus.Uploading, UploadStart, "Storing the file");
 
-            var container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer")!;
-
-            await _blobStorageService.UploadAsync(container, blobPath, file.Content, metadata, cancellationToken);
+            await _blobStorageService.UploadAsync(DocumentsContainer, blobPath, file.Content, metadata, cancellationToken);
 
             _jobStatusStore.Report(jobId, JobStatus.Uploading, ExtractStart, "Stored the file");
         }
@@ -418,8 +620,7 @@ namespace Enterprise.Gpt.Service
         {
             try
             {
-                var container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer")!;
-                await _blobStorageService.DeleteAsync(container, blobPath, CancellationToken.None);
+                await _blobStorageService.DeleteAsync(DocumentsContainer, blobPath, CancellationToken.None);
             }
             catch (Exception ex)
             {
