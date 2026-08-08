@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
@@ -117,6 +118,86 @@ public sealed class DocumentEndpointsTests
                 && f.Content.Length > 0
                 && f.Length == f.Content.Length),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_OwnedDocument_ReturnsTheLinkTheServiceIssued()
+    {
+        var conversationId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var expiresAt = DateTimeOffset.UtcNow.AddMinutes(5);
+        _documentService.GetConversationDocumentDownloadAsync(conversationId, documentId, Arg.Any<CancellationToken>())
+            .Returns(new DocumentDownloadDto
+            {
+                DownloadUrl = "https://storage.example/documents/blob?sig=signature",
+                FileName = "report.pdf",
+                ExpiresAt = expiresAt
+            });
+
+        var httpResponse = new DefaultHttpContext().Response;
+
+        var result = await DocumentEndpoints.GetConversationDocumentDownloadAsync(
+            conversationId, documentId, _documentService, httpResponse, TestContext.Current.CancellationToken);
+
+        var payload = result.Value;
+        Assert.NotNull(payload);
+        Assert.Equal("https://storage.example/documents/blob?sig=signature", payload.DownloadUrl);
+        Assert.Equal("report.pdf", payload.FileName);
+        Assert.Equal(expiresAt, payload.ExpiresAt);
+        // The link reads the file with no credentials of its own, so the body must not reach a disk cache
+        // that outlives it.
+        Assert.Equal("no-store", httpResponse.Headers.CacheControl);
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
+    {
+        // The service reports a document owned by someone else the same way it reports one that never
+        // existed, and the endpoint adds nothing that would tell the two apart.
+        _documentService.GetConversationDocumentDownloadAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Throws(new NotFoundException("Document with id 'x' was not found."));
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => DocumentEndpoints.GetConversationDocumentDownloadAsync(
+                Guid.NewGuid(), Guid.NewGuid(), _documentService, new DefaultHttpContext().Response,
+                TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_OwnedDocument_ReturnsTheLinkTheServiceIssued()
+    {
+        var projectId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        _documentService.GetProjectDocumentDownloadAsync(projectId, documentId, Arg.Any<CancellationToken>())
+            .Returns(new DocumentDownloadDto
+            {
+                DownloadUrl = "https://storage.example/documents/blob?sig=signature",
+                FileName = "handbook.pdf",
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5)
+            });
+
+        var httpResponse = new DefaultHttpContext().Response;
+
+        var result = await DocumentEndpoints.GetProjectDocumentDownloadAsync(
+            projectId, documentId, _documentService, httpResponse, TestContext.Current.CancellationToken);
+
+        var payload = result.Value;
+        Assert.NotNull(payload);
+        Assert.Equal("https://storage.example/documents/blob?sig=signature", payload.DownloadUrl);
+        Assert.Equal("handbook.pdf", payload.FileName);
+        Assert.Equal("no-store", httpResponse.Headers.CacheControl);
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
+    {
+        _documentService.GetProjectDocumentDownloadAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Throws(new NotFoundException("Document with id 'x' was not found."));
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => DocumentEndpoints.GetProjectDocumentDownloadAsync(
+                Guid.NewGuid(), Guid.NewGuid(), _documentService, new DefaultHttpContext().Response,
+                TestContext.Current.CancellationToken));
     }
 
     [Fact]

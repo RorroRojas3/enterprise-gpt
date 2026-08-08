@@ -150,6 +150,10 @@ public sealed class ConversationServiceTests : IDisposable
             .Returns(cosmosConversation);
     }
 
+    /// <summary>
+    /// Substitutes the model on <c>IModelService</c> and seeds the matching catalog row, which the
+    /// usage audit row's foreign key requires.
+    /// </summary>
     private ModelDto SetUpModel(bool isToolEnabled)
     {
         var model = new ModelDto
@@ -165,13 +169,117 @@ public sealed class ConversationServiceTests : IDisposable
         };
         _modelService.GetModelAsync(model.Id, Arg.Any<CancellationToken>()).Returns(model);
 
+        var date = DateTimeOffset.UtcNow;
+        using var ctx = _fixture.CreateContext();
+        ctx.Models.Add(new Model
+        {
+            Id = model.Id,
+            ProviderId = model.ProviderId,
+            Name = model.Name,
+            DeploymentName = model.DeploymentName,
+            Description = model.Description,
+            ContextWindowSize = model.ContextWindowSize,
+            MaxOutputTokens = model.MaxOutputTokens,
+            IsToolEnabled = model.IsToolEnabled,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = KnownIds.SeedUserId,
+            ModifiedById = KnownIds.SeedUserId
+        });
+        ctx.SaveChanges();
+
         return model;
     }
 
-    private async Task<List<string?>> StreamToEndAsync(Guid conversationId, CreateConversationStreamActionDto request)
+    /// <summary>
+    /// Seeds an MCP server together with its linked permission and, unless
+    /// <paramref name="granted"/> is off, a grant of that permission to the calling user — the shape
+    /// <c>McpServerService.CreateMcpServerAsync</c> creates. The grant matters because the read that
+    /// restores a conversation's MCP selection only returns servers the caller may still use.
+    /// </summary>
+    private async Task<McpServer> AddMcpServerAsync(string name, bool granted = true)
     {
+        var date = DateTimeOffset.UtcNow;
+        var server = new McpServer
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Description = $"{name} server.",
+            Url = "https://example.invalid/mcp",
+            AuthType = McpAuthTypes.None,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = KnownIds.SeedUserId,
+            ModifiedById = KnownIds.SeedUserId
+        };
+        // Fully qualified: Microsoft.Azure.Cosmos also exports a Permission type.
+        var permission = new Enterprise.Gpt.Entity.Permission
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Description = $"Access to the {name} MCP server.",
+            McpServerId = server.Id,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = KnownIds.SeedUserId,
+            ModifiedById = KnownIds.SeedUserId
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.McpServers.Add(server);
+        ctx.Permissions.Add(permission);
+        if (granted)
+        {
+            ctx.UserPermissions.Add(new UserPermission
+            {
+                Id = Guid.NewGuid(),
+                UserId = KnownIds.SeedUserId,
+                PermissionId = permission.Id,
+                DateCreated = date,
+                DateModified = date,
+                CreatedById = KnownIds.SeedUserId,
+                ModifiedById = KnownIds.SeedUserId
+            });
+        }
+
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return server;
+    }
+
+    /// <summary>
+    /// Substitutes a lease set that reports <paramref name="servers"/> as attached, so the usage
+    /// audit sees the same servers the tools came from.
+    /// </summary>
+    private IMcpToolLeaseSet SetUpLeaseSet(params McpServer[] servers)
+    {
+        var leaseSet = Substitute.For<IMcpToolLeaseSet>();
+        leaseSet.Tools.Returns(new List<AITool> { new FakeTool() });
+        leaseSet.Servers.Returns([.. servers.Select(s => new McpServerReference(s.Id, s.Name))]);
+        _mcpToolProvider.AcquireToolsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(leaseSet);
+
+        return leaseSet;
+    }
+
+    private async Task<List<ConversationUsage>> ReadUsageAsync(Guid conversationId)
+    {
+        using var ctx = _fixture.CreateContext();
+
+        return await ctx.ConversationUsage
+            .AsNoTracking()
+            .Include(x => x.McpServers)
+            .Where(x => x.ConversationId == conversationId)
+            .OrderBy(x => x.Kind)
+            .ToListAsync(TestContext.Current.CancellationToken);
+    }
+
+    private async Task<List<string?>> StreamToEndAsync(
+        Guid conversationId, CreateConversationStreamActionDto request, CancellationToken? cancellationToken = null)
+    {
+        var token = cancellationToken ?? TestContext.Current.CancellationToken;
         var updates = new List<string?>();
-        await foreach (var text in _service.StreamConversationAsync(conversationId, request, TestContext.Current.CancellationToken))
+        await foreach (var text in _service.StreamConversationAsync(conversationId, request, token))
         {
             updates.Add(text);
         }
@@ -803,6 +911,419 @@ public sealed class ConversationServiceTests : IDisposable
     }
     #endregion
 
+    #region Usage audit
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_RecordsUsageForTheModelThatServedIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(ConversationUsageKinds.Chat, usage.Kind);
+        Assert.Equal(ConversationUsageStatuses.Completed, usage.Status);
+        Assert.Equal(model.Id, usage.ModelId);
+        Assert.Equal(model.ProviderId, usage.ProviderId);
+        Assert.Equal(model.DeploymentName, usage.DeploymentName);
+        Assert.Equal(KnownIds.SeedUserId, usage.UserId);
+        Assert.Equal(11, usage.InputTokens);
+        Assert.Equal(7, usage.OutputTokens);
+        Assert.Equal(18, usage.TotalTokens);
+        Assert.NotNull(usage.AssistantMessageId);
+        Assert.Empty(usage.McpServers);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_RecordsTheAttachedMcpServers()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var first = await AddMcpServerAsync("Weather");
+        var second = await AddMcpServerAsync("Tickets");
+        SetUpLeaseSet(first, second);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = first.Id }, new McpServerSelectionDto { Id = second.Id }]
+        });
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(
+            [(first.Id, "Weather"), (second.Id, "Tickets")],
+            usage.McpServers.Select(x => (x.McpServerId, x.McpServerName)).OrderBy(x => x.McpServerName, StringComparer.Ordinal).Reverse());
+    }
+
+    /// <summary>
+    /// The audit row's only link back to the transcript: if the two ids disagree, nothing can
+    /// reconcile a billed turn against the answer it produced.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_LinksTheUsageRowToTheTranscriptMessage()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        List<PatchOperation>? captured = null;
+        _cosmosService.PatchItemAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Do<IReadOnlyList<PatchOperation>>(ops => captured = [.. ops]), Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.NotNull(captured);
+        var assistantMessage = Assert.IsAssignableFrom<PatchOperation<CosmosConversationMessage>>(captured[1]);
+        Assert.Equal(ChatRoles.Assistant, assistantMessage.Value.Role);
+        Assert.Equal(assistantMessage.Value.Id, usage.AssistantMessageId);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_SetsTheConversationsLastModel()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.Equal(model.Id, stored.ModelId);
+    }
+
+    /// <summary>
+    /// A cancelled turn is still billed for whatever the model produced before the caller walked
+    /// away, so the counters move and the usage row is written; the transcript is not appended,
+    /// because a truncated answer would be replayed to the model on every later turn.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenCancelledMidStream_RecordsCancelledUsageWithoutTranscribing()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+        using var cts = new CancellationTokenSource();
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in _service.StreamConversationAsync(conversation.Id, request, cts.Token))
+            {
+                await cts.CancelAsync();
+            }
+        });
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(ConversationUsageStatuses.Cancelled, usage.Status);
+        Assert.Null(usage.AssistantMessageId);
+        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
+            default!, default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The point of recording an abandoned turn at all: the tokens it burned are billed, so the
+    /// conversation's running counters have to move even though nothing reached the transcript.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenAbandonedAfterUsageWasReported_StillBillsTheConversation()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+        _chatClient.FailAfterUsage = true;
+        _chatClient.StreamFailure = new HttpRequestException("The provider dropped the connection.");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => StreamToEndAsync(conversation.Id, request));
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(ConversationUsageStatuses.Failed, usage.Status);
+        Assert.Equal(18, usage.TotalTokens);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.Equal(11, stored.InputTokens);
+        Assert.Equal(7, stored.OutputTokens);
+        Assert.Equal(model.Id, stored.ModelId);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamFaults_RecordsFailedUsageAndRethrows()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamFailure = new HttpRequestException("The provider dropped the connection.");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => StreamToEndAsync(conversation.Id, request));
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(ConversationUsageStatuses.Failed, usage.Status);
+        Assert.Null(usage.AssistantMessageId);
+        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
+            default!, default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Finalization runs in a <c>finally</c>, so a failure there would replace the exception that
+    /// ended the stream — the caller would see a database error instead of the cancellation the
+    /// endpoint turns into a 499. The conversation row is deleted mid-stream to make the usage
+    /// insert violate its foreign key.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenRecordingAnAbandonedTurnFails_StillSurfacesTheOriginalException()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        using var cts = new CancellationTokenSource();
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in _service.StreamConversationAsync(conversation.Id, request, cts.Token))
+            {
+                using (var ctx = _fixture.CreateContext())
+                {
+                    await ctx.Conversations
+                        .Where(x => x.Id == conversation.Id)
+                        .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+                }
+
+                await cts.CancelAsync();
+            }
+        });
+
+        Assert.Empty(await ReadUsageAsync(conversation.Id));
+    }
+
+    /// <summary>
+    /// Naming is a billed completion of its own. It used to be charged to nobody, so a
+    /// conversation's totals — and every report built on them — understated what was spent.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_OnTheFirstTurn_RecordsTheNamingCallSeparately()
+    {
+        var conversation = await AddConversationAsync();
+        var date = DateTimeOffset.UtcNow;
+        _cosmosService.GetItemAsync<CosmosConversation>(
+                conversation.Id.ToString(), KnownIds.SeedUserId.ToString(), Arg.Any<CancellationToken>())
+            .Returns(new CosmosConversation
+            {
+                Id = conversation.Id,
+                UserId = KnownIds.SeedUserId,
+                Name = "Test Conversation",
+                DateCreated = date,
+                DateModified = date,
+                Messages = [new() { Id = Guid.NewGuid(), Role = ChatRoles.System, Content = "System prompt.", DateCreated = date }]
+            });
+        _chatClient.NamingResponse = "Named Conversation";
+        _chatClient.NamingUsage = new UsageDetails { InputTokenCount = 4, OutputTokenCount = 2 };
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+        // The seeded model, because the naming path resolves the deployment straight from the
+        // database rather than through IModelService.
+        _modelService.GetModelAsync(KnownIds.SeedModelId, Arg.Any<CancellationToken>())
+            .Returns(new ModelDto
+            {
+                Id = KnownIds.SeedModelId,
+                ProviderId = KnownIds.SeedProviderId,
+                Name = "RR GPT 5.6 Luna",
+                DeploymentName = "rr-gpt-5.6-luna",
+                Description = "OpenAI's GPT-5.6 Luna model.",
+                IsToolEnabled = true
+            });
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = KnownIds.SeedModelId,
+            McpServers = []
+        });
+
+        var usage = await ReadUsageAsync(conversation.Id);
+        Assert.Equal(2, usage.Count);
+        var chat = Assert.Single(usage, x => x.Kind == ConversationUsageKinds.Chat);
+        var naming = Assert.Single(usage, x => x.Kind == ConversationUsageKinds.Naming);
+        Assert.Equal(ConversationUsageStatuses.Completed, naming.Status);
+        Assert.Equal(6, naming.TotalTokens);
+        Assert.Null(naming.AssistantMessageId);
+        Assert.Equal(18, chat.TotalTokens);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.Equal(24, stored.TotalTokens);
+    }
+
+    [Fact]
+    public async Task GetConversationAsync_AfterSeveralTurns_ReturnsTheNewestTurnsModelAndMcpServers()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var first = await AddMcpServerAsync("Weather");
+        var second = await AddMcpServerAsync("Tickets");
+
+        SetUpLeaseSet(first);
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = first.Id }]
+        });
+
+        SetUpLeaseSet(second);
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello again",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = second.Id }]
+        });
+
+        var result = await _service.GetConversationAsync(conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(model.Id, result.ModelId);
+        Assert.Equal([second.Id], result.McpServerIds);
+    }
+
+    /// <summary>
+    /// The restored selection is replayed straight into the next turn, where
+    /// <c>McpToolProvider.AcquireToolsAsync</c> answers a server the caller cannot use with a 403 the
+    /// client has no way to act on. The audit row keeps the historical selection regardless.
+    /// </summary>
+    [Fact]
+    public async Task GetConversationAsync_WhenTheLastTurnsServerIsNoLongerPermitted_OmitsIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var permitted = await AddMcpServerAsync("Weather");
+        var revoked = await AddMcpServerAsync("Tickets", granted: false);
+        SetUpLeaseSet(permitted, revoked);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = permitted.Id }, new McpServerSelectionDto { Id = revoked.Id }]
+        });
+
+        var result = await _service.GetConversationAsync(conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal([permitted.Id], result.McpServerIds);
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(2, usage.McpServers.Count);
+    }
+
+    [Fact]
+    public async Task GetConversationAsync_BeforeTheFirstTurn_ReturnsNoModelOrMcpServers()
+    {
+        var conversation = await AddConversationAsync();
+
+        var result = await _service.GetConversationAsync(conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Null(result.ModelId);
+        Assert.Empty(result.McpServerIds);
+    }
+    #endregion
+
+    #region Favorites
+    [Fact]
+    public async Task SetConversationFavoriteAsync_WhenFavorited_PersistsTheFlagWithoutTouchingTheTranscript()
+    {
+        var conversation = await AddConversationAsync();
+
+        await _service.SetConversationFavoriteAsync(
+            conversation.Id, new SetConversationFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.True(stored.IsFavorite);
+        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
+            default!, default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task SetConversationFavoriteAsync_WhenCleared_PersistsTheFlag()
+    {
+        var conversation = await AddConversationAsync();
+        await _service.SetConversationFavoriteAsync(
+            conversation.Id, new SetConversationFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        await _service.SetConversationFavoriteAsync(
+            conversation.Id, new SetConversationFavoriteActionDto { IsFavorite = false }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.False(stored.IsFavorite);
+    }
+
+    [Fact]
+    public async Task SetConversationFavoriteAsync_ConversationOwnedByAnotherUser_ThrowsNotFound()
+    {
+        var otherUser = await AddUserAsync();
+        var conversation = await AddConversationAsync();
+        _tokenService.GetOid().Returns(otherUser.Id);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.SetConversationFavoriteAsync(
+                conversation.Id, new SetConversationFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_FilteringOnFavorites_ReturnsOnlyFavorites()
+    {
+        var favorite = await AddConversationAsync();
+        await AddConversationAsync();
+        await _service.SetConversationFavoriteAsync(
+            favorite.Id, new SetConversationFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(favorite.Id, Assert.Single(result.Items).Id);
+        Assert.True(result.Items[0].IsFavorite);
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_WithoutAFavoriteFilter_ReturnsEveryConversation()
+    {
+        var favorite = await AddConversationAsync();
+        await AddConversationAsync();
+        await _service.SetConversationFavoriteAsync(
+            favorite.Id, new SetConversationFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+    }
+    #endregion
+
     /// <summary>
     /// Captures the <see cref="ChatOptions"/> and messages the service builds and yields a short,
     /// fixed stream. <see cref="GetResponseAsync"/> throws so any unexpected trip through the
@@ -830,6 +1351,28 @@ public sealed class ConversationServiceTests : IDisposable
         /// </summary>
         public string? NamingResponse { get; set; }
 
+        /// <summary>
+        /// Gets or sets the usage the conversation-naming call reports.
+        /// </summary>
+        public UsageDetails? NamingUsage { get; set; }
+
+        /// <summary>
+        /// Gets or sets the usage the streaming call reports, emitted with the final update.
+        /// </summary>
+        public UsageDetails? StreamUsage { get; set; }
+
+        /// <summary>
+        /// Gets or sets an exception the streaming call throws after its first update, standing in
+        /// for a provider that drops the connection part-way through an answer.
+        /// </summary>
+        public Exception? StreamFailure { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether <see cref="StreamFailure"/> is thrown after the usage update rather
+        /// than before it, so a turn can fail having already reported what it consumed.
+        /// </summary>
+        public bool FailAfterUsage { get; set; }
+
         public Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         {
@@ -840,7 +1383,10 @@ public sealed class ConversationServiceTests : IDisposable
 
             CapturedNamingOptions = options;
 
-            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, NamingResponse)));
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, NamingResponse))
+            {
+                Usage = NamingUsage
+            });
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -852,7 +1398,23 @@ public sealed class ConversationServiceTests : IDisposable
             CapturedMessages.AddRange(messages);
             yield return new ChatResponseUpdate(ChatRole.Assistant, "Hello");
             await Task.Yield();
+
+            if (StreamFailure is not null && !FailAfterUsage)
+            {
+                throw StreamFailure;
+            }
+
             yield return new ChatResponseUpdate(ChatRole.Assistant, " world");
+
+            if (StreamUsage is not null)
+            {
+                yield return new ChatResponseUpdate { Contents = [new UsageContent(StreamUsage)] };
+            }
+
+            if (StreamFailure is not null && FailAfterUsage)
+            {
+                throw StreamFailure;
+            }
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null)

@@ -84,6 +84,24 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task TryHandleAsync_StorageNotConfiguredException_Returns503()
+    {
+        // Same reasoning as the arm above, and the same trap: this arm sits after
+        // InvalidOperationException => 400, so deriving from it would silently downgrade the contract.
+        var httpContext = CreateHttpContext();
+        var exception = new StorageNotConfiguredException();
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        // Passed through rather than suppressed: the message names no account, container or credential.
+        Assert.Equal(exception.Message, problem.Detail);
+        Assert.Equal(ProblemTypes.StorageNotConfigured.Type, problem.Type);
+    }
+
+    [Fact]
     public async Task TryHandleAsync_NotFoundException_Returns404WithMessage()
     {
         var httpContext = CreateHttpContext();

@@ -12,6 +12,8 @@ A document upload is **two requests and one background job**:
 
 The pipeline is fully in-process. There is no Hangfire, no external broker, and no durable job table: a bounded `Channel<T>` queue, a `BackgroundService` consumer with a `SemaphoreSlim` concurrency gate, and a `ConcurrentDictionary` status store. Durability across restarts is **not** provided (§11.2).
 
+Reading the original file back out is a much shorter path — one request, a short-lived signed link, and no bytes through the API — and is covered separately in [Document Download](download-workflow.md).
+
 **What changed from the previous design.** This feature was rewritten; the old document is superseded in every section:
 
 | Then | Now |
@@ -197,6 +199,8 @@ Asynchronous, surfaced only through the status endpoint as `status: "Failed"` wi
 The blob path is `{userId}/{conversationId}/{documentId}{extension}` in the `AzureStorage:DocumentsContainer` container, with `userId`, `conversationId`, `documentId`, `contentType` and `length` written as blob metadata.
 
 Keying on the **document id rather than the file name** is deliberate: two uploads of the same name into the same conversation are legitimate, and a name-based path made the second one overwrite/collide with the first and fail the whole job. `Upload_SameFileNameTwice_BothSucceedWithoutColliding` pins this.
+
+No `BlobHttpHeaders` are written — only metadata — so the stored object carries neither the original file name nor a content type as HTTP headers. That is why a download link has to sign both in as response-header overrides; see [Document Download §4.1](download-workflow.md#41-why-the-overrides-are-mandatory-here-not-cosmetic).
 
 ### 4.2 Extract
 
@@ -548,3 +552,4 @@ dotnet test                                    # everything; Docker must be runn
 | Enums | [`JobStatus.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/JobStatus.cs), [`FileExtensions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/FileExtensions.cs), [`PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs) |
 | DI + options validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
 | Frontend consumer | [`enterprise-ui/src/app/services/document.service.ts`](../../enterprise-ui/src/app/services/document.service.ts), [`prompt-box.component.ts`](../../enterprise-ui/src/app/components/home/prompt-box/prompt-box.component.ts) |
+| Related reference | [Document Download](download-workflow.md), [Permission Cache](../permissions/permission-cache.md) |

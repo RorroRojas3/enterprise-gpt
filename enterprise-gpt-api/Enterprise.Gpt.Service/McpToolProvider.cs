@@ -17,6 +17,14 @@ using System.Net.Sockets;
 namespace Enterprise.Gpt.Service
 {
     /// <summary>
+    /// Identifies an MCP server whose tools were leased for a request, captured as the server
+    /// stood at that moment.
+    /// </summary>
+    /// <param name="Id">The server's unique identifier.</param>
+    /// <param name="Name">The server's name at lease time.</param>
+    public readonly record struct McpServerReference(Guid Id, string Name);
+
+    /// <summary>
     /// A set of leased MCP tools spanning every server a chat request selected. Dispose it
     /// when the stream ends (successfully or not) to release the underlying clients back to
     /// the cache.
@@ -28,6 +36,13 @@ namespace Enterprise.Gpt.Service
         /// <see cref="ChatOptions.Tools"/>.
         /// </summary>
         IReadOnlyList<AITool> Tools { get; }
+
+        /// <summary>
+        /// Gets the servers behind those tools. Surfaced here rather than looked up again by the
+        /// caller: resolution already loaded these rows, and a server renamed between the lease and
+        /// the audit write would otherwise be recorded under its new name.
+        /// </summary>
+        IReadOnlyList<McpServerReference> Servers { get; }
     }
 
     public interface IMcpToolProvider
@@ -117,7 +132,7 @@ namespace Enterprise.Gpt.Service
             try
             {
                 var leases = await Task.WhenAll(leaseTasks);
-                return new McpToolLeaseSet(leases);
+                return new McpToolLeaseSet(leases, [.. servers.Select(x => new McpServerReference(x.Server.Id, x.Server.Name))]);
             }
             catch
             {
@@ -279,15 +294,18 @@ namespace Enterprise.Gpt.Service
             private readonly IReadOnlyList<IMcpToolLease> _leases;
             private int _disposed;
 
-            public McpToolLeaseSet(IReadOnlyList<IMcpToolLease> leases)
+            public McpToolLeaseSet(IReadOnlyList<IMcpToolLease> leases, IReadOnlyList<McpServerReference> servers)
             {
                 _leases = leases;
+                Servers = servers;
                 Tools = [.. leases.SelectMany(l => l.Tools)];
             }
 
-            public static McpToolLeaseSet Empty { get; } = new([]);
+            public static McpToolLeaseSet Empty { get; } = new([], []);
 
             public IReadOnlyList<AITool> Tools { get; }
+
+            public IReadOnlyList<McpServerReference> Servers { get; }
 
             public async ValueTask DisposeAsync()
             {

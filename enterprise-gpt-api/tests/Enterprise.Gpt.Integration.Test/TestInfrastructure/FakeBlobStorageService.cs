@@ -48,8 +48,26 @@ public sealed class FakeBlobStorageService : IBlobStorageService
     }
 
     /// <inheritdoc />
-    public Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, BlobSasPermissions permissions)
+    /// <remarks>
+    /// The response-header overrides are echoed back as <c>rscd</c> and <c>rsct</c> query values — the
+    /// names a real service SAS carries them under — so a test can assert the download link really does
+    /// rename the file rather than serving it under its storage key.
+    /// </remarks>
+    public Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, BlobSasPermissions permissions,
+        string? contentDisposition = null, string? contentType = null)
     {
-        return new Uri($"https://localhost/{container}/{blob}");
+        List<string> query = [$"sig={Uri.EscapeDataString($"fake-{permissions}")}"];
+
+        if (!string.IsNullOrWhiteSpace(contentDisposition))
+        {
+            query.Add($"rscd={Uri.EscapeDataString(contentDisposition)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(contentType))
+        {
+            query.Add($"rsct={Uri.EscapeDataString(contentType)}");
+        }
+
+        return new Uri($"https://localhost/{container}/{blob}?{string.Join('&', query)}");
     }
 }

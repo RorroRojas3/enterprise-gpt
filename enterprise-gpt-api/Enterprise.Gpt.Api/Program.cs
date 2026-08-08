@@ -57,12 +57,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     })
     .AddInMemoryTokenCaches();
 
-builder.Services.AddControllers()
-    .ConfigureApiBehaviorOptions(options =>
-    {
-        options.SuppressModelStateInvalidFilter = true;
-    });
-
 builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddDbContext<EnterpriseGptDbContext>(options =>
@@ -450,7 +444,7 @@ app.UseAuthentication();
 
 app.UseAuthorization();
 
-app.MapControllers();
+app.MapConversationEndpoints();
 
 app.MapDocumentEndpoints();
 

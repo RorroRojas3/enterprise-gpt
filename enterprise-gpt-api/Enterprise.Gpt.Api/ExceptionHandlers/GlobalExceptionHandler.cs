@@ -13,7 +13,8 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
     /// <see cref="McpAuthorizationRequiredException"/>,
     /// <see cref="McpServerUnavailableException"/>,
-    /// <see cref="ProviderNotConfiguredException"/>) and any
+    /// <see cref="ProviderNotConfiguredException"/>,
+    /// <see cref="StorageNotConfiguredException"/>) and any
     /// otherwise unhandled exception to an RFC 9457 <see cref="ProblemDetails"/> response.
     /// Always returns <see langword="true"/> so any exception receives a consistent payload.
     /// </summary>
@@ -117,6 +118,10 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 ProviderNotConfiguredException providerNotConfigured => WithExtension(
                     Create(StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ProviderNotConfigured),
                     "providerId", providerNotConfigured.ProviderId),
+                // Same reasoning as above, for the download link storage could not sign. The message
+                // names no account, container or credential, so it is safe to pass through.
+                StorageNotConfiguredException => Create(
+                    StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.StorageNotConfigured),
                 // The real message is suppressed: an unmapped exception may carry connection
                 // strings, file paths, or query text.
                 _ => Create(StatusCodes.Status500InternalServerError, "An unexpected internal server error occurred.")

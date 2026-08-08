@@ -1,3 +1,4 @@
+using Azure.Storage.Sas;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
@@ -47,11 +48,14 @@ public sealed class DocumentServiceTests : IDisposable
         _tokenService.GetOid().Returns(KnownIds.SeedUserId);
         _extractorFactory.Resolve(Arg.Any<FileExtensions>()).Returns(_extractor);
 
-        var configuration = new ConfigurationBuilder()
+        _service = CreateService(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureStorage:DocumentsContainer"] = ContainerName })
-            .Build();
+            .Build());
+    }
 
-        _service = new DocumentService(
+    private DocumentService CreateService(IConfiguration configuration)
+    {
+        return new DocumentService(
             NullLogger<DocumentService>.Instance,
             _embeddingGenerator,
             _blobStorageService,
@@ -711,6 +715,416 @@ public sealed class DocumentServiceTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => _service.CreateProjectDocumentAsync("job-1", null!, KnownIds.SeedUserId, Guid.NewGuid(), TestContext.Current.CancellationToken));
+    }
+    #endregion
+
+    #region Downloads
+    private const string SignedUri = "https://storage.example/documents/blob?sig=signature";
+
+    private void SetUpSigning(string uri = SignedUri)
+    {
+        _blobStorageService.GenerateSasUri(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+                Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns(new Uri(uri));
+    }
+
+    private async Task<ConversationDocument> AddConversationDocumentAsync(
+        Conversation conversation, string name = "quarterly report.pdf",
+        string mimeType = "application/pdf", DateTimeOffset? deactivated = null, Guid? uploadedBy = null)
+    {
+        var date = DateTimeOffset.UtcNow;
+        var document = new ConversationDocument
+        {
+            Id = Guid.NewGuid(),
+            UserId = uploadedBy ?? conversation.UserId,
+            ConversationId = conversation.Id,
+            Name = name,
+            Extension = System.IO.Path.GetExtension(name).ToLowerInvariant(),
+            MimeType = mimeType,
+            Size = 2048,
+            Path = $"{conversation.UserId}/{conversation.Id}/{Guid.NewGuid()}.pdf",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.ConversationDocuments.Add(document);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return document;
+    }
+
+    private async Task<ProjectDocument> AddProjectDocumentAsync(
+        Project project, string name = "handbook.pdf",
+        string mimeType = "application/pdf", DateTimeOffset? deactivated = null, Guid? uploadedBy = null)
+    {
+        var date = DateTimeOffset.UtcNow;
+        var document = new ProjectDocument
+        {
+            Id = Guid.NewGuid(),
+            UserId = uploadedBy ?? project.UserId,
+            ProjectId = project.Id,
+            Name = name,
+            Extension = System.IO.Path.GetExtension(name).ToLowerInvariant(),
+            MimeType = mimeType,
+            Size = 4096,
+            Path = $"{project.UserId}/projects/{project.Id}/{Guid.NewGuid()}.pdf",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.ProjectDocuments.Add(document);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return document;
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_OwnedDocument_ReturnsTheSignedLinkAndFileName()
+    {
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+
+        var result = await _service.GetConversationDocumentDownloadAsync(
+            conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SignedUri, result.DownloadUrl);
+        Assert.Equal("quarterly report.pdf", result.FileName);
+        // The default lifetime, so the client knows when to ask for a new link.
+        Assert.InRange(result.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(4), DateTimeOffset.UtcNow.AddMinutes(6));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_OwnedDocument_SignsTheStoredBlobForReadingOnly()
+    {
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            ContainerName,
+            document.Path,
+            TimeSpan.FromMinutes(5),
+            BlobSasPermissions.Read,
+            Arg.Any<string?>(),
+            Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_OwnedDocument_OverridesTheStoredBlobsHeaders()
+    {
+        // The blob was uploaded without content headers of its own, so without these overrides the
+        // browser saves the file under its guid storage key as application/octet-stream.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<BlobSasPermissions>(),
+            "attachment; filename=\"quarterly report.pdf\"; filename*=UTF-8''quarterly%20report.pdf",
+            "application/pdf");
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_NonAsciiFileName_KeepsAnAsciiFallbackBesideTheEncodedName()
+    {
+        // RFC 6266: filename* carries the real name and the quoted filename is the fallback, which is the
+        // only part not percent-encoded and so has its quotes and non-ASCII characters stripped.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, name: "informe \"año\".pdf");
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<BlobSasPermissions>(),
+            "attachment; filename=\"informe ao.pdf\"; filename*=UTF-8''informe%20%22a%C3%B1o%22.pdf",
+            Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_ContentType_ComesFromTheExtensionNotTheDeclaredMimeType()
+    {
+        // Nothing validates the MimeType column — it is whatever the client sent at upload time — and the
+        // value is signed into the link as the header storage will actually return. Serving an uploader's
+        // chosen media type back would leave the attachment disposition as the only thing preventing
+        // stored XSS. The extension is derived server-side and validated, so it is the trustworthy half.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, name: "report.pdf", mimeType: "text/html");
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+            Arg.Any<string?>(), "application/pdf");
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_UnrecognisedExtension_FallsBackToOctetStream()
+    {
+        // Safe by construction: every link is an attachment, so the type only decides which application
+        // opens the saved file.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, name: "archive.zip", mimeType: "application/zip");
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+            Arg.Any<string?>(), "application/octet-stream");
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_FileNameWithPathSeparators_StripsThemFromTheAsciiFallback()
+    {
+        // The fallback is signed into the token and cannot be corrected afterwards, so a name that would
+        // read as a path never reaches it.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, name: "c:/reports/q3.pdf");
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+            "attachment; filename=\"creportsq3.pdf\"; filename*=UTF-8''c%3A%2Freports%2Fq3.pdf",
+            Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_DocumentUploadedByAnotherUser_StillIssuesALinkToTheConversationOwner()
+    {
+        // Authorization deliberately follows the conversation, not ConversationDocument.UserId, so the
+        // rule that makes a document downloadable is the one that made it visible.
+        SetUpSigning();
+        var uploader = await AddUserAsync();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, uploadedBy: uploader.Id);
+
+        var result = await _service.GetConversationDocumentDownloadAsync(
+            conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SignedUri, result.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_DocumentUploadedByAnotherUser_StillIssuesALinkToTheProjectOwner()
+    {
+        SetUpSigning();
+        var uploader = await AddUserAsync();
+        var project = await AddProjectAsync();
+        var document = await AddProjectDocumentAsync(project, uploadedBy: uploader.Id);
+
+        var result = await _service.GetProjectDocumentDownloadAsync(
+            project.Id, document.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SignedUri, result.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_ContainerNotConfigured_ThrowsStorageNotConfigured()
+    {
+        // Otherwise a missing container name lands in the unmapped 500 arm with its message suppressed,
+        // which is the same operator condition this exception exists to make diagnosable.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+        var service = CreateService(new ConfigurationBuilder().Build());
+
+        await Assert.ThrowsAsync<StorageNotConfiguredException>(
+            () => service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_ConversationOwnedByAnotherUser_ThrowsNotFoundAndSignsNothing()
+    {
+        // 404 rather than 403, and nothing is signed, so the route cannot be used to probe for document
+        // ids or to leak a link to a file the caller cannot see.
+        SetUpSigning();
+        var otherUser = await AddUserAsync();
+        var conversation = await AddConversationAsync(userId: otherUser.Id);
+        var document = await AddConversationDocumentAsync(conversation);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+
+        _blobStorageService.DidNotReceive().GenerateSasUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+            Arg.Any<string?>(), Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_DeactivatedDocument_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, deactivated: DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_DeactivatedConversation_ThrowsNotFound()
+    {
+        // Deleting a conversation soft-deletes its documents, but the parent is checked too so a row
+        // missed by that cascade still cannot be downloaded.
+        SetUpSigning();
+        var conversation = await AddConversationAsync(deactivated: DateTimeOffset.UtcNow);
+        var document = await AddConversationDocumentAsync(conversation);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_DocumentFromAnotherConversation_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var otherConversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(otherConversation);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_UnknownDocument_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentDownloadAsync(conversation.Id, Guid.NewGuid(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_StorageCannotSign_PropagatesTheConfigurationFailure()
+    {
+        // Surfaces as 503 rather than the 400 an InvalidOperationException would have produced: the
+        // request is fine and the document exists, the deployment just cannot sign links.
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+        _blobStorageService.GenerateSasUri(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+                Arg.Any<string?>(), Arg.Any<string?>())
+            .Throws(new StorageNotConfiguredException());
+
+        await Assert.ThrowsAsync<StorageNotConfiguredException>(
+            () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_OwnedDocument_ReturnsTheSignedLinkAndFileName()
+    {
+        SetUpSigning();
+        var project = await AddProjectAsync();
+        var document = await AddProjectDocumentAsync(project);
+
+        var result = await _service.GetProjectDocumentDownloadAsync(
+            project.Id, document.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SignedUri, result.DownloadUrl);
+        Assert.Equal("handbook.pdf", result.FileName);
+        Assert.InRange(result.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(4), DateTimeOffset.UtcNow.AddMinutes(6));
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_OwnedDocument_SignsTheStoredBlobForReadingOnly()
+    {
+        SetUpSigning();
+        var project = await AddProjectAsync();
+        var document = await AddProjectDocumentAsync(project);
+
+        await _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            ContainerName,
+            document.Path,
+            TimeSpan.FromMinutes(5),
+            BlobSasPermissions.Read,
+            "attachment; filename=\"handbook.pdf\"; filename*=UTF-8''handbook.pdf",
+            "application/pdf");
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_ProjectOwnedByAnotherUser_ThrowsNotFoundAndSignsNothing()
+    {
+        // Ownership is read off the project, matching the rule that decided the document was visible in
+        // the project's document listing to begin with.
+        SetUpSigning();
+        var otherUser = await AddUserAsync();
+        var project = await AddProjectAsync(userId: otherUser.Id);
+        var document = await AddProjectDocumentAsync(project);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken));
+
+        _blobStorageService.DidNotReceive().GenerateSasUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
+            Arg.Any<string?>(), Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_DeactivatedDocument_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var project = await AddProjectAsync();
+        var document = await AddProjectDocumentAsync(project, deactivated: DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_DeactivatedProject_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var project = await AddProjectAsync(deactivated: DateTimeOffset.UtcNow);
+        var document = await AddProjectDocumentAsync(project);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_DocumentFromAnotherProject_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var project = await AddProjectAsync();
+        var otherProject = await AddProjectAsync();
+        var document = await AddProjectDocumentAsync(otherProject);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetProjectDocumentDownloadAsync_UnknownDocument_ThrowsNotFound()
+    {
+        SetUpSigning();
+        var project = await AddProjectAsync();
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetProjectDocumentDownloadAsync(project.Id, Guid.NewGuid(), TestContext.Current.CancellationToken));
     }
     #endregion
 }
