@@ -18,6 +18,8 @@ using Microsoft.Identity.Web;
 using Enterprise.Gpt.Api.Chat;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Api.Middleware;
+using Enterprise.Gpt.Api.Observability;
 using Enterprise.Gpt.Api.Problems;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Repository;
@@ -106,7 +108,10 @@ builder.Services.AddKeyedChatClient(
                   .GetChatClient(azureAIFoundryDefaultModel)
                   .AsIChatClient()
     )
-    .UseOpenTelemetry()
+    // Named source rather than the library's default: TelemetryRegistration has to register the same
+    // name for these spans to be exported, and a default that changes with a package bump would take
+    // the LLM traces off the Application Insights map without any build error.
+    .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
     .UseFunctionInvocation(null, ConfigureFunctionInvocation);
 
 // 2) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
@@ -155,7 +160,7 @@ if (builder.Configuration.GetValue<bool>($"{AmazonBedrockOptions.SectionName}:En
             sp => sp.GetRequiredService<IAmazonBedrockRuntime>()
                     .AsIChatClient(sp.GetRequiredService<IOptions<AmazonBedrockOptions>>().Value.DefaultModelId)
         )
-        .UseOpenTelemetry()
+        .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation);
 }
 
@@ -344,6 +349,11 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 // go through IProblemDetailsService, so traceId and instance are applied in exactly one place.
 builder.Services.AddEnterpriseProblemDetails();
 
+// Observability. The middleware writes through ILogger and names no backend; AddEnterpriseTelemetry is
+// the one place Application Insights appears, and no-ops when no connection string is configured.
+builder.Services.AddRequestLogging(builder.Configuration);
+builder.Services.AddEnterpriseTelemetry(builder.Configuration);
+
 // Singletons
 // TimeProvider is injected rather than read statically so the permission cache's absolute expiry
 // is testable without wall-clock delays.
@@ -418,6 +428,14 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("AllowSpecificOrigins");
+
+// Outside UseExceptionHandler on purpose: the handler writes the response and returns normally, so the
+// status is already final when next() comes back — inside, every failure would look like an in-flight
+// exception and duplicate what the handlers log. Being first in the app pipeline is also what lets it
+// call EnableBuffering before anything reads the body. It sits ahead of UseAuthentication, so the caller
+// is anonymous on the way in and the user id is only reported on the way out. CORS preflights are
+// short-circuited above and never reach it, which is the intended noise reduction.
+app.UseRequestLogging();
 
 // .NET 10 default: diagnostics suppressed when a handler returns true; handlers log explicitly.
 app.UseExceptionHandler();
