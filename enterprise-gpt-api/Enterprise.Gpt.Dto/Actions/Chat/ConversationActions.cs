@@ -4,12 +4,22 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
 {
     public class CreateConversationActionDto
     {
+        /// <summary>
+        /// The project to create the conversation inside, or <see langword="null"/> for a standalone
+        /// conversation. The project must be active and owned by the caller.
+        /// </summary>
+        public Guid? ProjectId { get; set; }
     }
 
     public class CreateConversationActionDtoValidator : AbstractValidator<CreateConversationActionDto>
     {
         public CreateConversationActionDtoValidator()
         {
+            // Only the "omitted" and "real id" shapes are meaningful; an explicit empty guid is a
+            // client bug that would otherwise reach the ownership check and return a confusing 404.
+            RuleFor(x => x.ProjectId)
+                .NotEmpty()
+                .When(x => x.ProjectId.HasValue);
         }
     }
 
@@ -71,6 +81,14 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
 
         public string Name { get; set; } = null!;
 
+        /// <summary>
+        /// The project the conversation should belong to after the update.
+        /// </summary>
+        /// <remarks>
+        /// This is a full-representation PUT, so omitting the field (or sending
+        /// <see langword="null"/>) removes the conversation from whatever project it is in. Clients
+        /// that only mean to rename must echo the current project id back.
+        /// </remarks>
         public Guid? ProjectId { get; set; }
     }
 
@@ -80,6 +98,9 @@ namespace Enterprise.Gpt.Dto.Actions.Chat
         {
             RuleFor(x => x.Id).NotEmpty();
             RuleFor(x => x.Name).NotEmpty().MaximumLength(256);
+            RuleFor(x => x.ProjectId)
+                .NotEmpty()
+                .When(x => x.ProjectId.HasValue);
         }
     }
 }

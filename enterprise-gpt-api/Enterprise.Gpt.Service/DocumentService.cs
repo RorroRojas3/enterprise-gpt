@@ -15,6 +15,7 @@ using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Extraction;
+using Enterprise.Gpt.Service.Mappers;
 using Enterprise.Gpt.Service.Settings;
 
 namespace Enterprise.Gpt.Service
@@ -50,6 +51,40 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="ArgumentException">Thrown when <paramref name="jobId"/> is <see langword="null"/> or whitespace.</exception>
         /// <exception cref="ValidationException">Thrown when the document contains no readable text.</exception>
         Task<ConversationDocumentDto> CreateConversationDocumentAsync(string jobId, FileDto file, Guid userId, Guid conversationId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Validates an uploaded file and queues it for ingestion into a project.
+        /// </summary>
+        /// <remarks>
+        /// A project document is shared by every conversation in the project, which is what separates
+        /// it from a conversation document: uploading into a conversation never adds to the project.
+        /// </remarks>
+        /// <param name="projectId">The project to attach the document to.</param>
+        /// <param name="file">The uploaded file.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>The identifier of the queued job, for polling upload status.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="file"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ValidationException">Thrown when the file is empty, too large, or an unsupported format.</exception>
+        /// <exception cref="NotFoundException">Thrown when the project does not exist or belongs to another user.</exception>
+        Task<JobDto> QueueProjectDocumentAsync(Guid projectId, FileDto file, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Runs the ingestion pipeline for a queued project upload: store, extract, chunk, embed, persist.
+        /// </summary>
+        /// <remarks>
+        /// Invoked by <see cref="BackgroundJobProcessor"/> on a background scope, never from a request
+        /// thread, so <paramref name="userId"/> is passed in rather than read from the current principal.
+        /// </remarks>
+        /// <param name="jobId">The job identifier used to report progress.</param>
+        /// <param name="file">The uploaded file.</param>
+        /// <param name="userId">The owner of the document.</param>
+        /// <param name="projectId">The project the document belongs to.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>The persisted document.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="file"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="jobId"/> is <see langword="null"/> or whitespace.</exception>
+        /// <exception cref="ValidationException">Thrown when the document contains no readable text.</exception>
+        Task<ProjectDocumentDto> CreateProjectDocumentAsync(string jobId, FileDto file, Guid userId, Guid projectId, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -57,6 +92,10 @@ namespace Enterprise.Gpt.Service
     /// <see cref="IDocumentTextExtractor"/> implementations and splitting in <see cref="ITextChunker"/>;
     /// this type owns sequencing, persistence and progress reporting.
     /// </summary>
+    /// <remarks>
+    /// Conversation and project uploads share one pipeline: they differ only in the ownership check,
+    /// the blob key, and the entity persisted at the end.
+    /// </remarks>
     public class DocumentService(ILogger<DocumentService> logger,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IBlobStorageService blobStorageService,
@@ -116,31 +155,43 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
             }
 
-            var jobId = Guid.NewGuid().ToString();
-            _jobStatusStore.Register(jobId, userId);
+            var job = await EnqueueAsync(
+                userId,
+                (documentService, jobId, token) => documentService.CreateConversationDocumentAsync(jobId, file, userId, conversationId, token),
+                cancellationToken);
 
-            try
+            _logger.LogInformation("Queued document upload job {JobId} for conversation {ConversationId} by user {UserId}", job.Id, conversationId, userId);
+
+            return job;
+        }
+
+        /// <inheritdoc />
+        public async Task<JobDto> QueueProjectDocumentAsync(Guid projectId, FileDto file, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(file);
+
+            await _fileValidator.ValidateAndThrowAsync(file, cancellationToken);
+
+            var userId = _tokenService.GetOid();
+
+            var projectExists = await _ctx.Projects
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == projectId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!projectExists)
             {
-                await _backgroundJobQueue.EnqueueAsync(new JobWorkItem(
-                    jobId,
-                    async (serviceProvider, token) =>
-                    {
-                        var documentService = serviceProvider.GetRequiredService<IDocumentService>();
-                        await documentService.CreateConversationDocumentAsync(jobId, file, userId, conversationId, token);
-                    }), cancellationToken);
-            }
-            catch
-            {
-                // Register succeeded but enqueue did not — the snapshot would otherwise sit in Queued
-                // forever (JobStatusStore only evicts terminal states). Mark it Failed so retention can
-                // reclaim it and any racing poll sees a deterministic terminal state.
-                _jobStatusStore.Fail(jobId, "The upload could not be queued for processing. Please try again.");
-                throw;
+                _logger.LogWarning("Upload rejected for project {ProjectId}: not found or not owned by user {UserId}", projectId, userId);
+                throw new NotFoundException($"Project with id '{projectId}' was not found.");
             }
 
-            _logger.LogInformation("Queued document upload job {JobId} for conversation {ConversationId} by user {UserId}", jobId, conversationId, userId);
+            var job = await EnqueueAsync(
+                userId,
+                (documentService, jobId, token) => documentService.CreateProjectDocumentAsync(jobId, file, userId, projectId, token),
+                cancellationToken);
 
-            return new JobDto { Id = jobId };
+            _logger.LogInformation("Queued document upload job {JobId} for project {ProjectId} by user {UserId}", job.Id, projectId, userId);
+
+            return job;
         }
 
         /// <inheritdoc />
@@ -155,26 +206,15 @@ namespace Enterprise.Gpt.Service
             var documentId = Guid.NewGuid();
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
-            var blobPath = await StoreAsync(jobId, file, userId, conversationId, documentId, extension, cancellationToken);
+            // Keyed by document id rather than file name: two uploads of the same name into the same
+            // conversation are legitimate, and a name-based path made the second one collide with the first
+            // and fail the whole job.
+            var blobPath = $"{userId}/{conversationId}/{documentId}{extension}";
 
-            IReadOnlyList<TextChunkDto> chunks;
-            IReadOnlyList<ReadOnlyMemory<float>> embeddings;
-            try
-            {
-                var segments = await ExtractAsync(jobId, file, cancellationToken);
-                chunks = ChunkText(jobId, segments, cancellationToken);
-                embeddings = await EmbedAsync(jobId, chunks, cancellationToken);
-            }
-            catch
-            {
-                // The blob is written first so the original is retained even if processing is slow, but a
-                // failure after this point leaves it referenced by no database row — unreachable content
-                // that would accrue storage cost forever. Best-effort cleanup, then rethrow.
-                await TryDeleteBlobAsync(blobPath, documentId);
-                throw;
-            }
+            var ingestion = await IngestAsync(jobId, file, documentId, blobPath,
+                BuildBlobMetadata(file, userId, documentId, "conversationId", conversationId), cancellationToken);
 
-            _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {chunks.Count} chunk(s)");
+            _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
             var date = DateTimeOffset.UtcNow;
             var document = new ConversationDocument
@@ -189,53 +229,179 @@ namespace Enterprise.Gpt.Service
                 Path = blobPath,
                 DateCreated = date,
                 DateModified = date,
-                Chunks = [.. chunks.Select((chunk, i) => new ConversationDocumentChunk
-                {
-                    Index = chunk.Index,
-                    SourceNumber = chunk.SourceNumber,
-                    TokenCount = chunk.TokenCount,
-                    Text = chunk.Text,
-                    Embedding = new SqlVector<float>(embeddings[i]),
-                    DateCreated = date,
-                    DateModified = date
-                })]
+                Chunks = BuildChunks<ConversationDocumentChunk>(ingestion, date)
             };
 
             _ctx.Add(document);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            _jobStatusStore.Complete(jobId, document.Id, $"Ready — {chunks.Count} chunk(s) indexed");
-            _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, chunks.Count);
+            _jobStatusStore.Complete(jobId, document.Id, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed");
+            _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, ingestion.Chunks.Count);
 
             return document.MapToChatDocumentDto();
         }
 
+        /// <inheritdoc />
+        public async Task<ProjectDocumentDto> CreateProjectDocumentAsync(string jobId, FileDto file, Guid userId, Guid projectId, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
+            ArgumentNullException.ThrowIfNull(file);
+
+            _logger.LogInformation("Starting document ingestion. Job {JobId}, project {ProjectId}, extension {Extension}, size {Size} bytes",
+                jobId, projectId, file.FileExtension, file.Length);
+
+            var documentId = Guid.NewGuid();
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
+            // The literal "projects" segment is what keeps this from ever colliding with a conversation
+            // key: both are "{userId}/{ownerId}/..." and the two id spaces are unrelated guids.
+            var blobPath = $"{userId}/projects/{projectId}/{documentId}{extension}";
+
+            var ingestion = await IngestAsync(jobId, file, documentId, blobPath,
+                BuildBlobMetadata(file, userId, documentId, "projectId", projectId), cancellationToken);
+
+            _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
+
+            var date = DateTimeOffset.UtcNow;
+            var document = new ProjectDocument
+            {
+                Id = documentId,
+                UserId = userId,
+                ProjectId = projectId,
+                Name = file.FileName,
+                Extension = extension,
+                MimeType = file.ContentType,
+                Size = file.Length,
+                Path = blobPath,
+                DateCreated = date,
+                DateModified = date,
+                Chunks = BuildChunks<ProjectDocumentChunk>(ingestion, date)
+            };
+
+            _ctx.Add(document);
+            await _ctx.SaveChangesAsync(cancellationToken);
+
+            _jobStatusStore.Complete(jobId, document.Id, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed");
+            _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, ingestion.Chunks.Count);
+
+            return document.MapToProjectDocumentDto();
+        }
+
         #region Pipeline stages
-        private async Task<string> StoreAsync(string jobId, FileDto file, Guid userId, Guid conversationId, Guid documentId, string extension, CancellationToken cancellationToken)
+        /// <summary>
+        /// Registers a job and enqueues the ingestion work for it.
+        /// </summary>
+        /// <param name="userId">The caller, recorded on the job so only they can poll it.</param>
+        /// <param name="work">The ingestion call to make on the background scope's service.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>The registered job.</returns>
+        private async Task<JobDto> EnqueueAsync(
+            Guid userId,
+            Func<IDocumentService, string, CancellationToken, Task> work,
+            CancellationToken cancellationToken)
+        {
+            var jobId = Guid.NewGuid().ToString();
+            _jobStatusStore.Register(jobId, userId);
+
+            try
+            {
+                await _backgroundJobQueue.EnqueueAsync(new JobWorkItem(
+                    jobId,
+                    async (serviceProvider, token) =>
+                    {
+                        var documentService = serviceProvider.GetRequiredService<IDocumentService>();
+                        await work(documentService, jobId, token);
+                    }), cancellationToken);
+            }
+            catch
+            {
+                // Register succeeded but enqueue did not — the snapshot would otherwise sit in Queued
+                // forever (JobStatusStore only evicts terminal states). Mark it Failed so retention can
+                // reclaim it and any racing poll sees a deterministic terminal state.
+                _jobStatusStore.Fail(jobId, "The upload could not be queued for processing. Please try again.");
+                throw;
+            }
+
+            return new JobDto { Id = jobId };
+        }
+
+        /// <summary>
+        /// Runs the owner-agnostic half of ingestion: store the original, read it, split it, embed it.
+        /// </summary>
+        /// <param name="jobId">The job identifier used to report progress.</param>
+        /// <param name="file">The uploaded file.</param>
+        /// <param name="documentId">The identifier the caller will persist the document under.</param>
+        /// <param name="blobPath">The storage key to write the original to.</param>
+        /// <param name="metadata">Blob metadata describing the upload and its owner.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>The chunks and their embeddings, positionally aligned.</returns>
+        private async Task<IngestionResult> IngestAsync(
+            string jobId, FileDto file, Guid documentId, string blobPath,
+            Dictionary<string, string> metadata, CancellationToken cancellationToken)
+        {
+            await StoreAsync(jobId, file, blobPath, metadata, cancellationToken);
+
+            try
+            {
+                var segments = await ExtractAsync(jobId, file, cancellationToken);
+                var chunks = ChunkText(jobId, segments, cancellationToken);
+                var embeddings = await EmbedAsync(jobId, chunks, cancellationToken);
+
+                return new IngestionResult(chunks, embeddings);
+            }
+            catch
+            {
+                // The blob is written first so the original is retained even if processing is slow, but a
+                // failure after this point leaves it referenced by no database row — unreachable content
+                // that would accrue storage cost forever. Best-effort cleanup, then rethrow.
+                await TryDeleteBlobAsync(blobPath, documentId);
+                throw;
+            }
+        }
+
+        private async Task StoreAsync(string jobId, FileDto file, string blobPath, Dictionary<string, string> metadata, CancellationToken cancellationToken)
         {
             _jobStatusStore.Report(jobId, JobStatus.Uploading, UploadStart, "Storing the file");
 
             var container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer")!;
 
-            // Keyed by document id rather than file name: two uploads of the same name into the same
-            // conversation are legitimate, and a name-based path made the second one collide with the first
-            // and fail the whole job.
-            var blobPath = $"{userId}/{conversationId}/{documentId}{extension}";
+            await _blobStorageService.UploadAsync(container, blobPath, file.Content, metadata, cancellationToken);
 
-            var metadata = new Dictionary<string, string>
+            _jobStatusStore.Report(jobId, JobStatus.Uploading, ExtractStart, "Stored the file");
+        }
+
+        private static Dictionary<string, string> BuildBlobMetadata(FileDto file, Guid userId, Guid documentId, string ownerKey, Guid ownerId)
+        {
+            return new Dictionary<string, string>
             {
                 { "userId", userId.ToString() },
-                { "conversationId", conversationId.ToString() },
+                { ownerKey, ownerId.ToString() },
                 { "documentId", documentId.ToString() },
                 { "contentType", file.ContentType },
                 { "length", file.Length.ToString() }
             };
+        }
 
-            await _blobStorageService.UploadAsync(container, blobPath, file.Content, metadata, cancellationToken);
-
-            _jobStatusStore.Report(jobId, JobStatus.Uploading, ExtractStart, "Stored the file");
-
-            return blobPath;
+        /// <summary>
+        /// Builds the persisted chunk rows for a document from an ingestion result.
+        /// </summary>
+        /// <remarks>
+        /// Vectors are matched to chunks by position, which <see cref="EmbedAsync"/> guarantees by
+        /// rejecting a short or padded response from the generator.
+        /// </remarks>
+        private static List<TChunk> BuildChunks<TChunk>(IngestionResult ingestion, DateTimeOffset date)
+            where TChunk : BaseDocumentChunk, new()
+        {
+            return [.. ingestion.Chunks.Select((chunk, i) => new TChunk
+            {
+                Index = chunk.Index,
+                SourceNumber = chunk.SourceNumber,
+                TokenCount = chunk.TokenCount,
+                Text = chunk.Text,
+                Embedding = new SqlVector<float>(ingestion.Embeddings[i]),
+                DateCreated = date,
+                DateModified = date
+            })];
         }
 
         /// <summary>
@@ -353,6 +519,13 @@ namespace Enterprise.Gpt.Service
             return vectors;
         }
         #endregion
+
+        /// <summary>
+        /// The output of the owner-agnostic pipeline: chunks and their positionally aligned vectors.
+        /// </summary>
+        private sealed record IngestionResult(
+            IReadOnlyList<TextChunkDto> Chunks,
+            IReadOnlyList<ReadOnlyMemory<float>> Embeddings);
 
         /// <summary>
         /// An <see cref="IProgress{T}"/> that runs its callback on the calling thread.

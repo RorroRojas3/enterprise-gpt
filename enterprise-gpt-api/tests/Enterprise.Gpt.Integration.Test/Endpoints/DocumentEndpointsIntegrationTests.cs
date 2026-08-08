@@ -86,6 +86,17 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         Assert.NotNull(job);
         return job;
     }
+
+    private static async Task<JobDto> PostProjectUploadAsync(HttpClient client, Guid projectId, MultipartFormDataContent content)
+    {
+        var response = await client.PostAsync($"api/documents/projects/{projectId}", content, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        var job = await response.Content.ReadFromJsonAsync<JobDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(job);
+        return job;
+    }
     #endregion
 
     #region Authorization
@@ -345,6 +356,241 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         Assert.Equal("Failed", status.State);
         Assert.Equal(nameof(JobStatus.Failed), status.Status);
+        Assert.NotNull(status.ErrorMessage);
+        Assert.Contains("No readable text", status.ErrorMessage);
+    }
+    #endregion
+
+    #region Project ingestion
+    [Fact]
+    public async Task ProjectUpload_Anonymous_ReturnsUnauthorized()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.PostAsync($"api/documents/projects/{projectId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_UserWithoutTheUploadFilePermission_ReturnsForbidden()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.RevokePermissionAsync(TestUsers.RegularUserId, PermissionIds.UploadFile, TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync($"api/documents/projects/{projectId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Contains("Upload File", problem.Detail);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_ProjectBelongingToAnotherUser_ReturnsNotFound()
+    {
+        var projectId = await _fixture.AddProjectAsync("it-theirs", TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync($"api/documents/projects/{projectId}", TextUpload(), TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_UnknownProject_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync($"api/documents/projects/{Guid.NewGuid()}", TextUpload(), TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_UnsupportedExtension_ReturnsBadRequestImmediately()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/documents/projects/{projectId}",
+            Upload("data.xlsx", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
+            TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains(problem.Errors["FileName"], message => message.Contains("not supported"));
+    }
+
+    [Fact]
+    public async Task ProjectUpload_FileLargerThanTheConfiguredLimit_ReturnsBadRequest()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var oversize = Encoding.UTF8.GetBytes(new string('a', 100_000));
+
+        var response = await client.PostAsync(
+            $"api/documents/projects/{projectId}",
+            Upload("notes.txt", oversize, "text/plain"),
+            TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Equal(64 * 1024, problem.Extensions["maxBytes"].GetInt64());
+    }
+
+    [Fact]
+    public async Task ProjectUpload_ValidTextFile_RunsTheWholePipelineAndPersistsChunks()
+    {
+        // Runs against real SQL Server 2025, so this is what proves the vector(1536) column accepts
+        // what the ingestion pipeline writes.
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.Equal(nameof(JobStatus.Processed), status.Status);
+        Assert.Equal(100, status.Progress);
+        Assert.NotNull(status.DocumentId);
+
+        var document = await _fixture.FindProjectDocumentAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.NotNull(document);
+        Assert.Equal("notes.txt", document.Name);
+        Assert.Equal(".txt", document.Extension);
+        Assert.Equal(projectId, document.ProjectId);
+        Assert.Equal(TestUsers.RegularUserId, document.UserId);
+
+        var chunks = await _fixture.FindProjectDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.True(chunks.Count > 1);
+        Assert.Equal([.. Enumerable.Range(0, chunks.Count)], chunks.Select(c => c.Index));
+        Assert.All(chunks, chunk => Assert.True(chunk.TokenCount is > 0 and <= 64));
+        Assert.All(chunks, chunk => Assert.False(string.IsNullOrWhiteSpace(chunk.Text)));
+    }
+
+    [Fact]
+    public async Task ProjectUpload_ValidTextFile_StoresTheBlobUnderAProjectScopedKey()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.Contains(
+            $"{TestUsers.RegularUserId}/projects/{projectId}/{status.DocumentId}.txt",
+            _fixture.Factory.BlobStorage.UploadedPaths);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_ValidTextFile_IsListedByTheProjectDocumentsEndpoint()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var documents = await client.GetFromJsonAsync<List<ProjectDocumentDto>>(
+            $"api/projects/{projectId}/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(documents);
+        var only = Assert.Single(documents);
+        Assert.Equal(status.DocumentId, only.Id);
+        Assert.Equal("notes.txt", only.Name);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_ThenDeleteTheDocument_DeactivatesItAndItsChunks()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var response = await client.DeleteAsync(
+            $"api/projects/{projectId}/documents/{status.DocumentId}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var document = await _fixture.FindProjectDocumentAsync(status.DocumentId!.Value, TestContext.Current.CancellationToken);
+        Assert.NotNull(document);
+        Assert.NotNull(document.DateDeactivated);
+
+        var chunks = await _fixture.FindProjectDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.NotEmpty(chunks);
+        Assert.All(chunks, chunk => Assert.NotNull(chunk.DateDeactivated));
+    }
+
+    [Fact]
+    public async Task ProjectUpload_ThenDeleteTheProject_DeactivatesTheDocumentAndItsChunks()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var response = await client.DeleteAsync($"api/projects/{projectId}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var document = await _fixture.FindProjectDocumentAsync(status.DocumentId!.Value, TestContext.Current.CancellationToken);
+        Assert.NotNull(document);
+        Assert.NotNull(document.DateDeactivated);
+        Assert.All(
+            await _fixture.FindProjectDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken),
+            chunk => Assert.NotNull(chunk.DateDeactivated));
+    }
+
+    [Fact]
+    public async Task ConversationUpload_InAProjectConversation_DoesNotBecomeAProjectDocument()
+    {
+        // The rule that separates the two: uploading into a conversation adds the file to that
+        // conversation only, never to the project it belongs to.
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var conversationId = await _fixture.AddConversationAsync(projectId: projectId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var documents = await client.GetFromJsonAsync<List<ProjectDocumentDto>>(
+            $"api/projects/{projectId}/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(documents);
+        Assert.Empty(documents);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_SameFileNameTwice_BothSucceedWithoutColliding()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var first = await WaitForTerminalStateAsync(client, (await PostProjectUploadAsync(client, projectId, TextUpload())).Id);
+        var second = await WaitForTerminalStateAsync(client, (await PostProjectUploadAsync(client, projectId, TextUpload())).Id);
+
+        Assert.Equal("Succeeded", first.State);
+        Assert.Equal("Succeeded", second.State);
+        Assert.NotEqual(first.DocumentId, second.DocumentId);
+    }
+
+    [Fact]
+    public async Task ProjectUpload_FileWithoutReadableText_FailsTheJobWithAnExplanation()
+    {
+        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostProjectUploadAsync(client, projectId,
+            Upload("blank.txt", Encoding.UTF8.GetBytes("   \n\n\t  "), "text/plain"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Failed", status.State);
         Assert.NotNull(status.ErrorMessage);
         Assert.Contains("No readable text", status.ErrorMessage);
     }

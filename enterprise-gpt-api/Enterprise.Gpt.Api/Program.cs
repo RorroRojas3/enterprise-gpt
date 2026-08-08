@@ -288,6 +288,7 @@ builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IModelService, ModelService>();
+builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IMcpServerService, McpServerService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -355,6 +356,8 @@ app.MapControllers();
 app.MapDocumentEndpoints();
 
 app.MapModelEndpoints();
+
+app.MapProjectEndpoints();
 
 app.MapMcpEndpoints();
 

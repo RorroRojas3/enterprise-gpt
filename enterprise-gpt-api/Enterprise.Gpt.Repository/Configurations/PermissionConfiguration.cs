@@ -52,7 +52,7 @@ namespace Enterprise.Gpt.Repository.Configurations
                 {
                     Id = PermissionIds.UploadFile,
                     Name = "Upload File",
-                    Description = "Upload documents into a conversation.",
+                    Description = "Upload documents into a conversation or a project.",
                     IsDefault = true,
                     DateCreated = date,
                     DateModified = date,
