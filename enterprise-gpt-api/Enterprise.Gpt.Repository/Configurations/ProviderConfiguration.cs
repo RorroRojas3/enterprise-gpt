@@ -22,6 +22,12 @@ namespace Enterprise.Gpt.Repository.Configurations
                     Id = Providers.AmazonBedrock,
                     Name = nameof(Providers.AmazonBedrock),
                     DateCreated = date,
+                },
+                new Provider
+                {
+                    Id = Providers.Anthropic,
+                    Name = nameof(Providers.Anthropic),
+                    DateCreated = date,
                 }
             );
         }

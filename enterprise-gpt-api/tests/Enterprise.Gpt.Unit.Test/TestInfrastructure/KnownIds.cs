@@ -24,6 +24,11 @@ public static class KnownIds
     public static readonly Guid SeedBedrockProviderId = Providers.AmazonBedrock;
 
     /// <summary>
+    /// The Anthropic provider seeded by <c>ProviderConfiguration</c>.
+    /// </summary>
+    public static readonly Guid SeedAnthropicProviderId = Providers.Anthropic;
+
+    /// <summary>
     /// The "rr-gpt-5.6-luna" model seeded by <c>ModelConfiguration</c> (active, non-default).
     /// </summary>
     public static readonly Guid SeedModelId = Guid.Parse("c36e22ed-262a-47a1-b2ba-06a38355ae0f");
