@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Testing;
+using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -116,8 +118,27 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             // emulator address configured above and the endpoint answers 500 after ~25 seconds.
             services.RemoveAll<IAzureCosmosService>();
             services.AddSingleton<IAzureCosmosService>(Cosmos);
+
+            // Scoped to the access-log category on purpose: an unfiltered collector accumulates every
+            // record the whole suite produces — EF Core included — for the lifetime of the shared
+            // fixture, which is a slow memory leak in exchange for records no test reads.
+            services.AddFakeLogging(options =>
+                options.FilteredCategories = new HashSet<string> { typeof(RequestLoggingMiddleware).FullName! });
         });
     }
+
+    /// <summary>
+    /// Gets the access-log records written since the last reset.
+    /// </summary>
+    /// <returns>A snapshot of the collected records.</returns>
+    public IReadOnlyList<FakeLogRecord> GetRequestLogs() =>
+        Services.GetRequiredService<FakeLogCollector>().GetSnapshot();
+
+    /// <summary>
+    /// Discards the access-log records collected so far, so a test sees only its own.
+    /// </summary>
+    public void ClearRequestLogs() =>
+        Services.GetRequiredService<FakeLogCollector>().Clear();
 
     /// <summary>
     /// Creates a client authenticated as the seeded administrator.

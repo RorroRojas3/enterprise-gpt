@@ -17,6 +17,10 @@
     <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <!-- Application Insights. The OpenTelemetry distro rather than Microsoft.ApplicationInsights.AspNetCore:
+         it is the current guidance for new ASP.NET Core apps, the two must not coexist, and only the
+         distro exports the UseOpenTelemetry() spans the chat clients already emit. -->
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.6.0" />
     <PackageReference Include="FluentValidation" Version="12.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
