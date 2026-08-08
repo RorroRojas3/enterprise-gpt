@@ -1,3 +1,4 @@
+using Andes.Extensions.AI;
 using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
@@ -5,6 +6,7 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Exceptions;
+using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Endpoints;
@@ -29,7 +31,12 @@ public class ConversationEndpointsTests
         return new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = Guid.NewGuid() };
     }
 
-    private static async IAsyncEnumerable<string?> Fragments(params string?[] values)
+    private static AssistantUiEvent TextDelta(string text)
+    {
+        return new AssistantUiEvent { Kind = AssistantUiEventKind.TextDelta, Text = text };
+    }
+
+    private static async IAsyncEnumerable<AssistantUiEvent> Events(params AssistantUiEvent[] values)
     {
         await Task.Yield();
 
@@ -39,7 +46,7 @@ public class ConversationEndpointsTests
         }
     }
 
-    private static async IAsyncEnumerable<string?> FaultedStream(Exception exception)
+    private static async IAsyncEnumerable<AssistantUiEvent> FaultedStream(Exception exception)
     {
         await Task.Yield();
 
@@ -51,6 +58,28 @@ public class ConversationEndpointsTests
         }
 
         yield break;
+    }
+
+    /// <summary>
+    /// Splits a written body into its SSE frames and strips the <c>data:</c> prefix, so a test can
+    /// assert on payloads without restating the framing every time.
+    /// </summary>
+    private static List<string> ReadFrames(HttpContext context)
+    {
+        return
+        [
+            .. ReadBody(context)
+                .Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
+                .Select(frame => frame.StartsWith("data: ", StringComparison.Ordinal)
+                    ? frame["data: ".Length..]
+                    : throw new InvalidOperationException($"Frame is not a data line: '{frame}'"))
+        ];
+    }
+
+    private static AssistantUiEvent Deserialize(string json)
+    {
+        return JsonSerializer.Deserialize(json, AssistantUiJsonContext.Default.AssistantUiEvent)
+            ?? throw new InvalidOperationException($"Frame did not deserialize: '{json}'");
     }
 
     private static DefaultHttpContext CreateContext()
@@ -200,38 +229,74 @@ public class ConversationEndpointsTests
     }
 
     [Fact]
-    public async Task StreamConversationAsync_ServiceYieldsFragments_WritesThemInOrderUnderStreamingHeaders()
+    public async Task StreamConversationAsync_ServiceYieldsEvents_WritesOneFrameEachInOrderUnderStreamingHeaders()
     {
         var id = Guid.NewGuid();
         var request = CreateStreamRequest();
         var context = CreateContext();
         _conversationService.StreamConversationAsync(id, request, Arg.Any<CancellationToken>())
-            .Returns(Fragments("Hel", "lo"));
+            .Returns(Events(TextDelta("Hel"), TextDelta("lo")));
 
         await ConversationEndpoints.StreamConversationAsync(
             id, request, _conversationService, context.Response, TestContext.Current.CancellationToken);
 
-        Assert.Equal("Hello", ReadBody(context));
+        var frames = ReadFrames(context);
+        Assert.Equal(2, frames.Count);
+        Assert.Equal("Hel", Deserialize(frames[0]).Text);
+        Assert.Equal("lo", Deserialize(frames[1]).Text);
         Assert.Equal("text/event-stream", context.Response.ContentType);
         Assert.Equal("no-cache", context.Response.Headers.CacheControl.ToString());
+        Assert.Equal("no", context.Response.Headers["X-Accel-Buffering"].ToString());
     }
 
+    // Activity events carry no text at all, so the frame has to stay well formed on the payload's
+    // own discriminator rather than on there being something to render.
     [Fact]
-    public async Task StreamConversationAsync_ServiceYieldsANullFragment_WritesItAsEmptyRatherThanFailing()
+    public async Task StreamConversationAsync_ServiceYieldsAToolActivity_WritesItAsItsOwnFrame()
     {
         var id = Guid.NewGuid();
         var request = CreateStreamRequest();
         var context = CreateContext();
         _conversationService.StreamConversationAsync(id, request, Arg.Any<CancellationToken>())
-            .Returns(Fragments("a", null, "b"));
+            .Returns(Events(new AssistantUiEvent
+            {
+                Kind = AssistantUiEventKind.ActivityStarted,
+                ScopeId = "scope-1",
+                DisplayName = "Andes Test",
+                ToolKind = ToolKind.McpTool,
+                Depth = 1
+            }));
 
         await ConversationEndpoints.StreamConversationAsync(
             id, request, _conversationService, context.Response, TestContext.Current.CancellationToken);
 
-        Assert.Equal("ab", ReadBody(context));
+        var uiEvent = Deserialize(Assert.Single(ReadFrames(context)));
+        Assert.Equal(AssistantUiEventKind.ActivityStarted, uiEvent.Kind);
+        Assert.Equal("Andes Test", uiEvent.DisplayName);
+        Assert.Equal(ToolKind.McpTool, uiEvent.ToolKind);
+        Assert.Null(uiEvent.Text);
     }
 
-    // A model that produced nothing still owes the client a well-formed empty stream rather than a
+    // The kind travels as a string rather than an ordinal so the contract stays readable and stable
+    // for the TypeScript client the package ships alongside it.
+    [Fact]
+    public async Task StreamConversationAsync_ServiceYieldsAnEvent_WritesCamelCasePropertiesAndStringKinds()
+    {
+        var id = Guid.NewGuid();
+        var request = CreateStreamRequest();
+        var context = CreateContext();
+        _conversationService.StreamConversationAsync(id, request, Arg.Any<CancellationToken>())
+            .Returns(Events(TextDelta("hi")));
+
+        await ConversationEndpoints.StreamConversationAsync(
+            id, request, _conversationService, context.Response, TestContext.Current.CancellationToken);
+
+        var json = Assert.Single(ReadFrames(context));
+        Assert.Contains("\"kind\":\"TextDelta\"", json);
+        Assert.Contains("\"text\":\"hi\"", json);
+    }
+
+    // A turn that produced nothing still owes the client a well-formed empty stream rather than a
     // bare 200 the reader cannot interpret.
     [Fact]
     public async Task StreamConversationAsync_ServiceYieldsNothing_StillSetsStreamingHeaders()
@@ -240,7 +305,7 @@ public class ConversationEndpointsTests
         var request = CreateStreamRequest();
         var context = CreateContext();
         _conversationService.StreamConversationAsync(id, request, Arg.Any<CancellationToken>())
-            .Returns(Fragments());
+            .Returns(Events());
 
         await ConversationEndpoints.StreamConversationAsync(
             id, request, _conversationService, context.Response, TestContext.Current.CancellationToken);

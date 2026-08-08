@@ -53,19 +53,59 @@ public class ConversationUsage : BaseEntity
 
     public ConversationUsageStatuses Status { get; set; }
 
+    /// <summary>
+    /// Input tokens consumed by the main assistant's own model turns. Tokens spent inside tools are
+    /// excluded — they are in <see cref="ToolInputTokens"/> and, itemized, in <see cref="ToolCalls"/>.
+    /// </summary>
     public long InputTokens { get; set; }
 
+    /// <summary>
+    /// Output tokens produced by the main assistant's own model turns, on the same terms as
+    /// <see cref="InputTokens"/>.
+    /// </summary>
     public long OutputTokens { get; set; }
 
     /// <summary>
-    /// The call's total token cost.
+    /// Input tokens consumed by every tool the call invoked, including tools nested inside other
+    /// tools.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rolled-up total of the top-level entries in <see cref="ToolCalls"/>, denormalized here so
+    /// the assistant/tool split of a call is readable without touching the child table. Zero when
+    /// no tool ran, or when the tools that ran surfaced no usage — an MCP server need not report
+    /// what it spent.
+    /// </para>
+    /// <para>
+    /// Summed from the providers' input and output counts, whereas
+    /// <see cref="ConversationUsageToolCall.SubtreeTotalTokens"/> stores their reported total. A
+    /// provider whose total is not the sum of its operands — cached and reasoning tokens are billed
+    /// without appearing in either — will make those two disagree, so a report should pick one and
+    /// not join across them.
+    /// </para>
+    /// </remarks>
+    public long ToolInputTokens { get; set; }
+
+    /// <summary>
+    /// Output tokens produced by every tool the call invoked, on the same terms as
+    /// <see cref="ToolInputTokens"/>.
+    /// </summary>
+    public long ToolOutputTokens { get; set; }
+
+    /// <summary>
+    /// What the main assistant's own turns cost, excluding tools.
+    /// </summary>
+    public long AssistantTokens => InputTokens + OutputTokens;
+
+    /// <summary>
+    /// The call's total token cost: the assistant's own turns plus everything its tools consumed.
     /// </summary>
     /// <remarks>
     /// Deliberately an expression-bodied getter with no backing field, which is what keeps EF from
     /// mapping it. Giving it a setter would silently add a column that could disagree with its own
     /// operands.
     /// </remarks>
-    public long TotalTokens => InputTokens + OutputTokens;
+    public long TotalTokens => AssistantTokens + ToolInputTokens + ToolOutputTokens;
 
     /// <summary>
     /// The identifier of the assistant message this call appended to the Cosmos transcript, or
@@ -87,4 +127,15 @@ public class ConversationUsage : BaseEntity
     public Provider Provider { get; set; } = null!;
 
     public List<ConversationUsageMcpServer> McpServers { get; set; } = [];
+
+    /// <summary>
+    /// The tools the call invoked, as a forest: this collection holds every invocation the model
+    /// made directly, and each of those carries its own nested calls.
+    /// </summary>
+    /// <remarks>
+    /// Unfiltered, this navigation loads the whole tree flat, because EF maps the self-relationship
+    /// on <see cref="ConversationUsageToolCall"/> as an ordinary parent/child edge. Queries that
+    /// want only the top level filter on <c>ParentId == null</c>.
+    /// </remarks>
+    public List<ConversationUsageToolCall> ToolCalls { get; set; } = [];
 }

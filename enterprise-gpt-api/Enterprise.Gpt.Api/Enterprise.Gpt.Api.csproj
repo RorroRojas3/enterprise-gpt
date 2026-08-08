@@ -9,6 +9,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Per-tool token tracking. The core package supplies UseToolTracking(), which Program.cs
+         inserts ahead of UseFunctionInvocation() in every chat-client chain; the .Mcp and .Agent
+         satellites supply the classifiers that turn an MCP tool or an agent-as-tool into something
+         other than an anonymous function, and .UI supplies the serializable event contract the
+         streaming endpoint writes. All four are referenced directly because Program.cs and
+         ConversationEndpoints.cs use types from each. -->
+    <PackageReference Include="Andes.Extensions.AI" Version="0.5.0" />
+    <PackageReference Include="Andes.Extensions.AI.Agent" Version="0.5.0" />
+    <PackageReference Include="Andes.Extensions.AI.Mcp" Version="0.5.0" />
+    <PackageReference Include="Andes.Extensions.AI.UI" Version="0.5.0" />
     <!-- Anthropic first-party. Unlike Bedrock this needs a single package: the SDK carries the
          Microsoft.Extensions.AI bridge itself (IAnthropicClient.AsIChatClient), so there is no
          separate adapter to reference. -->
@@ -28,7 +38,7 @@
     <PackageReference Include="FluentValidation" Version="12.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.0" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
       <PrivateAssets>all</PrivateAssets>
@@ -41,13 +51,18 @@
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.3" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.3" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
-    <PackageReference Include="Microsoft.Graph" Version="6.2.0" />
+    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="Microsoft.Identity.Web" Version="4.14.2" />
-    <!-- Direct pin: Microsoft.AspNetCore.OpenApi 10.0.10 transitively brings 2.0.0, which has a known vulnerability (GHSA-v5pm-xwqc-g5wc). -->
+    <!-- Direct pin: Microsoft.AspNetCore.OpenApi 10.0.10 transitively brings 2.0.0, which has a known
+         vulnerability (GHSA-v5pm-xwqc-g5wc / CVE-2026-49451, stack overflow on a circular schema
+         reference). 2.7.5 is the first patched release on this line. Held on 2.x deliberately: 3.x
+         made IOpenApiMediaType.Example read-only, and the XML-comment source generator that ships
+         with Microsoft.AspNetCore.OpenApi 10.0.10 still assigns it, so a 3.x pin fails the build in
+         generated code. Move both together when a matching AspNetCore.OpenApi is available. -->
     <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
-    <PackageReference Include="ModelContextProtocol" Version="2.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.1.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Scalar.AspNetCore" Version="2.16.17" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.16.18" />
   </ItemGroup>
 
   <ItemGroup>

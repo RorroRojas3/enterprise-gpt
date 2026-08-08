@@ -17,6 +17,8 @@ namespace Enterprise.Gpt.Repository
 
         public DbSet<ConversationUsageMcpServer> ConversationUsageMcpServers { get; set; }
 
+        public DbSet<ConversationUsageToolCall> ConversationUsageToolCalls { get; set; }
+
         public DbSet<ConversationDocument> ConversationDocuments { get; set; }
 
         public DbSet<ConversationDocumentChunk> ConversationDocumentChunks { get; set; }
@@ -47,6 +49,7 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new ConversationConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationUsageConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationUsageMcpServerConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationUsageToolCallConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationDocumentConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationDocumentChunkConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectConfiguration());

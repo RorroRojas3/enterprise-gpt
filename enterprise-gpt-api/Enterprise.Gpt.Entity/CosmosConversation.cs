@@ -80,6 +80,17 @@ namespace Enterprise.Gpt.Entity
         public CosmosConversationUsage? Usage { get; set; }
     }
 
+    /// <summary>
+    /// What a transcript message's turn consumed in total — the assistant's own model turns plus
+    /// every tool, MCP call and agent underneath them.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not the same split as the identically named columns on
+    /// <see cref="ConversationUsage"/>, which hold the assistant's share alone and keep the tool
+    /// share in <see cref="ConversationUsage.ToolInputTokens"/>. The transcript is what a reader
+    /// sees beside the message, and the number that belongs there is what the turn cost; the
+    /// breakdown lives in the relational audit trail.
+    /// </remarks>
     public class CosmosConversationUsage
     {
         [JsonPropertyName("inputTokens")]

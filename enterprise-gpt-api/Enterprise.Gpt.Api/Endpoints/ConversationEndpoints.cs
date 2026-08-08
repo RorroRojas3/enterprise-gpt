@@ -1,8 +1,10 @@
+using Andes.Extensions.AI;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Service;
+using System.Text.Json;
 
 namespace Enterprise.Gpt.Api.Endpoints;
 
@@ -142,22 +144,27 @@ public static class ConversationEndpoints
         return TypedResults.NoContent();
     }
 
-    // Headers are set on the first fragment rather than up front: setting them eagerly left an error
+    // Headers are set on the first frame rather than up front: setting them eagerly left an error
     // response (a 409 for a conversation that is already streaming, say) carrying streaming headers
     // alongside its JSON body. Connection is omitted deliberately — it is a hop-by-hop header Kestrel
     // owns, and it is invalid under HTTP/2.
     //
-    // TypedResults.ServerSentEvents is the obvious .NET 10 answer and is wrong twice over here: it
-    // sets the content type before enumerating, which is precisely the eager behaviour above, and it
-    // re-frames each value as "data: ...\n\n". The service yields raw model text and the UI reads it
-    // with body.getReader() and no SSE parsing, so framing it would break every client.
+    // TypedResults.ServerSentEvents is the obvious .NET 10 answer and still is not usable here: it
+    // commits the response before enumerating, and everything that can fail a turn — the conversation
+    // lock, the transcript read, resolving the model, leasing MCP servers — happens on the first move
+    // of the sequence. Under it, a 409 or a 404 would arrive after a 200 had already gone out.
+    //
+    // Each event is written as its own SSE frame with no event name, so a client reads them off a
+    // single default channel and switches on the payload's own "kind" discriminator. The payload is
+    // the tracking middleware's UI contract, which ships a matching TypeScript definition and fold
+    // function; the source-generated context is what keeps its JSON identical to that definition.
     internal static async Task StreamConversationAsync(
         Guid id, CreateConversationStreamActionDto request, IConversationService conversationService,
         HttpResponse response, CancellationToken cancellationToken)
     {
         var headersSet = false;
 
-        await foreach (var fragment in conversationService.StreamConversationAsync(id, request, cancellationToken))
+        await foreach (var uiEvent in conversationService.StreamConversationAsync(id, request, cancellationToken))
         {
             if (!headersSet)
             {
@@ -165,11 +172,15 @@ public static class ConversationEndpoints
                 headersSet = true;
             }
 
-            await response.WriteAsync(fragment ?? string.Empty, cancellationToken);
+            // Serialized JSON never contains a raw newline, so one data line per frame is always
+            // well formed and no continuation handling is needed.
+            var json = JsonSerializer.Serialize(uiEvent, AssistantUiJsonContext.Default.AssistantUiEvent);
+
+            await response.WriteAsync($"data: {json}\n\n", cancellationToken);
             await response.Body.FlushAsync(cancellationToken);
         }
 
-        // A model that produced nothing still owes the client a well-formed empty stream
+        // A turn that produced nothing still owes the client a well-formed empty stream
         // rather than a bare 200 the reader cannot interpret.
         if (!headersSet)
         {
@@ -184,5 +195,8 @@ public static class ConversationEndpoints
     {
         response.ContentType = "text/event-stream";
         response.Headers.CacheControl = "no-cache";
+        // Reverse proxies buffer a response by default, which holds every frame back until the turn
+        // ends and defeats the point of streaming activity as it happens.
+        response.Headers["X-Accel-Buffering"] = "no";
     }
 }
