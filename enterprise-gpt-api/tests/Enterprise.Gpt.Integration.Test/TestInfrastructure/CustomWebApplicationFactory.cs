@@ -38,6 +38,12 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     /// </summary>
     public FakeEmbeddingGenerator EmbeddingGenerator { get; } = new();
 
+    /// <summary>
+    /// Gets the in-memory transcript store backing <see cref="IAzureCosmosService"/> for the whole
+    /// run, so conversation writes complete without a Cosmos DB account or the emulator.
+    /// </summary>
+    public FakeAzureCosmosService Cosmos { get; } = new();
+
     /// <inheritdoc />
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -94,9 +100,9 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
             // Only the services that would otherwise make live network calls against the fake
-            // credentials above are substituted: Microsoft Graph for user provisioning, and blob
-            // storage plus the embedding generator for document ingestion. Extraction, chunking and
-            // persistence all run for real.
+            // credentials above are substituted: Microsoft Graph for user provisioning, blob storage
+            // plus the embedding generator for document ingestion, and Cosmos DB for the conversation
+            // transcript. Extraction, chunking and relational persistence all run for real.
             services.RemoveAll<IGraphService>();
             services.AddSingleton<IGraphService>(GraphService);
 
@@ -105,6 +111,11 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
 
             services.RemoveAll<IEmbeddingGenerator<string, Embedding<float>>>();
             services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(EmbeddingGenerator);
+
+            // Without this, every conversation write blocks until the Cosmos SDK gives up on the
+            // emulator address configured above and the endpoint answers 500 after ~25 seconds.
+            services.RemoveAll<IAzureCosmosService>();
+            services.AddSingleton<IAzureCosmosService>(Cosmos);
         });
     }
 

@@ -12,12 +12,15 @@ using Enterprise.Gpt.Service.Settings;
 namespace Enterprise.Gpt.Api.Endpoints
 {
     /// <summary>
-    /// Minimal API endpoints for conversation documents. Replaces the former <c>DocumentsController</c>.
-    /// Uploading is gated by the <c>Upload File</c> permission, which every user holds by default; reading
-    /// job status and the supported-format list is available to any authenticated caller.
+    /// Minimal API endpoints for document upload, into either a conversation or a project. Uploading is
+    /// gated by the <c>Upload File</c> permission, which every user holds by default; reading job status
+    /// and the supported-format list is available to any authenticated caller.
     /// </summary>
     /// <remarks>
-    /// Routes match the controller they replace exactly, so existing clients need no change.
+    /// The conversation routes match the <c>DocumentsController</c> they replaced exactly, so existing
+    /// clients needed no change. Project uploads were added to this group rather than to
+    /// <see cref="ProjectEndpoints"/> so both owner types share one size limit, one permission filter and
+    /// the single <c>upload-status</c> route.
     /// </remarks>
     public static class DocumentEndpoints
     {
@@ -51,6 +54,16 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);
 
+            group.MapPost("projects/{projectId:guid}", CreateProjectDocumentAsync)
+                .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.UploadFile))
+                // Same reasoning as the conversation route above: bearer-token auth, so CSRF does not
+                // apply and antiforgery would only fail the request at form-binding time.
+                .DisableAntiforgery()
+                .AddEndpointFilter(MaxUploadSizeEndpointFilter.Require(maxFileSizeBytes))
+                .ProducesProblem(StatusCodes.Status400BadRequest)
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
+
             group.MapGet("upload-status/{jobId}", GetJobStatus)
                 .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -75,6 +88,24 @@ namespace Enterprise.Gpt.Api.Endpoints
             };
 
             var response = await documentService.QueueConversationDocumentAsync(conversationId, fileDto, cancellationToken);
+
+            return TypedResults.Accepted($"/api/documents/upload-status/{response.Id}", response);
+        }
+
+        // Kept alongside the conversation upload rather than under api/projects so both share this
+        // group's size limit, permission filter, and the single upload-status route below.
+        internal static async Task<Accepted<JobDto>> CreateProjectDocumentAsync(
+            Guid projectId, IFormFile file, IDocumentService documentService, CancellationToken cancellationToken)
+        {
+            var fileDto = new FileDto
+            {
+                FileName = file.FileName,
+                ContentType = file.ContentType,
+                Length = file.Length,
+                Content = await ReadFileAsync(file, cancellationToken)
+            };
+
+            var response = await documentService.QueueProjectDocumentAsync(projectId, fileDto, cancellationToken);
 
             return TypedResults.Accepted($"/api/documents/upload-status/{response.Id}", response);
         }

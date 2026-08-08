@@ -75,13 +75,15 @@ public sealed class DocumentServiceTests : IDisposable
         return new FileDto { FileName = fileName, ContentType = "application/pdf", Length = content.Length, Content = content };
     }
 
-    private async Task<Conversation> AddConversationAsync(Guid? userId = null, DateTimeOffset? deactivated = null)
+    private async Task<Conversation> AddConversationAsync(
+        Guid? userId = null, DateTimeOffset? deactivated = null, Guid? projectId = null)
     {
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
         {
             Id = Guid.NewGuid(),
             UserId = userId ?? KnownIds.SeedUserId,
+            ProjectId = projectId,
             Name = "Test Conversation",
             DateCreated = date,
             DateModified = date,
@@ -93,6 +95,26 @@ public sealed class DocumentServiceTests : IDisposable
         await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return conversation;
+    }
+
+    private async Task<Project> AddProjectAsync(Guid? userId = null, DateTimeOffset? deactivated = null)
+    {
+        var date = DateTimeOffset.UtcNow;
+        var project = new Project
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId ?? KnownIds.SeedUserId,
+            Name = $"Project {Guid.NewGuid():N}",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.Projects.Add(project);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return project;
     }
 
     private async Task<User> AddUserAsync()
@@ -445,6 +467,250 @@ public sealed class DocumentServiceTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => _service.CreateConversationDocumentAsync("job-1", null!, KnownIds.SeedUserId, Guid.NewGuid(), TestContext.Current.CancellationToken));
+    }
+    #endregion
+
+    #region QueueProjectDocumentAsync
+    [Fact]
+    public async Task QueueProjectDocumentAsync_OwnedProject_RegistersAndEnqueuesTheJob()
+    {
+        var project = await AddProjectAsync();
+
+        var job = await _service.QueueProjectDocumentAsync(project.Id, CreateFile(), TestContext.Current.CancellationToken);
+
+        Assert.True(Guid.TryParse(job.Id, out _));
+        _jobStatusStore.Received(1).Register(job.Id, KnownIds.SeedUserId);
+        await _backgroundJobQueue.Received(1).EnqueueAsync(
+            Arg.Is<JobWorkItem>(item => item != null && item.JobId == job.Id), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task QueueProjectDocumentAsync_ProjectOwnedByAnotherUser_ThrowsNotFound()
+    {
+        // Indistinguishable from "does not exist" so the endpoint cannot be used to probe for other
+        // users' project ids.
+        var otherUser = await AddUserAsync();
+        var project = await AddProjectAsync(userId: otherUser.Id);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.QueueProjectDocumentAsync(project.Id, CreateFile(), TestContext.Current.CancellationToken));
+
+        await _backgroundJobQueue.DidNotReceive().EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task QueueProjectDocumentAsync_DeactivatedProject_ThrowsNotFound()
+    {
+        var project = await AddProjectAsync(deactivated: DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.QueueProjectDocumentAsync(project.Id, CreateFile(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task QueueProjectDocumentAsync_UnknownProject_ThrowsNotFound()
+    {
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.QueueProjectDocumentAsync(Guid.NewGuid(), CreateFile(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task QueueProjectDocumentAsync_InvalidFile_ThrowsBeforeTouchingTheQueue()
+    {
+        var project = await AddProjectAsync();
+        _fileValidator.RuleFor(x => x.FileName)
+            .Must(_ => false)
+            .WithMessage("Files of type '.xlsx' are not supported.");
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.QueueProjectDocumentAsync(project.Id, CreateFile("book.xlsx"), TestContext.Current.CancellationToken));
+
+        _jobStatusStore.DidNotReceive().Register(Arg.Any<string>(), Arg.Any<Guid>());
+        await _backgroundJobQueue.DidNotReceive().EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task QueueProjectDocumentAsync_EnqueueFails_MarksTheRegisteredJobFailed()
+    {
+        var project = await AddProjectAsync();
+        _backgroundJobQueue.EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("queue closed"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.QueueProjectDocumentAsync(project.Id, CreateFile(), TestContext.Current.CancellationToken));
+
+        _jobStatusStore.Received(1).Fail(Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task QueueProjectDocumentAsync_NullFile_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => _service.QueueProjectDocumentAsync(Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
+    }
+    #endregion
+
+    #region CreateProjectDocumentAsync
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ValidDocument_PersistsTheDocumentAndItsChunks()
+    {
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 3);
+
+        var result = await _service.CreateProjectDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var document = await ctx.ProjectDocuments
+            .AsNoTracking()
+            .Include(d => d.Chunks)
+            .SingleAsync(d => d.Id == result.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(project.Id, document.ProjectId);
+        Assert.Equal(KnownIds.SeedUserId, document.UserId);
+        Assert.Equal("report.pdf", document.Name);
+        Assert.Equal(".pdf", document.Extension);
+        Assert.Equal(3, document.Chunks.Count);
+        Assert.Equal([0, 1, 2], document.Chunks.OrderBy(c => c.Index).Select(c => c.Index));
+        Assert.Equal(["chunk 0", "chunk 1", "chunk 2"], document.Chunks.OrderBy(c => c.Index).Select(c => c.Text));
+        Assert.Equal([10, 11, 12], document.Chunks.OrderBy(c => c.Index).Select(c => c.TokenCount));
+        Assert.Equal([1, 2, 3], document.Chunks.OrderBy(c => c.Index).Select(c => c.SourceNumber));
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ValidDocument_StoresTheBlobUnderAProjectScopedKey()
+    {
+        // The literal "projects" segment is what keeps a project key from ever colliding with a
+        // conversation one; both are "{userId}/{ownerId}/{documentId}{extension}" otherwise.
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 1);
+
+        var result = await _service.CreateProjectDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
+
+        var expectedPath = $"{KnownIds.SeedUserId}/projects/{project.Id}/{result.Id}.pdf";
+
+        await _blobStorageService.Received(1).UploadAsync(
+            ContainerName, expectedPath, Arg.Any<byte[]>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+
+        using var ctx = _fixture.CreateContext();
+        var document = await ctx.ProjectDocuments.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(expectedPath, document.Path);
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ValidDocument_TagsTheBlobWithTheProjectId()
+    {
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 1);
+
+        await _service.CreateProjectDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
+
+        await _blobStorageService.Received(1).UploadAsync(
+            ContainerName,
+            Arg.Any<string>(),
+            Arg.Any<byte[]>(),
+            Arg.Is<Dictionary<string, string>>(m => m != null
+                && m["projectId"] == project.Id.ToString()
+                && !m.ContainsKey("conversationId")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ValidDocument_ReportsEveryStageThenCompletes()
+    {
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 3);
+
+        var result = await _service.CreateProjectDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
+
+        _jobStatusStore.Received().Report("job-1", JobStatus.Uploading, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatus.Extracting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatus.Chunking, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatus.Embedding, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatus.Persisting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received(1).Complete("job-1", result.Id, Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ExtractorFindsNoText_ThrowsValidationException()
+    {
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 0, segmentCount: 0);
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
+
+        Assert.Contains("No readable text", Assert.Single(exception.Errors).ErrorMessage);
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_IngestionFails_RemovesTheBlobAndPersistsNothing()
+    {
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 1);
+        _extractor.ExtractAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
+            .Throws(new ValidationException("unreadable"));
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
+
+        await _blobStorageService.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        using var ctx = _fixture.CreateContext();
+        Assert.False(await ctx.ProjectDocuments.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ProjectDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ValidDocument_DoesNotTouchConversationDocuments()
+    {
+        // A project upload is shared by the project's conversations; it must never appear as one
+        // conversation's own document.
+        var project = await AddProjectAsync();
+        SetUpPipeline(chunkCount: 2);
+
+        await _service.CreateProjectDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        Assert.False(await ctx.ConversationDocuments.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ConversationDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateConversationDocumentAsync_ValidDocument_DoesNotTouchProjectDocuments()
+    {
+        // The other direction of the same rule: uploading into a conversation that belongs to a
+        // project must not add the file to the project.
+        var project = await AddProjectAsync();
+        var conversation = await AddConversationAsync(projectId: project.Id);
+        SetUpPipeline(chunkCount: 2);
+
+        await _service.CreateConversationDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        Assert.False(await ctx.ProjectDocuments.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ProjectDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task CreateProjectDocumentAsync_BlankJobId_Throws(string jobId)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateProjectDocumentAsync(jobId, CreateFile(), KnownIds.SeedUserId, Guid.NewGuid(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_NullFile_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => _service.CreateProjectDocumentAsync("job-1", null!, KnownIds.SeedUserId, Guid.NewGuid(), TestContext.Current.CancellationToken));
     }
     #endregion
 }

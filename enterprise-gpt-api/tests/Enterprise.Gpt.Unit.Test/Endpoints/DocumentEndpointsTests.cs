@@ -85,6 +85,41 @@ public sealed class DocumentEndpointsTests
     }
 
     [Fact]
+    public async Task CreateProjectDocumentAsync_ValidUpload_ReturnsAcceptedPointingAtTheSharedStatusRoute()
+    {
+        // Project and conversation uploads deliberately share one job-status route, so the location
+        // header must not gain a project-specific form.
+        var projectId = Guid.NewGuid();
+        _documentService.QueueProjectDocumentAsync(projectId, Arg.Any<FileDto>(), Arg.Any<CancellationToken>())
+            .Returns(new JobDto { Id = "job-1" });
+
+        var result = await DocumentEndpoints.CreateProjectDocumentAsync(
+            projectId, CreateFormFile(), _documentService, TestContext.Current.CancellationToken);
+
+        Assert.Equal("job-1", result.Value!.Id);
+        Assert.Equal("/api/documents/upload-status/job-1", result.Location);
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ValidUpload_PassesTheBufferedFileToTheService()
+    {
+        var projectId = Guid.NewGuid();
+        _documentService.QueueProjectDocumentAsync(projectId, Arg.Any<FileDto>(), Arg.Any<CancellationToken>())
+            .Returns(new JobDto { Id = "job-1" });
+
+        await DocumentEndpoints.CreateProjectDocumentAsync(
+            projectId, CreateFormFile("deck.pptx", "PKbody"), _documentService, TestContext.Current.CancellationToken);
+
+        await _documentService.Received(1).QueueProjectDocumentAsync(
+            projectId,
+            Arg.Is<FileDto>(f => f != null
+                && f.FileName == "deck.pptx"
+                && f.Content.Length > 0
+                && f.Length == f.Content.Length),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void GetJobStatus_KnownJob_ReturnsTheFullSnapshot()
     {
         var documentId = Guid.NewGuid();

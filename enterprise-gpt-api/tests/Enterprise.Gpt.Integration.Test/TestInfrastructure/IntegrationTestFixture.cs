@@ -488,8 +488,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Removes every conversation and, with them, every uploaded document and chunk. Called per test for
-    /// isolation. Deletes run in FK order (chunks → documents → conversations).
+    /// Removes every project and conversation and, with them, every uploaded document and chunk. Called
+    /// per test for isolation. Deletes run in FK order (project chunks → project documents →
+    /// conversation chunks → conversation documents → conversations → projects); conversations carry an
+    /// optional foreign key to a project, so they have to go before the projects do.
     /// </summary>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetConversationsAndDocumentsAsync(CancellationToken cancellationToken = default)
@@ -497,15 +499,19 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
+        await ctx.ProjectDocumentChunks.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocuments.ExecuteDeleteAsync(cancellationToken);
         await ctx.Conversations.ExecuteDeleteAsync(cancellationToken);
+        await ctx.Projects.ExecuteDeleteAsync(cancellationToken);
 
         // Other test classes' resets clear grants wholesale, and the collection runs serially, so the
         // upload grants are restored here rather than assumed to have survived.
         await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
 
         Factory.BlobStorage.Reset();
+        Factory.Cosmos.Reset();
         ClearPermissionCache();
 
     }
@@ -544,10 +550,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// </summary>
     /// <param name="userId">The owner. Defaults to the regular test user.</param>
     /// <param name="deactivated">Whether the conversation is soft-deleted.</param>
+    /// <param name="projectId">The project the conversation belongs to, if any.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted conversation.</returns>
     public async Task<Guid> AddConversationAsync(
-        Guid? userId = null, bool deactivated = false, CancellationToken cancellationToken = default)
+        Guid? userId = null, bool deactivated = false, Guid? projectId = null, CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -557,6 +564,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         {
             Id = Guid.NewGuid(),
             UserId = userId ?? TestUsers.RegularUserId,
+            ProjectId = projectId,
             Name = "Integration Conversation",
             DateCreated = date,
             DateModified = date,
@@ -567,6 +575,112 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
 
         return conversation.Id;
+    }
+
+    /// <summary>
+    /// Inserts a project directly into the database, bypassing the API, for arranging upload, read and
+    /// cascade scenarios.
+    /// </summary>
+    /// <param name="name">The project name. Must be unique per user among active projects.</param>
+    /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="instructions">The project's standing instructions, if any.</param>
+    /// <param name="deactivated">Whether the project is soft-deleted.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted project.</returns>
+    public async Task<Guid> AddProjectAsync(
+        string name = "Integration Project", Guid? userId = null, string? instructions = null,
+        bool deactivated = false, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var project = new Project
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId ?? TestUsers.RegularUserId,
+            Name = name,
+            Description = $"{name} description",
+            Instructions = instructions,
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated ? date : null
+        };
+
+        ctx.Projects.Add(project);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return project.Id;
+    }
+
+    /// <summary>
+    /// Reads a project row straight from the database for state assertions the API does not expose
+    /// (e.g. soft-delete timestamps).
+    /// </summary>
+    /// <param name="id">The project id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
+    public async Task<Project?> FindProjectAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.Projects
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a conversation row straight from the database, including soft-deleted ones, for asserting
+    /// what a project cascade did to it.
+    /// </summary>
+    /// <param name="id">The conversation id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
+    public async Task<Conversation?> FindConversationAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.Conversations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a project document by id, including soft-deleted ones.
+    /// </summary>
+    /// <param name="documentId">The document id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
+    public async Task<ProjectDocument?> FindProjectDocumentAsync(
+        Guid documentId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ProjectDocuments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the persisted chunks of a project document, ordered by their position in the document.
+    /// </summary>
+    /// <param name="documentId">The document id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked chunk entities.</returns>
+    public async Task<List<ProjectDocumentChunk>> FindProjectDocumentChunksAsync(
+        Guid documentId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ProjectDocumentChunks
+            .AsNoTracking()
+            .Where(x => x.ProjectDocumentId == documentId)
+            .OrderBy(x => x.Index)
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Enterprise.Gpt.Entity;
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
@@ -26,12 +27,27 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// stripped so SQLite derives its own store types from the CLR types instead of emitting
 /// DDL it cannot parse.
 /// </description></item>
+/// <item><description>
+/// <see cref="DateTimeOffset"/> columns are stored as UTC ticks. The SQLite provider refuses
+/// to translate them in <c>ORDER BY</c> and comparison clauses because two rows can carry the
+/// same instant under different offsets, so any paged query ordered by <c>DateCreated</c>
+/// would throw. Every value the application writes is <c>DateTimeOffset.UtcNow</c>, and
+/// <see cref="DateTimeOffset.Equals(DateTimeOffset)"/> compares instants rather than offsets,
+/// so the round trip is lossless for these tests.
+/// </description></item>
 /// </list>
 /// </summary>
 /// <param name="dependencies">Service dependencies required by the base customizer.</param>
 public class SqliteRowVersionModelCustomizer(ModelCustomizerDependencies dependencies)
     : RelationalModelCustomizer(dependencies)
 {
+    private static readonly ValueConverter<DateTimeOffset, long> _dateTimeOffsetConverter =
+        new(value => value.UtcTicks, ticks => new DateTimeOffset(ticks, TimeSpan.Zero));
+
+    private static readonly ValueConverter<DateTimeOffset?, long?> _nullableDateTimeOffsetConverter =
+        new(value => value.HasValue ? value.Value.UtcTicks : null,
+            ticks => ticks.HasValue ? new DateTimeOffset(ticks.Value, TimeSpan.Zero) : null);
+
     /// <inheritdoc />
     public override void Customize(ModelBuilder modelBuilder, DbContext context)
     {
@@ -42,6 +58,15 @@ public class SqliteRowVersionModelCustomizer(ModelCustomizerDependencies depende
             foreach (var property in entityType.GetDeclaredProperties())
             {
                 property.SetColumnType(null);
+
+                if (property.ClrType == typeof(DateTimeOffset))
+                {
+                    property.SetValueConverter(_dateTimeOffsetConverter);
+                }
+                else if (property.ClrType == typeof(DateTimeOffset?))
+                {
+                    property.SetValueConverter(_nullableDateTimeOffsetConverter);
+                }
             }
 
             var version = entityType.FindProperty(nameof(BaseEntity.Version));

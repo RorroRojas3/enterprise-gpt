@@ -92,6 +92,11 @@ namespace Enterprise.Gpt.Service
 
             var userId = _tokenService.GetOid();
 
+            if (request.ProjectId.HasValue)
+            {
+                await EnsureProjectExistsAsync(request.ProjectId.Value, userId, cancellationToken);
+            }
+
             // The Cosmos write is inside the transaction so a failure there rolls the relational row
             // back rather than leaving a conversation the user can open but never stream.
             await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
@@ -100,6 +105,7 @@ namespace Enterprise.Gpt.Service
             {
                 Name = "New Conversation",
                 UserId = userId,
+                ProjectId = request.ProjectId,
                 DateCreated = date,
                 DateModified = date
             };
@@ -340,11 +346,21 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation not found or already deactivated.");
             }
 
+            if (request.ProjectId.HasValue)
+            {
+                await EnsureProjectExistsAsync(request.ProjectId.Value, userId, cancellationToken);
+            }
+
             var date = DateTimeOffset.UtcNow;
+            // A full-representation PUT: an absent ProjectId removes the conversation from its
+            // project rather than leaving the current value in place. The DTO documents this, since
+            // a rename that forgets to echo the project id would otherwise silently orphan the
+            // conversation.
             var rows = await _ctx.Conversations
                 .Where(x => x.Id == request.Id && x.UserId == userId && !x.DateDeactivated.HasValue)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.Name, request.Name)
+                    .SetProperty(x => x.ProjectId, request.ProjectId)
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
@@ -433,9 +449,16 @@ namespace Enterprise.Gpt.Service
                 new(ChatRole.User, request.Prompt)
             };
 
+            // Read per turn rather than snapshotted into the transcript at creation time: editing a
+            // project's instructions has to affect the conversations already in it, and moving a
+            // conversation between projects has to swap which instructions apply. Carried on the
+            // chat options rather than as a message for the same reason — the transcript is the
+            // conversation's own record, and this is derived context that belongs to the request.
+            var projectInstructions = await GetProjectInstructionsAsync(conversation.ProjectId, cancellationToken);
+
             var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
             var chatClient = _chatClientResolver.Resolve(model.ProviderId);
-            var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, cancellationToken).ConfigureAwait(false);
+            var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
             StringBuilder sb = new();
             long totalInputTokens = 0, totalOutputTokens = 0;
 
@@ -530,6 +553,55 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <summary>
+        /// Throws when the project does not exist, is deactivated, or belongs to another user.
+        /// </summary>
+        /// <param name="projectId">The unique identifier of the project.</param>
+        /// <param name="userId">The object identifier of the calling user.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <exception cref="NotFoundException">The project is not an active project of this user.</exception>
+        private async Task EnsureProjectExistsAsync(Guid projectId, Guid userId, CancellationToken cancellationToken)
+        {
+            var exists = await _ctx.Projects
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == projectId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!exists)
+            {
+                // Deliberately indistinguishable from "does not exist" so this cannot be used to
+                // probe for project ids belonging to other users.
+                _logger.LogWarning("Project {ProjectId} not found, deactivated, or not owned by user {UserId}", projectId, userId);
+                throw new NotFoundException($"Project with id '{projectId}' was not found.");
+            }
+        }
+
+        /// <summary>
+        /// Reads the standing instructions of the conversation's project, if it has one.
+        /// </summary>
+        /// <param name="projectId">The conversation's project, or <see langword="null"/> when standalone.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>
+        /// The project's instructions, or <see langword="null"/> when the conversation has no project,
+        /// the project has been deactivated, or it carries no instructions.
+        /// </returns>
+        /// <remarks>
+        /// Ownership is not re-checked here: the caller has already matched the conversation to the
+        /// signed-in user, and a project can only ever hold that same user's conversations.
+        /// </remarks>
+        private async Task<string?> GetProjectInstructionsAsync(Guid? projectId, CancellationToken cancellationToken)
+        {
+            if (!projectId.HasValue)
+            {
+                return null;
+            }
+
+            return await _ctx.Projects
+                .AsNoTracking()
+                .Where(x => x.Id == projectId.Value && !x.DateDeactivated.HasValue)
+                .Select(x => x.Instructions)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        /// <summary>
         /// Logs the contention and builds the exception to throw for a conversation that already
         /// has a turn in flight.
         /// </summary>
@@ -580,6 +652,10 @@ namespace Enterprise.Gpt.Service
         /// <param name="sessionId">The unique identifier of the chat session.</param>
         /// <param name="model">The AI model to use for the chat.</param>
         /// <param name="mcps">The MCP servers the user selected for tool calling.</param>
+        /// <param name="projectInstructions">
+        /// The standing instructions of the conversation's project, or <see langword="null"/> when it
+        /// is standalone or its project sets none.
+        /// </param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>
         /// The configured chat options and the tool lease set backing them, or
@@ -590,7 +666,7 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
         /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
         private async Task<(ChatOptions ChatOptions, IMcpToolLeaseSet? ToolLeases)> CreateChatOptionsAsync(
-            Guid sessionId, ModelDto model, List<McpServerSelectionDto> mcps, CancellationToken cancellationToken)
+            Guid sessionId, ModelDto model, List<McpServerSelectionDto> mcps, string? projectInstructions, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(model);
 
@@ -599,6 +675,14 @@ namespace Enterprise.Gpt.Service
                 ModelId = model.DeploymentName,
                 ConversationId = sessionId.ToString()
             };
+
+            if (!string.IsNullOrWhiteSpace(projectInstructions))
+            {
+                // Carried as request-level instructions rather than injected into the message list:
+                // that is the channel each provider maps to its own instruction slot, and it keeps
+                // the messages equal to the transcript instead of transcript-plus-derived-context.
+                chatOptions.Instructions = ConversationPrompts.BuildProjectInstructionsPrompt(projectInstructions);
+            }
 
             var selectedServerIds = mcps.Select(m => m.Id).Distinct().ToArray();
             if (selectedServerIds.Length == 0)

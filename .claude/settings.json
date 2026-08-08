@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(dotnet restore \"c:\\\\Users\\\\Rorro\\\\source\\\\repos\\\\enterprise-gpt\\\\enterprise-gpt-api\\\\Enterprise.Gpt.sln\" --no-cache 2>&1)"
+      "PowerShell(dotnet restore \"c:\\\\Users\\\\Rorro\\\\source\\\\repos\\\\enterprise-gpt\\\\enterprise-gpt-api\\\\Enterprise.Gpt.sln\" --no-cache 2>&1)",
+      "Bash(rm enterprise-gpt-api/scripts/project-schema.sql)",
+      "Bash(rmdir enterprise-gpt-api/scripts)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)"
     ]
   },
   "model": "opus",
