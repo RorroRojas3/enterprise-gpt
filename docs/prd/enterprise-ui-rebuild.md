@@ -228,6 +228,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: Generate `enterprise-gpt-ui/` from `ng new` on Angular 21.2.19 with zoneless change detection and Vitest, so every later story is written against the target runtime rather than migrated onto it. Unblocks every story in this document.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
+- **Status**: ✅ Done (2026-08-09)
 - **Acceptance criteria**:
   - Given the regenerated workspace, when `package.json` and the build and test `polyfills` are inspected, then `zone.js` appears in neither entry, and `provideZonelessChangeDetection()` is present in `app.config.ts`.
   - Given the workspace, when the `test` target is inspected, then it uses `@angular/build:unit-test` with the Vitest runner and `npm test` passes with zero specs.
@@ -240,6 +241,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: Fetch `config.json` before `bootstrapApplication` so one build artifact is promoted across environments. Unblocks US-201 and US-405, and is the fix for the old client shipping a production build pointed at `localhost:7045`.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-101
+- **Status**: ✅ Done (2026-08-09)
 - **Acceptance criteria**:
   - Given a served app, when `main.ts` runs, then `config.json` is fetched with `cache: 'no-store'`, validated by a narrow assertion, and provided through an `APP_CONFIG` injection token before `bootstrapApplication` is called.
   - Given a `config.json` that is missing, unreachable, or fails validation, when the app loads, then the static fatal shell of frame `6d` renders — system fonts and inline styles only, because the app's theme, fonts, and brand assets have not loaded — with an explanatory message and a Refresh action, and the app does not bootstrap; a blank page is a failure of this criterion.
@@ -250,6 +252,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: Model the API's RFC 9457 responses as typed values so stores and forms consume one `AppError` shape. Unblocks every store that calls the API.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-101
+- **Status**: ✅ Done (2026-08-09)
 - **Acceptance criteria**:
   - Given the ten problem types in `ProblemTypes.cs`, when the client constants are compared, then all ten are present verbatim — `validation-error`, `upload-too-large`, `resource-not-found`, `forbidden`, `permission-required`, `conversation-busy`, `mcp-authorization-required`, `mcp-server-unavailable`, `provider-not-configured`, `storage-not-configured` — each under the relative base `/problems/`.
   - Given a problem body, when it is typed, then the extensions `maxBytes`, `permissions[]`, `serverName`, `providerId`, `traceId`, and `instance` are all reachable without a cast.
@@ -262,6 +265,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: Write the five composable `@ngrx/signals` features every store depends on, with specs, before any store exists. Unblocks all 16 stores.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-101
+- **Status**: ✅ Done (2026-08-09)
 - **Acceptance criteria**:
   - Given `withRequestStatus`, when state is inspected, then status is one value across `idle | pending | fulfilled | { error }` so "loading and errored" is unrepresentable, and standalone `setPending()`, `setFulfilled()`, and `setError()` updaters exist.
   - Given `withOffsetPagination`, when applied against a `PaginatedResponseDto` envelope, then `skip`, `take`, `totalCount`, `hasMore`, and `isFullyLoaded` are derived correctly, including the boundary where `totalCount` is an exact multiple of `pageSize`.
@@ -1267,11 +1271,11 @@ The backend enablers form an independent track: US-907 (B1), US-1001 (B2), US-90
 **Open questions.**
 
 - **How should the Documents screen fetch across conversations?** US-1001's B2 contract lists one conversation's documents, which serves the grouped-by-conversation view through a fan-out but forces an N+1 over the conversation list for an unbounded library. A cross-conversation `GET /api/documents` scoped to the caller would serve the screen in one request. This is flagged as an acceptance criterion on US-1001 rather than decided here — *backend engineer, before US-1001 is estimated*.
-- **What is the initial-bundle budget in bytes?** Needs a figure from the first real build of the scaffold — *frontend engineer, at the end of US-101*.
+- ~~**What is the initial-bundle budget in bytes?**~~ **Answered at the end of US-101 (2026-08-09).** Measured from the first production build of the scaffold: **220.34 kB raw / 59.64 kB estimated transfer**, with the router, `HttpClient`, and the US-102/US-103 foundation in but no feature code. The budget in `angular.json` is set to **240 kB warn / 300 kB error** on initial raw — roughly 20 kB of headroom before a warning, which is deliberately tight so that the next substantial dependency has to be argued for rather than absorbed. Re-baseline and re-state this figure whenever a story adds one.
 - **Should the client request the four cheap stream-protocol additions?** A leading `event: hello` frame carrying `{protocol, version}` for deterministic codec selection; a terminal failure frame, since "no `Finished`" is currently the only truncation signal; `: keep-alive` comments every 15s so intermediaries do not kill long tool calls; and `conversationName` on `Finished` to remove the post-first-turn refetch entirely. None is required by any story here, and `assistantMessageId` is already covered by US-1101 — *product owner and backend engineer*.
 - **Is the 500-item ceiling the right number for regime A?** It trades the number of drain requests against how often a user hits a disabled sort. Should be revisited against real project and conversation counts — *product owner, after P5*.
 - **Does adding columns for B3, B4, and B7 require the first EF Core migration?** `Repository/Migrations/` is empty and `Database.Migrate()` runs at startup; the repository's standards say to flag before adding the first migration because it changes startup behavior — *backend engineer, before US-909 or US-1101 starts*.
 - **Should reports be exportable?** US-1302 specifies viewing only, and frame `5j` deliberately carries no export button. CSV or Excel export is a plausible immediate follow-up and would extend US-1301's contract — *product owner*.
 - **Which server-side stack renders `.docx` and `.pdf` for US-1501?** Markdown is trivial; the other two need a document library, a headless renderer, or a hosted service, and the choice drives the L estimate, the deployment footprint, and whether the route can stream its response or must return a signed URL. The typed "renderer not configured" problem in US-1501 exists precisely because this may differ per deployment — *backend engineer, before US-1501 is estimated*.
 - **Does US-1301's contract cover everything frames `5j` and `5k` render?** The dashboard needs grouping by model, provider, user, and day, the completed/cancelled/failed split, per-model token and estimated-cost figures, and prior-period deltas for the four KPI tiles. US-1301 now asserts all of that, but it must be verified against the real `ConversationUsage` shape before P8, or the dashboard cannot be built from the enabler that is supposed to release it — *backend engineer, before US-1301 starts*.
-- **Does the initial bundle still fit under budget after `ngx-markdown`?** `ngx-markdown`, marked, and Prism are a substantial initial-chunk addition against a 219 kB baseline and a 300 kB cap. Either the baseline is re-measured and re-stated per US-601, or the transcript renderer moves behind the lazy chat route — the decision changes the shape of the chat route, so it is worth taking before US-601 rather than after — *frontend engineer, at the start of US-601*.
+- **Does the initial bundle still fit under budget after `ngx-markdown`?** Still open, and now measurable: US-101 installed `ngx-markdown` 21.3.0, marked, and Prism, but nothing imports them, so the 220.34 kB baseline above is the pre-markdown figure and the cost is still unpaid. `ngx-markdown`, marked, and Prism are a substantial initial-chunk addition against that baseline and a 300 kB cap. Either the baseline is re-measured and re-stated per US-601, or the transcript renderer moves behind the lazy chat route — the decision changes the shape of the chat route, so it is worth taking before US-601 rather than after — *frontend engineer, at the start of US-601*.
