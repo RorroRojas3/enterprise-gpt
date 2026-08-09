@@ -17,7 +17,7 @@
       "label": "serve-ui",
       "type": "npm",
       "script": "start",
-      "path": "enterprise-ui",
+      "path": "enterprise-gpt-ui",
       "isBackground": true,
       "problemMatcher": {
         "owner": "typescript",

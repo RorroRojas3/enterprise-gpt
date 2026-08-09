@@ -26,7 +26,7 @@
       "request": "launch",
       "preLaunchTask": "serve-ui",
       "url": "http://localhost:4200/",
-      "webRoot": "${workspaceFolder}/enterprise-ui",
+      "webRoot": "${workspaceFolder}/enterprise-gpt-ui",
       "sourceMaps": true
     }
   ],

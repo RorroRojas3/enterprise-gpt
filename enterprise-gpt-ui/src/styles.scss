@@ -1,0 +1,19 @@
+// Global stylesheet.
+//
+// `angular.json` adds `src/styles` to the Sass load path, so partials in that
+// directory are reachable as `@use 'tokens'` from anywhere, including component
+// stylesheets.
+//
+// Deliberately near-empty until US-105 (design tokens + the [data-theme="dark"]
+// override block) and US-106 (the Bootstrap subset). Bootstrap is imported here
+// module by module rather than as a prebuilt stylesheet so the initial-bundle
+// budget in `angular.json` stays meaningful.
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}

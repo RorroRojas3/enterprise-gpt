@@ -1,0 +1,9 @@
+// Design tokens.
+//
+// `angular.json` puts `src/styles` on the Sass load path, so this file is
+// reachable as `@use 'tokens'` from any component stylesheet.
+//
+// Filled in by US-105 with the neutral palette from
+// `docs/ui/mockups/enterprise-gpt-requirements-v2.md`, plus the
+// `[data-theme="dark"]` override block. Deliberately empty of colour until then —
+// a placeholder palette would get copied into components and outlive it.
