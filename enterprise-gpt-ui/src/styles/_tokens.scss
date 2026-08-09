@@ -3,7 +3,9 @@
 // `angular.json` puts `src/styles` on the Sass load path, so this file is
 // reachable as `@use 'tokens'` from any component stylesheet.
 //
-// Filled in by US-105 with the neutral palette from
-// `docs/ui/mockups/enterprise-gpt-requirements-v2.md`, plus the
-// `[data-theme="dark"]` override block. Deliberately empty of colour until then —
-// a placeholder palette would get copied into components and outlive it.
+// Filled in by US-105 with the token set from `docs/design/project/theme.css`,
+// copied verbatim, plus the `[data-bs-theme="dark"]` override block. Bootstrap
+// 5.3's native theme attribute is used rather than a custom `data-theme`, so
+// Bootstrap's own components theme with no bridging layer. Deliberately empty of
+// colour until then — a placeholder palette would get copied into components and
+// outlive it.
