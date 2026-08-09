@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="theme.css" rel="stylesheet">
+</helmet>
+<section style="padding:30px 40px 70px;display:flex;flex-direction:column;gap:26px;align-items:flex-start;font-family:Inter,sans-serif" data-screen-label="Turn 1 — Libraries">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="assets/logo-mark.png" alt="" style="height:24px">
+      <span style="font-family:Montserrat,sans-serif;font-weight:700;font-size:12px;letter-spacing:1.6px;color:#5A6E82;text-transform:uppercase">Enterprise GPT &middot; UI design</span>
+    </div>
+    <h1 style="font-family:Montserrat,sans-serif;font-weight:700;font-size:28px;color:#14324F;margin:10px 0 4px">Conversations, projects &amp; documents</h1>
+    <div style="font-size:13px;color:#5A6E82;max-width:820px">Deliverables 8&ndash;12. Conversations library <a href="#4a">4a</a>&ndash;<a href="#4b">4b</a>, projects <a href="#4c">4c</a>&ndash;<a href="#4d">4d</a>, project detail <a href="#4e">4e</a>&ndash;<a href="#4g">4g</a>, create-project modal <a href="#4h">4h</a>, documents <a href="#4i">4i</a>&ndash;<a href="#4k">4k</a>, upload lifecycle <a href="#4l">4l</a>.</div>
+  </div>
+
+  <div id="4a" data-screen-label="4a Conversations library" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4a</span><span style="font-size:13px;font-weight:600;color:#22364A">Conversations library &mdash; bulk selection active</span><span style="font-size:12px;color:#5A6E82">1440&times;900 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:900px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;position:relative;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" active="conversations" hint-size="260px,898px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;min-width:0;padding:26px 34px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:20px">Conversations</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="position:relative;width:320px">
+            <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12.5px;color:var(--muted)"></i>
+            <input class="form-control" placeholder="Search by name" style="height:38px;border-radius:10px;padding-left:32px;font-size:13px;background:var(--surface);border-color:var(--bs-border-color)">
+          </div>
+          <button class="btn btn-outline-secondary" style="font-size:13px;border-radius:10px;display:flex;align-items:center;gap:7px;height:38px"><i class="bi bi-star" style="font-size:12px"></i>Favorites</button>
+          <label style="display:flex;align-items:center;gap:8px;margin-left:8px;font-size:13px;color:var(--muted);cursor:pointer"><i class="bi bi-dash-square-fill" style="color:var(--brand);font-size:15px"></i>Select all</label>
+          <div style="margin-left:auto;font-size:12.5px;color:var(--muted)">Showing 24 of 312 conversations</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;overflow:hidden">
+          <sc-for list="{{ convs }}" as="c" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:40px 1fr 220px 110px 36px 36px;align-items:center;gap:8px;padding:0 14px;height:52px;border-bottom:1px solid var(--bs-border-color);background:{{ c.bg }}" style-hover="background:var(--surface-2)">
+              <i class="bi {{ c.ckI }}" style="font-size:15px;color:{{ c.ckC }};cursor:pointer"></i>
+              <span style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.t }}</span>
+              <span style="min-width:0"><sc-if value="{{ c.hasProj }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--brand);background:var(--surface-2);border-radius:999px;padding:3px 10px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="bi bi-folder-fill" style="font-size:10px"></i>{{ c.proj }}</span></sc-if></span>
+              <span style="font-size:12px;color:var(--muted)">{{ c.mod }}</span>
+              <i class="bi {{ c.starI }}" style="font-size:13px;color:{{ c.starC }};cursor:pointer"></i>
+              <i class="bi bi-three-dots-vertical" style="font-size:14px;color:var(--muted);cursor:pointer"></i>
+            </div>
+          </sc-for>
+          <div style="display:flex;justify-content:center;padding:12px"><button class="btn btn-outline-secondary" style="font-size:13px;border-radius:9px">Load more</button></div>
+        </div>
+      </div>
+      <div style="position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:999px;box-shadow:0 14px 40px rgba(11,31,51,.25);padding:10px 12px 10px 20px">
+        <span style="font-size:13px;font-weight:600">3 selected</span>
+        <span style="font-size:12px;color:var(--muted)">Select-all covers the 24 loaded rows only</span>
+        <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:999px">Clear</button>
+        <button class="btn btn-danger btn-sm" style="font-size:12.5px;border-radius:999px;font-weight:600;display:flex;align-items:center;gap:6px"><i class="bi bi-trash3" style="font-size:11px"></i>Delete selected</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1200px">No sort control &mdash; the server can&rsquo;t order this list, so none is offered. &ldquo;Load more&rdquo; disappears (not disables) once everything is loaded. Checking any row raises the floating bulk bar; deleting confirms via modal first.</div>
+  </div>
+
+  <div style="display:flex;gap:34px;align-items:flex-start">
+    <div id="4b" data-screen-label="4b Conversations empty search" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4b</span><span style="font-size:13px;font-weight:600;color:#22364A">Empty search result</span></div>
+      <div data-bs-theme="light" style="width:560px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:40px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <svg width="150" height="34" viewBox="0 0 150 34"><path d="M0 30 L26 12 L42 22 L64 4 L86 26 L108 10 L128 20 L150 8" fill="none" style="stroke:var(--muted);opacity:.4" stroke-width="1.6" stroke-linejoin="round"></path><path d="M42 22 L64 4 L86 26" fill="none" style="stroke:var(--accent)" stroke-width="1.6" stroke-linejoin="round"></path></svg>
+        <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:15.5px">No conversations match &ldquo;quarterly&rdquo;</div>
+        <div style="font-size:13px;color:var(--muted)">Search covers conversation names only.</div>
+        <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:9px">Clear search</button>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:560px">Names the term, offers one clear action. The no-conversations-at-all state uses the same ridgeline treatment with &ldquo;New conversation&rdquo;.</div>
+    </div>
+
+    <div id="4d" data-screen-label="4d Projects ceiling variant" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4d</span><span style="font-size:13px;font-weight:600;color:#22364A">Projects &mdash; load ceiling, sort disabled</span></div>
+      <div data-bs-theme="light" style="width:820px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:24px 28px;display:flex;flex-direction:column;gap:12px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="position:relative;width:260px">
+            <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12.5px;color:var(--muted)"></i>
+            <input class="form-control" placeholder="Search projects" style="height:38px;border-radius:10px;padding-left:32px;font-size:13px;background:var(--surface);border-color:var(--bs-border-color)">
+          </div>
+          <select class="form-select" disabled style="width:190px;height:38px;border-radius:10px;font-size:13px"><option>Sort: last updated</option></select>
+          <button class="btn btn-primary" style="font-size:13px;border-radius:10px;height:38px;font-weight:600;margin-left:auto;display:flex;align-items:center;gap:7px"><i class="bi bi-plus-lg" style="font-size:12px"></i>New project</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)"><i class="bi bi-info-circle" style="font-size:12px"></i>Sorting is unavailable past the 500-project load ceiling &mdash; showing the 500 most recent of 1,284.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+          <sc-for list="{{ ceil }}" as="p" hint-placeholder-count="3">
+            <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:8px"><i class="bi bi-folder-fill" style="color:var(--brand);font-size:14px"></i><span style="flex:1;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span></div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.5;min-height:36px">{{ p.desc }}</div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)"><span style="flex:1">{{ p.mod }}</span><i class="bi {{ p.starI }}" style="font-size:12px;color:{{ p.starC }}"></i><i class="bi bi-three-dots-vertical" style="font-size:13px"></i></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:820px">The ceiling is stated in the interface &mdash; never a silently part-sorted list.</div>
+    </div>
+  </div>
+
+  <div id="4c" data-screen-label="4c Projects list" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4c</span>
+:13px;font-weight:600;color:#22364A">Projects list &mdash; normal</span><span style="font-size:12px;color:#5A6E82">1440&times;760 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:760px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" active="projects" hint-size="260px,758px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;min-width:0;padding:26px 34px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:20px">Projects</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="position:relative;width:280px">
+            <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12.5px;color:var(--muted)"></i>
+            <input class="form-control" placeholder="Search projects" style="height:38px;border-radius:10px;padding-left:32px;font-size:13px;background:var(--surface);border-color:var(--bs-border-color)">
+          </div>
+          <select class="form-select" style="width:190px;height:38px;border-radius:10px;font-size:13px"><option>Sort: last updated</option><option>Created</option><option>Alphabetical</option><option>Pinned</option></select>
+          <button class="btn btn-primary" style="font-size:13px;border-radius:10px;height:38px;font-weight:600;margin-left:auto;display:flex;align-items:center;gap:7px"><i class="bi bi-plus-lg" style="font-size:12px"></i>New project</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+          <sc-for list="{{ projCards }}" as="p" hint-placeholder-count="6">
+            <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:7px" style-hover="border-color:var(--accent)">
+              <div style="display:flex;align-items:center;gap:9px"><i class="bi bi-folder-fill" style="color:var(--brand);font-size:15px"></i><span style="flex:1;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span></div>
+              <div style="font-size:12.5px;color:var(--muted);line-height:1.5;min-height:38px">{{ p.desc }}</div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)"><span style="flex:1">Updated {{ p.mod }}</span><i class="bi {{ p.starI }}" style="font-size:13px;color:{{ p.starC }};cursor:pointer"></i><i class="bi bi-three-dots-vertical" style="font-size:14px;cursor:pointer"></i></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1200px">Responsive card grid (col-12 / col-md-6 / col-xl-4). Kebab: Rename, Delete (confirm modal naming the project). Sort offers last updated / created / alphabetical / pinned &mdash; see <a href="#4d">4d</a> for the ceiling variant.</div>
+  </div>
+
+  <div id="4e" data-screen-label="4e Project detail" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4e</span><span style="font-size:13px;font-weight:600;color:#22364A">Project detail &mdash; Instructions tab + project composer</span><span style="font-size:12px;color:#5A6E82">1440&times;900 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:900px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" active="projects" hint-size="260px,898px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;min-width:0;padding:26px 34px;display:flex;flex-direction:column;gap:16px;overflow:hidden">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px"><i class="bi bi-folder-fill" style="color:var(--brand);font-size:18px"></i><span style="font-family:Montserrat,sans-serif;font-weight:700;font-size:20px;cursor:pointer">Data Platform Migration</span><i class="bi bi-star-fill" style="color:var(--accent);font-size:14px"></i></div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px">Warehouse cutover, sync jobs and rollback plans for the Helios stack.</div>
+          </div>
+          <i class="bi bi-three-dots-vertical" style="font-size:16px;color:var(--muted);cursor:pointer"></i>
+        </div>
+        <div style="max-width:900px"><dc-import name="Composer" project="Data Platform Migration" hint-size="100%,100px"></dc-import></div>
+        <ul class="nav nav-tabs" style="font-size:13.5px;--bs-nav-tabs-link-active-color:var(--brand)">
+          <li class="nav-item"><a class="nav-link active" href="#4e" style="font-weight:600">Instructions</a></li>
+          <li class="nav-item"><a class="nav-link" href="#4f" style="color:var(--muted)">Files <span style="font-size:11px">4</span></a></li>
+          <li class="nav-item"><a class="nav-link" href="#4g" style="color:var(--muted)">Conversations <span style="font-size:11px">12</span></a></li>
+        </ul>
+        <div style="max-width:900px;display:flex;flex-direction:column;gap:10px">
+          <textarea class="form-control" rows="7" style="font-size:13.5px;border-radius:12px;line-height:1.6">Always answer with the Helios 2.4 milestone plan in mind. Use the cutover checklist for sequencing questions, cite Jira issue keys when referencing blockers, and keep status summaries under 120 words for the leadership channel.</textarea>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:12px;color:var(--muted);flex:1">Applies to every conversation in this project.</div>
+            <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:9px">Cancel</button>
+            <button class="btn btn-primary btn-sm" style="font-size:12.5px;border-radius:9px;font-weight:600">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1200px">Sending from the project composer creates a conversation inside the project. Saving instructions shows a pending state and settles only on server confirm; navigating away with unsaved edits raises a warning modal. Tabs become stacked accordions below 768px.</div>
+  </div>
+  <div style="display:flex;gap:34px;align-items:flex-start">
+    <div id="4f" data-screen-label="4f Project files tab" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4f</span><span style="font-size:13px;font-weight:600;color:#22364A">Project detail &mdash; Files tab</span></div>
+      <div data-bs-theme="light" style="width:760px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:24px 28px;display:flex;flex-direction:column;gap:14px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="border:2px dashed var(--bs-border-color);border-radius:12px;padding:18px;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-size:13px"><i class="bi bi-file-earmark-arrow-up" style="font-size:17px;color:var(--accent)"></i>Drop files here or <span style="color:var(--brand);font-weight:600;cursor:pointer">browse</span></div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;overflow:hidden">
+          <sc-for list="{{ files }}" as="f" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:30px 1fr 90px 90px 32px 32px;align-items:center;gap:8px;padding:0 14px;height:48px;border-bottom:1px solid var(--bs-border-color)" style-hover="background:var(--surface-2)">
+              <i class="bi {{ f.i }}" style="font-size:16px;color:{{ f.c }}"></i>
+              <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.n }}</span>
+              <span style="font-size:12px;color:var(--muted)">{{ f.size }}</span>
+              <span style="font-size:12px;color:var(--muted)">{{ f.date }}</span>
+              <i class="bi bi-download" style="font-size:13px;color:var(--muted);cursor:pointer"></i>
+              <i class="bi bi-trash3" style="font-size:13px;color:var(--muted);cursor:pointer"></i>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:760px">The drop zone renders only with the upload permission &mdash; without it, files stay listed and downloadable with no add control. Download fetches a short-lived link; no preview, no shareable URL.</div>
+    </div>
+
+    <div id="4g" data-screen-label="4g Project conversations tab" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4g</span><span style="font-size:13px;font-weight:600;color:#22364A">Project detail &mdash; Conversations tab</span></div>
+      <div data-bs-theme="light" style="width:760px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:24px 28px;display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="font-size:12.5px;color:var(--muted)">Showing the 500 most recent conversations.</div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;overflow:hidden">
+          <sc-for list="{{ projConvs }}" as="c" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:1fr 110px 32px 36px;align-items:center;gap:8px;padding:0 14px;height:48px;border-bottom:1px solid var(--bs-border-color)" style-hover="background:var(--surface-2)">
+              <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.t }}</span>
+              <span style="font-size:12px;color:var(--muted)">{{ c.mod }}</span>
+              <i class="bi {{ c.starI }}" style="font-size:13px;color:{{ c.starC }};cursor:pointer"></i>
+              <i class="bi bi-three-dots-vertical" style="font-size:14px;color:var(--muted);cursor:pointer"></i>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:760px">Per-row menu: favorite, rename, delete, remove from project, move to another project. Empty state points at the project composer above.</div>
+    </div>
+  </div>
+
+  <div id="4h" data-screen-label="4h Create-project modal" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4h</span><span style="font-size:13px;font-weight:600;color:#22364A">Create-project modal &mdash; opened from the composer picker</span></div>
+    <div data-bs-theme="light" style="width:1100px;height:720px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;position:relative;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <div style="padding:0 40px 26px"><div style="max-width:820px;margin:0 auto"><dc-import name="Composer" has-text="{{ true }}" text="Draft the cutover comms plan for Helios 2.4 — audiences, timing, owners" hint-size="100%,100px"></dc-import></div></div>
+      <div style="position:absolute;inset:0;background:rgba(11,31,51,.45);z-index:10"></div>
+      <div style="position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center">
+        <div style="width:460px;background:var(--surface);border-radius:14px;box-shadow:0 24px 60px rgba(11,31,51,.35);padding:22px 24px">
+          <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:16px;margin-bottom:16px">New project</div>
+          <label style="font-size:12.5px;font-weight:600;margin-bottom:5px">Name</label>
+          <input class="form-control is-invalid" value="RFP Responses" style="font-size:13.5px;border-radius:10px">
+          <div style="font-size:12px;color:var(--fail);margin:5px 0 12px">You already have a project with this name.</div>
+          <label style="font-size:12.5px;font-weight:600;margin-bottom:5px">Description</label>
+          <input class="form-control" placeholder="What is this project for?" style="font-size:13.5px;border-radius:10px;margin-bottom:12px">
+          <label style="font-size:12.5px;font-weight:600;margin-bottom:5px">Instructions <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+          <textarea class="form-control" rows="3" placeholder="Applied to every conversation in this project" style="font-size:13px;border-radius:10px"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+            <button class="btn btn-outline-secondary" style="font-size:13px;border-radius:9px">Cancel</button>
+            <button class="btn btn-primary" style="font-size:13px;border-radius:9px;font-weight:600">Create project</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1100px">One component, three entry points (Projects screen, composer picker, Move-to-project submenu). The composer&rsquo;s draft is preserved behind the modal. Creation isn&rsquo;t optimistic &mdash; Create shows a pending state, and on confirm the project is selected and the user returns exactly here, never to the Projects screen.</div>
+  </div>
+  <div id="4i" data-screen-label="4i Documents unavailable" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4i</span><span style="font-size:13px;font-weight:600;color:#22364A">Documents library &mdash; unavailable panel (current state)</span><span style="font-size:12px;color:#5A6E82">1440&times;700 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:700px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" active="documents" hint-size="260px,698px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;min-width:0;padding:26px 34px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:20px">Documents</div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center">
+          <div style="width:520px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:14px;padding:36px 32px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+            <svg width="170" height="40" viewBox="0 0 170 40"><path d="M0 35 L30 14 L48 26 L72 5 L98 30 L122 12 L146 24 L170 9" fill="none" style="stroke:var(--muted);opacity:.4" stroke-width="1.8" stroke-linejoin="round"></path><path d="M48 26 L72 5 L98 30" fill="none" style="stroke:var(--accent)" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+            <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:16px">Your documents aren&rsquo;t available yet</div>
+            <div style="font-size:13px;color:var(--muted);line-height:1.55">The documents API isn&rsquo;t enabled for this deployment. Files you upload in conversations keep working there &mdash; this library will list them once the capability ships.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1200px">Required frame: the unavailable panel names the missing capability, shows zero rows, and offers no toolbar and no filters &mdash; never sample data.</div>
+  </div>
+
+  <div id="4j" data-screen-label="4j Documents enabled grouped" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4j</span><span style="font-size:13px;font-weight:600;color:#22364A">Documents library &mdash; enabled, grouped by conversation</span><span style="font-size:12px;color:#5A6E82">1440&times;860 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:860px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" active="documents" hint-size="260px,858px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;min-width:0;padding:26px 34px;display:flex;flex-direction:column;gap:14px">
+        <div style="font-family:Montserrat,sans-serif;font-weight:700;font-size:20px">Documents</div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="position:relative;width:300px">
+            <i class="bi bi-search" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12.5px;color:var(--muted)"></i>
+            <input class="form-control" placeholder="Filter by name" style="height:38px;border-radius:10px;padding-left:32px;font-size:13px;background:var(--surface);border-color:var(--bs-border-color)">
+          </div>
+          <div class="form-check form-switch" style="display:flex;align-items:center;gap:8px;margin:0;padding:0">
+            <input class="form-check-input" type="checkbox" checked style="margin:0;float:none;width:34px;height:18px">
+            <span style="font-size:13px">Group by conversation</span>
+          </div>
+          <div style="margin-left:auto;font-size:12.5px;color:var(--muted)">18 documents</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:0 14px;height:44px;background:var(--surface-2);border-bottom:1px solid var(--bs-border-color)">
+            <i class="bi bi-chevron-down" style="font-size:11px;color:var(--muted)"></i>
+            <i class="bi bi-chat-left" style="font-size:12px;color:var(--muted)"></i>
+            <a href="#4j" style="font-size:13px;font-weight:600;text-decoration:none">Helios 2.4 release status</a>
+            <span style="font-size:11.5px;color:var(--muted)">3 files</span>
+          </div>
+          <sc-for list="{{ docsG1 }}" as="d" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:30px 1fr 90px 100px 110px 32px;align-items:center;gap:8px;padding:0 14px 0 34px;height:48px;border-bottom:1px solid var(--bs-border-color)" style-hover="background:var(--surface-2)">
+              <i class="bi {{ d.i }}" style="font-size:16px;color:{{ d.c }}"></i>
+              <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.n }}</span>
+              <span style="font-size:12px;color:var(--muted)">{{ d.size }}</span>
+              <span style="font-size:12px;color:var(--muted)">{{ d.date }}</span>
+              <span><span style="font-size:11px;font-weight:600;color:{{ d.srcC }};border:1px solid {{ d.srcB }};border-radius:999px;padding:2px 9px">{{ d.src }}</span></span>
+              <i class="bi bi-download" style="font-size:13px;color:var(--muted);cursor:pointer"></i>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;gap:10px;padding:0 14px;height:44px;background:var(--surface-2);border-bottom:1px solid var(--bs-border-color)">
+            <i class="bi bi-chevron-right" style="font-size:11px;color:var(--muted)"></i>
+            <i class="bi bi-chat-left" style="font-size:12px;color:var(--muted)"></i>
+            <a href="#4j" style="font-size:13px;font-weight:600;text-decoration:none">Warehouse sync failure triage</a>
+            <span style="font-size:11.5px;color:var(--muted)">2 files</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:0 14px;height:44px;background:var(--surface-2)">
+            <i class="bi bi-chevron-right" style="font-size:11px;color:var(--muted)"></i>
+            <i class="bi bi-chat-left" style="font-size:12px;color:var(--muted)"></i>
+            <a href="#4j" style="font-size:13px;font-weight:600;text-decoration:none">Q3 roadmap talking points</a>
+            <span style="font-size:11.5px;color:var(--muted)">1 file</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1200px">Source badges: Uploaded (slate) / Generated (Glacier Blue). The assistant-created filter is hidden entirely until the backend distinguishes them &mdash; not shown-and-disabled. Ungrouped rows add the owning conversation as a link column.</div>
+  </div>
+
+  <div style="display:flex;gap:34px;align-items:flex-start">
+    <div id="4k" data-screen-label="4k Documents error and empty" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4k</span><span style="font-size:13px;font-weight:600;color:#22364A">Documents &mdash; error / empty states</span></div>
+      <div style="display:flex;gap:20px;align-items:flex-start">
+        <div data-bs-theme="light" style="width:400px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:30px 26px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+          <i class="bi bi-exclamation-octagon" style="font-size:26px;color:var(--fail)"></i>
+          <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:15px">Documents couldn&rsquo;t load</div>
+          <div style="font-size:12.5px;color:var(--muted)">Something failed on our side &mdash; try again in a moment.</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">trace 8f42-a1c9-77d0-3b61</div>
+          <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:9px">Retry</button>
+        </div>
+        <div data-bs-theme="light" style="width:400px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:30px 26px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+          <svg width="130" height="30" viewBox="0 0 130 30"><path d="M0 26 L22 10 L36 19 L56 4 L76 23 L96 9 L112 18 L130 7" fill="none" style="stroke:var(--muted);opacity:.4" stroke-width="1.5" stroke-linejoin="round"></path><path d="M36 19 L56 4 L76 23" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+          <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:15px">No documents match &ldquo;invoice&rdquo;</div>
+          <div style="font-size:12.5px;color:var(--muted)">Filters cover file names only.</div>
+          <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:9px">Clear filter</button>
+        </div>
+        <div data-bs-theme="light" style="width:400px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:30px 26px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+          <svg width="130" height="30" viewBox="0 0 130 30"><path d="M0 26 L22 10 L36 19 L56 4 L76 23 L96 9 L112 18 L130 7" fill="none" style="stroke:var(--muted);opacity:.4" stroke-width="1.5" stroke-linejoin="round"></path><path d="M36 19 L56 4 L76 23" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round"></path></svg>
+          <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:15px">Nothing uploaded yet</div>
+          <div style="font-size:12.5px;color:var(--muted)">Attach files in any conversation and they&rsquo;ll appear here.</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:1240px">The error state is distinct from the unavailable panel (<a href="#4i">4i</a>): it names the traceId and offers Retry. A missing document reads &ldquo;unavailable&rdquo;, never &ldquo;deleted&rdquo;; storage outages read &ldquo;downloads are unavailable in this deployment&rdquo;.</div>
+    </div>
+  </div>
+  <div id="4l" data-screen-label="4l Upload lifecycle" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">4l</span><span style="font-size:13px;font-weight:600;color:#22364A">Upload lifecycle &mdash; inline chips + toast region, states 1&ndash;5</span></div>
+    <div data-bs-theme="light" style="width:1000px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:26px 30px;display:flex;gap:36px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Inline chips (composer / files tab)</div>
+        <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:10px;padding:7px 11px;width:290px">
+          <i class="bi bi-file-earmark-pdf" style="color:var(--fail);font-size:16px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">quarterly-report.pdf</div>
+            <div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:4px;border-radius:2px;background:var(--surface-2)"><div style="width:42%;height:4px;border-radius:2px;background:var(--accent)"></div></div><span style="font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--muted)">42%</span></div>
+          </div><i class="bi bi-x" style="color:var(--muted);font-size:16px"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:10px;padding:7px 11px;width:290px">
+          <span style="width:14px;height:14px;flex:0 0 14px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .9s linear infinite"></span>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">quarterly-report.pdf</div><div style="font-size:11px;color:var(--muted)">Generating embeddings&hellip; 3 of 12 pages</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:10px;padding:7px 11px;width:290px">
+          <i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">quarterly-report.pdf</div><div style="font-size:11px;color:var(--muted)">Ready to use</div></div>
+          <i class="bi bi-x" style="color:var(--muted);font-size:16px"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid rgba(192,57,43,.45);border-radius:10px;padding:7px 11px;width:290px">
+          <i class="bi bi-x-circle-fill" style="color:var(--fail);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">demo-capture.mov</div><div style="font-size:11px;color:var(--fail)">.mov isn&rsquo;t supported &mdash; PDF, DOCX, XLSX, CSV, MD, TXT</div></div>
+          <span style="font-size:11.5px;font-weight:600;color:var(--brand);cursor:pointer">Retry</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:10px;padding:7px 11px;width:290px;opacity:.85">
+          <i class="bi bi-question-circle" style="color:var(--muted);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">sync-errors.csv</div><div style="font-size:11px;color:var(--muted)">Status is only kept for a limited time.</div></div>
+        </div>
+      </div>
+      <div style="width:1px;background:var(--bs-border-color)"></div>
+      <div style="flex:1.15;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Toast region &mdash; fixed top:76px right:20px, 8px gap</div>
+        <div style="background:var(--surface);border-left:4px solid var(--accent);border-radius:10px;box-shadow:0 8px 24px rgba(11,31,51,.14);padding:10px 12px;display:flex;gap:10px;align-items:flex-start;position:relative;overflow:hidden">
+          <i class="bi bi-arrow-up-circle" style="color:var(--accent);font-size:16px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">Uploading quarterly-report.pdf</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px"><div style="flex:1;height:4px;border-radius:2px;background:var(--surface-2)"><div style="width:42%;height:4px;border-radius:2px;background:var(--accent)"></div></div><span style="font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--muted)">42%</span></div>
+          </div><i class="bi bi-x" style="color:var(--muted);font-size:15px"></i>
+        </div>
+        <div style="background:var(--surface);border-left:4px solid var(--accent);border-radius:10px;box-shadow:0 8px 24px rgba(11,31,51,.14);padding:10px 12px;display:flex;gap:10px;align-items:flex-start">
+          <span style="width:15px;height:15px;flex:0 0 15px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .9s linear infinite;margin-top:1px"></span>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">Processing quarterly-report.pdf</div><div style="font-size:11.5px;color:var(--muted)">Generating embeddings&hellip; 3 of 12 pages</div></div>
+          <i class="bi bi-x" style="color:var(--muted);font-size:15px"></i>
+        </div>
+        <div style="background:var(--surface);border-left:4px solid var(--ok);border-radius:10px;box-shadow:0 8px 24px rgba(11,31,51,.14);padding:10px 12px;display:flex;gap:10px;align-items:flex-start;position:relative;overflow:hidden">
+          <i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600"><span style="font-style:italic">quarterly-report.pdf</span> is ready to use</div></div>
+          <i class="bi bi-x" style="color:var(--muted);font-size:15px"></i>
+          <div style="position:absolute;left:0;bottom:0;height:3px;width:62%;background:var(--ok);opacity:.35"></div>
+        </div>
+        <div style="background:var(--surface);border-left:4px solid var(--fail);border-radius:10px;box-shadow:0 8px 24px rgba(11,31,51,.14);padding:10px 12px;display:flex;gap:10px;align-items:flex-start">
+          <i class="bi bi-x-circle-fill" style="color:var(--fail);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">web-archive.har couldn&rsquo;t be uploaded</div><div style="font-size:11.5px;color:var(--muted)">Files can be up to 50 MB &mdash; this one is 212 MB.</div><div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:3px">trace 4c19-e8d2-90ab-114f</div></div>
+          <span style="font-size:11.5px;font-weight:600;color:var(--brand);cursor:pointer;margin-top:1px">Retry</span>
+          <i class="bi bi-x" style="color:var(--muted);font-size:15px"></i>
+        </div>
+        <div style="background:var(--surface);border-left:4px solid var(--fail);border-radius:10px;box-shadow:0 8px 24px rgba(11,31,51,.14);padding:10px 12px;display:flex;gap:10px;align-items:flex-start">
+          <i class="bi bi-x-circle-fill" style="color:var(--fail);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">You can&rsquo;t upload files</div><div style="font-size:11.5px;color:var(--muted)">Your account is missing the &ldquo;Upload files&rdquo; permission &mdash; ask an administrator.</div></div>
+          <i class="bi bi-x" style="color:var(--muted);font-size:15px"></i>
+        </div>
+        <div style="background:var(--surface);border-left:4px solid var(--muted);border-radius:10px;box-shadow:0 8px 24px rgba(11,31,51,.14);padding:10px 12px;display:flex;gap:10px;align-items:flex-start">
+          <i class="bi bi-question-circle" style="color:var(--muted);font-size:15px"></i>
+          <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">sync-errors.csv &mdash; status unknown</div><div style="font-size:11.5px;color:var(--muted)">Status is only kept for a limited time. The file may still be usable.</div></div>
+          <i class="bi bi-x" style="color:var(--muted);font-size:15px"></i>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:1000px">Progress never moves backwards. Success auto-dismisses after 5s with a draining edge indicator; failures persist until dismissed and carry the server&rsquo;s plain-language reason (size limit stated, unsupported set named, missing permission named). Expired is slate and neutral &mdash; never claimed as failed.</div>
+  </div>
+</section></x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const star = f => ({ starI: f ? 'bi-star-fill' : 'bi-star', starC: f ? 'var(--accent)' : 'var(--muted)' });
+    const convData = [
+      ['Helios 2.4 release status', 'Data Platform Migration', '2h ago', 1, 1],
+      ['Vendor SSO escalation email', '', '5h ago', 0, 1],
+      ['Warehouse sync failure triage', 'Data Platform Migration', 'Yesterday', 0, 1],
+      ['Q3 roadmap talking points', 'Q3 Board Deck', 'Yesterday', 1, 0],
+      ['Onboarding doc outline', 'Onboarding Docs', 'Aug 6', 0, 0],
+      ['SQL for churn cohort analysis', '', 'Aug 5', 0, 0],
+      ['RACI — data platform team', 'Data Platform Migration', 'Aug 5', 0, 0],
+      ['Translate release notes (ES)', 'Localization — LatAm', 'Aug 3', 0, 0],
+      ['Incident 4411 postmortem draft', 'Incident Postmortems', 'Aug 1', 0, 0]
+    ];
+    const convs = convData.map(([t, proj, mod, fav, ck]) => ({
+      t, proj, mod, hasProj: !!proj,
+      ckI: ck ? 'bi-check-square-fill' : 'bi-square',
+      ckC: ck ? 'var(--brand)' : 'var(--muted)',
+      bg: ck ? 'var(--active-bg)' : 'transparent',
+      ...star(fav)
+    }));
+    const projData = [
+      ['Data Platform Migration', 'Warehouse cutover, sync jobs and rollback plans for the Helios stack.', '2h ago', 1],
+      ['RFP Responses', 'Boilerplate answers and past proposals for security questionnaires.', 'yesterday', 1],
+      ['Q3 Board Deck', 'Narrative, metrics and appendix drafts for the October board meeting.', 'Aug 5', 0],
+      ['Onboarding Docs', 'New-hire guides for the platform and data teams.', 'Aug 3', 0],
+      ['Incident Postmortems', 'Write-ups and timelines for SEV-1 and SEV-2 reviews.', 'Jul 28', 0],
+      ['Localization — LatAm', 'ES and PT release notes and marketing copy.', 'Jul 21', 0]
+    ];
+    const projCards = projData.map(([name, desc, mod, fav]) => ({ name, desc, mod, ...star(fav) }));
+    const ceil = projCards.slice(0, 3);
+    const files = [
+      { i: 'bi-file-earmark-pdf', c: 'var(--fail)', n: 'quarterly-report.pdf', size: '2.4 MB', date: 'Aug 6' },
+      { i: 'bi-file-earmark-excel', c: 'var(--ok)', n: 'raci-matrix.xlsx', size: '148 KB', date: 'Aug 5' },
+      { i: 'bi-file-earmark-word', c: 'var(--accent)', n: 'helios-cutover-plan.docx', size: '96 KB', date: 'Aug 4' },
+      { i: 'bi-filetype-csv', c: 'var(--accent)', n: 'sync-errors.csv', size: '1.1 MB', date: 'Aug 4' }
+    ];
+    const projConvs = [
+      { t: 'Helios 2.4 release status', mod: '2h ago', ...star(true) },
+      { t: 'Warehouse sync failure triage', mod: 'Yesterday', ...star(false) },
+      { t: 'RACI — data platform team', mod: 'Aug 5', ...star(false) },
+      { t: 'Cutover comms plan draft', mod: 'Aug 2', ...star(false) }
+    ];
+    const src = g => g ? { src: 'Generated', srcC: 'var(--accent)', srcB: 'rgba(33,168,216,.5)' } : { src: 'Uploaded', srcC: 'var(--muted)', srcB: 'var(--bs-border-color)' };
+    const docsG1 = [
+      { i: 'bi-file-earmark-pdf', c: 'var(--fail)', n: 'quarterly-report.pdf', size: '2.4 MB', date: 'Aug 6', ...src(0) },
+      { i: 'bi-filetype-md', c: 'var(--accent)', n: 'helios-blockers.md', size: '4 KB', date: 'Aug 6', ...src(1) },
+      { i: 'bi-file-earmark-word', c: 'var(--accent)', n: 'cutover-checklist.docx', size: '88 KB', date: 'Aug 5', ...src(0) }
+    ];
+    return { convs, projCards, ceil, files, projConvs, docsG1 };
+  }
+}
+</script>
+</body>
+</html>
