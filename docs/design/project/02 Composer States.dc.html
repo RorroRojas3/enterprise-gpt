@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="theme.css" rel="stylesheet">
+</helmet>
+<section style="padding:30px 40px 70px;display:flex;flex-direction:column;gap:26px;align-items:flex-start;font-family:Inter,sans-serif" data-screen-label="Turn 1 — Composer states">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="assets/logo-mark.png" alt="" style="height:24px">
+      <span style="font-family:Montserrat,sans-serif;font-weight:700;font-size:12px;letter-spacing:1.6px;color:#5A6E82;text-transform:uppercase">Enterprise GPT &middot; UI design</span>
+    </div>
+    <h1 style="font-family:Montserrat,sans-serif;font-weight:700;font-size:28px;color:#14324F;margin:10px 0 4px">Composer states</h1>
+    <div style="font-size:13px;color:#5A6E82;max-width:760px">Deliverable 6. Attachments <a href="#2a">2a</a>, model picker <a href="#2b">2b</a>, tools picker <a href="#2c">2c</a>&ndash;<a href="#2d">2d</a>, project picker <a href="#2e">2e</a>, download menu <a href="#2f">2f</a>&ndash;<a href="#2g">2g</a>, no upload permission <a href="#2h">2h</a>, voice <a href="#2i">2i</a>, catalog failure <a href="#2j">2j</a>.</div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,640px);gap:30px;align-items:start">
+
+    <div id="2a" data-screen-label="2a Attachments and drag overlay" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2a</span><span style="font-size:13px;font-weight:600;color:#22364A">Attachment chips + drag-and-drop overlay</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <dc-import name="Composer" chips="{{ true }}" dragover="{{ true }}" hint-size="100%,150px"></dc-import>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Chips carry an extension icon, truncated name, human-readable size, remove control and inline progress. The dashed overlay appears on drag-over of the prompt box.</div>
+    </div>
+
+    <div id="2b" data-screen-label="2b Model picker open" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2b</span><span style="font-size:13px;font-weight:600;color:#22364A">Model picker open</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08);display:flex;flex-direction:column;align-items:flex-start;gap:8px">
+        <div style="width:360px;margin-left:88px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;box-shadow:0 14px 40px rgba(11,31,51,.18);padding:6px">
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;background:var(--surface-2)">
+            <span style="width:8px;height:8px;border-radius:50%;background:#21A8D8;flex:0 0 8px"></span>
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">GPT-5 Enterprise<span style="font-size:9.5px;font-weight:700;letter-spacing:.4px;color:var(--accent);border:1px solid var(--accent);border-radius:5px;padding:0 5px;margin-left:7px;vertical-align:1px">DEFAULT</span></div><div style="font-size:11.5px;color:var(--muted)">Azure OpenAI &middot; <span style="font-family:'JetBrains Mono',monospace">400k context</span></div></div>
+            <i class="bi bi-check-lg" style="color:var(--brand)"></i>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px" style-hover="background:var(--surface-2)">
+            <span style="width:8px;height:8px;border-radius:50%;background:#8A6FD1;flex:0 0 8px"></span>
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Claude Sonnet 4.5</div><div style="font-size:11.5px;color:var(--muted)">Anthropic &middot; <span style="font-family:'JetBrains Mono',monospace">200k context</span></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px" style-hover="background:var(--surface-2)">
+            <span style="width:8px;height:8px;border-radius:50%;background:#21A8D8;flex:0 0 8px"></span>
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">GPT-5 Mini</div><div style="font-size:11.5px;color:var(--muted)">Azure OpenAI &middot; <span style="font-family:'JetBrains Mono',monospace">128k context</span> &middot; no tool calling</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px" style-hover="background:var(--surface-2)">
+            <span style="width:8px;height:8px;border-radius:50%;background:#3FB56A;flex:0 0 8px"></span>
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Llama 4 Scout</div><div style="font-size:11.5px;color:var(--muted)">Meta &middot; self-hosted &middot; <span style="font-family:'JetBrains Mono',monospace">512k context</span></div></div>
+          </div>
+        </div>
+        <div style="width:100%"><dc-import name="Composer" hint-size="100%,100px"></dc-import></div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Provider dot, context-window caption in mono, one &ldquo;Default&rdquo; badge, check on the current selection.</div>
+    </div>
+
+    <div id="2c" data-screen-label="2c Tools picker open" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2c</span><span style="font-size:13px;font-weight:600;color:#22364A">MCP tools picker open &mdash; multi-select</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08);display:flex;flex-direction:column;align-items:flex-start;gap:8px">
+        <div style="width:320px;margin-left:220px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;box-shadow:0 14px 40px rgba(11,31,51,.18);padding:6px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:7px 10px 4px">Tool servers</div>
+          <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;margin:0" style-hover="background:var(--surface-2)"><input class="form-check-input" type="checkbox" checked style="margin:0"><span style="flex:1;font-size:13px;font-weight:500">Jira Cloud</span><span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">jira</span></label>
+          <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;margin:0" style-hover="background:var(--surface-2)"><input class="form-check-input" type="checkbox" checked style="margin:0"><span style="flex:1;font-size:13px;font-weight:500">Confluence Search</span><span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">confluence</span></label>
+          <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;margin:0" style-hover="background:var(--surface-2)"><input class="form-check-input" type="checkbox" style="margin:0"><span style="flex:1;font-size:13px;font-weight:500">Weather MCP</span><span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">weather</span></label>
+          <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;margin:0" style-hover="background:var(--surface-2)"><input class="form-check-input" type="checkbox" style="margin:0"><span style="flex:1;font-size:13px;font-weight:500">SAP Ledger</span><span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">sap</span></label>
+          <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;margin:0" style-hover="background:var(--surface-2)"><input class="form-check-input" type="checkbox" style="margin:0"><span style="flex:1;font-size:13px;font-weight:500">GitHub</span><span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace">github</span></label>
+          <div style="font-size:11px;color:var(--muted);padding:6px 10px 5px;border-top:1px solid var(--bs-border-color);margin-top:4px">Stays open while you toggle &mdash; applies to the next turn.</div>
+        </div>
+        <div style="width:100%"><dc-import name="Composer" tools-label="2 Tools" hint-size="100%,100px"></dc-import></div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Button label reads &ldquo;Tools&rdquo;, &ldquo;1 Tool&rdquo; or &ldquo;N Tools&rdquo;.</div>
+    </div>
+
+    <div id="2d" data-screen-label="2d Tools picker disabled" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2d</span><span style="font-size:13px;font-weight:600;color:#22364A">Tools picker disabled &mdash; incompatible model</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <dc-import name="Composer" model="GPT-5 Mini" tools-disabled="{{ true }}" tools-note="GPT-5 Mini can&rsquo;t call tools &mdash; your previous selection was cleared." hint-size="100%,120px"></dc-import>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Disabled with a stated reason; the prior selection is visibly cleared (label back to &ldquo;Tools&rdquo;).</div>
+    </div>
+
+    <div id="2e" data-screen-label="2e Project picker open" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2e</span><span style="font-size:13px;font-weight:600;color:#22364A">Project picker open &mdash; assigned project</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08);display:flex;flex-direction:column;align-items:flex-start;gap:8px">
+        <div style="width:320px;margin-left:46px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;box-shadow:0 14px 40px rgba(11,31,51,.18);padding:6px">
+          <div style="position:relative;margin:4px 4px 6px">
+            <i class="bi bi-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11.5px;color:var(--muted)"></i>
+            <input class="form-control" placeholder="Search projects" style="height:32px;border-radius:8px;padding-left:30px;font-size:12.5px;background:var(--surface-2);border-color:transparent">
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;background:var(--surface-2)"><i class="bi bi-folder-fill" style="color:var(--brand);font-size:13px"></i><span style="flex:1;font-size:13px;font-weight:600">Data Platform Migration</span><i class="bi bi-check-lg" style="color:var(--brand)"></i></div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px" style-hover="background:var(--surface-2)"><i class="bi bi-folder" style="color:var(--muted);font-size:13px"></i><span style="flex:1;font-size:13px">RFP Responses</span></div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px" style-hover="background:var(--surface-2)"><i class="bi bi-folder" style="color:var(--muted);font-size:13px"></i><span style="flex:1;font-size:13px">Q3 Board Deck</span></div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px" style-hover="background:var(--surface-2)"><i class="bi bi-folder" style="color:var(--muted);font-size:13px"></i><span style="flex:1;font-size:13px">Onboarding Docs</span></div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;color:var(--muted)" style-hover="background:var(--surface-2)"><i class="bi bi-folder-minus" style="font-size:13px"></i><span style="flex:1;font-size:13px">Remove from project</span></div>
+          <div style="height:1px;background:var(--bs-border-color);margin:5px 4px"></div>
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--brand);font-weight:600" style-hover="background:var(--surface-2)"><i class="bi bi-plus-lg" style="font-size:13px"></i><span style="flex:1;font-size:13px">New project</span></div>
+        </div>
+        <div style="width:100%"><dc-import name="Composer" project="Data Platform Migration" hint-size="100%,100px"></dc-import></div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Same control as the conversation header&rsquo;s &ldquo;Move to project&rdquo;. &ldquo;+ New project&rdquo; is pinned and opens the shared create-project modal without losing composer contents (<a href="04 Libraries.dc.html#4f">4f</a>).</div>
+    </div>
+
+    <div id="2f" data-screen-label="2f Download menu" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2f</span><span style="font-size:13px;font-weight:600;color:#22364A">Download conversation &mdash; idle / preparing</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08);display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:20px">
+          <div style="width:280px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;box-shadow:0 14px 40px rgba(11,31,51,.18);padding:6px;height:fit-content">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px" style-hover="background:var(--surface-2)"><i class="bi bi-filetype-md" style="font-size:16px;color:var(--muted)"></i><span style="font-size:13px;font-weight:500">Markdown (.md)</span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px" style-hover="background:var(--surface-2)"><i class="bi bi-file-earmark-word" style="font-size:16px;color:var(--accent)"></i><span style="font-size:13px;font-weight:500">Word (.docx)</span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px" style-hover="background:var(--surface-2)"><i class="bi bi-file-earmark-pdf" style="font-size:16px;color:var(--fail)"></i><span style="font-size:13px;font-weight:500">PDF</span></div>
+          </div>
+          <div style="width:280px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;box-shadow:0 14px 40px rgba(11,31,51,.18);padding:6px;height:fit-content">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;opacity:.45"><i class="bi bi-filetype-md" style="font-size:16px;color:var(--muted)"></i><span style="font-size:13px;font-weight:500">Markdown (.md)</span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;opacity:.45"><i class="bi bi-file-earmark-word" style="font-size:16px;color:var(--accent)"></i><span style="font-size:13px;font-weight:500">Word (.docx)</span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--surface-2)"><span style="width:14px;height:14px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin .9s linear infinite"></span><span style="font-size:13px;font-weight:500">Preparing PDF&hellip;</span></div>
+            <div style="font-size:11px;color:var(--muted);padding:6px 10px 5px;border-top:1px solid var(--bs-border-color);margin-top:4px">The stopped, unsaved answer on screen won&rsquo;t be included.</div>
+          </div>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted)">Prompts and completed answers only &mdash; activity cards and unsaved partial answers are never exported. Same menu from the composer and the conversation header. Absent on an empty conversation.</div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">The menu stays open until the browser download starts; on failure it returns to idle and an error toast appears.</div>
+    </div>
+
+    <div id="2g" data-screen-label="2g Download disabled while streaming" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2g</span><span style="font-size:13px;font-weight:600;color:#22364A">Streaming &mdash; Stop swap, download disabled with tooltip</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08);display:flex;flex-direction:column;gap:6px">
+        <div style="align-self:flex-end;margin-right:64px;display:flex;flex-direction:column;align-items:center">
+          <div style="background:#0B1F33;color:#fff;font-size:12px;font-weight:500;padding:5px 11px;border-radius:8px;white-space:nowrap;box-shadow:0 6px 16px rgba(11,31,51,.35)">Available when the response finishes</div>
+          <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid #0B1F33"></div>
+        </div>
+        <dc-import name="Composer" state="streaming" project="Data Platform Migration" hint-size="100%,100px"></dc-import>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Send becomes a square Stop; attach, voice and download are disabled for the duration of the turn.</div>
+    </div>
+
+    <div id="2h" data-screen-label="2h No upload permission" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2h</span><span style="font-size:13px;font-weight:600;color:#22364A">No upload permission &mdash; attach control absent</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <dc-import name="Composer" attach="{{ false }}" hint-size="100%,100px"></dc-import>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">The paperclip is absent (not disabled) when the user lacks the upload permission; drag-and-drop is inert.</div>
+    </div>
+
+    <div id="2i" data-screen-label="2i Voice recording" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2i</span><span style="font-size:13px;font-weight:600;color:#22364A">Voice input &mdash; active recording</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <dc-import name="Composer" recording="{{ true }}" hint-size="100%,100px"></dc-import>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">Pulsing Glacier ring + elapsed time while listening. The microphone is absent entirely in unsupported browsers &mdash; never disabled.</div>
+    </div>
+
+    <div id="2j" data-screen-label="2j Model catalog failed" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">2j</span><span style="font-size:13px;font-weight:600;color:#22364A">Model catalog failed &mdash; send disabled with reason</span></div>
+      <div data-bs-theme="light" style="width:640px;color:var(--bs-body-color);background:var(--bs-body-bg);border:1px solid #C8D4DF;border-radius:6px;padding:22px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <dc-import name="Composer" model="Models unavailable" tools-note="The model catalog failed to load &mdash; sending is disabled. Retry from the model menu." hint-size="100%,120px"></dc-import>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:640px">The app never sends blind: no model list means a visible reason and a disabled send.</div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

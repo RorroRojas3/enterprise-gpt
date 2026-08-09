@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="theme.css" rel="stylesheet">
+</helmet>
+<section style="padding:30px 40px 70px;display:flex;flex-direction:column;gap:30px;align-items:flex-start;font-family:Inter,sans-serif" data-screen-label="Turn 1 — Chat and streaming">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="assets/logo-mark.png" alt="" style="height:24px">
+      <span style="font-family:Montserrat,sans-serif;font-weight:700;font-size:12px;letter-spacing:1.6px;color:#5A6E82;text-transform:uppercase">Enterprise GPT &middot; UI design</span>
+    </div>
+    <h1 style="font-family:Montserrat,sans-serif;font-weight:700;font-size:28px;color:#14324F;margin:10px 0 4px">Chat &amp; streaming</h1>
+    <div style="font-size:13px;color:#5A6E82;max-width:760px">Deliverables 1&ndash;5: empty state <a href="#1a">1a</a>, streaming light/dark <a href="#1b">1b</a>&thinsp;&middot;&thinsp;<a href="#1c">1c</a>, mobile <a href="#1d">1d</a>&thinsp;&middot;&thinsp;<a href="#1e">1e</a>, activity timeline detail <a href="#1f">1f</a>, completed-turn footers <a href="#1g">1g</a>, turn edge states <a href="#1h">1h</a>.</div>
+  </div>
+
+  <div id="1a" data-screen-label="1a Empty chat" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1a</span><span style="font-size:13px;font-weight:600;color:#22364A">Empty chat &mdash; new conversation</span><span style="font-size:12px;color:#5A6E82">1440&times;900 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:900px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" hint-size="260px,898px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px">
+          <img src="assets/logo-full.png" alt="Andes Software Solutions" style="width:250px;display:var(--show-light)">
+          <img src="assets/logo-full-dark.png" alt="Andes Software Solutions" style="width:250px;display:var(--show-dark)">
+          <div style="font-family:Montserrat,sans-serif;font-weight:600;font-size:23px;color:var(--bs-body-color)">How can I help you today?</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:680px">
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--bs-border-color);background:var(--surface);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer" style-hover="border-color:var(--accent)"><i class="bi bi-file-text" style="color:var(--accent);font-size:14px"></i>Summarize a document</div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--bs-border-color);background:var(--surface);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer" style-hover="border-color:var(--accent)"><i class="bi bi-pencil-square" style="color:var(--accent);font-size:14px"></i>Draft a status update</div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--bs-border-color);background:var(--surface);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer" style-hover="border-color:var(--accent)"><i class="bi bi-kanban" style="color:var(--accent);font-size:14px"></i>Find open Jira blockers</div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--bs-border-color);background:var(--surface);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer" style-hover="border-color:var(--accent)"><i class="bi bi-code-slash" style="color:var(--accent);font-size:14px"></i>Explain a code change</div>
+          </div>
+        </div>
+        <div style="padding:0 24px 22px"><div style="max-width:820px;margin:0 auto"><dc-import name="Composer" hint-size="100%,100px"></dc-import></div></div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:900px">&ldquo;New conversation&rdquo; opens this &mdash; nothing is created until the first send. Send stays dimmed until there is text or an attachment.</div>
+  </div>
+
+  <div id="1b" data-screen-label="1b Streaming light" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1b</span><span style="font-size:13px;font-weight:600;color:#22364A">Chat &mdash; streaming turn with activity timeline</span><span style="font-size:12px;color:#5A6E82">1440&times;900 &middot; light</span></div>
+    <div data-bs-theme="light" style="width:1440px;height:900px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" hint-size="260px,898px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="height:52px;flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:0 22px;border-bottom:1px solid var(--bs-border-color)">
+          <span style="font-size:14.5px;font-weight:600;cursor:pointer">Helios 2.4 release status</span>
+          <i class="bi bi-star-fill" style="color:var(--accent);font-size:13px"></i>
+          <i class="bi bi-three-dots-vertical" style="margin-left:auto;color:var(--muted);cursor:pointer"></i>
+        </div>
+        <div style="flex:1;min-height:0;position:relative;display:flex;flex-direction:column">
+          <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="max-width:868px;width:100%;margin:0 auto;padding:24px 24px 10px"><dc-import name="Transcript" hint-size="100%,1100px"></dc-import></div>
+          </div>
+          <div style="position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:10;border-radius:50%;animation:ringpulse 1.8s ease-out infinite">
+            <div style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--bs-border-color);box-shadow:0 6px 18px rgba(11,31,51,.22);display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:17px"><i class="bi bi-arrow-down"></i></div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;padding:8px 24px 20px"><div style="max-width:820px;margin:0 auto"><dc-import name="Composer" state="streaming" project="Data Platform Migration" hint-size="100%,100px"></dc-import></div></div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:900px">Auto-follow paused (user scrolled up): jump-to-latest pulses Glacier Blue while streaming. Completed turn above shows the hover footer &mdash; copy + per-turn token counts. Send has swapped to Stop; attach, voice and download are disabled during the turn.</div>
+  </div>
+
+  <div id="1c" data-screen-label="1c Streaming dark" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1c</span><span style="font-size:13px;font-weight:600;color:#22364A">Chat &mdash; streaming turn</span><span style="font-size:12px;color:#5A6E82">1440&times;900 &middot; dark</span></div>
+    <div data-bs-theme="dark" style="width:1440px;height:900px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <dc-import name="Sidebar" hint-size="260px,898px" style="width:260px;flex:0 0 260px;height:100%"></dc-import>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="height:52px;flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:0 22px;border-bottom:1px solid var(--bs-border-color)">
+          <span style="font-size:14.5px;font-weight:600;cursor:pointer">Helios 2.4 release status</span>
+          <i class="bi bi-star-fill" style="color:var(--accent);font-size:13px"></i>
+          <i class="bi bi-three-dots-vertical" style="margin-left:auto;color:var(--muted);cursor:pointer"></i>
+        </div>
+        <div style="flex:1;min-height:0;position:relative;display:flex;flex-direction:column">
+          <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="max-width:868px;width:100%;margin:0 auto;padding:24px 24px 10px"><dc-import name="Transcript" hint-size="100%,1100px"></dc-import></div>
+          </div>
+          <div style="position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:10;border-radius:50%;animation:ringpulse 1.8s ease-out infinite">
+            <div style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--bs-border-color);box-shadow:0 6px 18px rgba(3,12,20,.5);display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:17px"><i class="bi bi-arrow-down"></i></div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;padding:8px 24px 20px"><div style="max-width:820px;margin:0 auto"><dc-import name="Composer" state="streaming" project="Data Platform Migration" hint-size="100%,100px"></dc-import></div></div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#5A6E82;max-width:900px">Dark theme: Ink body, navy-tinted surfaces, primary shifts to Glacier Blue, white logo variant. Theme is set on <span style="font-family:'JetBrains Mono',monospace">&lt;html&gt;</span> before first paint &mdash; no light flash.</div>
+  </div>
+
+  <div style="display:flex;gap:34px;align-items:flex-start">
+    <div id="1d" data-screen-label="1d Mobile streaming" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1d</span><span style="font-size:13px;font-weight:600;color:#22364A">Mobile &mdash; streaming</span><span style="font-size:12px;color:#5A6E82">390&times;844</span></div>
+      <div data-bs-theme="light" style="width:390px;height:844px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="height:54px;flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--bs-border-color);background:var(--surface)">
+          <i class="bi bi-list" style="font-size:22px"></i>
+          <img src="assets/logo-mark.png" alt="" style="width:26px">
+          <span style="font-family:Montserrat,sans-serif;font-weight:700;font-size:14px">Enterprise GPT</span>
+          <i class="bi bi-three-dots-vertical" style="margin-left:auto;color:var(--muted)"></i>
+        </div>
+        <div style="flex:1;min-height:0;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
+          <div style="padding:16px 16px 10px"><dc-import name="Transcript" hint-size="100%,1200px"></dc-import></div>
+          <div style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:10;border-radius:50%;animation:ringpulse 1.8s ease-out infinite">
+            <div style="width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--bs-border-color);box-shadow:0 6px 18px rgba(11,31,51,.22);display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:17px"><i class="bi bi-arrow-down"></i></div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;padding:8px 12px 22px"><dc-import name="Composer" state="streaming" project="Data Platform Migration" compact="{{ true }}" hint-size="100%,92px"></dc-import></div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:390px">16px gutters, safe-area padding, 44px touch targets. Nested activity cards stay legible at one indent level.</div>
+    </div>
+    <div id="1e" data-screen-label="1e Mobile thinking" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1e</span><span style="font-size:13px;font-weight:600;color:#22364A">Mobile &mdash; thinking indicator</span><span style="font-size:12px;color:#5A6E82">390&times;560</span></div>
+      <div data-bs-theme="light" style="width:390px;height:560px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="height:54px;flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--bs-border-color);background:var(--surface)">
+          <i class="bi bi-list" style="font-size:22px"></i>
+          <img src="assets/logo-mark.png" alt="" style="width:26px">
+          <span style="font-family:Montserrat,sans-serif;font-weight:700;font-size:14px">Enterprise GPT</span>
+          <i class="bi bi-three-dots-vertical" style="margin-left:auto;color:var(--muted)"></i>
+        </div>
+        <div style="flex:1;min-height:0;overflow:hidden"><div style="padding:16px 16px 10px"><dc-import name="Transcript" stage="thinking" hint-size="100%,140px"></dc-import></div></div>
+        <div style="flex:0 0 auto;padding:8px 12px 22px"><dc-import name="Composer" state="streaming" compact="{{ true }}" hint-size="100%,92px"></dc-import></div>
+      </div>
+      <div style="font-size:12px;color:#5A6E82;max-width:390px">The gap before the first activity or text: an animated ridgeline &mdash; never a fabricated status line. Suppressed under reduced motion.</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:34px;align-items:flex-start">
+    <div id="1f" data-screen-label="1f Timeline detail" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1f</span><span style="font-size:13px;font-weight:600;color:#22364A">Activity timeline &mdash; detail</span><span style="font-size:12px;color:#5A6E82">component board</span></div>
+      <div data-bs-theme="light" style="width:1080px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-right:4px">Kinds</span>
+          <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">Reasoning</span>
+          <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">Function</span>
+          <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">MCP tool</span>
+          <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">Agent</span>
+          <span style="width:1px;height:16px;background:var(--bs-border-color);margin:0 4px"></span>
+          <span style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-right:4px">States</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span style="width:13px;height:13px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin .9s linear infinite"></span>Running</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:13px"></i>Completed + duration</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><i class="bi bi-exclamation-triangle-fill" style="color:var(--warn);font-size:12px"></i>Failed + duration</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Nested sub-agents &mdash; three levels</div>
+          <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:11px 13px">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="width:14px;height:14px;flex:0 0 14px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .9s linear infinite"></span>
+              <span style="font-size:13.5px;font-weight:600">Release Analyst</span>
+              <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">Agent</span>
+              <i class="bi bi-chevron-up" style="margin-left:auto;font-size:11px;color:var(--muted)"></i>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin:3px 0 0 23px">Sub-agent &middot; andes/release-analyst</div>
+            <div style="margin:8px 0 0 23px;font-size:12px;color:var(--muted);display:flex;gap:7px"><span style="opacity:.55">&middot;</span><span>Resolving owners for 7 blockers&hellip;</span></div>
+            <div style="margin:10px 0 2px 23px;padding-left:12px;border-left:2px solid var(--bs-border-color);display:flex;flex-direction:column;gap:8px">
+              <div style="background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:10px;padding:8px 11px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:13px"></i>
+                  <span style="font-size:13px;font-weight:600">Doc Retriever</span>
+                  <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">Agent</span>
+                  <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">2.9s</span>
+                </div>
+                <div style="margin:8px 0 0 21px;padding-left:10px;border-left:2px solid var(--bs-border-color)">
+                  <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:9px;padding:7px 10px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:12px"></i>
+                      <span style="font-size:12.5px;font-weight:600">Confluence Search</span>
+                      <span style="font-size:10px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 6px">MCP tool</span>
+                      <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted)">2.2s</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style="background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:10px;padding:8px 11px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="width:13px;height:13px;flex:0 0 13px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .9s linear infinite"></span>
+                  <span style="font-size:13px;font-weight:600">Jira Cloud</span>
+                  <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">MCP tool</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">Label is the activity&rsquo;s <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px">displayName</span>; kind is a separate badge &mdash; never composed into a sentence.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Reasoning region &mdash; collapsed / expanded</div>
+          <div style="display:inline-flex;align-items:center;gap:8px;background:var(--think-bg);border-radius:10px;padding:7px 12px;font-size:12.5px;color:var(--muted);width:fit-content;cursor:pointer">
+            <i class="bi bi-chevron-right" style="font-size:10px"></i><span style="font-weight:600">Reasoning</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px">4.2s</span>
+          </div>
+          <div style="background:var(--think-bg);border-radius:12px;padding:11px 14px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer">
+              <i class="bi bi-chevron-down" style="font-size:10px"></i><span style="font-weight:600">Reasoning</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px">4.2s</span>
+            </div>
+            <div style="font-size:13px;line-height:1.6;color:var(--muted);margin:8px 0 0 18px">Seven blocker issues returned. The SSO rotation gates the RC build, so it should lead the update. Group the rest by team and keep it to three bullets for the leadership channel.</div>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">Tinted surface, quieter type &mdash; visually distinct from answer text. Absent entirely when the model produced none.</div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-top:10px">Expanded card &mdash; per-activity token split</div>
+          <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:11px 13px">
+            <div style="display:flex;align-items:center;gap:9px">
+              <i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:14px"></i>
+              <span style="font-size:13.5px;font-weight:600">Jira Cloud</span>
+              <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">MCP tool</span>
+              <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">3.1s</span>
+              <i class="bi bi-chevron-up" style="font-size:11px;color:var(--muted)"></i>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin:3px 0 0 23px">Atlassian &middot; mcp.andessoftware.net/jira</div>
+            <div style="margin:8px 0 0 23px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
+              <div style="display:flex;gap:7px"><span style="opacity:.55">&middot;</span><span>Queried project HEL &mdash; 42 open issues</span></div>
+              <div style="display:flex;gap:7px"><span style="opacity:.55">&middot;</span><span>Matched 7 with priority = Blocker</span></div>
+            </div>
+            <div style="margin:9px 0 0 23px;background:var(--surface-2);border-radius:8px;padding:8px 11px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap">
+              <span>input&nbsp;&nbsp;1,204</span><span>output&nbsp;&nbsp;88</span><span>duration&nbsp;&nbsp;3.1s</span>
+            </div>
+          </div>
+        </div>
+        <div style="grid-column:1/-1;display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Failed activity alongside a completed answer &mdash; one turn</div>
+          <div style="display:flex;gap:12px">
+            <div style="width:28px;height:28px;flex:0 0 28px;border-radius:50%;background:#EAF2F8;border:1px solid var(--bs-border-color);display:flex;align-items:center;justify-content:center"><img src="assets/logo-mark.png" alt="" style="width:20px"></div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;padding-top:3px">
+              <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:11px 13px">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <i class="bi bi-exclamation-triangle-fill" style="color:var(--warn);font-size:13px"></i>
+                  <span style="font-size:13.5px;font-weight:600">Confluence Search</span>
+                  <span style="font-size:10.5px;font-weight:600;letter-spacing:.3px;color:var(--muted);background:var(--surface-2);border:1px solid var(--bs-border-color);border-radius:6px;padding:1px 7px">MCP tool</span>
+                  <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">12.4s</span>
+                  <i class="bi bi-chevron-down" style="font-size:11px;color:var(--muted)"></i>
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin:3px 0 0 22px">Atlassian &middot; mcp.andessoftware.net/confluence</div>
+                <div style="margin:5px 0 0 22px;font-size:12px;color:var(--warn)">401 &mdash; authorization expired; the RACI lookup was skipped</div>
+              </div>
+              <p style="margin:0;font-size:14px">The failure doesn&rsquo;t mark the turn failed &mdash; the answer completes normally with the failed card retained in place: owners below come from Jira assignees only.</p>
+              <div style="display:flex;align-items:center;gap:14px;color:var(--muted)">
+                <span style="display:flex;align-items:center;gap:5px;font-size:12px"><i class="bi bi-copy" style="font-size:12px"></i>Copy</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px">3,102 in &middot; 441 out &middot; 3,543 total</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="1g" data-screen-label="1g Completed-turn footers" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1g</span><span style="font-size:13px;font-weight:600;color:#22364A">Completed turn &mdash; message footer variants</span></div>
+      <div data-bs-theme="light" style="width:560px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;padding:24px;display:flex;flex-direction:column;gap:22px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Current &mdash; feedback API unavailable, thumbs absent</div>
+          <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:14px 16px">
+            <p style="margin:0 0 10px;font-size:14px;color:var(--bs-body-color)">&hellip;RC build stays gated until <span style="font-family:'JetBrains Mono',monospace;font-size:13px">HEL-2141</span> clears. I&rsquo;ve drafted the update above.</p>
+            <div style="display:flex;align-items:center;gap:14px;color:var(--muted)">
+              <span style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><i class="bi bi-copy" style="font-size:12px"></i>Copy</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px">1,842 in &middot; 512 out &middot; 2,354 total</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Future &mdash; backend supplies feedback, thumbs beside copy</div>
+          <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:14px 16px">
+            <p style="margin:0 0 10px;font-size:14px;color:var(--bs-body-color)">&hellip;RC build stays gated until <span style="font-family:'JetBrains Mono',monospace;font-size:13px">HEL-2141</span> clears. I&rsquo;ve drafted the update above.</p>
+            <div style="display:flex;align-items:center;gap:14px;color:var(--muted)">
+              <span style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><i class="bi bi-copy" style="font-size:12px"></i>Copy</span>
+              <span style="display:flex;align-items:center;gap:10px;font-size:13px"><i class="bi bi-hand-thumbs-up" style="cursor:pointer"></i><i class="bi bi-hand-thumbs-down" style="cursor:pointer"></i></span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px">1,842 in &middot; 512 out &middot; 2,354 total</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#5A6E82">Footer appears on hover; token counts in JetBrains Mono (input / output / total).</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1h" data-screen-label="1h Turn edge states" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:10px;align-items:baseline"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;background:#14324F;color:#fff;border-radius:6px;padding:2px 7px">1h</span><span style="font-size:13px;font-weight:600;color:#22364A">Turn edge states</span><span style="font-size:12px;color:#5A6E82">session-only &mdash; all vanish on reload or route change</span></div>
+    <div data-bs-theme="light" style="width:1080px;background:var(--bs-body-bg);color:var(--bs-body-color);border:1px solid #C8D4DF;border-radius:6px;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px;box-shadow:0 2px 14px rgba(11,31,51,.08)">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Stopped</div>
+        <div style="border:1.5px dashed var(--bs-border-color);border-radius:12px;padding:12px 14px;margin-left:18px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted)"><i class="bi bi-stop-circle" style="font-size:14px"></i>Stopped &mdash; not saved to this conversation</div>
+          <p style="margin:8px 0 10px;font-size:13.5px;color:var(--muted)">Engineering (4) &mdash; S. Mendoza owns HEL-2141 and HEL-2156; the identity squad holds the other&hellip;</p>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:8px;display:flex;align-items:center;gap:6px"><i class="bi bi-copy" style="font-size:11px"></i>Copy</button>
+            <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:8px;display:flex;align-items:center;gap:6px"><i class="bi bi-arrow-clockwise" style="font-size:11px"></i>Retry</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Visually detached from the transcript; the user&rsquo;s own prompt bubble disappears with it.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Cut off</div>
+        <div style="background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--warn)"><i class="bi bi-exclamation-triangle-fill" style="font-size:13px"></i>This response was cut off</div>
+          <p style="margin:8px 0 10px;font-size:13px;color:var(--bs-body-color);opacity:.8">The turn ended without a completion signal &mdash; the answer below may be incomplete.</p>
+          <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:8px;display:flex;align-items:center;gap:6px"><i class="bi bi-arrow-clockwise" style="font-size:11px"></i>Retry</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Never styled as a finished answer.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Busy</div>
+        <div style="background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px">
+          <i class="bi bi-hourglass-split" style="color:var(--warn);font-size:15px"></i>
+          <div style="flex:1;font-size:13px;color:var(--bs-body-color)">Another response is still running in this conversation.</div>
+          <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:8px">Retry</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Transient warning &mdash; no spinner, no auto-retry.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Tool server unavailable</div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--fail)"><i class="bi bi-plug" style="font-size:14px"></i>Confluence Search is unavailable</div>
+          <p style="margin:8px 0 10px;font-size:13px;color:var(--muted)">The tool server could not be reached. This turn produced no answer.</p>
+          <button class="btn btn-outline-secondary btn-sm" style="font-size:12.5px;border-radius:8px;display:flex;align-items:center;gap:6px"><i class="bi bi-arrow-clockwise" style="font-size:11px"></i>Retry</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Raised before any answer text.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Consent required &mdash; current (no action available)</div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><i class="bi bi-shield-lock" style="font-size:14px;color:var(--warn)"></i>Jira Cloud requires authorization</div>
+          <p style="margin:8px 0 0;font-size:13px;color:var(--muted)">This tool server needs interactive consent before Enterprise GPT can call it. No authorization flow is available yet &mdash; contact your administrator.</p>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)">Consent required &mdash; future (backend supplies scope)</div>
+        <div style="background:var(--surface);border:1px solid var(--bs-border-color);border-radius:12px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><i class="bi bi-shield-lock" style="font-size:14px;color:var(--warn)"></i>Jira Cloud requires authorization</div>
+          <p style="margin:8px 0 10px;font-size:13px;color:var(--muted)">This tool server needs interactive consent before Enterprise GPT can call it.</p>
+          <button class="btn btn-primary btn-sm" style="font-size:12.5px;border-radius:8px;font-weight:600">Authorize Jira Cloud</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

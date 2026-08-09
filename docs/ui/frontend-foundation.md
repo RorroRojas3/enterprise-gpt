@@ -1,58 +1,120 @@
 # Frontend Foundation
 
-Reference for the two layers every other screen in the rebuilt Angular client is written on top of: the **runtime configuration** that decides where the app points and whether it starts at all, and the **error layer** that turns every failure — an `HttpClient` rejection, a raw `fetch` response, a thrown string — into one typed value. Audience: engineers writing stories against `enterprise-gpt-ui/`, and whoever deploys it.
+End-to-end reference for the foundation layer of the rebuilt Angular client at `enterprise-gpt-ui/`: how the app learns which environment it is in, how every failure becomes one typed value, and the five composable store features every screen's state is assembled from. Audience: a developer about to write the first feature store or screen, who needs to know which wheels already exist and which of their edges are sharp.
 
-Covers [US-101, US-102 and US-103](../prd/enterprise-ui-rebuild.md#ep-1-foundation-and-application-shell) of the frontend rebuild PRD. Companion to the [Conversation Streaming Contract](../conversations/streaming-contract.md), whose transport is the main non-`HttpClient` consumer of everything described here.
+Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), which is the authority for every `US-xxx` reference below, and to [Conversation Streaming Contract](../conversations/streaming-contract.md), which the chat transport (EP-4) is written against.
 
-> **Directory note.** The PRD calls the client `enterprise-ui/`. The code lives at **`enterprise-gpt-ui/`**, and that drift is an accepted decision — the old `enterprise-ui/` was deleted rather than migrated, so there is no ambiguity about which tree is live. Every path in this document is relative to the repository root.
+## 1. Overview
 
-## 1. Why this exists
+> **Scope, stated plainly.** This is foundation only, and **the app is not usable yet**. There is no sign-in (US-201), `app.routes.ts` is an empty array, and there is no chat screen. `App` renders a bare `<router-outlet />`. Everything below is the substrate those stories build on, and all of it is covered by specs that run without a backend.
 
-The previous client could not read the framed SSE stream and was deleted rather than repaired. Rebuilding from an empty `ng new` bought the chance to fix two things that were structural rather than incidental:
+Three pieces landed, each solving a problem the deleted `enterprise-ui/` client had:
 
-- **The API host was compiled in.** `environments/environment.prod.ts` plus `fileReplacements` meant a build was tied to one environment, and a production bundle shipped pointed at `https://localhost:7045` because a replacement entry was wrong. A build artifact that cannot be promoted is a build artifact that gets rebuilt per environment, and rebuilding is where that class of mistake lives.
-- **Errors were untyped.** Every caller re-derived meaning from `err.status` and `err.error?.message`, so the API's RFC 9457 bodies — which name the problem, the missing permission, the unreachable MCP server and a correlation id — arrived and were thrown away. Two callers handling the same 403 differently is not a style problem; `mcp-authorization-required` in particular must never reach a token-refresh path, and nothing enforced that.
+1. **Runtime configuration** (US-102). Nothing environment-specific is compiled into the bundle. One artifact is built once and promoted; `config.json` is replaced per environment. A production bundle can no longer ship pointed at `localhost`, and a deployment that forgot to write `config.json` says so on screen instead of rendering a blank page (§3).
+2. **Error normalization** (US-103). The API answers every failure with RFC 9457 Problem Details across ten domain types. The client mirrors all ten verbatim and collapses every observable failure — HTTP, transport, abort, and stray throws — into one discriminated `AppError`, so a store, a form, and a toast all consume the same shape (§4).
+3. **The reusable store features** (US-104). Five `@ngrx/signals` features and one event group, written before any store exists, because all sixteen planned stores compose them. This is the part most worth reading before writing a store: several of the constraints they encode are invisible from the signatures (§5).
 
-The foundation answers both **before** anything can depend on the wrong answer: configuration is resolved before `bootstrapApplication`, and error normalization is a pure function that no store may bypass.
+### 1.1 Where each piece lives
 
-## 2. The workspace
+| Concern | Where |
+| --- | --- |
+| Config fetch, validation, freeze | [`core/config/load-app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/load-app-config.ts), [`core/config/app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/app-config.ts) |
+| Providing config before bootstrap | [`src/main.ts`](../../enterprise-gpt-ui/src/main.ts), [`core/config/app-config.token.ts`](../../enterprise-gpt-ui/src/app/core/config/app-config.token.ts) |
+| Startup and fatal shell | [`src/index.html`](../../enterprise-gpt-ui/src/index.html), [`core/config/fatal-shell.ts`](../../enterprise-gpt-ui/src/app/core/config/fatal-shell.ts) |
+| Problem type URIs | [`core/errors/problem-types.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-types.ts) |
+| The `AppError` union | [`core/errors/app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/app-error.ts) |
+| Normalization entry points | [`to-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/to-app-error.ts), [`to-app-error-from-response.ts`](../../enterprise-gpt-ui/src/app/core/errors/to-app-error-from-response.ts), [`build-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/build-app-error.ts) |
+| Server errors onto a form | [`core/errors/apply-server-errors.ts`](../../enterprise-gpt-ui/src/app/core/errors/apply-server-errors.ts), [`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts) |
+| Retry and refresh policy | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts), [`core/http/interceptors/retry.interceptor.ts`](../../enterprise-gpt-ui/src/app/core/http/interceptors/retry.interceptor.ts) |
+| User-facing error text | [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) |
+| The five store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
+| Cross-store events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
+| API URL building | [`core/http/api-url.ts`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts) |
 
-Angular **21.2.19**, standalone, zoneless, Vitest. What is worth knowing beyond `package.json`:
+### 1.2 Workspace facts, once
 
-### 2.1 Pinned dependencies
+| Fact | Value |
+| --- | --- |
+| Angular | **21.2.19**, standalone, **zoneless** — `provideZonelessChangeDetection()` is stated in `app.config.ts` even though it is v21's default, so the change-detection model is readable rather than inferred from the absence of `zone.js` |
+| Change detection | `OnPush` is the schematic default in `angular.json`; nothing re-renders without a signal write |
+| State | `@ngrx/signals` **21.1.1**, pinned exact (no caret) to match the `ngrx-signal-store` skill's doc snapshot. `@ngrx/operators` 21.1.1 alongside it |
+| Tests | **Vitest** through `@angular/build:unit-test`, `watch: false`, `providersFile: src/testing/test-providers.ts` — which installs `provideCheckNoChangesConfig({ exhaustive: true })`, so a view reading mutated plain-object state fails in CI rather than in someone's browser |
+| Layering | `features → shared → core → domain`, one way only. `domain/` imports nothing from Angular, so the SSE codec and the activity fold will test in Node with no `TestBed` |
+| Path aliases | `@core/*`, `@domain/*`, `@shared/*`, `@features/*`, `@testing/*`. No barrel `index.ts` files; components are `foo.ts`/`foo.html`/`foo.scss` with no `.component` suffix |
+| TypeScript | Strict, plus `strictTemplates`, `noPropertyAccessFromIndexSignature`, and `noUncheckedIndexedAccess` |
+| Initial bundle | **220.34 kB raw / 59.64 kB transfer**, measured at the end of US-101, against a **240 kB warn / 300 kB error** budget. Roughly 20 kB of headroom, deliberately tight |
+| Lint | **None yet.** Prettier only; ESLint, the `bypassSecurityTrustHtml` restriction, and the CI gates are US-108 |
 
-| Package | Version | Why this pin |
-|---|---|---|
-| `@ngrx/signals`, `@ngrx/operators` | **exact** `21.1.1` | Pinned without a caret so the installed API matches the doc snapshot the `ngrx-signal-store` skill is built from. A caret silently drifting the store API away from the guidance is worse than a manual bump |
-| `@azure/msal-angular` / `@azure/msal-browser` | `^6` / `^5` | Installed now, wired in [US-201](../prd/enterprise-ui-rebuild.md). Nothing in this batch touches authentication |
-| `bootstrap` + `@popperjs/core` | `^5.3.8` | Imported through SCSS and per-component JS, never as an `angular.json` `scripts` entry — a global script is unconditional weight in the initial payload |
-| `markdown-it` + `@types/markdown-it` | `^14` | Renderer for assistant answers, behind a single service when US-406 lands |
-| `dompurify` | `^3.4.13` | Sanitizes the rendered HTML. Never `bypassSecurityTrustHtml` without it |
+**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30), `dompurify` 3.4.13, and `bootstrap-icons` 1.13.1 are in `package.json` and referenced nowhere in `src/`. Tree-shaking means they cost nothing today — the 220.34 kB baseline is a *pre-markdown* figure — and EP-6/US-109 will have to pay for them and re-baseline. `@azure/msal-angular` 6 and `@azure/msal-browser` 5 are in the same position, waiting on US-201.
 
-`@angular/animations` and `@angular/platform-browser-dynamic` are deliberately absent, and `zone.js` appears in neither the dependencies nor any polyfill list.
+## 2. Quick start — a store that composes the foundation
 
-### 2.2 Compiler and build settings
+Illustrative, since no store exists yet; US-302 sets the reference pattern. It shows the composition order §5.7 requires and the two cancellation concerns §5.5 explains.
 
-| Setting | Where | Note |
-|---|---|---|
-| `strict`, `strictTemplates`, `noPropertyAccessFromIndexSignature` | `tsconfig.json` | Carried over from the previous client's config |
-| `noUncheckedIndexedAccess` | `tsconfig.json` | **New.** Every indexed read is `T \| undefined`, which is what makes the problem-body readers in §4 honest about a member that may not be there |
-| `paths` — `@core/* @domain/* @shared/* @features/* @testing/*` | `tsconfig.json` | Relative forms, because `baseUrl` is deliberately unset: setting it would also resolve every bare specifier against the project root |
-| `changeDetection: OnPush` | `angular.json` schematics | The default for generated components, so it is not a review item |
-| `stylePreprocessorOptions.includePaths: ["src/styles"]` | `angular.json` | Makes `@use 'tokens'` work from any component without a relative climb |
-| `initial` budget — warn 240 kB, error 300 kB | `angular.json` production config | Set from the first real build (**220.30 kB raw / 59.60 kB transfer**), not guessed. The budget's job is to catch a diagram or math library leaking out of its lazy chunk, which only works while the ceiling stays near the measured size |
+```ts
+import { computed, inject } from '@angular/core';
+import { patchState, signalStore, withFeature, withMethods } from '@ngrx/signals';
+import { setAllEntities, withEntities } from '@ngrx/signals/entities';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { mapResponse } from '@ngrx/operators';
+import { pipe, switchMap, takeUntil, tap } from 'rxjs';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { setQuery, withClientQuery } from '@core/state/with-client-query';
+import { setFirstPage, withOffsetPagination } from '@core/state/with-offset-pagination';
+import { withPendingIds } from '@core/state/with-pending-ids';
+import { setError, setFulfilled, setPending, withRequestStatus } from '@core/state/with-request-status';
+import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
-### 2.3 Zoneless, stated rather than inferred
+export const ProjectStore = signalStore(
+  withEntities<Project>(),
+  withRequestStatus(),
+  withOffsetPagination(),
+  withPendingIds(),
+  // withFeature, because withClientQuery binds to a signal the store above it owns.
+  withFeature(({ entities, isFulfilled, isFullyLoaded }) =>
+    withClientQuery(entities, {
+      searchableText: (project) => project.name,
+      comparators: { name: (a, b) => a.name.localeCompare(b.name) },
+      // Both flags: isFullyLoaded alone reads true before the first fetch (§5.2).
+      isAuthoritative: computed(() => isFulfilled() && isFullyLoaded()),
+      incompleteSetReason: 'Only the first 500 projects have loaded.',
+    }),
+  ),
+  withMethods((store, api = inject(ProjectApi), signedOut$ = injectSignedOut()) => ({
+    search: rxMethod<string>(
+      pipe(
+        tap((query) => patchState(store, setQuery(query), setPending())),
+        switchMap(() =>
+          api.search({ skip: 0, take: store.take() }).pipe(
+            // Clearing state is not cancelling work (§5.5).
+            takeUntil(signedOut$),
+            mapResponse({
+              next: (page) =>
+                patchState(store, setAllEntities(page.items), setFirstPage(page), setFulfilled()),
+              error: (error: unknown) => patchState(store, setError(toAppError(error))),
+            }),
+          ),
+        ),
+      ),
+    ),
+  })),
+  // Last. Always. §5.5 explains what happens otherwise.
+  withResetOnSignOut(),
+);
+```
 
-`provideZonelessChangeDetection()` is **redundant on Angular 21** — zoneless is the default once `zone.js` is absent — and is called in `app.config.ts` anyway, so the change-detection model is readable in one place instead of deduced from a missing polyfill entry. `src/testing/test-providers.ts` mirrors it and adds `provideCheckNoChangesConfig({ exhaustive: true })`: in a zoneless app a view that reads mutated plain-object state simply never re-renders, and that bug is invisible until someone looks at the screen. The exhaustive pass turns it into a failing test.
-
-The test target itself is explicit in `angular.json` rather than left to defaults — `@angular/build:unit-test`, `runner: vitest`, `watch: false`, `providersFile: src/testing/test-providers.ts` — so `npm test` behaves identically on a developer machine and on whatever eventually runs it unattended — there is no CI workflow in this repository yet.
+`protectedState` stays on (the default), so nothing outside the store can `patchState` it, and every write goes through a standalone updater.
 
 ## 3. Runtime configuration
 
-### 3.1 The contract
+### 3.1 Why there is no `environments/` directory
 
-`config.json` is deployment metadata, served unhashed next to `index.html`. `public/config.json` is the committed development copy; every environment replaces the file, and **nothing environment-specific is compiled into any chunk** — there is no `environments/` directory and no `fileReplacements` entry.
+The build produces **one** artifact. It is promoted from dev to test to production unchanged, and the only thing that differs per environment is a small JSON file sitting beside `index.html`. There are no `fileReplacements` in `angular.json` and no `environment.ts`.
+
+The failure this prevents is specific and familiar: a build-time replacement bakes an API URL into a hashed chunk, someone builds the wrong configuration, and the artifact that reaches production is indistinguishable from the correct one until a user's browser calls `localhost`. Moving the value to a fetched file makes that a deployment-time mistake with a deployment-time fix, and one the app can *detect* (§3.4).
+
+### 3.2 The shape
 
 ```json
 {
@@ -68,255 +130,357 @@ The test target itself is explicit in `angular.json` rather than left to default
 }
 ```
 
-| Field | Type | Rule |
-|---|---|---|
-| `apiBaseUrl` | string | Absolute `http:`/`https:` URL. Any trailing slash is stripped on load, so callers join paths without producing `//` |
-| `auth.clientId` | string | Must be a GUID. Checked here rather than at sign-in, where Entra reports it as an opaque "application not found" long after the cause has scrolled away |
-| `auth.authority` | string | Absolute URL, **`https:` only** |
-| `auth.redirectUri`, `auth.postLogoutRedirectUri` | string | Non-empty; relative to the app origin |
-| `auth.apiScopes` | string[] | Non-empty, every element non-empty |
-| `features.diagrams`, `features.math` | boolean | Whether the chunked renderers are loaded |
-| `features.rawStreamCodec` | boolean | Read the chat stream as unframed text instead of SSE frames — the escape hatch for a deployment still running a server that predates the [framed contract](../conversations/streaming-contract.md) |
+| Field | Rule | Notes |
+| --- | --- | --- |
+| `apiBaseUrl` | absolute `http:`/`https:` URL | Trailing slashes are stripped on load, so `ApiUrl.build()` cannot emit a double slash |
+| `auth.clientId` | non-empty string **and a GUID** | Checked here rather than at sign-in, where Entra reports it as an opaque "application not found" long after the cause scrolled away |
+| `auth.authority` | absolute **`https:`** URL | The tenant id is part of it |
+| `auth.redirectUri` | non-empty string | Relative to the app origin |
+| `auth.postLogoutRedirectUri` | non-empty string | Relative to the app origin |
+| `auth.apiScopes` | non-empty array of non-empty strings | The API access token's scopes |
+| `features.diagrams` | boolean | Load the diagram renderer chunk |
+| `features.math` | boolean | Load the math renderer chunk |
+| `features.rawStreamCodec` | boolean | Read the chat stream as unframed text — the fallback for a deployment still running a server that predates the framed contract |
 
-Two shape decisions worth knowing. **Unknown keys are accepted**, so a `config.json` written for a newer bundle still boots an older one — which is what makes a rollback survivable. And `cacheLocation` / `storeAuthStateInCookie` are deliberately *not* here: they are a security posture rather than an environment value, so they are fixed in the MSAL configuration itself where a deployment cannot weaken them.
+Two deliberate choices in that table. The booleans are **rejected when they arrive as the string `"false"`**, which is exactly what environment-variable substitution produces when a template forgets to strip the quotes — the case where a flag silently reads truthy forever. And **unknown extra keys are accepted**, so a `config.json` written for a newer bundle still boots an older one during a rollback.
 
-### 3.2 The boot sequence
+MSAL's `cacheLocation` and `storeAuthStateInCookie` are deliberately *not* here: they are a security posture rather than an environment value, so they are fixed in the MSAL configuration itself.
 
-```mermaid
-flowchart TD
-    A[index.html renders the startup shell] --> B[main.ts: loadAppConfig]
-    B -->|fetch fails, non-2xx,<br/>not JSON, or invalid| F[showFatalShell reason]
-    B -->|valid| C[normalizeAppConfig — frozen]
-    C --> D["bootstrapApplication with<br/>{ provide: APP_CONFIG, useValue: config }"]
-    D -->|throws| G[showFatalShell 'The application failed to start.']
-    D -->|resolves| E[hideStartupShell]
-    A -.->|30 s and still 'starting'| H[watchdog: 'The application did not finish loading.']
+### 3.3 The startup sequence
+
+```text
+index.html paints the startup shell            ← visible immediately, before any script runs
+  └─ main.ts
+       ├─ loadAppConfig()
+       │    ├─ fetch(new URL('config.json', document.baseURI), no-store, credentials omit, 10s timeout)
+       │    ├─ response.ok?          → else AppConfigError naming the status
+       │    ├─ response.json()       → else AppConfigError "not valid JSON"
+       │    ├─ assertAppConfig(body) → else AppConfigError naming the offending field
+       │    └─ normalizeAppConfig    → frozen, trailing slash stripped
+       ├─ bootstrapApplication(App, { providers: [{ provide: APP_CONFIG, useValue: config }] })
+       └─ hideStartupShell()
 ```
 
-The value is resolved **before** `bootstrapApplication` rather than inside an `APP_INITIALIZER`, so `APP_CONFIG` is genuinely available to every provider factory from the injector's first moment. An initializer runs after the injector exists, which means anything constructed eagerly would have to defend against a config that is not there yet.
+Four details of that flow are load-bearing:
 
-Each `fetch` option in [`load-app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/load-app-config.ts) is load-bearing:
+- **`cache: 'no-store'`.** A cached `config.json` is how one environment ends up pointed at another after a promotion.
+- **Resolved against `document.baseURI`**, not `/config.json` and not `./config.json`. The first breaks a sub-path deployment; the second breaks a hard reload on a deep route such as `/chat/{id}`, where the relative resolution would look for `/chat/config.json`.
+- **`response.ok` is checked before the body is read.** A host with SPA fallback routing answers a missing `config.json` with `index.html` and a `200`, so trusting the status alone would produce a JSON parse error with a misleading message; trusting the body alone would miss the 404.
+- **The value is resolved *before* `bootstrapApplication`**, not inside an app initializer. That is what makes `APP_CONFIG` genuinely available to every provider factory from the first moment of the injector's life — `ApiUrl` reads it in a field initializer, and MSAL will need it at provider-construction time.
 
-| Option | Reason |
-|---|---|
-| `new URL('config.json', document.baseURI)` | Not `/config.json`, so a sub-path deployment works; not `./config.json`, so a hard reload on a deep route such as `/chat/{id}` still resolves to the application root |
-| `cache: 'no-store'` | A cached config is exactly how one environment ends up pointed at another |
-| `credentials: 'omit'` | `config.json` is public deployment metadata; attaching cookies would leak them to a CDN origin |
-| `signal: AbortSignal.timeout(10_000)` | Without it a wedged host produces the blank page the fatal shell exists to prevent |
-| `response.ok` checked **before** reading the body | A host with SPA fallback routing answers a missing `config.json` with `index.html` and a `200`; parsing first would report "not valid JSON" for a file that is simply absent |
+`APP_CONFIG` carries **no `factory`**. A missing provider must fail loudly at injection rather than hand out a default that quietly points at the wrong environment. Tests and any injector created outside the bootstrap path use `provideAppConfig(config)`.
 
-### 3.3 Failure modes
+### 3.4 The startup shell, and why it starts visible
 
-Validation is a narrow assertion, and **every message names the offending field**, because that message is what a deployer reads on the failure screen:
+`index.html` carries a small static shell with two states, `data-state="starting"` and `data-state="failed"`. `main.ts` removes it on success and switches it to `failed` on either failure — a config that could not be loaded, or a bootstrap that threw.
 
-| Cause | Shown in the fatal shell |
-|---|---|
-| Network failure, DNS, TLS, timeout | `The application configuration could not be reached.` |
-| Non-2xx response | `The application configuration could not be loaded (HTTP 404).` |
-| Body is not JSON | `The application configuration is not valid JSON.` |
-| A field is missing or malformed | `"auth.clientId" must be a GUID.`, `"apiBaseUrl" must be an absolute URL.`, `"features.math" must be a boolean.`, … |
-| Anything else thrown during load | `The application configuration is invalid.` — a bug, so the raw message is not shown |
-| `bootstrapApplication` rejected | `The application failed to start.` |
-| Nothing ran within 30 s | `The application did not finish loading.` |
+Three properties matter, and each covers a failure the app cannot report from inside itself:
 
-`features.*` rejects the **string** `"false"`, which is what environment-variable substitution produces when a deployment template forgets to strip the quotes — the single most common way a flag ends up permanently on.
+- **It is visible from first paint.** Starting hidden and revealing it from script would leave a blank page whenever the *bundle itself* never loads — a hashed-filename mismatch, a CDN miss, a CSP block — because nothing would be running to reveal it.
+- **Its styles are inline in `index.html`, system fonts only.** It has to render when `styles.scss` never loaded, which is one of the cases it exists for.
+- **A 30-second watchdog** runs from an inline `<script>` and flips the shell to `failed` if `main.ts` has not cleared it. That is the only report available for "the bundle never ran at all"; `main.ts` clears the timer on both of its outcomes.
 
-### 3.4 The startup shell
+The failure state names the offending field in a `<code>` block, tells the reader this is a deployment problem rather than their account, and offers a **Try again** button that reloads. Smaller decisions inside `fatal-shell.ts` are worth knowing before editing it: the detail is written with `textContent` and never `innerHTML`, because the reason can carry a server-supplied status line and this page renders before any sanitizer exists; the retry handler is attached with `addEventListener` rather than an inline `onclick`, so the page stays CSP-clean; and `role="alert"` is applied to the status region **after** its content is final, because setting the role up front and mutating afterwards is the usual way a live region ends up announcing nothing.
 
-The shell lives in `index.html` with inline styles, and it is **visible from first paint**, not revealed on failure. Starting hidden would leave a blank page whenever the bundle itself never loads — a hashed-filename mismatch, a CDN miss, a CSP block — because nothing would be running to reveal it. That is also why the 30-second watchdog is an inline `<script>` in the page rather than application code: it covers the one failure the application cannot report on its own.
+To see it: rename `public/config.json`, hard-reload, rename it back.
 
-[`fatal-shell.ts`](../../enterprise-gpt-ui/src/app/core/config/fatal-shell.ts) only flips that markup into its failure state, and it must not depend on Angular, on `styles.scss`, or on anything the failed step was going to provide. Three details in it are easy to undo by accident:
+### 3.5 What operations has to do
 
-- **The detail line is written with `textContent`, never `innerHTML`.** `reason` can carry a server-supplied status line, and this page renders before any sanitizer exists.
-- **The heading is focused before `role="alert"` is applied**, and the live region wraps the explanation only. Setting the role up front and mutating the content afterwards is the usual way a failure page announces nothing at all; including the focused heading in the region has it read twice.
-- **The retry button is wired with `addEventListener`, not an inline `onclick`,** so the page stays CSP-clean. A transient 5xx or a cold cache on `config.json` is the most common real cause, and a reload fixes it.
+1. **Serve `config.json` uncached, beside `index.html`.** `public/config.json` is the committed development copy and ships to `dist/` unhashed. The client already sends `cache: 'no-store'`; a CDN or host that caches it anyway reintroduces the promotion bug the design removes, so set `Cache-Control: no-store` (or at minimum `no-cache`) on that path.
+2. **Overwrite it as a deployment step**, per environment, before or with the artifact. A missing or invalid file does not degrade — the app does not bootstrap at all, by design.
+3. **Do not put secrets in it.** It is public deployment metadata, fetched with `credentials: 'omit'` precisely so cookies are never sent to a CDN origin serving it.
 
-If `index.html` has been replaced by a host that does not carry this markup, `showFatalShell` falls back to setting `document.body.textContent`. Still not a blank page.
+## 4. Error normalization
 
-### 3.5 Consuming the configuration
+### 4.1 Ten problem types, mirrored verbatim
 
-```typescript
-import { inject } from '@angular/core';
-import { APP_CONFIG } from '@core/config/app-config.token';
-import { ApiUrl } from '@core/http/api-url';
+[`problem-types.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-types.ts) mirrors `Enterprise.Gpt.Api/Problems/ProblemTypes.cs` exactly: `validation-error`, `upload-too-large`, `resource-not-found`, `forbidden`, `permission-required`, `conversation-busy`, `mcp-authorization-required`, `mcp-server-unavailable`, `provider-not-configured`, `storage-not-configured`, all under the relative base `/problems/`.
 
-const features = inject(APP_CONFIG).features;
-const url = inject(ApiUrl).build(`conversations/${ApiUrl.segment(id)}`);
+They are **opaque identifiers matched verbatim, never resolved as links** — RFC 9457 §3.1.1 permits a relative reference, and the API treats them that way. Changing one is a breaking API change on both sides. A response carrying any other `type` (typically the RFC 9110 status-section link ASP.NET Core supplies) is a framework-level problem, not a domain one, and lands on the `http` arm.
+
+`traceId` is **body-only**. The API's CORS policy exposes `Content-Disposition` and nothing else, so there is no header to read a correlation id from — which is why §4.2 keeps the whole problem body around.
+
+### 4.2 One `AppError`, fourteen arms
+
+Every failure the client can observe becomes one value with a `kind` discriminant. Ten arms correspond to the problem types and carry their extensions in typed form; four cover everything else.
+
+| Arm | Status | Extra fields | Meaning |
+| --- | --- | --- | --- |
+| `validation-error` | 400 | `errors` | Per-field messages, keys **verbatim and PascalCase** (§4.4) |
+| `upload-too-large` | 400 | `maxBytes` | From the upload filter — a 400, not a 413 |
+| `resource-not-found` | 404 | — | Missing, deactivated, or someone else's |
+| `forbidden` | 403 | — | Not allowed |
+| `permission-required` | 403 | `permissions` | Display names, not permission ids |
+| `conversation-busy` | 409 | — | A turn is already running. Never auto-retried |
+| `mcp-authorization-required` | 403 | `serverName`, `scope` | Interactive consent needed (§4.5) |
+| `mcp-server-unavailable` | 502 | `serverName` | Tool server unreachable |
+| `provider-not-configured` | 503 | `providerId` | The model's provider has no chat client here |
+| `storage-not-configured` | 503 | — | Blob storage cannot sign download links here |
+| `http` | any | — | Any failure with no domain type: 401, routing 404, bare 413, 499, 500 |
+| `network` | 0 | — | No response at all: DNS, TLS, offline, CORS rejection, timeout |
+| `aborted` | 0 | — | The caller stopped it. Not a failure |
+| `client` | 0 | — | Anything else thrown, including non-`Error` values |
+
+Every arm carries `status`, `title`, `detail`, `traceId`, `instance`, `url`, `message`, `problem`, and `cause`. `url` exists separately from `instance` because the API's `instance` omits the query string and therefore cannot reconstruct the failing request.
+
+Two things are deliberately **absent** from the union:
+
+- **A truncated chat stream.** A `text/event-stream` body that stops without a `Finished` event arrives as a successful `200`, so it is a turn state the transcript renders as "cut off", not an error. Normalization never sees it.
+- **A `maxBytes` on a bare 413.** Kestrel produces that response, not the upload filter, so it lands on `http` and upload UI has to handle both shapes.
+
+Two helpers guard classification mistakes. `isProblemAppError` is backed by a positive `satisfies` table rather than a negation, so adding an arm without classifying it is a compile error — and misclassifying one silently changes whether it is retried. `isRouteNotFound` separates a routing 404 (a client bug: no such endpoint) from `resource-not-found` (the API's deliberate answer for a row the caller may not see), because reporting the latter as "deleted" is wrong.
+
+### 4.3 Two entry points, one arm selector
+
+| Function | Shape | Use for |
+| --- | --- | --- |
+| `toAppError(value, options?)` | synchronous, total | Every `catch`. Handles `HttpErrorResponse`, abort/timeout signals, `TypeError`, response-like objects, and anything else |
+| `toAppErrorFromResponse(response, url?)` | `Promise<AppError>` | The **raw-fetch stream path**, where reading a problem body is asynchronous |
+
+Both funnel into `buildAppError`, which is the single place an arm is chosen, so the two cannot drift.
+
+`toAppError` never throws and never returns a promise. There is deliberately no overload that returns `Promise<AppError>` for a `Response`: it type-checks, but every `catch` binds `unknown`, which selects the synchronous signature and hands the caller a promise *typed* as an `AppError` — a failure that surfaces far from its cause. Handed a bare `Response`, it still returns a correct arm built from the status alone.
+
+Its classification order is not arbitrary. The thrown value's own identity decides first, and `options.signal` only rescues values that cannot identify themselves, because `AbortSignal.timeout()` sets `aborted` *and* rejects with a `TimeoutError` — testing the signal first would classify every timeout as a user cancellation, silently, and only for the callers that pass a signal. A timeout is a failed request, not a cancelled one, so it becomes `network` and stays retriable. Passing `signal` is what lets `abort(reason)` — the idiomatic way to record *why* a turn was stopped, which rejects with the reason itself and can be a plain string — still be recognized as a deliberate stop.
+
+`toAppErrorFromResponse` is called by the streaming transport the moment `response.ok` is false, before it reads a byte of the stream: the chat endpoint sets its `text/event-stream` headers lazily on the first frame, so every pre-stream failure arrives as ordinary `application/problem+json`. It never rejects and never hangs — it skips a `bodyUsed` body, skips a non-JSON content type, and races the read against a 5-second timeout, degrading to the plain `http` arm in each case. The losing promise's rejection is swallowed on purpose, or a stalled body failing later would surface through `provideBrowserGlobalErrorListeners()` as a fresh error seconds after this one was handled.
+
+### 4.4 `applyServerErrors` — validation messages onto a reactive form
+
+The API keys a validation problem's `errors` dictionary by its own property paths. Because `JsonSerializerDefaults.Web` camel-cases property *names* but leaves dictionary *keys* alone, those keys arrive PascalCase (`ContextWindowSize`), dotted (`Chunking.MaxTokens`), and indexed (`Files[0].FileName`) while the controls bound to those same properties are named after the camelCase JSON.
+
+```ts
+const result = applyServerErrors(this.form, error); // error: ValidationAppError
+this.summary.set(result.unmatched);
 ```
 
-`APP_CONFIG` carries **no `factory`**: a missing provider fails loudly at injection rather than handing out a default that quietly points at the wrong environment. `provideAppConfig(config)` exists for tests and for any injector created outside the bootstrap path; `main.ts` provides the token directly.
+Each key is normalized with **.NET's own camel-casing algorithm** ([`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts)) rather than a naive lower-casing of the first character, which would turn `IOStream` into `iOStream` where .NET produces `ioStream`. Lookup then falls back to the verbatim path and finally to a case-insensitive walk. Indexed segments become their own numeric segments and the array overload of `form.get()` is used throughout, because a numeric segment in a dotted string is ambiguous between a `FormArray` index and a control literally named `"0"`.
 
-[`ApiUrl`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts) is a service rather than a bare function on purpose. A function calling `inject()` is only legal inside an injection context, and a URL built from runtime config is almost always built inside a store method, a resolver, or an interceptor — precisely where `inject()` throws NG0203.
+Messages land under a dedicated `server` error key, so Angular drops them on the control's next validation pass — the moment the user edits the field, which is what they expect.
 
-### 3.6 Deploying
+**Nothing is silently discarded, and nothing is written to the form root.** Entries that matched no control — object-level rules, which FluentValidation keys with the empty string, and any path the form does not model — come back on `result.unmatched` for the caller to render. Writing them to the root would not survive: `updateValueAndValidity` walks up the tree and every ancestor replaces its whole `errors` object with its own validators' output, so a hand-set root summary vanishes on the first keystroke in any field. Hold it in a signal instead.
 
-1. Copy the build output as-is. Do not rebuild per environment; that is the whole point.
-2. Overwrite `config.json` in the deployed root. Keep it **unhashed and uncached** — `Cache-Control: no-store` at the CDN, matching the client's own `no-store`.
-3. Reload the app once and confirm it starts. A misconfigured deployment fails at the door with a named field, not later at sign-in.
+### 4.5 `authErrorDecision` — the only place refresh is decided
 
-## 4. Errors
-
-### 4.1 One union, fourteen arms
-
-Every failure the client can observe becomes a single discriminated [`AppError`](../../enterprise-gpt-ui/src/app/core/errors/app-error.ts). Ten arms mirror the API's problem types verbatim from [`ProblemTypes.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemTypes.cs); four cover everything that is not an application problem.
-
-| `kind` | Status | `type` | Extra members |
-|---|---|---|---|
-| `validation-error` | 400 | `/problems/validation-error` | `errors` — keyed by the server's property paths, **verbatim** (§4.5) |
-| `upload-too-large` | **400**, not 413 | `/problems/upload-too-large` | `maxBytes` |
-| `resource-not-found` | 404 | `/problems/resource-not-found` | |
-| `forbidden` | 403 | `/problems/forbidden` | |
-| `permission-required` | 403 | `/problems/permission-required` | `permissions[]` — display names, not ids |
-| `conversation-busy` | 409 | `/problems/conversation-busy` | |
-| `mcp-authorization-required` | 403 | `/problems/mcp-authorization-required` | `serverName`, `scope` (null until US-411) |
-| `mcp-server-unavailable` | 502 | `/problems/mcp-server-unavailable` | `serverName` |
-| `provider-not-configured` | 503 | `/problems/provider-not-configured` | `providerId` |
-| `storage-not-configured` | 503 | `/problems/storage-not-configured` | |
-| `http` | any | none / RFC 9110 link | The catch-all: 401, a routing 404, a bare 413, 499, 500 |
-| `network` | 0 | — | No response at all: DNS, TLS, offline, CORS rejection, **timeout** |
-| `aborted` | 0 | — | The user pressed Stop. Not a failure |
-| `client` | 0 | — | Anything thrown outside an HTTP exchange, including non-`Error` values |
-
-Every arm carries the same base: `status`, `title`, `detail`, `traceId`, `instance`, `url`, `message`, `problem`, `cause`. `instance` comes from the body and carries no query string, which is why `url` — what the client actually requested — is held separately.
-
-Two helpers guard distinctions that are easy to lose:
-
-- `isProblemAppError(error)` — whether the error came from an application problem body. It reads a **positive** `satisfies Record<AppErrorKind, boolean>` table rather than negating a list, so adding an arm without classifying it is a compile error. Retry policy depends on this, so a silent default would change behaviour rather than just types.
-- `isRouteNotFound(error)` — a routing 404 (`kind: 'http'`, status 404) means *no such endpoint* and is a client bug. `resource-not-found` is the API's deliberate answer for a row the caller may not see, and must never be reported as "deleted".
-
-### 4.2 Two entry points
-
-| Function | Input | Use it when |
-|---|---|---|
-| `toAppError(value, options?)` | anything caught — sync, never throws | Every `catch`, every interceptor, every store method |
-| `toAppErrorFromResponse(response, url?)` | a `Response`-shaped object — async | The raw-`fetch` paths that must **read** the problem body: the chat stream ([US-405](../prd/enterprise-ui-rebuild.md)), file download |
-
-Arm selection happens in exactly one place — `buildAppError` — so the two entry points cannot drift.
-
-There is deliberately **no overload** of `toAppError` that returns `Promise<AppError>` for a `Response`. It type-checks, but every `catch` binds `unknown`, which selects the synchronous signature and hands the caller a promise typed as an `AppError` — a failure that surfaces far from its cause. Handed a bare `Response`, `toAppError` still returns a correct arm built from the status alone.
-
-`toAppErrorFromResponse` is what the streaming transport calls the moment `response.ok` is false, **before reading a single byte of the stream**: the chat endpoint sets its `text/event-stream` headers lazily on the first frame, so every pre-stream failure arrives as ordinary `application/problem+json` ([streaming contract §3.3](../conversations/streaming-contract.md#33-errors-before-and-after-the-first-frame)). It never rejects and never hangs — an unreadable body, a non-JSON content type, an already-consumed body, or a body that stalls past 5 seconds all degrade to the plain `http` arm. The stalled-body race also swallows the losing promise's rejection: otherwise a body that fails later surfaces as an unhandled rejection, which `provideBrowserGlobalErrorListeners()` reports as a *fresh* error seconds after this one was already handled.
-
-### 4.3 Classifying a thrown value: order matters
-
-`toAppError` decides in this order, and the order is the design:
-
-1. **`HttpErrorResponse`** → status 0 means the request never reached the server, so it splits into `aborted` or `network`; anything else parses `error` as a problem body. When the body was not JSON, `HttpClient` supplies `{ error: SyntaxError, text: string }`, which `parseProblemDetails` rejects — so it degrades to `http` instead of throwing.
-2. **`TimeoutError` → `network`, not `aborted`.** `AbortSignal.timeout()` sets `signal.aborted` *and* rejects with a `TimeoutError`. Testing the signal first would classify every timeout as a user cancellation — silently, and only for the callers that pass the signal. A timeout is a failed request that should stay retriable, not a cancellation the UI reports as "stopped".
-3. **`AbortError`, or a nameless value with `signal.aborted`** → `aborted`. `AbortController.abort(reason)` — the idiomatic way to record *why* a turn was stopped — rejects with the reason itself, which may be a plain string. Passing `options.signal` is what lets a deliberate stop be recognized whatever the reason was, and the reason is read off the signal so `AbortSignal.any([stop, timeout])` still attributes correctly.
-4. **`TypeError`** → `network`. `fetch` reports every transport failure — DNS, TLS, offline, CORS — as a bare `TypeError` with no detail.
-5. **A `Response`-like value** → built from its status.
-6. **Anything else** → `client`.
-
-### 4.4 What the union deliberately does not model
-
-- **A truncated chat stream is not an error.** A `text/event-stream` body that stops without a `Finished` event arrives as a successful `200`, so normalization never sees it. It is a *turn state* the transcript renders as "cut off" ([streaming contract §3.3](../conversations/streaming-contract.md#33-errors-before-and-after-the-first-frame)).
-- **`upload-too-large` is a 400 and carries `maxBytes`; a bare 413 is neither.** The API's upload filter rejects an oversized upload with `400 /problems/upload-too-large`. A **chunked** upload bypasses that filter and is killed by Kestrel, which answers a bare `413` with no problem body — so it lands on `http` with no `maxBytes`. Upload UI must handle both shapes: `userMessage` gives 413 its own sentence for exactly this reason.
-
-### 4.5 Validation errors and reactive forms
-
-`applyServerErrors(form, error)` projects a validation problem's `errors` dictionary onto a reactive form. Three things about that dictionary are unlike the rest of the wire format:
-
-**The keys are PascalCase, verbatim.** Every other property in every response is camelCase, because `JsonSerializerDefaults.Web` camel-cases property *names* — but it leaves dictionary *keys* alone, and `errors` is a dictionary. So `ContextWindowSize` arrives next to `"status"` and `"traceId"`. Matching those keys to controls means applying **the server's own algorithm**, which is why [`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts) reimplements `System.Text.Json.JsonNamingPolicy.CamelCase` exactly, multi-capital runs included: a naive lower-casing of the first character turns `IOStream` into `iOStream` where .NET produces `ioStream`, and the control is never found.
-
-**Paths are dotted and indexed.** `Chunking.MaxTokens` and `Files[0].FileName` are parsed into segments and resolved with the **array** overload of `form.get()`, never the dotted string — a numeric segment in a dotted path is ambiguous between a `FormArray` index and a control literally named `"0"`. Lookup falls back from camel-cased, to verbatim, to a case-insensitive walk.
-
-**Unmatched keys are returned, never written to the form root.** Object-level rules arrive keyed by the empty string, and any path the form does not model has nowhere to go. Attaching a summary to the root control looks right and does not survive: `updateValueAndValidity` walks up the tree and **each ancestor replaces its whole `errors` object** with its own validators' output, so a hand-set root error vanishes on the first keystroke in any field. Hold `result.unmatched` in a signal and render the summary from there.
-
-```typescript
-const result = applyServerErrors(this.form, error);
-patchState(store, { formSummary: result.unmatched });
+```ts
+authErrorDecision(error); // 'refresh' | 'passthrough'
 ```
 
-Messages land under the dedicated `SERVER_ERROR_KEY` (`'server'`), so Angular clears them on the control's next validation pass — the moment the user edits that field, which is what they expect. `clearServerErrors(control)` removes them without touching client-side validators; `serverErrorsOf(control)` reads them back for a template.
+**Only a bare 401 may trigger a token refresh.** The authentication interceptor arrives with US-201 and consults this rather than re-deriving the rule.
 
-### 4.6 What the user sees
+The arm that matters most is `mcp-authorization-required`. The API answers it **403, deliberately not 401**, because it asks for interactive consent to a downstream tool server — something no number of token refreshes can supply. A client that treats it as an authentication failure enters a refresh loop that cannot terminate. `forbidden` and `permission-required` are 403s for the same underlying reason: the token is fine, the grant is not.
 
-`AppErrorBase.message` is whatever the server said (`detail`, else `title`). The UI does not render it directly — [`error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) supplies the actionable version, because `detail` is written for a developer reading a log:
+The decision is backed by `AUTH_DECISIONS`, an exhaustive `as const satisfies Record<AppErrorKind, AuthErrorDecision>` table. Adding an arm to `AppError` without deciding its refresh behaviour is a **compile error**, and the table is exported so a spec asserts the key set too — which makes a new arm fail the suite as well as the compiler.
 
-| Function | Returns |
-|---|---|
-| `shouldNotify(error)` | Whether the error deserves a toast. `aborted` is false — announcing the user's own Stop as an error tells them their action failed. `validation-error` is false — the messages are already on the fields |
-| `userMessage(error)` | The headline, per arm: `permission-required` names the grants, `upload-too-large` formats `maxBytes`, `mcp-server-unavailable` names the server |
-| `traceLine(error)` | `Trace ID: …`, or **`No trace ID was returned.`** |
+### 4.6 `retryInterceptor` — GETs, gateway errors, full jitter
 
-That fallback sentence is not padding. **`traceId` is body-only** — the API's CORS policy exposes `Content-Disposition` and nothing else, so there is no header to read it from — and a 499 carries no body at all. Rendering a blank where support expects an id is worse than saying there is none. The toast component itself lands with US-106; these functions are pure policy and are already exhaustive over the union.
-
-### 4.7 Retry
-
-[`retryInterceptor`](../../enterprise-gpt-ui/src/app/core/http/interceptors/retry.interceptor.ts) is registered first in `withInterceptors`, and must stay there: when the authentication interceptor lands it has to run *inside* each retry, so a retried request acquires a fresh token rather than replaying the one that already failed.
+`retryInterceptor` is first in `withInterceptors([...])` in `app.config.ts`, and **must stay first**: when the authentication interceptor lands it has to run *inside* each retry, so a retried request acquires a fresh token instead of replaying the one that already failed.
 
 | Rule | Value |
-|---|---|
-| Verbs | **`GET` only.** No other verb is safe to replay |
-| Retriable | `network`, plus statuses 502 / 503 / 504 with no application problem type |
-| Attempts | 3, on top of the first |
-| Backoff | Full jitter — a uniform draw from `[0, min(5000, 500 · 2^attempt))`, so at most ~3.5 s of added latency |
-| Rethrow | The identical `HttpErrorResponse` instance, so downstream handlers see the original object |
+| --- | --- |
+| Methods | `GET` only. No other verb is safe to replay, and the chat stream is a `POST` over raw `fetch`, which never reaches an `HttpClient` interceptor at all |
+| Retried on | `network` (transport failure or timeout), and statuses **502, 503, 504** |
+| Never retried | `409 conversation-busy`, any 503 carrying an application problem type, `aborted`, `client`, and every other problem-typed failure |
+| Backoff | Full jitter: a uniform draw from `[0, min(cap, base · 2^attempt))`, base 500 ms, cap 5 s, 3 retries |
 
-Two exclusions carry the weight:
+The two exclusions carry the weight. Retrying a **409** races the user's other tab against a turn that is already running. Retrying an **app-typed 503** — `provider-not-configured`, `storage-not-configured` — buys three round trips of nothing, because a deployment state is deterministic rather than transient load, and delays an actionable message by seconds.
 
-- **409 `conversation-busy` is never retried, at any interval.** A turn is already running for that conversation; retrying races the user's other tab.
-- **A 503 carrying an application problem type is excluded.** `provider-not-configured` and `storage-not-configured` are deterministic *deployment* states, not transient load — the model has no chat client, or storage has no shared key. Retrying buys three round trips of nothing and delays an actionable message by seconds. This is the exclusion `isProblemAppError` exists to make un-forgettable: a new 503-shaped arm that forgets to classify itself would start being retried.
+Jitter is the point rather than a refinement: synchronized clients retrying on the same schedule are what turn a recovering server back into an overloaded one. `RETRY_POLICY` is an injection token so specs can pin `random`.
 
-Jitter, not the backoff curve, is the point: synchronized clients retrying on the same schedule are what turn a recovering server back into an overloaded one. `RETRY_POLICY` is an injection token and `random` is a policy member, so specs pin the bounds instead of sampling them.
+Anything not retried is rethrown as the **identical `HttpErrorResponse` instance**, so downstream handlers see the original object.
 
-The chat stream is a `POST` over raw `fetch` and never reaches an `HttpClient` interceptor at all — it is not retried, and must not be.
+### 4.7 Turning an error into words
 
-### 4.8 Token refresh
+[`error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) holds the presentation policy, ready for the toast component in US-106:
 
-`authErrorDecision(error)` is the **single source of truth** for whether a failure may trigger a token refresh, and it answers `'refresh'` for exactly one case: a bare `401`, which can only land on the `http` arm because a 401 carries no application type.
+- `shouldNotify(error)` — whether the failure deserves a toast. `aborted` does not (the user pressed Stop; announcing it says their own action failed) and `validation-error` does not (the messages are already on the fields). Backed by the same exhaustive `satisfies` pattern.
+- `userMessage(error)` — one actionable sentence per arm, preferring a written line over the server's `detail`, which is aimed at a developer reading a log.
+- `traceLine(error)` — `Trace ID: …`, or a real sentence when there is none, since a 499 carries no body at all.
 
-Every 403 is `'passthrough'`, and `mcp-authorization-required` is why the function exists. It asks for **interactive consent to a downstream MCP server**, which no number of token refreshes can supply — the API returns 403 rather than 401 for precisely this reason ([streaming contract §3.3](../conversations/streaming-contract.md#33-errors-before-and-after-the-first-frame)). Refreshing on it produces a loop that cannot terminate. `forbidden` and `permission-required` are the same shape: the token is fine, the grant is not (see [Permission Cache](../permissions/permission-cache.md)).
+## 5. The reusable store features
 
-The decision ships now even though the authentication interceptor arrives with US-201, so that interceptor consults the rule rather than re-deriving it. The backing `AUTH_DECISIONS` table is `as const satisfies Record<AppErrorKind, AuthErrorDecision>` and is **exported**, so adding an arm without deciding its refresh behaviour fails the compiler, and a spec asserting the key set fails the suite too.
+Five features in [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/), each `signalStoreFeature(...)` with standalone updaters exported beside it. They were written before any store, because all sixteen planned stores compose them and a divergence between two hand-rolled pagination implementations is not something review catches reliably.
 
-## 5. Testing
+### 5.1 `withRequestStatus`
 
-15 spec files, 222 tests, all on Vitest with no browser.
+| | |
+| --- | --- |
+| State | `requestStatus: 'idle' \| 'pending' \| 'fulfilled' \| { error: AppError }` |
+| Computed | `isIdle`, `isPending`, `isFulfilled`, `error` (the `AppError` or `null`) |
+| Updaters | `setPending()`, `setFulfilled()`, `setError(error)`, `setIdle()` |
 
-| Area | Spec | Covers |
-|---|---|---|
-| Config validation | `core/config/app-config.spec.ts` | every field rule, the GUID check, `"false"`-as-string, unknown keys accepted, trailing-slash normalization, frozen output |
-| Config loading | `core/config/load-app-config.spec.ts` | `no-store` and `credentials: 'omit'` passed through, `baseURI` resolution, non-2xx before body read, non-JSON body, timeout |
-| Token | `core/config/app-config.token.spec.ts` | injection fails without a provider |
-| Fatal shell | `core/config/fatal-shell.spec.ts` | failure state, `textContent` escaping, focus-then-`role="alert"` order, missing-markup fallback, watchdog cleared |
-| Problem bodies | `core/errors/problem-details.spec.ts`, `problem-types.spec.ts` | all ten type URIs verbatim, extension readers, non-problem bodies rejected |
-| Normalization | `core/errors/to-app-error.spec.ts`, `to-app-error-from-response.spec.ts` | every arm, the timeout-before-abort order, `abort(reason)` with a string reason, unreadable and stalled bodies |
-| Camel casing | `core/errors/camel-case.spec.ts` | parity with `JsonNamingPolicy.CamelCase`, including `URLValue` → `urlValue` and `URL` → `url` |
-| Form mapping | `core/errors/apply-server-errors.spec.ts` | dotted and indexed paths, case-insensitive fallback, unmatched keys returned, clearing on edit |
-| Policy | `core/errors/retry-policy.spec.ts`, `error-message.spec.ts` | jitter bounds, the 409 and typed-503 exclusions, the exhaustive `AUTH_DECISIONS` key set, per-arm messages |
-| HTTP | `core/http/api-url.spec.ts`, `interceptors/retry.interceptor.spec.ts` | URL joining and segment escaping; GET-only, attempt counts, identical rethrown instance |
+**One value, not the `isLoading` + `error` pair it replaces.** That pair can represent "loading and errored at the same time", which is not a state any screen should have to render, and which is where stale spinners come from. Making it unrepresentable is the whole feature.
 
-`ResponseLike` is structurally typed rather than `Response` itself: Node and jsdom put the class in different realms, so `instanceof` is unreliable under test and a plain object literal exercises every branch.
+**The error arm carries the whole `AppError`, not a message string.** The error surfaces in the design — the toast, the error panel in frame `4k` — show the `traceId`, and re-deriving one from a rendered string is impossible.
 
-## 6. Key files
+### 5.2 `withOffsetPagination(take = 100)`
+
+| | |
+| --- | --- |
+| State | `skip` (offset for the **next** request), `take`, `totalCount` |
+| Computed | `hasMore`, `isFullyLoaded` |
+| Updaters | `setPage(response)`, `setFirstPage(response)`, `resetPagination()` |
+
+It reads the API's `PaginatedResponseDto` envelope but derives from `skip` and `totalCount` rather than the envelope's `currentPage`/`totalPages`, and `skip` advances by the number of items **actually returned** rather than by `take`. One reason for both: a short final page, a page size the server clamped, and a `totalCount` that is an exact multiple of the page size then all land on `hasMore === false` with no special case. `take` is clamped to `MAX_PAGE_SIZE` (100) because the server clamps it to 1–100 anyway, and a drain that assumed it got `take` items would never terminate.
+
+Two traps worth internalizing:
+
+- **`isFullyLoaded` reads `true` before the first fetch.** It is the negation of `hasMore`, and offset state alone cannot tell "no rows exist" from "nothing has been asked for". Anywhere the distinction matters, compose `withRequestStatus` and gate on both: `computed(() => isFulfilled() && isFullyLoaded())`. §5.4's `isAuthoritative` is exactly this case, and a sort control that appears over zero rows and vanishes when the first page lands is worse than one never offered.
+- **`setPage` caps `totalCount` at the offset reached when a page comes back empty.** Without that cap, a total that disagrees with the page query — a count that sees rows the page does not, or concurrent inserts shifting the window — leaves `skip` stationary and `hasMore` true, and a `while (hasMore())` drain reissues the identical request forever.
+
+`setFirstPage` exists separately because a search that narrows the result set must not carry the old offset forward — that is how a list comes back empty until the user pages backwards. It also adopts the page size the server actually used, ignoring a nonsensical zero that would wedge the drain at a zero-length step, and applies the same empty-page cap as `setPage` — otherwise an empty first page under a non-zero total costs one wasted request and briefly reports a genuinely empty result as an incomplete set.
+
+### 5.3 `withPendingIds`
+
+| | |
+| --- | --- |
+| State | `pendingIds: ReadonlySet<string>` |
+| Computed | `hasPendingIds`, `pendingIdCount` |
+| Methods | `isRowPending(id)` |
+| Updaters | `addPendingId(id)`, `removePendingId(id)`, `clearPendingIds()` |
+
+Per-row in-flight tracking, so a rename on one conversation does not disable the other forty. A `Set` rather than an array because the lookup happens once per row per render, and `isRowPending` reads the signal on every call so a template binding tracks it.
+
+**Every updater replaces the set rather than mutating it, and that is load-bearing rather than stylistic.** `patchState` compares each key by reference before writing, so an updater that mutates the existing `Set` and returns the same reference performs **no signal write at all**. Nothing re-renders and nothing fails — the list simply stops updating, which is a bug that survives review and reproduces only under a real click. (This is also the class of bug `provideCheckNoChangesConfig({ exhaustive: true })` in the test providers is there to catch.)
+
+### 5.4 `withClientQuery(source, config)`
+
+| | |
+| --- | --- |
+| State | `query`, `sortKey`, `sortDirection` |
+| Computed | `results`, `canSort`, `sortUnavailableReason`, `hasQuery`, `isEmptyResult`, `isResultPartial`, `resultsPartialReason` |
+| Updaters | `setQuery(q)`, `setSort(key, dir?)`, `toggleSort(key)`, `clearSort()` |
+| Config | `searchableText`, `comparators`, `isAuthoritative`, `incompleteSetReason` |
+
+**Why it exists at all: no list endpoint in this API accepts a sort parameter.** Sorting is therefore only ever *correct* over a set the client holds in full, and sorting only the page in hand is never an option — "Load more" would append a second sorted run beneath the first. Rather than leaving that condition implicit in each screen, this feature makes it a value: when `isAuthoritative` is false the sort keys are ignored, results stay in server order, and `sortUnavailableReason` carries the sentence the UI renders in place of the control. Naming the limit is the point; a silently disabled control reads as a bug.
+
+**Filtering is not suppressed on an incomplete set** — a filter over part of the data is still useful where a sort over it is simply wrong. It is *qualified* instead: `isResultPartial` says the count on screen was computed over less than everything, so "No projects match" can be rendered as "No matches among the projects loaded so far" rather than as a false statement about the user's data.
+
+It is composed through `withFeature` so it binds to any `Signal<readonly T[]>`, whatever the host store calls it (see §2). `results` copies before sorting, because `Array.prototype.sort` is in place and the source array is store state.
+
+**The four sort regimes** (PRD §6) and how each maps onto the feature:
+
+| Regime | Screens | Loading | `withClientQuery` |
+| --- | --- | --- | --- |
+| **A** — full-set client sort | Projects, project conversations | Drain at `take=100` to a **500-item ceiling** | `isAuthoritative: computed(() => isFulfilled() && isFullyLoaded())`. At the ceiling the sort select renders disabled with `sortUnavailableReason` above the grid |
+| **B** — server order, no sort | Conversations list | Server-paged | Not composed for sort at all; the toolbar carries name search and the favourites filter only |
+| **C** — unpaginated, fully correct | Admin models, admin MCPs (`/all` routes) | Whole set in one request | `isAuthoritative: true` (the plain boolean overload), no `withOffsetPagination` |
+| **D** — server-paged, search only | Admin users | Server-paged, server-side search | No client sort; the search term is a query parameter, not a client filter |
+
+US-706 would add `sort`/`dir` to the paginated endpoints and collapse B and D into server-side ordering. Until it lands, this table is the contract.
+
+One typing note that saves a confusing hour: the updaters are typed against `SortReadableState`, whose `sortKey` is widened to `string | null`, because a host store's `sortKey` is its own key union and an updater declaring only the literal it was called with would not accept that state. `toggleSort`'s flip branch deliberately returns **no** `sortKey` — re-emitting the one already in state would widen it back to `string` and stop matching the host's union.
+
+### 5.5 `withResetOnSignOut` — compose it last
+
+```ts
+signalStore(
+  withEntities<Project>(),
+  withRequestStatus(),
+  /* … everything that contributes state … */
+  withResetOnSignOut(), // ← last
+);
+```
+
+It snapshots the store's initial state with `getState` during construction and, on `sessionEvents.signedOut`, patches that snapshot back.
+
+**Why the ordering rule is real.** `withProps` runs during construction in composition order. Listed last, it snapshots the complete state — everything `withState`, `withEntities`, `withRequestStatus`, and `withOffsetPagination` contributed — and it takes that snapshot before any `onInit` hook has loaded data into it. A state-contributing feature composed *after* it adds a key the snapshot does not carry, and `patchState` then leaves that key untouched on sign-out: **the store half-clears, and the surviving slice belongs to the previous user.**
+
+The type system cannot catch it — the feature's `State` parameter has no inference site and degrades to `object` — so the rule is asserted at runtime instead. A **dev-only `onInit` guard** compares the live state's keys against the snapshot's and throws naming the offending ones:
+
+```text
+Error: withResetOnSignOut must be the last feature in the store: sortKey, sortDirection would survive sign-out.
+```
+
+By `onInit` the live state carries every key, including those from features composed afterwards — which is precisely what the snapshot missed. The guard is skipped outside dev mode, so it costs nothing in production. Features that contribute no state (`withMethods`, `withComputed`) may follow it safely, but "last" is the rule worth remembering.
+
+The snapshot is taken inside `untracked(...)`, because construction can occur inside a reactive context — an injection from within a `computed` — where an eager read of every state signal would silently make that computed depend on the whole store.
+
+**Clearing state is not the same as cancelling work.** This is the single most important sentence in this section. A request already on the wire when sign-out fires will still resolve and write the previous user's rows back over the just-cleared state. This feature cannot cancel on the store's behalf, so **any store that loads asynchronously must also compose `takeUntil(injectSignedOut())` into its inner pipe**:
+
+```ts
+switchMap((id) => api.load(id).pipe(takeUntil(signedOut$), mapResponse({ … })))
+```
+
+`injectSignedOut()` is a function rather than a prop on the feature exactly because the feature has to be composed last and nothing after it could read such a prop. It must be called in an injection context — the `withMethods` factory parameter list in §2 is the idiomatic place.
+
+### 5.6 Cross-store events
+
+The `@ngrx/signals/events` plugin is a **deliberate, narrow opt-in**, not the app's default state style. This is not classic NgRx: there are no actions, reducers, or effects.
+
+Sign-out is the canonical case events exist for — one thing happens and *every* store has to react to it, across route-scope boundaries, without any of them knowing the others exist. A method on a session service would require each store to register with it, which inverts the dependency the wrong way: a root service would have to reach into route-scoped stores.
+
+```ts
+export const sessionEvents = eventGroup({
+  source: 'Session',
+  events: { signedOut: type<void>() },
+});
+```
+
+`turnEvents` (US-409) and `adminEvents` (US-1207, US-1208) will follow this shape. Everything else stays on plain store methods.
+
+> **Dispatch `signedOut` on the global scope.** `Dispatcher` and `Events` are `platform`-scoped by default, but a component or route calling `provideDispatcher()` creates a local scope, and an event dispatched inside one is invisible to ancestors and siblings. A sign-out dispatched from within such a scope must carry `{ scope: 'global' }`, or the route-scoped stores in every other scope never reset — which is the entire failure this event exists to prevent.
+
+### 5.7 Composition order
+
+`signalStore` composes in order, so the order is part of the contract:
+
+| Position | Feature kind | Why |
+| --- | --- | --- |
+| 1 | `withState`, `withEntities`, `withRequestStatus`, `withOffsetPagination`, `withPendingIds` | Everything that contributes state comes first |
+| 2 | `withProps` | Injected dependencies and derived non-signal props |
+| 3 | `withComputed`, `withFeature(… withClientQuery …)` | Derivations, which need the state above them |
+| 4 | `withMethods` | Reads state and computed values |
+| 5 | `withHooks` | Runs after the store exists |
+| last | `withResetOnSignOut` | §5.5 |
+
+Beyond ordering, the standing rules for stores in this repo: keep `protectedState` on, write only through `patchState` with standalone updaters, use `rxMethod` (not `signalMethod`) wherever requests can overlap so `switchMap` prevents a stale response overwriting a fresh one, and use one store per entity type with `withEntities` for keyed collections.
+
+## 6. Testing
+
+Everything above is covered by Vitest specs that run with no backend and, for the framework-free parts, no `TestBed`.
+
+| Area | Specs | Notable cases |
+| --- | --- | --- |
+| Config | `app-config`, `app-config.token`, `load-app-config`, `fatal-shell` | Each named-field failure; a 200 carrying `index.html`; the timeout; the shell's `textContent`-only rendering and watchdog clearing |
+| Errors | `to-app-error` (31 cases), `to-app-error-from-response`, `problem-details`, `problem-types`, `apply-server-errors`, `camel-case`, `error-message`, `retry-policy` | Timeout-versus-abort ordering; a `bodyUsed` body; PascalCase, dotted and indexed keys; the `AUTH_DECISIONS` key set |
+| HTTP | `api-url`, `retry.interceptor` | GET-only, the 409 and app-typed-503 exclusions, jitter bounds via a pinned `random` |
+| State | `with-request-status`, `with-offset-pagination` (15 cases), `with-pending-ids`, `with-client-query` (16 cases), `with-reset-on-sign-out` | The exact-multiple page boundary; the empty-page cap; the replace-not-mutate signal write; `isAuthoritative` false suppressing sort; the dev-only ordering guard throwing |
+
+```bash
+# from enterprise-gpt-ui/
+npm test           # Vitest, single run
+npm run test:watch # watch mode
+npm run build      # production build; fails above the 300 kB initial budget
+```
+
+## 7. What is not here yet
+
+| Missing | Owner |
+| --- | --- |
+| Sign-in, `TokenService`, `authInterceptor` — MSAL is installed but unwired | US-201 |
+| Any route at all; `app.routes.ts` is `[]` | EP-3 onward |
+| Any store; US-104 built the features, not their consumers | US-302 sets the reference pattern |
+| Theme switching and the pre-paint script slot in `index.html` | US-105 |
+| The shared UI kit, including the toast `error-message.ts` feeds | US-106 |
+| ESLint, the `bypassSecurityTrustHtml` restriction, CI gates | US-108 |
+| Markdown rendering; `ngx-markdown` is installed but imported nowhere | EP-6 / US-601 |
+| The SSE codec, the fold, and the chat transport | EP-4 |
+
+## 8. Key files
 
 | Concern | File |
-|---|---|
-| Config shape + validation | [`core/config/app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/app-config.ts) |
-| Fetch + normalize | [`core/config/load-app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/load-app-config.ts) |
-| Injection token | [`core/config/app-config.token.ts`](../../enterprise-gpt-ui/src/app/core/config/app-config.token.ts) |
-| Startup / fatal shell | [`core/config/fatal-shell.ts`](../../enterprise-gpt-ui/src/app/core/config/fatal-shell.ts), [`src/index.html`](../../enterprise-gpt-ui/src/index.html) |
+| --- | --- |
 | Bootstrap order | [`src/main.ts`](../../enterprise-gpt-ui/src/main.ts) |
-| Committed dev config | [`public/config.json`](../../enterprise-gpt-ui/public/config.json) |
-| The union | [`core/errors/app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/app-error.ts) |
-| Problem bodies + type URIs | [`core/errors/problem-details.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-details.ts), [`problem-types.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-types.ts) |
+| App providers, interceptor order | [`src/app/app.config.ts`](../../enterprise-gpt-ui/src/app/app.config.ts) |
+| Config shape and validation | [`core/config/app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/app-config.ts) |
+| Config load | [`core/config/load-app-config.ts`](../../enterprise-gpt-ui/src/app/core/config/load-app-config.ts) |
+| Startup / fatal shell | [`src/index.html`](../../enterprise-gpt-ui/src/index.html), [`core/config/fatal-shell.ts`](../../enterprise-gpt-ui/src/app/core/config/fatal-shell.ts) |
+| Error union | [`core/errors/app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/app-error.ts) |
 | Arm selection | [`core/errors/build-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/build-app-error.ts) |
-| Entry points | [`core/errors/to-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/to-app-error.ts), [`to-app-error-from-response.ts`](../../enterprise-gpt-ui/src/app/core/errors/to-app-error-from-response.ts) |
-| Form mapping | [`core/errors/apply-server-errors.ts`](../../enterprise-gpt-ui/src/app/core/errors/apply-server-errors.ts), [`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts) |
-| Retry + auth policy | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts) |
-| User-facing text | [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) |
-| HTTP wiring | [`core/http/api-url.ts`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts), [`interceptors/retry.interceptor.ts`](../../enterprise-gpt-ui/src/app/core/http/interceptors/retry.interceptor.ts) |
-| App providers | [`src/app/app.config.ts`](../../enterprise-gpt-ui/src/app/app.config.ts) |
-| Server-side counterpart | [`Enterprise.Gpt.Api/Problems/ProblemTypes.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemTypes.cs) |
-
-## 7. Known gaps and next steps
-
-- **No authentication yet.** MSAL is installed and unwired; `authErrorDecision` has no caller until US-201 adds the interceptor. Nothing in this batch sends an `Authorization` header.
-- **No toast, no store, no routes.** `shouldNotify` / `userMessage` / `traceLine` are pure policy waiting on the US-106 toast component; `app.routes.ts` is empty and `App` is a bare `<router-outlet />`.
-- **`AnyProblemDetails` does not narrow on `type`.** The base member's `type` is `string`, which absorbs every literal, and TypeScript cannot express "any string except these ten". Narrow the **`AppError` arm** instead — which is what stores and toasts consume — or use the validating extension readers. The union's value is letting a fixture carry extension members without a cast.
-- **The problem-type list is mirrored by hand.** All ten are asserted verbatim in a spec, but nothing fails when the API *adds* an eleventh; it will simply arrive as `http`. Adding an arm is the intended response, not widening the catch-all.
-- **`scope` on `mcp-authorization-required` is always null** until US-411 puts it on the wire; the UI shows the explanation with no consent button in the meantime.
-- **The bundle budget needs re-baselining** whenever a story adds a substantial initial-chunk dependency — MSAL, Bootstrap JS, markdown-it. Record the new figure in the pull request; a ceiling far above the measured size stops catching anything.
-- **Docs still linking into the deleted client.** [`streaming-contract.md` §7 and §10](../conversations/streaming-contract.md#7-breaking-change-for-enterprise-ui) reference `enterprise-ui/src/app/services/conversation.service.ts`, which no longer exists in any tree. Those sections describe the rewrite this document is the first instalment of, and want a prose revision rather than a path fix.
+| Retry and refresh policy | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts) |
+| Store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
+| Session events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
+| Pagination envelope mirror | [`domain/api/paginated-response.ts`](../../enterprise-gpt-ui/src/app/domain/api/paginated-response.ts) |
+| Test providers | [`src/testing/test-providers.ts`](../../enterprise-gpt-ui/src/testing/test-providers.ts) |
+| Related reference | [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |

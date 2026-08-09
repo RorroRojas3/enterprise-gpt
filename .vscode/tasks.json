@@ -32,6 +32,17 @@
           }
         }
       }
+    },
+    {
+      "label": "serve-design",
+      "type": "shell",
+      "command": "node",
+      "args": ["${workspaceFolder}/docs/design/serve.mjs"],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated"
+      }
     }
   ]
 }

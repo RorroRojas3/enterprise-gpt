@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="theme.css" rel="stylesheet">
+</helmet>
+<div style="width:100%;font-family:Inter,sans-serif;position:relative">
+  <sc-if value="{{ chips }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:10px;padding:6px 10px">
+        <i class="bi bi-file-earmark-pdf" style="color:var(--fail);font-size:16px"></i>
+        <div style="min-width:0"><div style="font-size:12.5px;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">quarterly-report.pdf</div><div style="font-size:11px;color:var(--muted)">2.4 MB &middot; Ready</div></div>
+        <i class="bi bi-check-circle-fill" style="color:var(--ok);font-size:13px"></i>
+        <i class="bi bi-x" style="color:var(--muted);font-size:16px;cursor:pointer"></i>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:10px;padding:6px 10px">
+        <i class="bi bi-filetype-csv" style="color:var(--accent);font-size:16px"></i>
+        <div style="min-width:0"><div style="font-size:12.5px;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">usage-export.csv</div>
+          <div style="display:flex;align-items:center;gap:6px"><div style="width:86px;height:4px;border-radius:2px;background:var(--surface-2)"><div style="width:64%;height:4px;border-radius:2px;background:var(--accent)"></div></div><span style="font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--muted)">64%</span></div>
+        </div>
+        <i class="bi bi-x" style="color:var(--muted);font-size:16px;cursor:pointer"></i>
+      </div>
+    </div>
+  </sc-if>
+  <div style="position:relative;background:var(--surface);border:1px solid var(--bs-border-color);border-radius:14px;padding:8px 12px;box-shadow:0 1px 3px rgba(11,31,51,.05)">
+    <sc-if value="{{ dragover }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:4px;border:2px dashed var(--accent);border-radius:11px;background:rgba(33,168,216,.07);display:flex;align-items:center;justify-content:center;gap:10px;z-index:5;color:var(--brand);font-weight:600;font-size:14px"><i class="bi bi-file-earmark-arrow-up" style="font-size:18px"></i>Drop file(s)</div>
+    </sc-if>
+    <div style="min-height:{{ textMinH }};padding:6px 4px 8px;font-size:15px;line-height:1.5;color:{{ textColor }}">{{ text }}</div>
+    <sc-if value="{{ toolsNoteShow }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--warn);padding:0 4px 8px"><i class="bi bi-exclamation-triangle-fill" style="font-size:12px"></i>{{ toolsNote }}</div>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:6px">
+      <sc-if value="{{ attach }}" hint-placeholder-val="{{ true }}">
+        <button style="width:34px;height:34px;border:none;background:transparent;border-radius:9px;color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:16px;opacity:{{ ctlOpacity }}" style-hover="background:var(--surface-2)"><i class="bi bi-paperclip"></i></button>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:var(--surface-2);font-size:12.5px;font-weight:600;color:{{ projColor }};cursor:pointer;white-space:nowrap">
+        <i class="bi {{ projIcon }}" style="font-size:12px"></i><span style="display:{{ projLabelDisp }}">{{ projLabel }}</span><i class="bi bi-chevron-down" style="font-size:9px;color:var(--muted)"></i>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:999px;background:var(--surface-2);font-size:12.5px;font-weight:600;color:var(--bs-body-color);cursor:pointer;white-space:nowrap">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 7px"></span><span>{{ modelName }}</span><span style="display:{{ ctxDisp }};font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:400;color:var(--muted)">400k</span><i class="bi bi-chevron-down" style="font-size:9px;color:var(--muted)"></i>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:var(--surface-2);font-size:12.5px;font-weight:600;color:var(--bs-body-color);cursor:pointer;white-space:nowrap;opacity:{{ toolsOpacity }}">
+        <i class="bi bi-tools" style="font-size:12px;color:var(--muted)"></i><span>{{ toolsLabel }}</span><i class="bi bi-chevron-down" style="font-size:9px;color:var(--muted)"></i>
+      </div>
+      <sc-if value="{{ micNormal }}" hint-placeholder-val="{{ true }}">
+        <button style="width:34px;height:34px;border:none;background:transparent;border-radius:9px;color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:16px;opacity:{{ ctlOpacity }}" style-hover="background:var(--surface-2)"><i class="bi bi-mic"></i></button>
+      </sc-if>
+      <sc-if value="{{ recOn }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 11px;border-radius:999px;background:rgba(33,168,216,.14);animation:ringpulse 1.8s ease-out infinite">
+          <i class="bi bi-mic-fill" style="color:var(--accent);font-size:15px"></i>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--accent)">0:07</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ showDownload }}" hint-placeholder-val="{{ true }}">
+        <button style="width:34px;height:34px;border:none;background:transparent;border-radius:9px;color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:16px;opacity:{{ ctlOpacity }}" style-hover="background:var(--surface-2)"><i class="bi bi-download"></i></button>
+      </sc-if>
+      <div style="flex:1"></div>
+      <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+        <button class="btn btn-primary" style="width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;opacity:{{ sendOpacity }}"><i class="bi bi-send-fill" style="font-size:14px;transform:translate(-1px,1px)"></i></button>
+      </sc-if>
+      <sc-if value="{{ streaming }}" hint-placeholder-val="{{ false }}">
+        <button style="width:38px;height:38px;border-radius:50%;background:transparent;border:2px solid var(--brand);display:flex;align-items:center;justify-content:center;padding:0"><span style="width:11px;height:11px;border-radius:2.5px;background:var(--brand);display:block"></span></button>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:820,&quot;height&quot;:170},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;idle&quot;,&quot;streaming&quot;],&quot;default&quot;:&quot;idle&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;project&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;hasText&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;chips&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;attach&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Capabilities&quot;},&quot;toolsLabel&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Tools&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Capabilities&quot;},&quot;toolsDisabled&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Capabilities&quot;},&quot;toolsNote&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Capabilities&quot;},&quot;dragover&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;States&quot;},&quot;compact&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;States&quot;},&quot;download&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Capabilities&quot;},&quot;mic&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Capabilities&quot;},&quot;text&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Add a risks section and tag the owners&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props;
+    const streaming = (p.state ?? 'idle') === 'streaming';
+    const hasText = p.hasText ?? false;
+    const compact = p.compact ?? false;
+    const project = p.project ?? '';
+    const toolsDisabled = p.toolsDisabled ?? false;
+    const toolsNote = p.toolsNote ?? '';
+    const chips = p.chips ?? false;
+    return {
+      idle: !streaming, streaming,
+      attach: p.attach ?? true,
+      micNormal: (p.mic ?? true) && !(p.recording ?? false),
+      recOn: (p.mic ?? true) && (p.recording ?? false),
+      showDownload: (p.download ?? true) && !compact,
+      chips, dragover: p.dragover ?? false,
+      projIcon: project ? 'bi-folder-fill' : 'bi-folder',
+      projColor: project ? 'var(--brand)' : 'var(--muted)',
+      projLabel: project || 'No project',
+      projLabelDisp: compact ? 'none' : 'inline',
+      modelName: p.model ?? (compact ? 'GPT-5' : 'GPT-5 Enterprise'),
+      ctxDisp: (compact || p.model) ? 'none' : 'inline',
+      toolsLabel: p.toolsLabel ?? 'Tools',
+      toolsOpacity: toolsDisabled ? '.45' : '1',
+      toolsNoteShow: !!toolsNote, toolsNote,
+      text: hasText ? (p.text ?? 'Add a risks section and tag the owners') : 'Message Enterprise GPT\u2026',
+      textColor: hasText ? 'var(--bs-body-color)' : 'var(--muted)',
+      sendOpacity: (hasText || chips) ? '1' : '.45',
+      ctlOpacity: streaming ? '.4' : '1',
+      textMinH: compact ? '36px' : '44px'
+    };
+  }
+}
+</script>
+</body>
+</html>
