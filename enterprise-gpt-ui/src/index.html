@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Enterprise GPT</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <!--
+      Styles for the startup and fatal shells are inline rather than in
+      styles.scss: they have to render when the stylesheet or the bundle never
+      loaded, which is the case they exist for.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      #app-shell[hidden] {
+        display: none;
+      }
+      #app-shell {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: 1rem;
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      #app-shell .card {
+        max-width: 34rem;
+        padding: 2rem;
+      }
+      #app-shell[data-state='failed'] .card {
+        border: 1px solid currentColor;
+        border-radius: 0.5rem;
+      }
+      #app-shell h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.25rem;
+      }
+      #app-shell h1:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 4px;
+      }
+      #app-shell code {
+        display: block;
+        margin: 0.75rem 0;
+        font-size: 0.875rem;
+        opacity: 0.75;
+        overflow-wrap: anywhere;
+      }
+      #app-shell button {
+        padding: 0.5rem 1rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      #app-shell[data-state='starting'] .on-failed,
+      #app-shell[data-state='failed'] .on-starting {
+        display: none;
+      }
+    </style>
+    <!-- US-105 inserts the pre-paint theme script here. -->
+  </head>
+  <body>
+    <app-root></app-root>
+
+    <!--
+      Visible from first paint and removed by main.ts once the app bootstraps.
+      Starting hidden would leave a blank page whenever the bundle itself fails to
+      load — a hashed-filename mismatch, a CDN miss, a CSP block — because nothing
+      would be running to reveal it.
+    -->
+    <div id="app-shell" data-state="starting">
+      <div class="card">
+        <h1 tabindex="-1" id="app-shell-heading">Starting Enterprise GPT…</h1>
+        <div class="on-failed">
+          <!--
+            The live region wraps the explanation only. Including the already-
+            focused heading would have it read twice, and a live region is no
+            place for an interactive control.
+          -->
+          <div id="app-shell-status">
+            <p>The application configuration could not be loaded, so the app has not started.</p>
+            <p>
+              This is a deployment problem rather than a problem with your account. If it keeps
+              happening, contact your administrator and quote the detail below.
+            </p>
+            <code id="app-shell-detail"></code>
+          </div>
+          <button type="button" id="app-shell-retry">Try again</button>
+        </div>
+      </div>
+    </div>
+
+    <noscript>
+      <p>Enterprise GPT needs JavaScript. Enable it and reload the page.</p>
+    </noscript>
+
+    <script>
+      // Watchdog for the one failure the application cannot report on its own: the
+      // bundle never ran. Cleared by main.ts on either outcome.
+      window.__appShellWatchdog = setTimeout(function () {
+        var shell = document.getElementById('app-shell');
+        if (shell && shell.dataset.state === 'starting') {
+          shell.dataset.state = 'failed';
+          document.getElementById('app-shell-heading').textContent =
+            'Enterprise GPT could not start';
+          document.getElementById('app-shell-detail').textContent =
+            'The application did not finish loading.';
+          document.getElementById('app-shell-retry').onclick = function () {
+            location.reload();
+          };
+        }
+      }, 30000);
+    </script>
+  </body>
+</html>

@@ -12,6 +12,7 @@ using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -31,6 +32,7 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly ITokenService _tokenService = Substitute.For<ITokenService>();
     private readonly IModelService _modelService = Substitute.For<IModelService>();
     private readonly IMcpToolProvider _mcpToolProvider = Substitute.For<IMcpToolProvider>();
+    private readonly IDocumentRetrievalService _documentRetrievalService = Substitute.For<IDocumentRetrievalService>();
     private readonly IConversationLockService _lockService = Substitute.For<IConversationLockService>();
     private readonly IAzureCosmosService _cosmosService = Substitute.For<IAzureCosmosService>();
     private readonly FakeChatClient _chatClient = new();
@@ -54,11 +56,19 @@ public sealed class ConversationServiceTests : IDisposable
             .UseFunctionInvocation()
             .Build();
         _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_trackedChatClient);
+
+        // No documents by default, so the retrieval tool stays off every turn that does not opt into it.
+        // A substitute returning null here would fault every stream before the first fragment.
+        _documentRetrievalService
+            .GetScopeAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => new DocumentRetrievalScope(callInfo.ArgAt<Guid>(0), null, []));
+
         _service = new ConversationService(
             NullLogger<ConversationService>.Instance,
             _modelService,
             _chatClientResolver,
             _mcpToolProvider,
+            _documentRetrievalService,
             _lockService,
             _tokenService,
             _cosmosService,
@@ -690,6 +700,200 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.True(capturedOptions.AllowMultipleToolCalls);
         await leaseSet.Received(1).DisposeAsync();
     }
+
+    #region Document retrieval tool
+    [Fact]
+    public async Task StreamConversationAsync_ConversationWithDocuments_AttachesTheRetrievalTool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        var capturedOptions = _chatClient.CapturedOptions;
+        Assert.NotNull(capturedOptions);
+        Assert.NotNull(capturedOptions.Tools);
+        Assert.Contains(capturedOptions.Tools, t => t.Name == DocumentTool.ToolName);
+        Assert.True(capturedOptions.AllowMultipleToolCalls);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_ConversationWithDocuments_TellsTheModelWhichDocumentsExist()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf", "policy.docx");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        // Without the names the model cannot tell whether a question is worth a search, so it answers
+        // from its own knowledge and never calls the tool at all.
+        var instructions = _chatClient.CapturedOptions?.Instructions;
+        Assert.NotNull(instructions);
+        Assert.Contains("handbook.pdf", instructions, StringComparison.Ordinal);
+        Assert.Contains("policy.docx", instructions, StringComparison.Ordinal);
+        Assert.Contains(DocumentTool.ToolName, instructions, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_NoDocuments_AttachesNoTools()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        // A tool that is always present and always returns nothing teaches the model to stop calling it.
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_DocumentsOnANonToolModel_RunsTheTurnWithoutRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: false);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        var updates = await StreamToEndAsync(conversation.Id, request);
+
+        // Unlike an MCP selection, retrieval is attached implicitly; failing the turn over it would
+        // break every conversation that happens to hold a file.
+        Assert.Equal(["Hello", " world"], updates);
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_DocumentsAndMcpServers_AttachesBothSetsOfTools()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var mcpTool = new FakeTool();
+        SetUpLeaseSet(mcpTool);
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = Guid.NewGuid() }]
+        };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        // Assigning Tools per source rather than once would have the last writer discard the others.
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Equal(2, tools.Count);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+        Assert.Contains(mcpTool, tools);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_DocumentsInAProject_ResolvesScopeWithTheProject()
+    {
+        var project = await AddProjectAsync();
+        var conversation = await AddConversationAsync(project.Id);
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, project.Id, "project-handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        await _documentRetrievalService.Received(1)
+            .GetScopeAsync(conversation.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_ProjectInstructionsAndDocuments_CarriesBothSetsOfInstructions()
+    {
+        var project = await AddProjectAsync("Always answer in British English.");
+        var conversation = await AddConversationAsync(project.Id);
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, project.Id, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        var instructions = _chatClient.CapturedOptions?.Instructions;
+        Assert.NotNull(instructions);
+        Assert.Contains("Always answer in British English.", instructions, StringComparison.Ordinal);
+        Assert.Contains("handbook.pdf", instructions, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_McpToolAlreadyNamedDocumentSearch_StandsTheRetrievalToolDown()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var collidingTool = new FakeNamedTool(DocumentTool.ToolName);
+        SetUpLeaseSet(collidingTool);
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = Guid.NewGuid() }]
+        };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        // An MCP server named "document" exposing a tool named "search" produces exactly this name. Two
+        // identically named functions on one request are rejected outright by OpenAI-shaped providers, so
+        // the implicit tool stands down and the user's explicit selection survives. The instruction block
+        // has to go with it, or the model is told to call a tool it does not have.
+        var capturedOptions = _chatClient.CapturedOptions;
+        Assert.NotNull(capturedOptions);
+        Assert.Equal([collidingTool], capturedOptions.Tools);
+        Assert.DoesNotContain(DocumentTool.ToolName, capturedOptions.Instructions ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_ScopeResolutionFails_RunsTheTurnWithoutRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _documentRetrievalService
+            .GetScopeAsync(conversation.Id, Arg.Any<CancellationToken>())
+            .Returns<DocumentRetrievalScope>(_ => throw new InvalidOperationException("The database is unreachable."));
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        var updates = await StreamToEndAsync(conversation.Id, request);
+
+        // Scope resolution now runs for every conversation, including the ones with no documents at all,
+        // so letting it fault would turn a feature nobody in that turn is using into a new way for chat
+        // to break.
+        Assert.Equal(["Hello", " world"], updates);
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    /// <summary>
+    /// Substitutes a document scope for the conversation so the retrieval tool is attached.
+    /// </summary>
+    private void SetUpDocumentScope(Guid conversationId, Guid? projectId, params string[] documentNames)
+    {
+        var scope = new DocumentRetrievalScope(
+            conversationId,
+            projectId,
+            [.. documentNames.Select(n => new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, n))]);
+
+        _documentRetrievalService
+            .GetScopeAsync(conversationId, Arg.Any<CancellationToken>())
+            .Returns(scope);
+    }
+    #endregion
 
     #region Project membership
     [Fact]
@@ -1660,5 +1864,14 @@ public sealed class ConversationServiceTests : IDisposable
 
     private sealed class FakeTool : AITool
     {
+    }
+
+    /// <summary>
+    /// A tool that reports a chosen name, for the case where an MCP server's prefixed tool name collides
+    /// with the document retrieval tool's.
+    /// </summary>
+    private sealed class FakeNamedTool(string name) : AITool
+    {
+        public override string Name { get; } = name;
     }
 }

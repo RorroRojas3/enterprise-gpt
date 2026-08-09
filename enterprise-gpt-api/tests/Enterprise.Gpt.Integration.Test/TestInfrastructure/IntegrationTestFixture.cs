@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;
@@ -783,6 +784,119 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
 
         return project.Id;
+    }
+
+    /// <summary>
+    /// Inserts a conversation document and its chunks directly into the database, with embeddings the
+    /// caller chooses, for arranging retrieval scenarios.
+    /// </summary>
+    /// <param name="conversationId">The conversation the document belongs to.</param>
+    /// <param name="name">The document's file name, which is what citations are built from.</param>
+    /// <param name="chunks">The chunks to insert, with the vector each one should be found by.</param>
+    /// <param name="deactivated">Whether the document is soft-deleted.</param>
+    /// <param name="chunksDeactivated">Whether the chunks are soft-deleted while the document stays active.</param>
+    /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted document.</returns>
+    /// <remarks>
+    /// Chunks are written with hand-chosen vectors rather than through the ingestion pipeline, because
+    /// retrieval tests need the distances the database computes to be predictable. Going through the
+    /// real extractor and chunker would make the ranking depend on a fixture's prose.
+    /// </remarks>
+    public async Task<Guid> AddConversationDocumentAsync(
+        Guid conversationId, string name, IReadOnlyList<SeedChunk> chunks, bool deactivated = false,
+        bool chunksDeactivated = false, Guid? userId = null, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var document = new ConversationDocument
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversationId,
+            UserId = userId ?? TestUsers.RegularUserId,
+            Name = name,
+            Extension = Path.GetExtension(name),
+            MimeType = "application/octet-stream",
+            Size = 1024,
+            Path = $"integration/{name}",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated ? date : null,
+            Chunks =
+            [
+                .. chunks.Select(c => new ConversationDocumentChunk
+                {
+                    Id = Guid.NewGuid(),
+                    Index = c.Index,
+                    SourceNumber = c.SourceNumber,
+                    TokenCount = Math.Max(1, c.Text.Length / 4),
+                    Text = c.Text,
+                    Embedding = new SqlVector<float>(c.Vector),
+                    DateCreated = date,
+                    DateModified = date,
+                    DateDeactivated = deactivated || chunksDeactivated ? date : null
+                })
+            ]
+        };
+
+        ctx.ConversationDocuments.Add(document);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return document.Id;
+    }
+
+    /// <summary>
+    /// Inserts a project document and its chunks directly into the database, with embeddings the caller
+    /// chooses, for arranging retrieval scenarios that span a project.
+    /// </summary>
+    /// <param name="projectId">The project the document belongs to.</param>
+    /// <param name="name">The document's file name.</param>
+    /// <param name="chunks">The chunks to insert, with the vector each one should be found by.</param>
+    /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted document.</returns>
+    public async Task<Guid> AddProjectDocumentAsync(
+        Guid projectId, string name, IReadOnlyList<SeedChunk> chunks, Guid? userId = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+        var document = new ProjectDocument
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            UserId = userId ?? TestUsers.RegularUserId,
+            Name = name,
+            Extension = Path.GetExtension(name),
+            MimeType = "application/octet-stream",
+            Size = 1024,
+            Path = $"integration/projects/{name}",
+            DateCreated = date,
+            DateModified = date,
+            Chunks =
+            [
+                .. chunks.Select(c => new ProjectDocumentChunk
+                {
+                    Id = Guid.NewGuid(),
+                    Index = c.Index,
+                    SourceNumber = c.SourceNumber,
+                    TokenCount = Math.Max(1, c.Text.Length / 4),
+                    Text = c.Text,
+                    Embedding = new SqlVector<float>(c.Vector),
+                    DateCreated = date,
+                    DateModified = date
+                })
+            ]
+        };
+
+        ctx.ProjectDocuments.Add(document);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return document.Id;
     }
 
     /// <summary>

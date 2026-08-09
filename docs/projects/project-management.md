@@ -399,13 +399,11 @@ Two pieces of harness were needed:
 
 ## 10. Known limits and gaps
 
-### 10.1 Retrieval is not implemented — project documents do not change answers yet
+### 10.1 Project documents reach answers only through retrieval
 
-**Project document chunks are extracted, embedded and stored, and nothing reads them.** There is no vector search, no `VECTOR_DISTANCE` query, and nothing that puts chunk text into a chat completion's context. Outside ingestion, the only code that touches `ProjectDocumentChunks` is the soft-delete cascade in §7.
+**Project document chunks are read by the `document_search` tool**, which searches a conversation's own documents and, when it is in a project, that project's as well. The scoping this feature was designed around is what makes that safe: `ProjectDocumentChunk` rows are reachable only through `ProjectDocument.ProjectId`, and the project is read from the conversation row rather than accepted from a caller, so "only conversations in the project can see the project's documents" is a `WHERE` clause on an indexed column. A deactivated project drops out of the scope entirely, even though its conversations still point at it. Outside ingestion and retrieval, the only code that touches `ProjectDocumentChunks` is the soft-delete cascade in §7.
 
-This is exactly the state conversation documents are in ([Document Upload and Ingestion §11.1](../documents/upload-workflow.md)), and it is the single most important thing to know about the feature: **uploading a document into a project currently changes nothing about the answers a user gets.** Only the instructions (§5) actually reach the model today.
-
-What this release does buy is the part that is expensive to retrofit: the ownership model and the query scoping. `ProjectDocumentChunk` rows are reachable only through `ProjectDocument.ProjectId`, and a conversation's `ProjectId` says which project it may see — so "only conversations in the project can see the project's documents" becomes a `WHERE` clause on an indexed column when a retrieval layer is added, not a redesign.
+Two caveats worth knowing before promising users the feature: retrieval needs a **tool-enabled model** — on one that cannot call tools it is skipped with a warning, and the answer is ungrounded — and it needs SQL Server 2025 or Azure SQL Database, so it cannot be exercised against the LocalDB connection string in `appsettings.json`. Project instructions (§5) have neither constraint; they reach every model on every turn. [Document Retrieval (RAG)](../documents/retrieval.md) is the full reference.
 
 ### 10.2 `GET /api/projects/{id}/documents` is unpaginated
 

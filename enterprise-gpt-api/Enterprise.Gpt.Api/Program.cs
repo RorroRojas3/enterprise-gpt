@@ -32,6 +32,7 @@ using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
 using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Tool;
 using Scalar.AspNetCore;
 using System.ClientModel;
 
@@ -281,6 +282,18 @@ builder.Services.AddOptions<DocumentOptions>()
         "Documents:Chunking:OverlapTokens must be smaller than Documents:Chunking:MaxTokens.")
     .ValidateOnStart();
 
+// Document retrieval (RAG) tuning. Over-fetching is what gives rank fusion and the per-document cap
+// something to choose between, so a candidate count at or below the result count is a configuration
+// error rather than a conservative setting.
+builder.Services.AddOptions<DocumentRetrievalOptions>()
+    .Bind(builder.Configuration.GetSection(DocumentRetrievalOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options => options.CandidateCount >= options.MaxResults,
+        "Documents:Retrieval:CandidateCount must be at least Documents:Retrieval:MaxResults.")
+    .Validate(options => options.LexicalCandidateCount >= options.MaxResults,
+        "Documents:Retrieval:LexicalCandidateCount must be at least Documents:Retrieval:MaxResults.")
+    .ValidateOnStart();
+
 // Background job pipeline (replaces Hangfire). BackgroundJobProcessor consumes IBackgroundJobQueue,
 // caps concurrent jobs via SemaphoreSlim, and updates IJobStatusStore for client polling.
 builder.Services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
@@ -397,6 +410,7 @@ builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
 // Keep other services as Scoped
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IDocumentRetrievalService, DocumentRetrievalService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IMcpServerService, McpServerService>();

@@ -17,6 +17,7 @@ using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Tool;
 
 namespace Enterprise.Gpt.Service
 {
@@ -89,6 +90,7 @@ namespace Enterprise.Gpt.Service
         IModelService modelService,
         IChatClientResolver chatClientResolver,
         IMcpToolProvider mcpToolProvider,
+        IDocumentRetrievalService documentRetrievalService,
         IConversationLockService conversationLockService,
         ITokenService tokenService,
         IAzureCosmosService cosmosService,
@@ -102,6 +104,7 @@ namespace Enterprise.Gpt.Service
         private readonly IChatClientResolver _chatClientResolver = chatClientResolver;
         private readonly IModelService _modelService = modelService;
         private readonly IMcpToolProvider _mcpToolProvider = mcpToolProvider;
+        private readonly IDocumentRetrievalService _documentRetrievalService = documentRetrievalService;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
@@ -1023,9 +1026,9 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <summary>
-        /// Creates chat options for the stream and, when MCP servers are selected, resolves
-        /// their tools through <see cref="IMcpToolProvider"/> (permission-checked, cached) and
-        /// attaches them to the options.
+        /// Creates chat options for the stream and attaches the turn's tools: document retrieval when
+        /// the conversation has documents, and the tools of any MCP servers the user selected, resolved
+        /// through <see cref="IMcpToolProvider"/> (permission-checked, cached).
         /// </summary>
         /// <param name="sessionId">The unique identifier of the chat session.</param>
         /// <param name="model">The AI model to use for the chat.</param>
@@ -1040,6 +1043,12 @@ namespace Enterprise.Gpt.Service
         /// <see langword="null"/> leases when no MCP servers were selected. The caller must
         /// keep the lease set alive for the whole stream and dispose it afterwards.
         /// </returns>
+        /// <remarks>
+        /// The two kinds of tool are treated differently on a model that cannot call tools. An MCP
+        /// selection is something the user made and can undo, so it fails loudly; document retrieval is
+        /// attached implicitly, and failing the turn over it would break every conversation that happens
+        /// to hold a file, so it is dropped with a warning instead.
+        /// </remarks>
         /// <exception cref="ValidationException">MCP servers were selected but <paramref name="model"/> does not support tools.</exception>
         /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
         /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
@@ -1054,21 +1063,50 @@ namespace Enterprise.Gpt.Service
                 ConversationId = sessionId.ToString()
             };
 
+            // Both blocks of instructions are derived context carried on the request rather than injected
+            // into the message list: that is the channel each provider maps to its own instruction slot,
+            // and it keeps the messages equal to the transcript instead of transcript-plus-derived-context.
+            List<string> instructions = [];
+            List<AITool> tools = [];
+
             if (!string.IsNullOrWhiteSpace(projectInstructions))
             {
-                // Carried as request-level instructions rather than injected into the message list:
-                // that is the channel each provider maps to its own instruction slot, and it keeps
-                // the messages equal to the transcript instead of transcript-plus-derived-context.
-                chatOptions.Instructions = ConversationPrompts.BuildProjectInstructionsPrompt(projectInstructions);
+                instructions.Add(ConversationPrompts.BuildProjectInstructionsPrompt(projectInstructions));
+            }
+
+            // Resolved once here, before the stream starts, and captured by the tool. Resolving per tool
+            // call would repeat the query for every search the model runs, and would let a document
+            // removed mid-turn change the corpus underneath a half-answered question.
+            //
+            // A failure to resolve it costs retrieval, not the turn: this now runs for every
+            // conversation, including the ones with no documents at all, so letting it abort a turn
+            // would make a feature nobody in that turn is using a new way for chat to fail.
+            DocumentRetrievalScope? documentScope = null;
+            try
+            {
+                documentScope = await _documentRetrievalService
+                    .GetScopeAsync(sessionId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Resolving the document scope failed for conversation {ConversationId}; the turn runs without document retrieval.", sessionId);
+            }
+
+            var attachDocumentTool = documentScope?.HasDocuments is true;
+            if (attachDocumentTool && !model.IsToolEnabled)
+            {
+                // Logged rather than silent: without this line, a user asking about their PDF gets a
+                // confident answer with no retrieval behind it and nothing explaining why.
+                _logger.LogWarning(
+                    "Conversation {ConversationId} has {DocumentCount} document(s) but model {ModelId} does not support tools; document retrieval is unavailable for this turn.",
+                    sessionId, documentScope!.Documents.Count, model.Id);
+
+                attachDocumentTool = false;
             }
 
             var selectedServerIds = mcps.Select(m => m.Id).Distinct().ToArray();
-            if (selectedServerIds.Length == 0)
-            {
-                return (chatOptions, null);
-            }
-
-            if (!model.IsToolEnabled)
+            if (selectedServerIds.Length > 0 && !model.IsToolEnabled)
             {
                 throw new ValidationException(
                 [
@@ -1077,10 +1115,42 @@ namespace Enterprise.Gpt.Service
                 ]);
             }
 
-            var toolLeases = await _mcpToolProvider.AcquireToolsAsync(selectedServerIds, cancellationToken).ConfigureAwait(false);
-            if (toolLeases.Tools.Count > 0)
+            IMcpToolLeaseSet? toolLeases = null;
+            if (selectedServerIds.Length > 0)
             {
-                chatOptions.Tools = [.. toolLeases.Tools];
+                toolLeases = await _mcpToolProvider.AcquireToolsAsync(selectedServerIds, cancellationToken).ConfigureAwait(false);
+                tools.AddRange(toolLeases.Tools);
+            }
+
+            // MCP tools are named "{sanitizedServerName}_{tool}", so a server named "document" exposing a
+            // tool named "search" produces exactly this name. Two identically named functions on one
+            // request are rejected outright by OpenAI-shaped providers, and the usage audit would credit
+            // retrieval's tokens to that server. The user's explicit MCP selection wins; retrieval is the
+            // implicit one, so it stands down.
+            if (attachDocumentTool && tools.Any(t => string.Equals(t.Name, DocumentTool.ToolName, StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogWarning(
+                    "An MCP tool selected for conversation {ConversationId} is already named '{ToolName}'; document retrieval is unavailable for this turn.",
+                    sessionId, DocumentTool.ToolName);
+
+                attachDocumentTool = false;
+            }
+
+            if (attachDocumentTool)
+            {
+                tools.Add(DocumentTool.Create(documentScope!, _documentRetrievalService, _logger));
+                instructions.Add(ConversationPrompts.BuildDocumentRetrievalPrompt(DocumentTool.ToolName, documentScope!.DocumentNames));
+            }
+
+            if (instructions.Count > 0)
+            {
+                chatOptions.Instructions = string.Join("\n\n", instructions);
+            }
+
+            // Assigned once. Assigning per source would have the last writer discard the others.
+            if (tools.Count > 0)
+            {
+                chatOptions.Tools = tools;
                 chatOptions.AllowMultipleToolCalls = true;
             }
 

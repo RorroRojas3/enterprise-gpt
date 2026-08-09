@@ -28,6 +28,10 @@
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.1" />
     <!-- Direct pin: Microsoft.ML.Tokenizers 2.0.0 transitively brings 9.0.4, which has a known vulnerability (GHSA-73j8-2gch-69rq). -->
     <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.10" />
+    <!-- Referenced directly, not left transitive through Enterprise.Gpt.Entity: document retrieval binds
+         SqlParameter and SqlVector<float> by hand — see Tool/DocumentRetrievalService.cs. Kept in step with
+         the version Enterprise.Gpt.Entity pins for the vector(1536) column. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
@@ -61,6 +65,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Prompts\conversation-naming-prompt.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Prompts\document-retrieval-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Prompts\project-instructions-prompt.md">

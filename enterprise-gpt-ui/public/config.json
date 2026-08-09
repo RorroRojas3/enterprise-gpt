@@ -1,0 +1,15 @@
+{
+  "apiBaseUrl": "https://localhost:7045",
+  "auth": {
+    "clientId": "b40defa0-5309-45c4-82fc-cb284010cc10",
+    "authority": "https://login.microsoftonline.com/bdeeb99b-f1e9-443f-b7ff-1426199689dc",
+    "redirectUri": "/auth",
+    "postLogoutRedirectUri": "/",
+    "apiScopes": ["api://b40defa0-5309-45c4-82fc-cb284010cc10/access_as_user"]
+  },
+  "features": {
+    "diagrams": false,
+    "math": false,
+    "rawStreamCodec": false
+  }
+}

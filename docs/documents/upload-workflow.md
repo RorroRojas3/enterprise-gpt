@@ -1,6 +1,6 @@
 # Document Upload and Ingestion
 
-End-to-end reference for the conversation document pipeline: how an uploaded file is validated, queued, stored in Azure Blob Storage, read, split into token-bounded chunks, embedded, and persisted as `Core.ConversationDocumentChunk` rows — and how a client tracks that work while it happens. Audience: engineers maintaining or extending document ingestion, background jobs, or the retrieval layer that will eventually consume these chunks.
+End-to-end reference for the conversation document pipeline: how an uploaded file is validated, queued, stored in Azure Blob Storage, read, split into token-bounded chunks, embedded, and persisted as `Core.ConversationDocumentChunk` rows — and how a client tracks that work while it happens. Audience: engineers maintaining or extending document ingestion, background jobs, or the retrieval layer that consumes these chunks.
 
 ## 1. Overview
 
@@ -474,11 +474,13 @@ VALUES
 
 ## 11. Operational notes and known limits
 
-### 11.1 Retrieval is not implemented
+### 11.1 Retrieval reads these chunks — see the companion document
 
-**Chunks are written and nothing reads them.** Outside ingestion, the only code that touches `ConversationDocumentChunks` is the soft-delete cascade in `ConversationService.DeactivateConversationAsync` / `DeactivateConversationsBulkAsync`. There is no vector search, no `VECTOR_DISTANCE` query, no similarity index, and nothing that puts chunk text into a chat completion's context.
+**Chunks are read.** The `document_search` tool runs a hybrid `VECTOR_DISTANCE` + keyword search over `Core.ConversationDocumentChunk` (and its project sibling) on every turn where the conversation has documents, so uploading a document now changes the answers a user gets. Everything this pipeline records is what that layer consumes: provenance becomes the citation, the 128-token overlap is what lets adjacent chunks merge into one passage without repeating themselves, and the 1536-dimension column is the width the query vector must match.
 
-Everything upstream — provenance, overlap, token accuracy, 1536-dimension storage — exists so that the retrieval layer can be added without re-ingesting. Until it is, uploading a document changes nothing about the answers a user gets.
+Two consequences for anyone changing ingestion: altering `Documents:Chunking` changes how much context each answer is grounded in, and changing `AzureAIFoundry:EmbeddingModel` invalidates every stored embedding — documents ingested under the old model must be re-uploaded, and `Documents:Retrieval:MaxDistance` needs re-tuning.
+
+[Document Retrieval (RAG)](retrieval.md) is the full reference. Outside ingestion and retrieval, the only other code that touches `ConversationDocumentChunks` is the soft-delete cascade in `ConversationService.DeactivateConversationAsync` / `DeactivateConversationsBulkAsync`.
 
 ### 11.2 Job state is in-memory
 
@@ -552,4 +554,4 @@ dotnet test                                    # everything; Docker must be runn
 | Enums | [`JobStatus.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/JobStatus.cs), [`FileExtensions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/FileExtensions.cs), [`PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs) |
 | DI + options validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
 | Frontend consumer | [`enterprise-ui/src/app/services/document.service.ts`](../../enterprise-ui/src/app/services/document.service.ts), [`prompt-box.component.ts`](../../enterprise-ui/src/app/components/home/prompt-box/prompt-box.component.ts) |
-| Related reference | [Document Download](download-workflow.md), [Permission Cache](../permissions/permission-cache.md) |
+| Related reference | [Document Retrieval (RAG)](retrieval.md), [Document Download](download-workflow.md), [Permission Cache](../permissions/permission-cache.md) |

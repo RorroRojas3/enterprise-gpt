@@ -22,6 +22,9 @@ namespace Enterprise.Gpt.Service.Prompts
         private static readonly string ProjectInstructionsPromptTemplate =
             LoadTemplate("project-instructions-prompt.md");
 
+        private static readonly string DocumentRetrievalPromptTemplate =
+            LoadTemplate("document-retrieval-prompt.md");
+
         #region Public static methods
 
         /// <summary>
@@ -70,6 +73,50 @@ namespace Enterprise.Gpt.Service.Prompts
             var delimiter = $"<<<project-instructions:{Guid.NewGuid():N}>>>";
 
             return string.Format(CultureInfo.InvariantCulture, ProjectInstructionsPromptTemplate, instructions, delimiter);
+        }
+
+        /// <summary>
+        /// Builds the instructions that tell the model documents are attached, which ones, and how to
+        /// search and cite them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The model cannot see document contents — only the retrieval tool can — so without this it
+        /// treats attached files as background it may ignore and answers from its own knowledge instead.
+        /// Naming the documents is what lets it decide whether a question is worth a search at all.
+        /// </para>
+        /// <para>
+        /// Carried on <c>ChatOptions.Instructions</c> rather than written into the transcript, for the
+        /// same reason project instructions are: the corpus is derived from the request and changes as
+        /// documents are added or removed, while the transcript is the conversation's own fixed record.
+        /// </para>
+        /// <para>
+        /// <c>document-retrieval-prompt.md</c> is a composite format string: <c>{0}</c> is the tool name
+        /// and <c>{1}</c> the document list. Any literal brace added to that file must be doubled, or
+        /// every conversation with a document fails with a <see cref="FormatException"/>. The names
+        /// themselves are arguments, never re-parsed, so a brace in a file name is safe.
+        /// </para>
+        /// <para>
+        /// The names do reach the system instructions verbatim, which is only safe because a project
+        /// holds one user's conversations: the worst an attacker-chosen file name can do today is
+        /// influence that same user's turn. Should projects ever become shareable, a name would become a
+        /// cross-user injection channel <em>inside</em> the instructions, where the template's trust
+        /// section — which speaks only about passage text — would not cover it.
+        /// </para>
+        /// </remarks>
+        /// <param name="toolName">The name the retrieval tool is registered under.</param>
+        /// <param name="documentNames">The names of the attached documents.</param>
+        /// <returns>The system prompt text describing the attached documents.</returns>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="toolName"/> is <see langword="null"/> or whitespace.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="documentNames"/> is <see langword="null"/>.</exception>
+        public static string BuildDocumentRetrievalPrompt(string toolName, IReadOnlyList<string> documentNames)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+            ArgumentNullException.ThrowIfNull(documentNames);
+
+            var list = string.Join("\n", documentNames.Select(name => $"- {name}"));
+
+            return string.Format(CultureInfo.InvariantCulture, DocumentRetrievalPromptTemplate, toolName, list);
         }
 
         #endregion
