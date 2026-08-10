@@ -1,0 +1,35 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+}
+
+.status-dot__mark {
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.status-dot__mark--ok {
+  background: var(--ok);
+}
+
+.status-dot__mark--warn {
+  background: var(--warn);
+}
+
+.status-dot__mark--fail {
+  background: var(--fail);
+}
+
+.status-dot__mark--muted {
+  background: var(--muted);
+}
+
+.status-dot__mark--accent {
+  background: var(--accent);
+}
+
+.status-dot__mark--brand {
+  background: var(--brand);
+}

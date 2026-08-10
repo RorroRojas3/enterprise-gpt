@@ -1,0 +1,74 @@
+@let state = attachment().state;
+
+<div class="chip" [class]="'chip--' + state.kind">
+  @if (state.kind === 'processing') {
+    <span class="kit-spinner chip__spinner" aria-hidden="true"></span>
+  } @else if (state.kind === 'ready') {
+    <app-icon class="chip__icon chip__icon--ok" name="bi-check-circle-fill" />
+  } @else if (state.kind === 'unsupported') {
+    <app-icon class="chip__icon chip__icon--fail" name="bi-x-circle-fill" />
+  } @else if (state.kind === 'unknown') {
+    <app-icon class="chip__icon chip__icon--muted" name="bi-question-circle" />
+  } @else {
+    <app-icon class="chip__icon" [class]="'chip__icon--' + glyph().tone" [name]="glyph().icon" />
+  }
+
+  <div class="chip__body">
+    <p class="chip__name">{{ attachment().fileName }}</p>
+
+    @switch (state.kind) {
+      @case ('uploading') {
+        <div
+          class="chip__progress"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          [attr.aria-valuenow]="state.percent"
+          [attr.aria-label]="progressLabel()"
+        >
+          <span class="chip__progress-fill" [style.width.%]="state.percent"></span>
+        </div>
+        <p class="chip__meta font-mono">{{ state.percent }}%</p>
+      }
+      @case ('processing') {
+        <!-- Polite: ingest progress is worth hearing, but not worth interrupting. -->
+        <p class="chip__meta" role="status">{{ state.subStatus }}</p>
+      }
+      @case ('ready') {
+        <p class="chip__meta">
+          @if (attachment().sizeLabel) {
+            {{ attachment().sizeLabel }} ·
+          }
+          Ready to use
+        </p>
+      }
+      @case ('unsupported') {
+        <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+        <button
+          class="chip__retry"
+          type="button"
+          [attr.aria-label]="retryLabel()"
+          (click)="retried.emit(attachment().id)"
+        >
+          Retry
+        </button>
+      }
+      @case ('unknown') {
+        <!-- Deliberately not the word "failed": nothing failed, the status simply is
+             no longer kept. -->
+        <p class="chip__meta">Status is only kept for a limited time.</p>
+      }
+    }
+  </div>
+
+  @if (removable()) {
+    <button
+      class="chip__remove"
+      type="button"
+      [attr.aria-label]="removeLabel()"
+      (click)="removed.emit(attachment().id)"
+    >
+      <app-icon name="bi-x" />
+    </button>
+  }
+</div>

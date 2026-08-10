@@ -1,0 +1,25 @@
+<article class="project-card" [attr.aria-labelledby]="headingId" [attr.aria-busy]="pending()">
+  <div class="project-card__head">
+    <a class="project-card__name" [id]="headingId" [routerLink]="link()">{{ name() }}</a>
+
+    <div class="project-card__actions">
+      <button
+        class="project-card__favorite"
+        type="button"
+        [class.project-card__favorite--on]="favorite()"
+        [attr.aria-label]="favoriteLabel()"
+        [disabled]="pending()"
+        (click)="favoriteToggled.emit()"
+      >
+        <app-icon [name]="favorite() ? 'bi-star-fill' : 'bi-star'" />
+      </button>
+
+      <ng-content select="[cardMenu]" />
+    </div>
+  </div>
+
+  <!-- Reserved height, so a card with no description does not shorten its row. -->
+  <p class="project-card__description">{{ description() }}</p>
+
+  <p class="project-card__meta">Updated {{ updatedLabel() }}</p>
+</article>

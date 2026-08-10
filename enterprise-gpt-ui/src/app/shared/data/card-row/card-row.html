@@ -1,0 +1,14 @@
+<article class="card-row">
+  <div class="card-row__main">
+    <div class="card-row__lead"><ng-content select="[cardRowLead]" /></div>
+
+    <div class="card-row__text">
+      <div class="card-row__title"><ng-content select="[cardRowTitle]" /></div>
+      <div class="card-row__subtitle"><ng-content select="[cardRowSubtitle]" /></div>
+      <div class="card-row__meta"><ng-content select="[cardRowMeta]" /></div>
+    </div>
+  </div>
+
+  <div class="card-row__badges"><ng-content select="[cardRowBadges]" /></div>
+  <div class="card-row__actions"><ng-content select="[cardRowActions]" /></div>
+</article>

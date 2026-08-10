@@ -1,0 +1,99 @@
+// Self-hosted type. US-109.
+//
+// Named `_typography` rather than `_type` on purpose: `angular.json` puts
+// `src/styles` on the Sass load path, so `@import 'type'` would resolve here and
+// silently shadow `bootstrap/scss/type`.
+//
+// The faces are copied into `public/fonts` by `scripts/copy-fonts.mjs`. Nothing is
+// fetched from fonts.googleapis.com at any point — FR-51 requires the app to issue
+// zero third-party requests at runtime.
+
+// Root-relative on purpose. The build resolves every non-root `url()` token as a
+// module and fails on one it cannot find, and these files are copied verbatim into
+// `public/` rather than bundled. A leading slash is the documented way to leave the
+// path in place (`css-resource-plugin` marks it external), and it matches the rest
+// of the app's root-relative assumptions — `config.json`'s `redirectUri` is `/auth`.
+// A sub-path deployment would need `--base-href` and `deployUrl`, as it already
+// would for the MSAL redirect.
+$font-path: '/fonts';
+
+$font-sans:
+  'Inter',
+  system-ui,
+  -apple-system,
+  'Segoe UI',
+  sans-serif;
+$font-display:
+  'Montserrat',
+  'Inter',
+  system-ui,
+  -apple-system,
+  'Segoe UI',
+  sans-serif;
+$font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+// Copied from @fontsource 5.3.0's own per-subset CSS, so the ranges match the
+// files byte for byte. A character outside every listed range falls back to the
+// next family in the stack rather than downloading a face that cannot render it.
+$unicode-latin:
+  U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+  U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+$unicode-latin-ext:
+  U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+  U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+  U+A720-A7FF;
+
+@mixin face($family, $file, $weight, $range) {
+  @font-face {
+    font-family: $family;
+    font-style: normal;
+    font-weight: $weight;
+    // swap, not optional: a missing glyph for a fraction of a second beats an
+    // invisible one, and the two critical faces are preloaded anyway.
+    font-display: swap;
+    src: url('#{$font-path}/#{$file}') format('woff2');
+    unicode-range: $range;
+  }
+}
+
+// Inter — body and UI. It renders user display names and model output, so it is the
+// one family that carries latin-ext; Montserrat and JetBrains Mono only ever render
+// app copy and machine values.
+@each $weight in (400, 500, 600) {
+  @include face('Inter', 'inter-latin-#{$weight}-normal.woff2', $weight, $unicode-latin);
+  @include face('Inter', 'inter-latin-ext-#{$weight}-normal.woff2', $weight, $unicode-latin-ext);
+}
+
+// Montserrat — headings, KPI numerals, brand titles.
+@each $weight in (600, 700, 800) {
+  @include face('Montserrat', 'montserrat-latin-#{$weight}-normal.woff2', $weight, $unicode-latin);
+}
+
+// JetBrains Mono — token counts, durations, ids, deployment names, trace ids.
+@each $weight in (400, 500, 600) {
+  @include face(
+    'JetBrains Mono',
+    'jetbrains-mono-latin-#{$weight}-normal.woff2',
+    $weight,
+    $unicode-latin
+  );
+}
+
+// Bootstrap's `_root.scss` emits --bs-font-sans-serif and --bs-font-monospace from
+// the variables `_bootstrap-config.scss` sets, so components can reach those two
+// through `var()`. The display face is ours alone and needs its own property, since a
+// component stylesheet must not `@use` this file — that would re-emit all twelve
+// @font-face blocks scoped to the component.
+:root {
+  --font-display: #{$font-display};
+}
+
+// Utility classes rather than a component style each, because the boards apply
+// these two faces to individual runs of text across every screen.
+.font-display {
+  font-family: $font-display;
+}
+
+.font-mono {
+  font-family: $font-mono;
+}

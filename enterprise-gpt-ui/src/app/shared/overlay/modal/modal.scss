@@ -1,0 +1,55 @@
+.modal-panel {
+  width: 100%;
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--bs-body-color);
+  box-shadow: 0 24px 60px rgba(11, 31, 51, 0.35);
+  overflow: visible;
+}
+
+// The three widths the boards use: 3c's rename dialog, 4h's confirmation, 5f's form.
+.modal-panel--sm {
+  max-width: 420px;
+}
+
+.modal-panel--md {
+  max-width: 460px;
+}
+
+.modal-panel--lg {
+  max-width: 520px;
+}
+
+.modal-panel__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+  max-height: inherit;
+  overflow: auto;
+}
+
+.modal-panel__heading {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+}
+
+.modal-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+
+  // Collapses when nothing projects into it, so an action-less dialog has no gap.
+  &:empty {
+    display: none;
+  }
+}

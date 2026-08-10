@@ -1,0 +1,533 @@
+# Design System
+
+Reference for the presentation layer of the Angular client at `enterprise-gpt-ui/`: the token layer every colour comes from, the theme contract that keeps a dark user from seeing a light frame, the self-hosted type and icons, and the shared component kit. Audience: a developer about to build a screen, who needs to know which pieces already exist, which of them are opinionated, and where the implementation deliberately departs from the design boards.
+
+Companion to [Frontend Foundation](frontend-foundation.md), which covers configuration, error normalization and the store features, and to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority for every `US-xxx` reference below. The visual authority is the Claude Design handoff bundle at `docs/design/`; `docs/design/project/theme.css` is the source of record for colour.
+
+## 1. Overview
+
+> **Scope.** This is the kit, not a screen. There is still no sign-in (US-201) and no chat (EP-4); `app.routes.ts` carries exactly one route, the development-only `/ui-kit` gallery. Everything below is what EP-3 onward composes.
+
+Four stories landed together, and they solve one problem each:
+
+1. **Theming** (US-105). Two themes, one token vocabulary, and a pre-paint contract that gets the right one on screen before the first frame (§2, §3).
+2. **Assets** (US-109). Three type faces, 74 icons and four brand images, all served from our own origin. The application issues **zero third-party requests at runtime** — no Google Fonts, no CDN, no icon font (§4, §5, §6).
+3. **The kit** (US-106). Twenty-odd presentational components with the accessibility contracts written into them rather than left to each screen (§7, §8).
+4. **The gates** (US-108). ESLint plus five Node checks that keep all of the above from drifting (§10).
+
+Two rules to internalize before writing any component stylesheet:
+
+- **Consume tokens with `var(--…)`. Never `@use 'tokens'` or `@use 'typography'` from a component.** Both partials emit document-level blocks — `:root` and twelve `@font-face` declarations respectively. Under emulated encapsulation a component re-emits them scoped to its own attribute, where they match nothing and cost bytes in every component that imports them.
+- **No Bootstrap JavaScript.** `bootstrap.bundle.js` is not installed and must not be. The overlays are native `<dialog>` plus about 3.9 kB of our own code (§7.2).
+
+### 1.1 Where each piece lives
+
+| Concern | Where |
+| --- | --- |
+| Token maps, the divergence guard, the `--bs-*-rgb` companions | [`src/styles/_tokens.scss`](../../enterprise-gpt-ui/src/styles/_tokens.scss) |
+| Pre-paint theme script, shell colours, font preloads | [`src/index.html`](../../enterprise-gpt-ui/src/index.html) |
+| Theme state and the `<html>` writes | [`core/theme/theme-service.ts`](../../enterprise-gpt-ui/src/app/core/theme/theme-service.ts) |
+| Stylesheet order, Bootstrap trim, motion | [`src/styles.scss`](../../enterprise-gpt-ui/src/styles.scss), [`src/styles/`](../../enterprise-gpt-ui/src/styles/) |
+| `@font-face`, the three stacks, `unicode-range` | [`src/styles/_typography.scss`](../../enterprise-gpt-ui/src/styles/_typography.scss) |
+| Icon manifest and the `IconName` union | [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts) |
+| Sprite injection | [`core/icons/load-icon-sprite.ts`](../../enterprise-gpt-ui/src/app/core/icons/load-icon-sprite.ts) |
+| Toast state (not presentation) | [`core/notifications/toast-store.ts`](../../enterprise-gpt-ui/src/app/core/notifications/toast-store.ts) |
+| Every kit component | [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) |
+| Asset and check scripts | [`enterprise-gpt-ui/scripts/`](../../enterprise-gpt-ui/scripts/) |
+| The gallery | [`features/ui-kit/`](../../enterprise-gpt-ui/src/app/features/ui-kit/) |
+
+## 2. The token layer
+
+### 2.1 How to consume it
+
+Every colour, radius and duration is a CSS custom property on `<html>`. A component reads it and imports nothing:
+
+```scss
+// shared/card/project-card/project-card.scss
+.project-card {
+  background: var(--surface);
+  border: 1px solid var(--bs-border-color);
+  color: var(--bs-body-color);
+  transition: border-color var(--t-fast);
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+```
+
+That is the whole API. Because the properties live on `<html>` and re-resolve on a theme change, a component written this way is themed for free and needs no second stylesheet, no `:host-context`, and no script.
+
+### 2.2 What is in it
+
+[`_tokens.scss`](../../enterprise-gpt-ui/src/styles/_tokens.scss) holds two Sass maps, `$light` and `$dark`, transcribed key-for-key from `docs/design/project/theme.css`, plus `$extra-light` / `$extra-dark` for the properties this application adds. Names keep their original casing — `--btnP-bg` is unusual, but custom properties are case-sensitive and the drift check compares against `theme.css` verbatim.
+
+| Group | Properties |
+| --- | --- |
+| Bootstrap overrides | `--bs-body-bg`, `--bs-body-color`, `--bs-border-color`, `--bs-secondary-color`, `--bs-link-color`, `--bs-link-hover-color` |
+| Surfaces | `--surface`, `--surface-2`, `--muted`, `--active-bg`, `--think-bg` |
+| Brand and state | `--brand`, `--accent`, `--ok`, `--warn`, `--warn-bg`, `--warn-border`, `--fail`, `--ring` |
+| Chat | `--bubble`, `--bubble-fg` |
+| Primary button | `--btnP-bg`, `--btnP-fg`, `--btnP-hover` |
+| Theme-swap switches | `--show-light`, `--show-dark` (`inline` / `none`) |
+| App additions | `--focus-ring`, `--tooltip-bg`, `--tooltip-fg`, the six `--code-*` syntax colours |
+| Motion (in `_motion.scss`) | `--t-fast` (150 ms), `--t-slow` (200 ms) |
+
+Four decisions in that table are worth the paragraph they cost:
+
+- **The `--bs-*-rgb` companions are not decoration.** Bootstrap 5.3 consumes them as `rgba(var(--bs-body-color-rgb), …)` in its `.text-*`, `.bg-*` and `.link-*` opacity utilities. Overriding only the solid values would leave those utilities painting Bootstrap's default blues over a branded palette — latent in the prototype only because it never used them. Four are generated automatically from the solid values.
+- **`--focus-ring` is its own token rather than `--accent`.** WCAG 2.1 SC 1.4.11 wants 3:1 against adjacent colours, and `#21A8D8` gives 2.74:1 on `--surface`, 2.62:1 on `--bs-body-bg` and 2.48:1 on `--surface-2` — an accent-coloured ring fails on every light surface in the kit. The light theme uses a darker value on the same brand ramp that clears 3:1 on all three; dark theme keeps the accent, which is already 6.09:1 there.
+- **`--tooltip-bg` / `--tooltip-fg` fix a real defect in the boards.** They hard-code the flyout as `#0B1F33` on white, and `#0B1F33` *is* `--bs-body-bg` in dark — so the tooltip would be invisible in the theme it is most used in.
+- **`--show-light` / `--show-dark` are how assets swap without script.** Both variants of an image render; one is `display: none`. §5 explains why that is worth two downloads.
+
+### 2.3 Two guards you will meet before you meet a bug
+
+**A token defined in one theme and forgotten in the other is a compile error.** `_tokens.scss` walks both merged maps and raises `@error 'Token --x is defined in $light but missing from $dark.'`. Without it the omission is invisible until someone switches themes on a screen nobody checked.
+
+**`npm run check:tokens` diffs the app against the design bundle.** It compares both maps against `theme.css` after normalizing formatting only (`#FFFFFF` equals `#ffffff`, `rgba(33,168,216,.45)` equals the spaced form Prettier writes), never a value. It also checks the two colours per theme that `index.html` duplicates for the pre-paint shell, and that the `localStorage` key is spelled the same way in `ThemeService` and in the inline script. A colour changed in one place and not the other is a red build rather than a review comment.
+
+### 2.4 Why the token block sits where it does in `styles.scss`
+
+Statement order in [`styles.scss`](../../enterprise-gpt-ui/src/styles.scss) *is* output order, and three points in it carry weight:
+
+```scss
+@import 'typography';           // @font-face and the three stacks
+@import 'bootstrap-config';     // configuration, the utilities trim, and `root`
+@import 'tokens';               // ← immediately after `root`
+@import 'bootstrap-components'; // reboot, type, forms, buttons, transitions, nav, four helpers
+@import 'base';
+@import 'kit';
+@import 'bootstrap-overrides';  // after the components they restyle
+@import 'prism';
+@import 'bootstrap/scss/utilities/api';
+@import 'motion';               // last: its reduced-motion block must defeat everything above
+```
+
+The token block's selectors are byte-identical to Bootstrap's own `_root.scss` (`:root, [data-bs-theme='light']` and `[data-bs-theme='dark']`). Equal specificity plus a later source position means the tokens win with **no `!important`** — which only holds while `tokens` is imported directly after `bootstrap/scss/root`.
+
+Everything is `@import` rather than `@use` on purpose: Bootstrap 5.3's partials still share one global `!default` namespace, so its configuration and its component modules have to compile in a single scope. `angular.json` silences the Dart Sass deprecation for exactly that reason.
+
+**Bootstrap is imported module by module.** The whole of `bootstrap.scss` compiles to about 230 kB against a budget the global stylesheet counts towards; [`_bootstrap-config.scss`](../../enterprise-gpt-ui/src/styles/_bootstrap-config.scss) and [`_bootstrap-components.scss`](../../enterprise-gpt-ui/src/styles/_bootstrap-components.scss) take the dozen-and-a-half modules the design actually uses, trim `$theme-colors` from eight to three and cut the utilities API down to a positive list of layout groups. The compiled stylesheet — Bootstrap subset, tokens, kit, Prism and motion together — is **60.32 kB**, against a `styles` budget of 65 kB warn / 80 kB error. Each module's absence is recorded with its measured cost in the header of `_bootstrap-components.scss`; read that before adding one back.
+
+## 3. Theming and the pre-paint contract
+
+### 3.1 The sequence
+
+```text
+index.html <head>
+  ├─ inline <style>      two colour pairs, duplicated from the tokens
+  └─ inline <script>     reads localStorage['egpt.theme'] → matchMedia fallback
+                         sets <html data-bs-theme> AND <html>.style.colorScheme
+                                    ↓ first paint happens here, already correct
+styles.scss loads        tokens resolve against the attribute that is already set
+  ↓
+provideAppInitializer(() => inject(ThemeService))
+  └─ ThemeService reads the same key, applies the same values, and takes over
+```
+
+The handover changes nothing on screen, which is the design goal: the script and the service must agree, and `check:tokens` asserts the two things they share — the storage key and the shell colours.
+
+Two details in the script:
+
+- **`style.colorScheme` as well as the attribute.** Without it the user agent paints scrollbars, form controls and the default canvas from `color-scheme: light dark`, which follows the *operating system* — so a user on a light OS with a stored dark preference still gets a light startup shell.
+- **`localStorage` access is wrapped in `try`.** Private mode, blocked third-party storage and enterprise policy all throw on access rather than returning `null`.
+
+### 3.2 The single most important line
+
+```jsonc
+// angular.json → build → configurations → production
+"optimization": {
+  "styles": { "minify": true, "inlineCritical": false },
+  "fonts": { "inline": false }
+}
+```
+
+**`inlineCritical: false` is what makes the pre-paint script work at all.** Beasties (the critical-CSS inliner) inlines only the rules that match the *static* HTML it can see at build time. A `data-bs-theme="dark"` set at runtime never appears in that HTML, so no dark rule is ever inlined — and worse, the real stylesheet is then loaded non-blocking. A dark user painted a light frame no matter how early the script ran. Turning the inliner off costs a render-blocking stylesheet on a single-page application that has one; it buys a correct first frame.
+
+`fonts.inline: false` is the companion: it guarantees a stray Google Fonts `<link>` can never be silently inlined at build time and turned into a runtime request to a third-party origin that the `check:forbidden` scan would then be unable to see.
+
+### 3.3 `ThemeService`
+
+```ts
+const theme = inject(ThemeService);
+
+theme.preference();       // 'light' | 'dark' | 'system'  — what the user chose
+theme.theme();            // 'light' | 'dark'             — what is on screen
+theme.set('system');      // records and applies; resumes following the OS
+theme.toggle();           // flips the resolved theme and pins the choice
+```
+
+- `preference` is **read-only outside the class**. `apply()` is imperative, so a writable signal would let a caller flip `theme()` — and every consumer reading it — while `<html>` kept the old value and nothing was persisted.
+- `apply()` is deliberately **not an `effect()`**. It is a DOM write outside Angular's render tree; an effect would defer it to the next flush and entangle it with the exhaustive check-no-changes pass for no benefit. Writing synchronously is what puts the flip in the same frame as the click that caused it.
+- The service is instantiated eagerly through `provideAppInitializer`, so ownership of `<html>`'s theme attributes is explicit rather than a side effect of whichever component happens to inject it first. A route with no theme control still has to follow the OS while the preference is `system`.
+- `THEME_STORAGE_KEY` is `egpt.theme`. Changing it here without changing the inline script costs every user their stored preference exactly once, silently — hence the check.
+
+`<app-theme-toggle />` is the control. It renders both glyphs and swaps them with `--show-light` / `--show-dark`, so no script picks an icon; the *label* does read the resolved theme, because a screen reader cannot see a custom property. It carries no `aria-pressed` — the label already states the action, and the pair announces as "Switch to dark theme, not pressed", which is worse than either alone.
+
+### 3.4 Motion
+
+The application defines exactly four keyframes, all from `theme.css`: `blink` (streaming caret), `spin` (spinners), `ringpulse` (jump-to-latest, voice recording) and `ridgedash` (thinking indicator). Anything else that moves uses a `transition` on the `--t-fast` / `--t-slow` scale. This is why Bootstrap's `_spinners.scss` and `_placeholders.scss` are excluded — each would add a fifth.
+
+`_motion.scss` is imported last so its `prefers-reduced-motion: reduce` block, the one place `!important` is warranted, can defeat every animation and transition declared above it.
+
+## 4. Typography
+
+Three faces, twelve `woff2` files, all self-hosted.
+
+| Family | Weights | Subsets | Renders |
+| --- | --- | --- | --- |
+| **Inter** (`$font-sans`, `--bs-font-sans-serif`) | 400, 500, 600 | latin, latin-ext | Body and UI — including user display names and model output, which is why it is the one family carrying latin-ext |
+| **Montserrat** (`$font-display`, `--font-display`, `.font-display`) | 600, 700, 800 | latin | Headings, KPI numerals, brand titles |
+| **JetBrains Mono** (`$font-mono`, `--bs-font-monospace`, `.font-mono`) | 400, 500, 600 | latin | Token counts, durations, ids, deployment names, trace ids |
+
+`npm run assets:fonts` copies them out of `@fontsource/{inter,montserrat,jetbrains-mono}` 5.3.0 into `public/fonts`, which is gitignored and rebuilt by `prestart` / `prebuild` / `pretest`. A script rather than an `angular.json` asset glob, because a glob that stops matching after an upstream rename ships zero fonts *silently*; the script names all twelve files and fails loudly.
+
+Points that will otherwise cost an hour:
+
+- **`unicode-range` is copied from `@fontsource`'s own per-subset CSS**, so the ranges match the files byte for byte. A character outside every listed range falls back to the next family in the stack rather than downloading a face that cannot render it — which is what makes the four latin-ext files free until an accented character actually appears.
+- **`font-display: swap`, not `optional`.** A missing glyph for a fraction of a second beats an invisible one, and the two critical faces are preloaded anyway.
+- **`index.html` preloads Inter 400 and Montserrat 600 only** — the faces on the path to first meaningful paint. `crossorigin` is required on those links **even same-origin**: fonts are always fetched in CORS mode, and omitting it makes the browser issue a second, unused request.
+- **`$font-path` is root-relative (`/fonts`).** The build resolves every non-root `url()` token as a module and fails on one it cannot find, and these files are copied verbatim into `public/`. A sub-path deployment needs `--base-href` and `deployUrl`, as it already would for the MSAL redirect.
+- **The partial is named `_typography`, not `_type`.** `src/styles` is on the Sass load path, so `@import 'type'` would resolve to it and silently shadow `bootstrap/scss/type`.
+
+## 5. Icons
+
+### 5.1 How it works
+
+The icon font is **not** shipped: its stylesheet alone is roughly 72 kB, and it would carry 2,078 glyphs to render the 74 the design uses. Instead:
+
+```text
+shared/icon/icon-names.ts   74 sorted names + the IconName union   ← checked in
+        │  npm run assets:icons
+        ▼
+public/icons/sprite.svg     one <symbol> per glyph, fill=currentColor   ← gitignored
+        │  loadIconSprite(), in parallel with the config fetch in main.ts
+        ▼
+<div aria-hidden> prepended to <body>   → <use href="#bi-search"> resolves same-document
+```
+
+**The sprite is injected, not referenced.** An externally referenced sprite (`sprite.svg#bi-search`) is a separate document, and `currentColor` inside it resolves against *that* document's initial colour — black — instead of inheriting from the host element. Every icon would render black in both themes.
+
+It is also an asset rather than a bundled string: inlining it through the build would put roughly 34 kB into the initial JS chunk, where it counts against the budget; in `public/` it costs nothing and is fetched once, concurrently with the `config.json` fetch that already gates bootstrap, so there is no icon pop-in on first paint. `loadIconSprite()` never rejects — an icon-less app is degraded, not broken, and is not a reason to route into the fatal shell. It also refuses markup that does not start with `<svg>`, because a host with SPA fallback routing answers a missing file with `index.html` and a `200`, and injecting that would put a second `<app-root>` into the page.
+
+### 5.2 Using one
+
+```html
+<app-icon name="bi-search" />                  <!-- decorative: no accessible name -->
+<app-icon name="bi-trash3" label="Delete" />   <!-- content: exposed as an image -->
+```
+
+Size it with `font-size` on the host or an ancestor; the component is sized in `em` precisely so no size input is needed, matching how every design board sets icon size.
+
+Supplying `label` promotes the icon from decoration to content. Leave it unset whenever the icon sits beside text that already names the control — a labelled icon inside a labelled button is announced twice.
+
+### 5.3 Adding a glyph
+
+1. Add the name to `ICON_NAMES` in [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts), **in sorted order**.
+2. Run `npm run assets:icons`.
+
+```bash
+$ npm run assets:icons
+icon sprite OK — 74 glyphs, 33.5 kB → public/icons/sprite.svg
+```
+
+The build refuses a name that is malformed, duplicated, out of order, or absent from `bootstrap-icons` 1.13.1 — the last with the URL to check the spelling against. Adding the name without rebuilding leaves the glyph *typed* but absent from the sprite, where it renders blank; `prestart`, `prebuild` and `pretest` all rebuild it, so that only bites someone serving `dist/` by hand.
+
+Three layers catch a wrong name, deliberately, because each sees something the others cannot:
+
+| Layer | Catches |
+| --- | --- |
+| `strictTemplates` + the `IconName` union | `<app-icon name="bi-typo">` and any expression not typed `IconName` — at compile time |
+| `npm run check:icons` | A raw `class="bi bi-…"` in a template, or a `bi-*` literal in TypeScript flowing into a class binding |
+| A dev-only `effect` in `Icon` | A name assembled at run time (`'bi-' + kind`), which neither of the above can see |
+
+## 6. Brand assets
+
+`npm run assets:brand` turns the design bundle's PNGs into WebP: **732 kB → 81 kB**, four files in `public/brand`. Unlike fonts and icons it runs **on demand and its outputs are committed**, which keeps `sharp`'s native binary and the `../docs` path off the build's critical path — worth about 55 kB of binaries in git that change approximately never. One size per variant, at 2× the largest place it renders; a `srcset` ladder would trade a few decoded pixels for a second request, which is the wrong way round at this size.
+
+```html
+<app-brand-logo alt="Andes Software Solutions" />   <!-- wordmark lockup -->
+<app-brand-logo variant="mark" />                   <!-- the mark alone, decorative -->
+```
+
+`BrandLogo` renders **both** theme variants and hides one with `--show-light` / `--show-dark`, so no script reads the theme to choose an asset. They carry the *same* `alt`: a `display: none` element is out of the accessibility tree, so exactly one is ever exposed and a screen reader never reads the wordmark twice. The accepted cost is that a hidden `<img>` is still fetched — about 40 kB for the pair, the cheaper side of the trade against a `background-image` version that would have to give up `alt` altogether.
+
+`<app-ridgeline variant="divider|thinking|empty|auth" />` is the Andes motif: **inline** SVG, not an image file, so its stroke inherits `--muted` and `--accent` and re-tints on a theme change with no second asset and no script. The boards draw seven hand-tuned path pairs; four variants cover all of them, because `viewBox` scaling reproduces the size variants and thins the stroke with them, which is what the boards do by hand.
+
+## 7. The component inventory
+
+Everything lives under [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) and is presentational: **no store, no HTTP**. Components are standalone, `OnPush`, and follow the v21 convention (`foo.ts` / `foo.html` / `foo.scss`, no `.component` suffix). All inputs are signal inputs; `model()` marks a two-way binding.
+
+The one exception proves the rule: **toast *state* lives in `core/notifications/toast-store.ts`**, not in `shared/`. It is app-wide singleton state written from interceptors, guards and feature stores, and `shared/` holds no store. The presentation injects it, which is the sanctioned direction.
+
+### 7.1 Accessibility primitives — `shared/a11y/`
+
+Functions, not components, so overlays can share exactly one set of semantics.
+
+| Export | Signature | Purpose |
+| --- | --- | --- |
+| `tabbableWithin` | `(root: Element) => HTMLElement[]` | Focusable descendants in DOM order. Skips `disabled`, `hidden`, `tabindex="-1"`, and anything under `[inert]` or `[aria-hidden="true"]` — both remove a whole subtree, so both are checked against every ancestor |
+| `trapWithin` | `(root: HTMLElement) => () => void` | Cycles Tab and Shift+Tab. Needed only by the menu and the jsdom fallback: a `showModal()` dialog is in the top layer, where the browser inerts everything behind it for real |
+| `captureFocusOrigin` | `(document: Document) => () => void` | Records `activeElement` now, returns a function that puts focus back — and does nothing if the origin is gone, which is the common case when the invoker was a row's kebab button and the action deleted the row |
+| `onDismiss` | `(el, handlers, signal) => void` | Wires Escape, outside pointer, and scroll in one place |
+
+`tabbableWithin` deliberately does not consult `getComputedStyle`: jsdom performs no layout, so a visibility check would be a lie in every unit test and a per-element style read in the browser. Overlays here hide by unmounting, so there is nothing for it to catch.
+
+`onDismiss` makes three choices worth knowing: Escape is listened for **on the overlay**, so a menu opened inside a modal closes only the menu; outside clicks use `pointerdown` with `composedPath()`, so a press that starts inside and ends outside does not dismiss and a click inside a shadow tree still counts as inside; and every listener is registered against one `AbortSignal`, so aborting it in `DestroyRef.onDestroy` removes all of them.
+
+### 7.2 Overlays — `shared/overlay/`
+
+Bootstrap's modal, offcanvas, dropdown and tooltip together are **86 kB** (26.7 kB of CSS plus Popper and the JS bundle). They are replaced by native `<dialog>` and roughly **3.9 kB** of our own CSS and TypeScript. The saving is real but the reason is correctness: the top layer inerts the page for real and supplies `aria-modal` and a cancellable Escape, none of which a `focusin`-cycling trap can match.
+
+| Component | Key inputs | Outputs | Notes |
+| --- | --- | --- | --- |
+| `<app-modal>` | `open` (model), `heading` **required**, `size` `sm`&#124;`md`&#124;`lg` (420/460/520 px), `dismissible`, `busy` | `closed` | The kit owns the heading so `aria-labelledby` cannot be forgotten. Body is the default slot; actions project into `[modalFooter]` |
+| `<app-offcanvas>` | `open` (model), `heading` **required**, `side` `start`&#124;`end`, `width` (`'420px'`), `dismissible`, `busy` | `closed` | Mechanically identical to the modal, pinned to an edge by `margin`. Footer slot `[offcanvasFooter]` |
+| `<app-menu>` | `label` **required**, `icon` (`IconName`), `align` `start`&#124;`end`, `open` (model) | — | Items project as `<button appMenuItem>`; `<hr appMenuSeparator />` divides them |
+| `[appTooltip]` | `appTooltip` **required** (text), `appTooltipPlacement` `right`&#124;`top` | — | Directive. Sets `aria-label` — see §8.3 |
+
+`dismissible` and `busy` combine: a dismissible dialog with a save in flight refuses Escape and backdrop clicks until it lands.
+
+Two implementation notes that read as odd and are not:
+
+- **The menu is hand-rolled rather than Bootstrap's dropdown**, which costs 35.7 kB because it bundles Popper. Popper exists to flip a menu around a viewport edge; every menu in this design is anchored to its own row, so a `position: fixed` panel placed from the trigger's rect does the same job — and escapes the sidebar's `overflow-y: auto`, which would clip an absolutely-positioned panel. It closes on scroll rather than repositioning, because a fixed panel that follows a scrolling row is more distracting than one that gets out of the way. Tab **leaves** the menu instead of cycling: this is a menu button, not a dialog, and the page behind it is still live.
+- **Initial focus uses `data-modal-autofocus`, not the native `autofocus` attribute.** The native one means "focus this when the document loads", which is disorienting and is why lint bans it; this one means "focus this when the dialog opens", which is a different and correct thing to want. The fallback chain is explicit marker → first tabbable → the heading, which carries `tabindex="-1"` precisely so it can be the last resort. A dialog whose focus lands on `<body>` is one the screen reader never announces.
+
+### 7.3 Feedback — `shared/feedback/`
+
+| Component | Key inputs | Outputs | Use when |
+| --- | --- | --- | --- |
+| `<app-toast-region>` | — (injects `ToastStore`) | `retried` (toast id) | Mounted **once**, in the app shell. Never per route (§8.2) |
+| `<app-toast-item>` | `toast` **required** | `dismissed`, `retried` | Layout only; the region owns the live regions and the queue |
+| `<app-error-panel>` | `error` (`AppError`) **required**, `heading` **required**, `canRetry`, `retryLabel` | `retried` | A surface that failed to load. Names the `traceId` and offers Retry |
+| `<app-unavailable-panel>` | `heading` **required**, `message` **required** | — | A capability this deployment does not have |
+| `<app-empty-state>` | `heading` **required**, `message`, `illustration` `ridgeline`&#124;`none`, `headingLevel` `2`&#124;`3`&#124;`4` | — | The request succeeded and the answer was zero rows. Action projects into `[emptyStateAction]` |
+| `<app-skeleton>` | `variant` `text`&#124;`block`&#124;`circle`, `width`, `height`, `lines` | — | Loading placeholder |
+
+**Three failure surfaces, deliberately distinct, and the type signatures enforce the distinction.** `UnavailablePanel` has **no** `error` input, **no** retry output and no action slot, because nothing there is worth retrying — a missing API does not come back because the user pressed a button. `EmptyState` means the request succeeded and returned nothing. Only `ErrorPanel` says something went wrong that might not go wrong next time. Picking the wrong one is the difference between "we have not built this", "your data is empty" and "try again", which the deleted client routinely conflated.
+
+Error copy comes from [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) — `userMessage()` and `traceLine()` — never from the call site, so a panel and a toast raised by the same failure say the same thing.
+
+`Skeleton` is always `aria-hidden` (the container that swaps it for content carries `aria-busy`; a screen reader reading out a row of grey boxes helps nobody) and is static, with no shimmer, which is also what the reduced-motion path would collapse to.
+
+**Toasts.** `ToastStore` is the only way one appears:
+
+```ts
+const toasts = inject(ToastStore);
+
+toasts.success('Conversation renamed');
+toasts.info('Upload queued', 'It will be ready in a moment.');
+toasts.warning('Two documents were skipped');
+toasts.fromError(error, 'Retry');   // AppError → toast, or null when deliberately silent
+toasts.dismiss(id);
+```
+
+`fromError` routes every failure through `shouldNotify` / `userMessage` / `traceLine`, which is what keeps a cancelled turn from being announced as an error and keeps the toast and the panel consistent. Auto-dismiss is a typed table — success and info 5 s, warning and error **0, meaning they persist** — declared `as const satisfies Record<ToastTone, number>`, so a new tone cannot be added without deciding whether it disappears on its own. The design's rule, "an error that disappears before it is read is a defect", is a property of the type system rather than a convention.
+
+Timer handles live in `withProps`, not in state: a `Map` in `withState` is either mutated in place (no signal write, so nothing re-renders) or replaced (re-rendering every toast on each schedule and each cancel).
+
+### 7.4 Data surfaces — `shared/data/`
+
+| Component | Key inputs | Outputs | Notes |
+| --- | --- | --- | --- |
+| `<app-data-table>` | `rows`, `columns`, `trackKey`, `rowLabel`, `label` — all **required**; `loading`, `skeletonRows`, `pendingIds`, `selectable`, `selectedIds` (model) | — | Slots `[tableNotice]`, `[tableEmpty]`, `[tableFooter]` |
+| `ng-template appTableCell` | `appTableCell` (column key), `appTableCellFor` (type anchor) | — | Typed cell template |
+| `<app-card-row>` | — | — | Mobile stand-in for a row. Slots `cardRowLead/Title/Subtitle/Meta/Badges/Actions` |
+| `<app-paginator>` | `page`, `totalPages`, `totalCount`, `pageSize`, `itemLabel` — all **required** | `pageChanged` | Numbered pager for server-paged screens |
+| `<app-bulk-action-bar>` | `count` **required**, `note` | `cleared` | Actions project as the default slot |
+| `row-selection.ts` | `toggleRow`, `selectRows`, `deselectRows`, `clearRows` | — | Every one returns a **new** `Set` |
+
+`DataTable` imports no store. Everything arrives as inputs, which is what lets it serve `withOffsetPagination` (the footer slot), `withPendingIds` (`pendingIds`) and `withClientQuery` (the notice slot) without knowing any of them exist.
+
+```html
+<app-data-table
+  [rows]="store.results()"
+  [columns]="columns"
+  [trackKey]="byId"
+  [rowLabel]="byName"
+  label="Conversations"
+  [loading]="store.isPending()"
+  [pendingIds]="store.pendingIds()"
+  [(selectedIds)]="selected"
+  selectable
+>
+  <p tableNotice>{{ store.resultsPartialReason() }}</p>
+
+  <ng-template appTableCell="name" [appTableCellFor]="store.results()" let-row>
+    <a [routerLink]="['/chat', row.id]">{{ row.name }}</a>
+  </ng-template>
+
+  <app-empty-state tableEmpty heading="No conversations yet" />
+  <app-paginator tableFooter … />
+</app-data-table>
+```
+
+`appTableCellFor` exists **only** to give `T` an inference site — the same trick `NgFor` uses — so `let-row` is typed as the row and `row.nmae` is a compile error rather than `undefined` on screen. Bind the row array to it; it is never read at run time.
+
+`TableColumn<T>` is `{ key, header, width, align?, headerHidden?, text?, mobile? }`, where `width` is a CSS grid track (`'40px'`, `'1.2fr'`, `'minmax(0, 1fr)'`) and `mobile` names which card slot the column moves to below 768 px. Below that breakpoint the table renders `CardRow`s instead, because the boards **restructure** the row at that width rather than reflowing it — and a `role="table"` that looks like a list of cards is a lie no stylesheet can fix.
+
+Three performance constraints are baked in and are easy to undo by accident: row contexts and the mobile slot buckets are memoized in `computed`s rather than built in the template, because binding `[ngTemplateOutletContext]` to a method call allocates a new object on every check, which `provideCheckNoChangesConfig({ exhaustive: true })` fails immediately — correctly, since in a zoneless app it also means the view is dirtied on every pass. And `contentChildren` uses `descendants: true`, because a consumer's cell templates are frequently wrapped in an `@if` for a permission-gated column; without it the template is simply not found and the column silently renders blank.
+
+**Every selection updater returns a new `Set`.** `set.add(id)` followed by writing the same reference back performs no signal write at all: the view never re-renders and the bug looks like a dead checkbox. `core/state/with-pending-ids.ts` documents the same rule for the same reason, and the specs assert `not.toBe`.
+
+### 7.5 Badges, chips and cards
+
+| Component | Key inputs | Outputs | Purpose |
+| --- | --- | --- | --- |
+| `<app-status-dot>` | `tone` (`ok`&#124;`warn`&#124;`fail`&#124;`muted`&#124;`accent`&#124;`brand`), `label` **required**, `labelHidden`, `size` | — | Provider dots, activity state |
+| `<app-kind-badge>` | `kind` **required** | — | A `ToolKind` from the stream contract: "MCP tool", "Agent", "Function" |
+| `<app-permission-badge>` | `name` **required**, `managedBy` | — | A grant; `managedBy` marks one the administrator cannot revoke here |
+| `<app-source-badge>` | `source` `uploaded`&#124;`generated` | — | Distinguishes an uploaded file from an assistant-produced one |
+| `<app-attachment-chip>` | `attachment` **required**, `removable` | `removed`, `retried` | One attached file, five states |
+| `<app-project-card>` | `name`, `updatedLabel`, `link` — **required**; `description`, `favorite`, `pending` | `favoriteToggled` | Project tile; row menu projects into `[cardMenu]` |
+
+`KindBadge` renders the kind **alone**. The stream contract keeps `displayName` and `kind` apart precisely so a card reads "Jira Cloud" + "MCP tool" rather than "Calling Jira Cloud MCP", and composing them here would put the kind word back. An unrecognized kind renders as itself rather than as nothing.
+
+`AttachmentChip`'s state is a **discriminated union**, not five booleans:
+
+```ts
+type AttachmentState =
+  | { kind: 'uploading'; percent: number }
+  | { kind: 'processing'; subStatus: string }
+  | { kind: 'ready' }
+  | { kind: 'unsupported'; reason: string }
+  | { kind: 'unknown' };   // a 404 on the status endpoint after the retention window
+```
+
+`@switch` over `kind` is then exhaustive and "uploading *and* expired" is unrepresentable — the same modelling discipline `withRequestStatus` established, for the same reason: the deleted client tracked those flags independently and got it wrong. The `unknown` arm is load-bearing rather than cosmetic: an expired status must not read as a failure, because nothing failed and there is nothing to retry. Its copy says so — "Status is only kept for a limited time" — and it offers no Retry.
+
+`ProjectCard`'s title is a real `<a routerLink>` rather than a clickable card, so the tile is not one giant unlabelled button and the link stays reachable, focusable and middle-clickable.
+
+### 7.6 Form, navigation and layout
+
+| Export | Key inputs | Outputs | Notes |
+| --- | --- | --- | --- |
+| `<app-search-input>` | `value` (model), `label` **required**, `placeholder`, `debounceMs` (300), `busy` | `searched` | Debounced; Escape clears |
+| `<app-pill-subnav>` | `items` (`PillItem[]`) **required**, `ariaLabel` **required** | — | The admin area's horizontal navigation below 768 px |
+| `injectMediaQuery` | `(query: string) => Signal<boolean>` | — | Must be called in an injection context |
+
+`SearchInput`'s label is **required and rendered as a real `<label for>`**. A placeholder is not an accessible name: it disappears the moment the user types, and several screen readers do not announce it at all. The in-flight field text is a `linkedSignal` derived from `value` — writable state derived from an input, which is exactly what `linkedSignal` is for — so clearing the filter from an empty state or restoring a query from the URL puts the field back in step with no extra pass. Debouncing is a `setTimeout` inside an `effect` with `onCleanup`, which needs no `rxjs-interop` import and which `vi.useFakeTimers()` drives directly.
+
+`injectMediaQuery` writes a signal from the `change` listener, which is the zoneless-correct way to notify Angular of something that happened outside its own event handling — no `ApplicationRef.tick()`, no zone patch.
+
+## 8. Accessibility contracts
+
+The PRD's **accessibility precedence** rule (§5) states that where the boards and the PRD disagree on accessibility, the PRD wins; the prototypes carry known gaps that the rebuild corrects rather than reproduces. §9 lists what that authorised. This section is what the kit guarantees.
+
+### 8.1 Focus
+
+- **In.** Opening a modal or offcanvas focuses `[data-modal-autofocus]`, else the first tabbable element, else the heading (§7.2). Opening a menu with ArrowDown focuses the first item; with ArrowUp, the last.
+- **Within.** A `showModal()` dialog gets real inertness from the top layer. The menu roves focus with Arrow / Home / End and gives Tab back to the page.
+- **Out.** `captureFocusOrigin` records the invoker before the overlay opens and restores it on close **and on destroy**. The destroy path is not belt-and-braces: `dialog.close()` queues its event, so a modal closed by a route change would have its `(close)` binding torn down before the event fired, and focus would drop to `<body>`.
+- **Visible.** `--focus-ring` at 2px, on a token chosen for 3:1 contrast on every surface in the kit (§2.2).
+
+### 8.2 Live regions
+
+The split is polite versus assertive, and it is structural rather than a per-toast decision:
+
+```html
+<div role="status" aria-live="polite"    …>  <!-- success, info    -->
+<div role="alert"  aria-live="assertive" …>  <!-- error, warning   -->
+```
+
+**Two sibling regions, because a region cannot be both.** Success and info must not interrupt; an error must. Both have to exist in the DOM **before** the first toast arrives — a live region created at the same moment as its content is not announced — which is why `<app-toast-region />` is mounted once in the app shell and never per route.
+
+Everywhere else in the kit, `polite` is the default and the announcement is deliberately quiet:
+
+| Where | Region | Announces |
+| --- | --- | --- |
+| Data table | `aria-live="polite"`, visually hidden, and the table's `aria-describedby` | "24 results" — so a filter that narrows the list is announced without interrupting |
+| Paginator | `aria-live="polite"` | "Showing 21–40 of 137 users" — so changing page announces the new range instead of leaving a screen reader to work out that the table changed underneath it |
+| Bulk action bar | `aria-live="polite"`, visually hidden | "3 selected". The bar itself **must not take focus** when it appears: the user is still working through the checkboxes |
+| Attachment chip | `role="status"` on the sub-status line | Ingest progress: worth hearing, not worth interrupting |
+| Fatal shell | `role="alert"` + `aria-live="assertive"`, applied **after** the content is final | The one genuinely assertive case outside toasts |
+
+### 8.3 Names, roles and colour
+
+- **Every ARIA role on the data table is stated rather than implied.** `display: grid` on a `<table>` strips the implicit roles in Chrome and Firefox, and the boards draw these rows as a grid — so `role="table"`, `rowgroup`, `row`, `columnheader` and `cell` are all written out. Removing them because "the element already says that" is a regression the markup cannot show you.
+- **`appTooltip` sets `aria-label`, not `aria-describedby`** — but only when the host has no name of its own, including from its visible text. The controls it labels are icon-only and have no accessible name at all, so the tooltip text *is* the name; wiring it as a description would leave the button nameless and have the text announced twice. It refuses to override a visible label, which would break WCAG SC 2.5.3 (Label in Name). It shows on focus as well as hover and is dismissed by Escape **from anywhere**, as SC 1.4.13 requires — a host-scoped listener would leave a hover-shown tooltip undismissable while focus is elsewhere, which is precisely the case that criterion exists for.
+- **Colour is never the only channel** (WCAG 1.4.1). `StatusDot` requires a label and `labelHidden` moves it to the visually-hidden class rather than removing it; `SourceBadge` renders the words "Uploaded" / "Generated"; `PermissionBadge`'s padlock is decoration and the reason is spelled out, because "there is a padlock" is not a reason.
+- **`appMenuItem` belongs on a `<button>` or an `<a>`** — never a `<div>` or an `<i>`.
+
+## 9. Corrections made against the design boards
+
+Each is a deliberate departure, authorised by the PRD's accessibility-precedence rule, and each is recorded in the component that makes it.
+
+| Board | Kit | Why |
+| --- | --- | --- |
+| Row selection drawn as `<i class="bi-square">` / `bi-check-square-fill` glyphs | Real `<input type="checkbox">`, per-row `aria-label` ("Select Helios release"), plus a select-all with `indeterminate` | A glyph is not focusable, not operable by keyboard, and reports no checked state |
+| Clickable `<i>` elements for row actions | `<button>` or `<a>` everywhere; `appMenuItem` documents the constraint | Same three reasons, plus no accessible name |
+| Pager ends drawn as dimmed `<span>`s | Real `<button disabled>` | A dimmed span is neither focusable nor announced as unavailable |
+| Pills ~31px tall at the mobile breakpoint | `min-height: 44px` on pill navigation and card-row actions | The board's own caption asks for 44 px targets at that width, so this is its intent rather than a departure from it |
+| Tooltip as a decorative flyout, host unnamed | Tooltip text becomes the host's `aria-label`; Escape dismisses document-wide | §8.3 |
+| No `aria-live` anywhere | Two toast regions, plus polite regions on the table, pager and selection bar | §8.2 |
+| Tooltip flyout hard-coded `#0B1F33` on white | `--tooltip-bg` / `--tooltip-fg` tokens | `#0B1F33` *is* the dark theme's body background — the tooltip would be invisible in dark |
+| Fonts, Bootstrap, icons and React from CDNs | All four self-hosted from npm | FR-51: zero third-party requests at runtime. `check:forbidden` enforces it |
+
+## 10. Gates
+
+`npm run lint` is ESLint plus three Node checks; `npm run build` adds a fourth; `check:contract` is separate because it needs the NuGet cache.
+
+| Command | What it enforces |
+| --- | --- |
+| `npm run lint:es` | Flat config: ESLint 10, typescript-eslint 8.66, angular-eslint 21.4 (`tsRecommended` + `templateRecommended` + `templateAccessibility`), `@ngrx/eslint-plugin` 21.1.1 at `signalsTypeChecked`, and `no-restricted-syntax` banning `bypassSecurityTrustHtml` in three syntactic forms |
+| `npm run check:icons` | Every `bi-*` reference under `src/` is in the sprite manifest |
+| `npm run check:forbidden` | Text backstop: `bypassSecurityTrustHtml`, a Google Fonts origin, a CDN origin — comment-stripped, so prose is fine |
+| `npm run check:tokens` | Tokens versus `theme.css`, `index.html`'s duplicated colours versus the tokens, and the theme storage key in both places |
+| `npm run check:contract` | The vendored streaming contract, byte-for-byte against the NuGet package (see [the README's "Vendored contract"](../../enterprise-gpt-ui/README.md#vendored-contract)) |
+| `npm run build` | The budgets, then `check-initial-chunk.mjs` over the esbuild metafile |
+
+Four points about that set that will otherwise look arbitrary:
+
+- **`signalsTypeChecked`, not `signals`.** The plain preset omits `with-state-no-arrays-at-root-level`, and that rule calls `getParserServices()` unconditionally, so it throws without type information. `projectService: true` is therefore mandatory rather than an optimization. The four NgRx rules it brings — no arrays at the root of `withState`, `patchState`-only writes, no `store.method()` inside a `computed`, and the `with*` naming convention — are the ones the store features were written against.
+- **`@typescript-eslint/no-unused-vars` is off, on purpose.** `tsconfig.json`'s `noUnusedLocals` / `noUnusedParameters` own that class of mistake: they run on every build and every test rather than only under `npm run lint`, and unlike the ESLint rule they count a `{@link}` in a doc comment as a use.
+- **`check-initial-chunk.mjs` guards identity, not size.** A `bundle`-type budget names a chunk only from `initialFiles` or an `entryPoint`, and a chunk produced by `import('mermaid')` has neither — so the budget sums zero bytes and can never fail. This script walks static imports from `src/main.ts` and fails if mermaid or katex ever enter that graph, naming the library and the input path that put it there.
+- **`check:forbidden` exists even though ESLint carries the same rule structurally.** ESLint cannot see a property name assembled at run time, and it cannot see an inline `// eslint-disable-next-line`. A text scan sees both. Running it as a Node script rather than a CI `grep` step means Windows developers get the identical gate locally.
+
+`.github/workflows/ui-ci.yml` runs format, lint, test and build on one job, and the contract check on a second — isolated because it is the only thing here that needs the .NET toolchain, and roughly 60 s of `dotnet restore` does not belong on the critical path of every UI pull request.
+
+## 11. The gallery
+
+```bash
+npm start
+# then open http://localhost:4200/ui-kit
+```
+
+Every kit component, light and dark **side by side**, because `data-bs-theme` is per-subtree. It exists because the kit has no consumer until EP-3 and two of its properties cannot be checked by a unit test: that a component reads correctly in dark as well as light, and that motion stops under `prefers-reduced-motion`.
+
+The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **never requested in production** — the same mechanism US-203 uses to keep the admin chunk off a non-administrator's device. It is scaffolding; delete it once the real screens exercise the kit.
+
+## 12. Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| An icon renders as an empty box | The name is not in the sprite. Either it is missing from `icon-names.ts`, or it is there but `npm run assets:icons` has not run since. In development the console names it |
+| Every icon renders black in both themes | The sprite is being referenced externally instead of injected. `currentColor` resolves against the sprite's own document (§5.1) |
+| No icons at all | `loadIconSprite()` swallowed a failure by design. Check the network panel for `icons/sprite.svg`; the app is meant to keep working without it |
+| A dark-theme user sees a light flash | Check `optimization.styles.inlineCritical` is still `false` in `angular.json` (§3.2). It is the only setting that can reintroduce this |
+| `npm run check:tokens` fails after a design change | `theme.css` moved and the app did not. Update the map in `_tokens.scss`; if the changed value is `--bs-body-bg` or `--bs-body-color`, update the duplicated pair in `index.html` too |
+| Sass `@error: Token --x is defined in $light but missing from $dark` | Exactly what it says. Add the token to both maps |
+| A component's styles have no effect and the bundle grew | The component `@use`d `tokens` or `typography`. Remove the import and read `var(--…)` (§1) |
+| A table column renders blank | The `appTableCell` key does not match `TableColumn.key`, or the template is inside a wrapper — `descendants: true` covers most of those, a mismatched key covers the rest |
+| A checkbox looks dead: clicking changes nothing | A selection updater mutated the `Set` and wrote back the same reference, so `patchState` performed no write (§7.4) |
+| `format:check` fails on files nobody touched | Git for Windows checked the tree out as CRLF. `enterprise-gpt-ui/.gitattributes` pins `eol=lf`; delete the files and check them out again |
+
+## 13. Key files
+
+| Concern | File |
+| --- | --- |
+| Tokens | [`src/styles/_tokens.scss`](../../enterprise-gpt-ui/src/styles/_tokens.scss) |
+| Stylesheet order | [`src/styles.scss`](../../enterprise-gpt-ui/src/styles.scss) |
+| Bootstrap trim | [`_bootstrap-config.scss`](../../enterprise-gpt-ui/src/styles/_bootstrap-config.scss), [`_bootstrap-components.scss`](../../enterprise-gpt-ui/src/styles/_bootstrap-components.scss) |
+| Type | [`_typography.scss`](../../enterprise-gpt-ui/src/styles/_typography.scss), [`scripts/copy-fonts.mjs`](../../enterprise-gpt-ui/scripts/copy-fonts.mjs) |
+| Motion | [`_motion.scss`](../../enterprise-gpt-ui/src/styles/_motion.scss) |
+| Pre-paint script, preloads, shell | [`src/index.html`](../../enterprise-gpt-ui/src/index.html) |
+| Theme state | [`core/theme/theme-service.ts`](../../enterprise-gpt-ui/src/app/core/theme/theme-service.ts) |
+| Icon manifest / sprite / injection | [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts), [`scripts/build-icon-sprite.mjs`](../../enterprise-gpt-ui/scripts/build-icon-sprite.mjs), [`core/icons/load-icon-sprite.ts`](../../enterprise-gpt-ui/src/app/core/icons/load-icon-sprite.ts) |
+| Brand images | [`scripts/build-brand-images.mjs`](../../enterprise-gpt-ui/scripts/build-brand-images.mjs), [`shared/brand-logo/`](../../enterprise-gpt-ui/src/app/shared/brand-logo/) |
+| Accessibility primitives | [`shared/a11y/`](../../enterprise-gpt-ui/src/app/shared/a11y/) |
+| Toast state | [`core/notifications/toast-store.ts`](../../enterprise-gpt-ui/src/app/core/notifications/toast-store.ts) |
+| Lint and checks | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs), [`scripts/`](../../enterprise-gpt-ui/scripts/) |
+| CI | [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml) |
+| Related reference | [Frontend Foundation](frontend-foundation.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |

@@ -1,0 +1,41 @@
+<div class="toast" [class]="'toast--' + toast().tone">
+  <app-icon class="toast__icon" [name]="icon()" />
+
+  <div class="toast__content">
+    <p class="toast__title">{{ toast().title }}</p>
+
+    @if (toast().detail) {
+      <p class="toast__detail">{{ toast().detail }}</p>
+    }
+
+    @if (toast().traceLine) {
+      <p class="toast__trace font-mono">{{ toast().traceLine }}</p>
+    }
+
+    @if (toast().retryLabel) {
+      <button class="toast__retry" type="button" (click)="retried.emit(toast().id)">
+        {{ toast().retryLabel }}
+      </button>
+    }
+  </div>
+
+  <button
+    class="toast__dismiss"
+    type="button"
+    [attr.aria-label]="dismissLabel()"
+    (click)="dismissed.emit(toast().id)"
+  >
+    <app-icon name="bi-x" />
+  </button>
+
+  @if (toast().dismissAfterMs > 0) {
+    <!-- The draining indicator is a CSS transition driven by one custom property set
+         once, not a timer writing a width sixty times a second. Decorative: the toast
+         disappearing is the only thing that matters, and it is announced. -->
+    <span
+      class="toast__drain"
+      aria-hidden="true"
+      [style.--toast-duration.ms]="toast().dismissAfterMs"
+    ></span>
+  }
+</div>

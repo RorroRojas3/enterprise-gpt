@@ -1,0 +1,132 @@
+<div class="table-notice"><ng-content select="[tableNotice]" /></div>
+
+@if (loading()) {
+  <div class="table-skeleton" [attr.aria-busy]="true" [attr.aria-label]="'Loading ' + label()">
+    @for (placeholder of skeletonPlaceholders(); track $index) {
+      <app-skeleton variant="text" height="18px" />
+    }
+  </div>
+} @else if (rows().length === 0) {
+  <ng-content select="[tableEmpty]" />
+} @else if (isNarrow()) {
+  <!-- Below the breakpoint the row is restructured, not reflowed, so the table
+       semantics go with it rather than lying about a list of cards. -->
+  <ul class="table-cards" [attr.aria-label]="label()">
+    @for (view of rowViews(); track view.key) {
+      @let slots = columnsBySlot();
+      <li>
+        <app-card-row>
+          <div cardRowTitle>
+            @for (column of slots.title; track column.key) {
+              <ng-container
+                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
+                [ngTemplateOutletContext]="view"
+              />
+            }
+          </div>
+          <div cardRowSubtitle>
+            @for (column of slots.subtitle; track column.key) {
+              <ng-container
+                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
+                [ngTemplateOutletContext]="view"
+              />
+            }
+          </div>
+          <div cardRowMeta>
+            @for (column of slots.meta; track column.key) {
+              <ng-container
+                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
+                [ngTemplateOutletContext]="view"
+              />
+            }
+          </div>
+          <div cardRowBadges>
+            @for (column of slots.badges; track column.key) {
+              <ng-container
+                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
+                [ngTemplateOutletContext]="view"
+              />
+            }
+          </div>
+          <div cardRowActions>
+            @for (column of slots.actions; track column.key) {
+              <ng-container
+                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
+                [ngTemplateOutletContext]="view"
+              />
+            }
+          </div>
+        </app-card-row>
+      </li>
+    }
+  </ul>
+} @else {
+  <!-- Every ARIA role below is stated rather than implied. `display: grid` on a table
+       strips the implicit roles in Chrome and Firefox, and the boards draw these rows
+       as a grid. -->
+  <table
+    class="data-table"
+    role="table"
+    [attr.aria-label]="label()"
+    [attr.aria-describedby]="summaryId"
+    [style.--table-cols]="gridTemplate()"
+  >
+    <thead role="rowgroup">
+      <tr role="row">
+        @if (selectable()) {
+          <th role="columnheader" scope="col">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              aria-label="Select all loaded rows"
+              [checked]="allSelected()"
+              [indeterminate]="someSelected()"
+              (change)="onToggleAll()"
+            />
+          </th>
+        }
+        @for (column of columns(); track column.key) {
+          <th role="columnheader" scope="col" [class]="'align-' + (column.align ?? 'start')">
+            <span [class.visually-hidden]="column.headerHidden">{{ column.header }}</span>
+          </th>
+        }
+      </tr>
+    </thead>
+
+    <tbody role="rowgroup">
+      @for (view of rowViews(); track view.key) {
+        <tr role="row" [attr.aria-busy]="isPending(view) ? 'true' : null">
+          @if (selectable()) {
+            <td role="cell">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                [attr.aria-label]="view.selectLabel"
+                [checked]="isSelected(view)"
+                (change)="onToggleRow(view)"
+              />
+            </td>
+          }
+          @for (column of columns(); track column.key) {
+            @let template = cellTemplates().get(column.key) ?? null;
+            <td role="cell" [class]="'align-' + (column.align ?? 'start')">
+              @if (template) {
+                <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+              } @else {
+                {{ cellText(column, view.row) }}
+              }
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+}
+
+<!-- Polite, so a filter that narrows the list is announced without interrupting. It
+     also describes the table, which is why the table carries aria-describedby. -->
+<p class="visually-hidden" [id]="summaryId" aria-live="polite">
+  {{ loading() ? '' : resultSummary() }}
+</p>
+
+<div class="table-footer"><ng-content select="[tableFooter]" /></div>

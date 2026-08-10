@@ -1,0 +1,13 @@
+# Generated or vendored output. Formatting any of it would either be thrown away on
+# the next build or — for the vendored contract — cause the very drift that
+# `npm run check:contract` exists to catch (the package copy uses double quotes and
+# has two code lines past our 100-column limit).
+dist
+coverage
+out-tsc
+.angular
+
+public/fonts
+public/icons
+
+src/app/domain/stream/andes/assistant-ui.contract.ts

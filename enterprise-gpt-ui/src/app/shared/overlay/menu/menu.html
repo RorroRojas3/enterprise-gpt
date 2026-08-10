@@ -1,0 +1,31 @@
+<button
+  #trigger
+  type="button"
+  class="menu__trigger"
+  aria-haspopup="menu"
+  [attr.aria-expanded]="open()"
+  [attr.aria-controls]="open() ? panelId : null"
+  (click)="toggle()"
+  (keydown)="onTriggerKeydown($event)"
+>
+  <app-icon [name]="icon()" />
+  <span class="visually-hidden">{{ label() }}</span>
+</button>
+
+@if (open()) {
+  <div
+    #panel
+    class="menu__panel"
+    role="menu"
+    tabindex="-1"
+    [id]="panelId"
+    [attr.aria-label]="label()"
+    [style.top.px]="position().top"
+    [style.left.px]="position().left"
+    (keydown)="onPanelKeydown($event)"
+    (keydown.escape)="close()"
+    (click)="onPanelClick($event)"
+  >
+    <ng-content />
+  </div>
+}

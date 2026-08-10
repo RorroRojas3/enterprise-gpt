@@ -6,9 +6,9 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), which is the au
 
 ## 1. Overview
 
-> **Scope, stated plainly.** This is foundation only, and **the app is not usable yet**. There is no sign-in (US-201), `app.routes.ts` is an empty array, and there is no chat screen. `App` renders a bare `<router-outlet />`. Everything below is the substrate those stories build on, and all of it is covered by specs that run without a backend.
+> **Scope, stated plainly.** This is foundation only, and **the app is not usable yet**. There is no sign-in (US-201) and no chat screen; `app.routes.ts` carries exactly one route, the development-only `/ui-kit` gallery, and `App` is a router outlet, the toast region and a temporary theme control. Everything below is the substrate those stories build on, and all of it is covered by specs that run without a backend.
 
-Three pieces landed, each solving a problem the deleted `enterprise-ui/` client had:
+Three pieces landed here, each solving a problem the deleted `enterprise-ui/` client had. The presentation half of EP-1 — design tokens, theming, self-hosted assets and the shared component kit — has its own reference in [Design System](design-system.md).
 
 1. **Runtime configuration** (US-102). Nothing environment-specific is compiled into the bundle. One artifact is built once and promoted; `config.json` is replaced per environment. A production bundle can no longer ship pointed at `localhost`, and a deployment that forgot to write `config.json` says so on screen instead of rendering a blank page (§3).
 2. **Error normalization** (US-103). The API answers every failure with RFC 9457 Problem Details across ten domain types. The client mirrors all ten verbatim and collapses every observable failure — HTTP, transport, abort, and stray throws — into one discriminated `AppError`, so a store, a form, and a toast all consume the same shape (§4).
@@ -30,6 +30,9 @@ Three pieces landed, each solving a problem the deleted `enterprise-ui/` client 
 | The five store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
 | Cross-store events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
 | API URL building | [`core/http/api-url.ts`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts) |
+| The vendored streaming contract (US-107) | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) — copied byte-for-byte from `Andes.Extensions.AI.UI` and **never hand-edited**; see [the README](../../enterprise-gpt-ui/README.md#vendored-contract) |
+| Tokens, theming, assets, the shared UI kit (US-105/106/109) | [Design System](design-system.md), [`src/styles/`](../../enterprise-gpt-ui/src/styles/), [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) |
+| Asset builds and drift checks | [`enterprise-gpt-ui/scripts/`](../../enterprise-gpt-ui/scripts/) — `copy-fonts`, `build-icon-sprite`, `build-brand-images`, `check-andes-contract`, `check-tokens`, `check-icon-names`, `check-forbidden-apis`, `check-initial-chunk` |
 
 ### 1.2 Workspace facts, once
 
@@ -42,10 +45,10 @@ Three pieces landed, each solving a problem the deleted `enterprise-ui/` client 
 | Layering | `features → shared → core → domain`, one way only. `domain/` imports nothing from Angular, so the SSE codec and the activity fold will test in Node with no `TestBed` |
 | Path aliases | `@core/*`, `@domain/*`, `@shared/*`, `@features/*`, `@testing/*`. No barrel `index.ts` files; components are `foo.ts`/`foo.html`/`foo.scss` with no `.component` suffix |
 | TypeScript | Strict, plus `strictTemplates`, `noPropertyAccessFromIndexSignature`, and `noUncheckedIndexedAccess` |
-| Initial bundle | **220.34 kB raw / 59.64 kB transfer**, measured at the end of US-101, against a **240 kB warn / 300 kB error** budget. Roughly 20 kB of headroom, deliberately tight |
-| Lint | **None yet.** Prettier only; ESLint, the `bypassSecurityTrustHtml` restriction, and the CI gates are US-108 |
+| Initial bundle | **349.83 kB raw / 88.13 kB transfer**, re-baselined at the end of US-106, against a **360 kB warn / 400 kB error** budget. A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB. MSAL is roughly 150 kB and unavoidably initial, so US-201 needs its own re-baseline past 400 kB |
+| Lint | **ESLint 10** flat config (`eslint.config.mjs`) over typescript-eslint 8.66, angular-eslint 21.4 (`tsRecommended`, `templateRecommended`, `templateAccessibility`) and `@ngrx/eslint-plugin` 21.1.1 at **`signalsTypeChecked`** — which needs `projectService: true`, because the one rule the plain `signals` preset omits throws without type information. Its four NgRx rules are the ones §5 was written against: no arrays at the root of `withState`, writes only through `patchState`, no `store.method()` inside a `computed`, and the `with*` naming convention. `no-restricted-syntax` bans `bypassSecurityTrustHtml`; `@typescript-eslint/no-unused-vars` is **off**, because tsc's `noUnusedLocals`/`noUnusedParameters` own that and, unlike the rule, count a `{@link}` as a use |
 
-**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30), `dompurify` 3.4.13, and `bootstrap-icons` 1.13.1 are in `package.json` and referenced nowhere in `src/`. Tree-shaking means they cost nothing today — the 220.34 kB baseline is a *pre-markdown* figure — and EP-6/US-109 will have to pay for them and re-baseline. `@azure/msal-angular` 6 and `@azure/msal-browser` 5 are in the same position, waiting on US-201.
+**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30) and `dompurify` 3.4.13 are in `package.json` and referenced nowhere in `src/`, so the 349.83 kB baseline is still a *pre-markdown* figure and EP-6 will have to pay for them and re-baseline. `@azure/msal-angular` 6 and `@azure/msal-browser` 5 are in the same position, waiting on US-201. `bootstrap-icons` 1.13.1 has left this list without entering the bundle: `scripts/build-icon-sprite.mjs` reads its individual SVGs at build time and emits a sprite into `public/`, so the package is a build-time input rather than a dependency the browser ever sees.
 
 ## 2. Quick start — a store that composes the foundation
 
@@ -445,27 +448,32 @@ Everything above is covered by Vitest specs that run with no backend and, for th
 | Config | `app-config`, `app-config.token`, `load-app-config`, `fatal-shell` | Each named-field failure; a 200 carrying `index.html`; the timeout; the shell's `textContent`-only rendering and watchdog clearing |
 | Errors | `to-app-error` (31 cases), `to-app-error-from-response`, `problem-details`, `problem-types`, `apply-server-errors`, `camel-case`, `error-message`, `retry-policy` | Timeout-versus-abort ordering; a `bodyUsed` body; PascalCase, dotted and indexed keys; the `AUTH_DECISIONS` key set |
 | HTTP | `api-url`, `retry.interceptor` | GET-only, the 409 and app-typed-503 exclusions, jitter bounds via a pinned `random` |
-| State | `with-request-status`, `with-offset-pagination` (15 cases), `with-pending-ids`, `with-client-query` (16 cases), `with-reset-on-sign-out` | The exact-multiple page boundary; the empty-page cap; the replace-not-mutate signal write; `isAuthoritative` false suppressing sort; the dev-only ordering guard throwing |
+| State | `with-request-status`, `with-offset-pagination` (15 cases), `with-pending-ids`, `with-client-query` (16 cases), `with-reset-on-sign-out`, `toast-store` | The exact-multiple page boundary; the empty-page cap; the replace-not-mutate signal write; `isAuthoritative` false suppressing sort; the dev-only ordering guard throwing; a toast timer cancelled on sign-out |
+| Theme and assets | `theme-service`, `load-icon-sprite`, `icon`, `icon-names`, `brand-logo`, `ridgeline`, `theme-toggle` | Blocked `localStorage`; an OS change while the preference is `system`; a sprite response that is really `index.html`; both logo variants carrying the same `alt` |
+| UI kit | `a11y`, `modal`, `offcanvas`, `menu`, `tooltip`, `feedback`, `data`, `badge`, `attachment-chip` | Focus in and focus return; Escape and outside-pointer dismissal; roving menu focus; the two live regions; the polite result summary; selection updaters returning a new `Set` |
+| Streaming contract | `assistant-ui.contract` | `foldAssistantEvents` over the vendored types, in Node with no `TestBed` |
 
 ```bash
 # from enterprise-gpt-ui/
-npm test           # Vitest, single run
-npm run test:watch # watch mode
-npm run build      # production build; fails above the 300 kB initial budget
+npm test               # Vitest, single run
+npm run test:watch     # watch mode
+npm run format:check   # Prettier, read-only
+npm run lint           # ESLint + check:icons + check:forbidden + check:tokens
+npm run check:contract # the vendored streaming contract, byte-for-byte (needs the NuGet cache)
+npm run build          # production build; the budgets, then check-initial-chunk.mjs
 ```
+
+Those five gates are what `.github/workflows/ui-ci.yml` runs — the repository's first CI workflow. `check:contract` sits on its own job because it is the only one that needs the .NET toolchain. What each gate enforces, and why several of them are Node scripts rather than lint rules, is in [Design System §10](design-system.md#10-gates).
 
 ## 7. What is not here yet
 
 | Missing | Owner |
 | --- | --- |
 | Sign-in, `TokenService`, `authInterceptor` — MSAL is installed but unwired | US-201 |
-| Any route at all; `app.routes.ts` is `[]` | EP-3 onward |
-| Any store; US-104 built the features, not their consumers | US-302 sets the reference pattern |
-| Theme switching and the pre-paint script slot in `index.html` | US-105 |
-| The shared UI kit, including the toast `error-message.ts` feeds | US-106 |
-| ESLint, the `bypassSecurityTrustHtml` restriction, CI gates | US-108 |
+| The app shell, and any route beyond the development-only `/ui-kit` gallery | EP-3 onward |
+| Any *feature* store; `ToastStore` is the only store so far, and it is app-wide singleton state | US-302 sets the reference pattern |
 | Markdown rendering; `ngx-markdown` is installed but imported nowhere | EP-6 / US-601 |
-| The SSE codec, the fold, and the chat transport | EP-4 |
+| The SSE codec and the chat transport. The vendored contract and its `foldAssistantEvents` are in place; nothing consumes them yet | EP-4 |
 
 ## 8. Key files
 
@@ -483,4 +491,6 @@ npm run build      # production build; fails above the 300 kB initial budget
 | Session events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
 | Pagination envelope mirror | [`domain/api/paginated-response.ts`](../../enterprise-gpt-ui/src/app/domain/api/paginated-response.ts) |
 | Test providers | [`src/testing/test-providers.ts`](../../enterprise-gpt-ui/src/testing/test-providers.ts) |
-| Related reference | [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |
+| Vendored streaming contract | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts), [`scripts/check-andes-contract.mjs`](../../enterprise-gpt-ui/scripts/check-andes-contract.mjs) |
+| Lint and CI | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs), [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml) |
+| Related reference | [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |

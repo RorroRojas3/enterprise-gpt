@@ -1,0 +1,44 @@
+<div class="paginator">
+  <!-- Polite, so changing page announces the new range instead of leaving a screen
+       reader to work out that the table changed underneath it. -->
+  <p class="paginator__summary" aria-live="polite">{{ summary() }}</p>
+
+  <nav class="paginator__nav" aria-label="Pagination">
+    <button
+      class="paginator__step"
+      type="button"
+      aria-label="Previous page"
+      [disabled]="isFirst()"
+      (click)="go(page() - 1)"
+    >
+      <app-icon name="bi-chevron-left" />
+    </button>
+
+    @for (entry of entries(); track $index) {
+      @if (entry === gap) {
+        <span class="paginator__gap" aria-hidden="true">…</span>
+      } @else {
+        <button
+          class="paginator__page"
+          type="button"
+          [class.paginator__page--current]="entry === page()"
+          [attr.aria-current]="entry === page() ? 'page' : null"
+          [attr.aria-label]="'Page ' + entry"
+          (click)="go(entry)"
+        >
+          {{ entry }}
+        </button>
+      }
+    }
+
+    <button
+      class="paginator__step"
+      type="button"
+      aria-label="Next page"
+      [disabled]="isLast()"
+      (click)="go(page() + 1)"
+    >
+      <app-icon name="bi-chevron-right" />
+    </button>
+  </nav>
+</div>

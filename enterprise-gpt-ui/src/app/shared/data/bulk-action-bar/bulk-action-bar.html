@@ -1,0 +1,21 @@
+<!--
+  Permanently mounted, and empty until something is selected. A live region inserted
+  with its text already in place is not announced, so wrapping this in the @if below
+  would silence the 0 → 1 transition — the one announcement that matters, and the
+  reason this component deliberately does not take focus.
+-->
+<p class="visually-hidden" aria-live="polite">{{ count() > 0 ? summary() : '' }}</p>
+
+@if (count() > 0) {
+  <div class="bulk-bar" role="region" aria-label="Bulk actions">
+    <p class="bulk-bar__count">{{ summary() }}</p>
+
+    @if (note()) {
+      <p class="bulk-bar__note">{{ note() }}</p>
+    }
+
+    <div class="bulk-bar__actions"><ng-content /></div>
+
+    <button class="bulk-bar__clear" type="button" (click)="cleared.emit()">Clear</button>
+  </div>
+}

@@ -1,0 +1,12 @@
+:host {
+  display: inline-flex;
+  // Without this the host box is taller than the glyph and every icon-beside-text
+  // row picks up a stray baseline gap.
+  line-height: 0;
+}
+
+svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}

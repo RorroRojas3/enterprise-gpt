@@ -1,0 +1,115 @@
+name: UI CI
+
+# The two path lists are duplicated rather than shared through a YAML anchor:
+# GitHub Actions does not resolve anchors in workflow files. Keep them in step.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'enterprise-gpt-ui/**'
+      # check:tokens diffs the app's tokens against the design bundle's source of
+      # record. Without this path a PR editing only theme.css would never run the
+      # check that exists to police it.
+      - 'docs/design/project/theme.css'
+      # The contract job cross-checks the version the API references. Needed on push
+      # as well as pull_request: two PRs approved against different bases can both
+      # merge and leave master unvalidated.
+      - 'enterprise-gpt-api/**/*.csproj'
+      - '.github/workflows/ui-ci.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'enterprise-gpt-ui/**'
+      - 'docs/design/project/theme.css'
+      - 'enterprise-gpt-api/**/*.csproj'
+      - '.github/workflows/ui-ci.yml'
+
+# Read-only by default. No job below writes anything back to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  # Keyed on the workflow too, so a future api-ci.yml can be copied from this one
+  # without colliding. Cancellation is limited to pull requests: on master every
+  # commit should keep a durable green or red rather than a cancelled check.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: enterprise-gpt-ui
+
+jobs:
+  # Static gates, tests and the production build. No .NET, so it starts immediately.
+  build:
+    name: Lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: enterprise-gpt-ui/package.json
+          cache: npm
+          cache-dependency-path: enterprise-gpt-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Runs the budgets, then check-initial-chunk.mjs over the build metafile.
+      - name: Build
+        run: npm run build
+
+  # The US-107 drift gate. Isolated because it is the only thing here that needs the
+  # .NET toolchain, and ~60s of restore does not belong on the critical path of every
+  # UI pull request.
+  contract:
+    name: Andes contract drift
+    runs-on: ubuntu-latest
+    # A restore and a file comparison. Fifteen minutes would mean a wedged restore
+    # burns fifteen minutes before anyone hears about it.
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # No NuGet cache on purpose. This job wants one 61 kB file, but restoring the
+      # project's graph fills ~/.nuget/packages with hundreds of megabytes; caching
+      # that would compete for the repository's 10 GB LRU budget against the npm
+      # cache, which is on the hot path of every pull request. Restore is ~60s and
+      # nuget.org is fast; re-measure before adding a cache back.
+      #
+      # Enterprise.Gpt.Service and Enterprise.Gpt.Api both reference
+      # Andes.Extensions.AI.UI, and Service is the lighter restore. The invariant this
+      # step depends on: *some* project restored here must still reference the
+      # package, or the check fails with "not on this machine" for a reason nobody
+      # will connect to a csproj edit. Restore Api instead if Service ever drops it.
+      # The package is public on nuget.org, so no feed credentials are involved.
+      - name: Restore the project that references Andes.Extensions.AI.UI
+        working-directory: .
+        run: dotnet restore enterprise-gpt-api/Enterprise.Gpt.Service/Enterprise.Gpt.Service.csproj
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: enterprise-gpt-ui/package.json
+
+      # No npm install: the check is a dependency-free Node script.
+      - name: Compare the vendored contract against the package
+        run: npm run check:contract

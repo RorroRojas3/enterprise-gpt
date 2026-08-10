@@ -1,0 +1,122 @@
+// Global rules the UI kit needs and component encapsulation cannot reach.
+// ── Skip link ────────────────────────────────────────────────────────────────
+// Off-screen until focused. Rendered by the shell (US-301) and styled here because it
+// has to sit outside every component.
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 1100;
+  padding: 10px 16px;
+  border-radius: 0 0 10px 0;
+  background: var(--brand);
+  color: var(--btnP-fg);
+  font-weight: 600;
+
+  &:focus {
+    left: 0;
+    top: 0;
+  }
+}
+
+// ── Overlays ─────────────────────────────────────────────────────────────────
+// ::backdrop belongs to the top layer, which no component's emulated encapsulation
+// reaches.
+dialog::backdrop {
+  background: rgba(11, 31, 51, 0.45);
+}
+
+// Native <dialog> ships a UA border, padding and max-width that fight every layout.
+dialog {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+// The page must not scroll behind an open modal. `:has` avoids a body class that
+// would have to be added and removed by script, which is one more thing to leak.
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+// ── Validation ───────────────────────────────────────────────────────────────
+// Hand-rolled in place of bootstrap/scss/forms/validation (6.9 kB). `applyServerErrors`
+// drives the class directly, and `.was-validated` is never used here.
+.form-control.is-invalid,
+.form-select.is-invalid {
+  border-color: var(--fail);
+
+  &:focus {
+    border-color: var(--fail);
+    box-shadow: 0 0 0 0.2rem rgba(192, 57, 43, 0.18);
+  }
+}
+
+.invalid-feedback {
+  display: block;
+  margin-top: 4px;
+  color: var(--fail);
+  font-size: 12px;
+}
+
+// ── Spinner ──────────────────────────────────────────────────────────────────
+// The boards' spinner: a ring on theme.css's existing `spin` keyframe, rather than
+// Bootstrap's `_spinners.scss`, which would add a keyframe of its own.
+.kit-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  border: 2px solid var(--bs-border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+// ── Tooltip ──────────────────────────────────────────────────────────────────
+// The flyout is created by the `appTooltip` directive through Renderer2, so it never
+// carries a component's encapsulation attribute and has to be styled globally.
+//
+// The colours are tokens rather than the board's literal #0B1F33 on white: that hex
+// *is* --bs-body-bg in dark, which would make the tooltip invisible in the theme it
+// gets used in most.
+// The containing block the flyout positions against. In CSS rather than an inline
+// style written at show time, so the directive needs no getComputedStyle read and
+// leaves nothing behind when it tears the flyout down.
+.app-tooltip-host {
+  position: relative;
+}
+
+.app-tooltip {
+  position: absolute;
+  z-index: 1080;
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(11, 31, 51, 0.35);
+
+  &[data-placement='right'] {
+    left: 54px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  &[data-placement='top'] {
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+// ── Toast region ─────────────────────────────────────────────────────────────
+// Fixed, so it is positioned here rather than inside the component: 76px clears the
+// 52px chat header plus its rule. One place owns the number.
+:root {
+  --toast-top: 76px;
+  --toast-right: 20px;
+}

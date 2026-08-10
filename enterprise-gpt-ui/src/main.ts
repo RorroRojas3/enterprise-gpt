@@ -6,12 +6,16 @@ import { AppConfigError } from './app/core/config/app-config';
 import { APP_CONFIG } from './app/core/config/app-config.token';
 import { hideStartupShell, showFatalShell } from './app/core/config/fatal-shell';
 import { loadAppConfig } from './app/core/config/load-app-config';
+import { loadIconSprite } from './app/core/icons/load-icon-sprite';
 
 async function start(): Promise<void> {
   let config;
 
   try {
-    config = await loadAppConfig();
+    // The sprite fetch overlaps the config fetch that already gates bootstrap, so
+    // it costs roughly nothing and guarantees no icon pop-in on first paint.
+    // loadIconSprite never rejects, so it cannot reroute into the fatal shell.
+    [config] = await Promise.all([loadAppConfig(), loadIconSprite()]);
   } catch (error) {
     console.error(error);
     // An AppConfigError message already names the offending field or transport

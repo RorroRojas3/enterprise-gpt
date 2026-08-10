@@ -1,0 +1,16 @@
+<nav class="pill-subnav" [attr.aria-label]="ariaLabel()">
+  <ul class="pill-subnav__list">
+    @for (item of items(); track item.id) {
+      <li>
+        <a
+          class="pill-subnav__pill"
+          routerLinkActive="pill-subnav__pill--active"
+          ariaCurrentWhenActive="page"
+          [routerLink]="item.link"
+        >
+          {{ item.label }}
+        </a>
+      </li>
+    }
+  </ul>
+</nav>

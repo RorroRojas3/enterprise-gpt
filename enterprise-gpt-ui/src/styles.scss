@@ -1,19 +1,39 @@
 // Global stylesheet.
 //
-// `angular.json` adds `src/styles` to the Sass load path, so partials in that
-// directory are reachable as `@use 'tokens'` from anywhere, including component
-// stylesheets.
+// `angular.json` puts `src/styles` on the Sass load path, so partials are reachable
+// by bare name. Everything is `@import` rather than `@use` on purpose: Bootstrap 5.3
+// still shares one global `!default` namespace across its partials, so its
+// configuration and its component modules have to compile in a single scope.
 //
-// Deliberately near-empty until US-105 (design tokens + the [data-theme="dark"]
-// override block) and US-106 (the Bootstrap subset). Bootstrap is imported here
-// module by module rather than as a prebuilt stylesheet so the initial-bundle
-// budget in `angular.json` stays meaningful.
+// Statement order *is* output order, and three points in it are load-bearing:
+//   1. Bootstrap's `root` before `tokens`      — identical selectors; ours must be later
+//   2. Bootstrap's components before `bootstrap-overrides` — same reason
+//   3. `motion` last                            — its reduced-motion block suppresses
+//                                                 every animation and transition above it
+// The utilities API is last but one, because a utility class must beat a component
+// rule.
 
-html,
-body {
-  height: 100%;
-}
+// Self-hosted @font-face and the $font-* stacks (US-109).
+@import 'typography';
 
-body {
-  margin: 0;
-}
+// Bootstrap configuration, the utilities trim, and `root`.
+@import 'bootstrap-config';
+
+// Design tokens, overriding the --bs-* values `root` just emitted (US-105).
+@import 'tokens';
+
+// Bootstrap's reboot, type, forms, buttons, transitions, nav and four helpers.
+@import 'bootstrap-components';
+
+@import 'base';
+@import 'kit';
+
+// theme.css's own component overrides, after the components they restyle.
+@import 'bootstrap-overrides';
+
+// Token-driven syntax highlighting; no prismjs stylesheet is imported.
+@import 'prism';
+
+@import 'bootstrap/scss/utilities/api';
+
+@import 'motion';

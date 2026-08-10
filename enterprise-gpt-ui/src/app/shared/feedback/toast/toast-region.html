@@ -1,0 +1,21 @@
+<div class="toast-region">
+  <div class="toast-region__group" role="status" aria-live="polite" aria-atomic="false">
+    @for (toast of store.politeToasts(); track toast.id) {
+      <app-toast-item
+        [toast]="toast"
+        (dismissed)="store.dismiss($event)"
+        (retried)="retried.emit($event)"
+      />
+    }
+  </div>
+
+  <div class="toast-region__group" role="alert" aria-live="assertive" aria-atomic="false">
+    @for (toast of store.assertiveToasts(); track toast.id) {
+      <app-toast-item
+        [toast]="toast"
+        (dismissed)="store.dismiss($event)"
+        (retried)="retried.emit($event)"
+      />
+    }
+  </div>
+</div>

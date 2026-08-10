@@ -1,0 +1,64 @@
+// The rule blocks from `docs/design/project/theme.css` that are not token
+// declarations. They live here rather than in `_tokens.scss` because they have to be
+// emitted *after* Bootstrap's `_buttons.scss` and `_forms/*` to win on source order —
+// `_tokens.scss` is imported before them, immediately after `bootstrap/scss/root`.
+//
+// Everything is expressed through Bootstrap's own `--bs-btn-*` component variables,
+// so the components keep their states and no property is fought over.
+
+.btn-primary {
+  --bs-btn-bg: var(--btnP-bg);
+  --bs-btn-border-color: var(--btnP-bg);
+  --bs-btn-color: var(--btnP-fg);
+  --bs-btn-hover-bg: var(--btnP-hover);
+  --bs-btn-hover-border-color: var(--btnP-hover);
+  --bs-btn-hover-color: var(--btnP-fg);
+  --bs-btn-active-bg: var(--btnP-hover);
+  --bs-btn-active-border-color: var(--btnP-hover);
+  --bs-btn-active-color: var(--btnP-fg);
+  --bs-btn-disabled-bg: var(--btnP-bg);
+  --bs-btn-disabled-border-color: var(--btnP-bg);
+  --bs-btn-disabled-color: var(--btnP-fg);
+}
+
+.btn-outline-secondary {
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-border-color: var(--bs-border-color);
+  --bs-btn-hover-bg: var(--surface-2);
+  --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-hover-border-color: var(--bs-border-color);
+  --bs-btn-active-bg: var(--surface-2);
+  --bs-btn-active-color: var(--bs-body-color);
+  --bs-btn-active-border-color: var(--bs-border-color);
+}
+
+.btn-danger {
+  --bs-btn-bg: var(--fail);
+  --bs-btn-border-color: var(--fail);
+  --bs-btn-color: #fff;
+  --bs-btn-hover-bg: #a93226;
+  --bs-btn-hover-border-color: #a93226;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-bg: #a93226;
+  --bs-btn-active-border-color: #a93226;
+  --bs-btn-active-color: #fff;
+}
+
+.form-check-input:checked {
+  background-color: var(--btnP-bg);
+  border-color: var(--btnP-bg);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 0.2rem rgba(33, 168, 216, 0.18);
+}
+
+a {
+  color: var(--bs-link-color);
+
+  &:hover {
+    color: var(--bs-link-hover-color);
+  }
+}

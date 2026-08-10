@@ -1,0 +1,250 @@
+<header class="kit-header">
+  <h1 class="font-display">UI kit</h1>
+  <p>
+    Every shared component, light and dark side by side. Development only — the route is guarded
+    with <code>canMatch: [() =&gt; isDevMode()]</code>, so this chunk is never requested in
+    production.
+  </p>
+</header>
+
+<!-- Each pane forces its own theme. data-bs-theme is per-subtree, which is what makes a
+     side-by-side comparison possible at all. -->
+<div class="kit-split">
+  @for (theme of ['light', 'dark']; track theme) {
+    <section class="kit-pane" [attr.data-bs-theme]="theme" [attr.aria-label]="theme + ' theme'">
+      <h2 class="kit-pane__title font-display">{{ theme }}</h2>
+
+      <section class="kit-group">
+        <h3>Brand and motif</h3>
+        <app-brand-logo alt="Andes Software Solutions" />
+        <app-brand-logo variant="mark" />
+        <app-ridgeline variant="divider" />
+        <app-ridgeline variant="thinking" />
+        <app-ridgeline variant="empty" />
+        <app-ridgeline variant="auth" />
+      </section>
+
+      <section class="kit-group">
+        <h3>Icons</h3>
+        <div class="kit-row">
+          <app-icon name="bi-search" />
+          <app-icon name="bi-star-fill" />
+          <app-icon name="bi-trash3" />
+          <app-icon name="bi-shield-lock" />
+          <app-icon name="bi-send-fill" />
+          <app-icon name="bi-paperclip" label="Attach a file" />
+        </div>
+      </section>
+
+      <section class="kit-group">
+        <h3>Buttons</h3>
+        <div class="kit-row">
+          <button class="btn btn-primary" type="button">Primary</button>
+          <button class="btn btn-outline-secondary" type="button">Secondary</button>
+          <button class="btn btn-danger" type="button">Delete</button>
+          <button class="btn btn-primary" type="button" disabled>Disabled</button>
+        </div>
+      </section>
+
+      <section class="kit-group">
+        <h3>Badges</h3>
+        <div class="kit-row">
+          <app-status-dot tone="ok" label="Active" />
+          <app-status-dot tone="fail" label="Failed" />
+          <app-kind-badge kind="McpTool" />
+          <app-kind-badge kind="Agent" />
+          <app-permission-badge name="Upload File" />
+          <app-permission-badge name="Administrator" managedBy="Jira Cloud MCP" />
+          <app-source-badge source="uploaded" />
+          <app-source-badge source="generated" />
+        </div>
+      </section>
+
+      <section class="kit-group">
+        <h3>Search</h3>
+        <app-search-input label="Search conversations" placeholder="Search…" [(value)]="search" />
+      </section>
+
+      <section class="kit-group">
+        <h3>Attachment chips — all five states</h3>
+        <div class="kit-stack">
+          @for (attachment of attachments; track attachment.id) {
+            <app-attachment-chip [attachment]="attachment" />
+          }
+        </div>
+      </section>
+
+      <section class="kit-group">
+        <h3>Project card</h3>
+        <app-project-card
+          name="Helios 2.4"
+          description="Release readiness, incident reviews and the rollout checklist."
+          updatedLabel="2h ago"
+          [link]="['/ui-kit']"
+          [favorite]="true"
+        >
+          <app-menu cardMenu label="Actions for Helios 2.4">
+            <button appMenuItem type="button">Rename</button>
+            <hr appMenuSeparator />
+            <button appMenuItem class="menu__item--danger" type="button">Delete</button>
+          </app-menu>
+        </app-project-card>
+      </section>
+
+      <section class="kit-group">
+        <h3>Data table</h3>
+        <app-data-table
+          label="Conversations"
+          [rows]="rows"
+          [columns]="columns"
+          [trackKey]="trackKey"
+          [rowLabel]="rowLabel"
+          [pendingIds]="pendingIds"
+          [selectable]="true"
+          [(selectedIds)]="selectedIds"
+        >
+          <p tableNotice class="kit-note">Select-all covers the 3 loaded rows only.</p>
+
+          <ng-template appTableCell="name" [appTableCellFor]="rows" let-row>
+            <a href="#" (click)="$event.preventDefault()">{{ row.name }}</a>
+          </ng-template>
+
+          <ng-template appTableCell="actions" [appTableCellFor]="rows" let-row>
+            <app-menu [label]="'Actions for ' + row.name">
+              <button appMenuItem type="button">Rename</button>
+              <button appMenuItem type="button">Favourite</button>
+              <hr appMenuSeparator />
+              <button appMenuItem class="menu__item--danger" type="button">Delete</button>
+            </app-menu>
+          </ng-template>
+
+          <app-empty-state tableEmpty heading="No conversations yet" />
+
+          <app-paginator
+            tableFooter
+            [page]="page()"
+            [totalPages]="13"
+            [totalCount]="312"
+            [pageSize]="25"
+            itemLabel="conversations"
+            (pageChanged)="page.set($event)"
+          />
+        </app-data-table>
+      </section>
+
+      <section class="kit-group">
+        <h3>Mobile card row and pill sub-nav</h3>
+        <app-pill-subnav [items]="pills" ariaLabel="Admin sections" />
+        <app-card-row>
+          <span cardRowTitle>Sofía Herrera</span>
+          <span cardRowSubtitle>sofia.herrera&#64;example.com</span>
+          <span cardRowMeta>Last active 2h ago</span>
+          <app-permission-badge cardRowBadges name="Upload File" />
+          <button cardRowActions class="btn btn-outline-secondary btn-sm" type="button">
+            Edit
+          </button>
+          <button cardRowActions class="btn btn-outline-secondary btn-sm" type="button">
+            Deactivate
+          </button>
+        </app-card-row>
+      </section>
+
+      <section class="kit-group">
+        <h3>State panels</h3>
+        <app-empty-state
+          heading='No conversations match "quarterly"'
+          message="Filters cover conversation names only."
+        >
+          <button emptyStateAction class="btn btn-outline-secondary btn-sm" type="button">
+            Clear search
+          </button>
+        </app-empty-state>
+
+        <app-error-panel [error]="demoError" heading="Documents couldn't load" />
+
+        <app-unavailable-panel
+          heading="Your documents aren't available yet"
+          message="The documents API isn't enabled for this deployment. Files you upload into a conversation still work."
+        />
+
+        <app-skeleton [lines]="3" height="16px" />
+      </section>
+
+      <section class="kit-group">
+        <h3>Overlays</h3>
+        <div class="kit-row">
+          <button class="btn btn-primary btn-sm" type="button" (click)="modalOpen.set(true)">
+            Open modal
+          </button>
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            (click)="offcanvasOpen.set(true)"
+          >
+            Open offcanvas
+          </button>
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            appTooltip="Collapsed-strip label"
+          >
+            Hover or focus me
+          </button>
+        </div>
+      </section>
+
+      <section class="kit-group">
+        <h3>Toasts</h3>
+        <div class="kit-row">
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            (click)="toasts.success('Conversation deleted')"
+          >
+            Success (auto-dismisses)
+          </button>
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            (click)="toasts.warning('Sorting is unavailable past the 500-project ceiling')"
+          >
+            Warning (persists)
+          </button>
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            (click)="toasts.fromError(demoError, 'Retry')"
+          >
+            Error (persists)
+          </button>
+        </div>
+      </section>
+    </section>
+  }
+</div>
+
+<app-bulk-action-bar
+  [count]="selectedIds().size"
+  note="Select-all covers the 3 loaded rows only"
+  (cleared)="clearSelection()"
+>
+  <button class="btn btn-danger btn-sm" type="button">Delete</button>
+</app-bulk-action-bar>
+
+<app-modal [(open)]="modalOpen" heading="Rename conversation" size="sm">
+  <label class="form-label" for="kit-rename">Name</label>
+  <input id="kit-rename" class="form-control" data-modal-autofocus value="Helios release status" />
+  <div modalFooter>
+    <button class="btn btn-outline-secondary" type="button" (click)="modalOpen.set(false)">
+      Cancel
+    </button>
+    <button class="btn btn-primary" type="button" (click)="modalOpen.set(false)">Rename</button>
+  </div>
+</app-modal>
+
+<app-offcanvas [(open)]="offcanvasOpen" heading="User details">
+  <p>Focus moves in here on open, and back to the invoking button on close.</p>
+  <div offcanvasFooter>
+    <button class="btn btn-primary" type="button" (click)="offcanvasOpen.set(false)">Done</button>
+  </div>
+</app-offcanvas>

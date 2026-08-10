@@ -1,0 +1,20 @@
+:host {
+  display: inline-flex;
+  line-height: 0;
+}
+
+.brand {
+  // Callers size with `height` or `width`; `height: auto` keeps the aspect ratio
+  // while the intrinsic width/height attributes reserve layout before decode.
+  max-width: 100%;
+  height: auto;
+}
+
+// Flipped by the theme token alone — no script reads the theme to pick an asset.
+.brand--light {
+  display: var(--show-light);
+}
+
+.brand--dark {
+  display: var(--show-dark);
+}

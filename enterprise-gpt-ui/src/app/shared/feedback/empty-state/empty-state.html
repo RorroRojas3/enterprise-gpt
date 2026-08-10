@@ -1,0 +1,17 @@
+<div class="empty-state">
+  @if (illustration() === 'ridgeline') {
+    <app-ridgeline variant="empty" />
+  }
+
+  <p class="empty-state__heading font-display" role="heading" [attr.aria-level]="headingLevel()">
+    {{ heading() }}
+  </p>
+
+  @if (message()) {
+    <p class="empty-state__message">{{ message() }}</p>
+  }
+
+  <div class="empty-state__action">
+    <ng-content select="[emptyStateAction]" />
+  </div>
+</div>

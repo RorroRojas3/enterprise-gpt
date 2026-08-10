@@ -1,0 +1,20 @@
+# Git for Windows sets core.autocrlf=true in its *system* config, so every file in
+# this project checks out as CRLF while the index holds LF. Prettier writes LF, so
+# `npm run format:check` fails on Windows for files nobody has touched; and the
+# US-107 contract check compares a working-tree file byte-for-byte against an
+# LF-only NuGet copy, which CRLF makes impossible. Pin the working tree to LF for
+# this project on every platform.
+* text=auto eol=lf
+
+# Listed explicitly so no text heuristic can ever corrupt one.
+*.ico   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+
+# Belt and braces: the one file whose exact bytes are a build gate.
+src/app/domain/stream/andes/assistant-ui.contract.ts text eol=lf

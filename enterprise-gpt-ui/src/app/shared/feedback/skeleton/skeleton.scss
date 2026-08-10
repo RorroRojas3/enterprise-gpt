@@ -1,0 +1,19 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeleton {
+  display: block;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+
+.skeleton--circle {
+  border-radius: 50%;
+}
+
+.skeleton--block {
+  border-radius: 10px;
+}

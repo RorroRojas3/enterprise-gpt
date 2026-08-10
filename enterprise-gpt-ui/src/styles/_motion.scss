@@ -1,0 +1,66 @@
+// Motion. US-105.
+//
+// The application defines exactly four keyframes, all of them from
+// `docs/design/project/theme.css`. Anything that needs to move and is not one of
+// these uses a `transition`, which is why Bootstrap's `_spinners.scss` and
+// `_placeholders.scss` are excluded from the stylesheet — each would add a fifth.
+
+// One transition scale, referenced rather than restated: 150ms for hover and colour
+// changes, 200ms for layout (sidebar width, message appearance).
+:root {
+  --t-fast: 150ms;
+  --t-slow: 200ms;
+}
+
+// Streaming caret.
+@keyframes blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+// Spinners, everywhere.
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Jump-to-latest control and voice recording.
+@keyframes ringpulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--ring);
+  }
+  75% {
+    box-shadow: 0 0 0 12px rgba(33, 168, 216, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(33, 168, 216, 0);
+  }
+}
+
+// Thinking indicator. -224 is the path length of the `thinking` ridgeline geometry.
+@keyframes ridgedash {
+  to {
+    stroke-dashoffset: -224;
+  }
+}
+
+// The one place `!important` is warranted: this block exists specifically to defeat
+// authored declarations, and Bootstrap's own `_reboot.scss` ships the same rule.
+// Keep it last in `styles.scss` so nothing can be emitted after it.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

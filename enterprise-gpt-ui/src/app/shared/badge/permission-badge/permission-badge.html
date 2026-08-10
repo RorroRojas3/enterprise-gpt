@@ -1,0 +1,9 @@
+<span class="permission-badge">
+  @if (managedBy()) {
+    <app-icon name="bi-lock" />
+  }
+  {{ name() }}
+  @if (managedBy()) {
+    <span class="visually-hidden">— managed by {{ managedBy() }}</span>
+  }
+</span>
