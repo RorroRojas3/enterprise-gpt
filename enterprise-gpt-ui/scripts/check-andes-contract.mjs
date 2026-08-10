@@ -37,6 +37,19 @@ function die(...lines) {
   process.exit(1);
 }
 
+/**
+ * Escapes every regular-expression metacharacter, backslash included.
+ *
+ * The character class has to carry `\\` and the replacement has to be `$&`, so the
+ * escaping happens in one pass — escaping `.` alone, as this did, leaves a literal
+ * backslash in the value to combine with the ones being inserted. The failure is
+ * silent rather than loud: the pattern stops matching, the version cross-check below
+ * finds no `PackageReference`, and the script reports OK having verified nothing.
+ */
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // 1. Read the vendored file and split it at the sentinel.
 if (!existsSync(VENDORED)) {
   die('The vendored contract is missing.', `expected: ${VENDORED}`);
@@ -56,7 +69,8 @@ else if (body.startsWith('\n')) body = body.slice(1);
 
 // 2. The header is the only place the version is pinned.
 const header = text.slice(0, sentinelAt);
-const tag = (name) => header.match(new RegExp(`@andes-contract-${name}\\s+(\\S+)`))?.[1];
+const tag = (name) =>
+  header.match(new RegExp(`@andes-contract-${escapeRegExp(name)}\\s+(\\S+)`))?.[1];
 const packageId = tag('package');
 const version = tag('version');
 const sourcePath = tag('source');
@@ -141,7 +155,7 @@ if (existsSync(API_ROOT)) {
   walkProjects(API_ROOT);
 
   const reference = new RegExp(
-    `PackageReference\\s+Include="${packageId.replace(/\./g, '\\.')}"\\s+Version="([^"]+)"`,
+    `PackageReference\\s+Include="${escapeRegExp(packageId)}"\\s+Version="([^"]+)"`,
     'i',
   );
   const mismatched = projects
@@ -162,7 +176,7 @@ if (existsSync(API_ROOT)) {
 // 6. No hand-written duplicate of the vendored symbols anywhere under src/.
 const declaration = (symbol) =>
   new RegExp(
-    `^\\s*(export\\s+)?(declare\\s+)?(interface|type|class|enum|function|const|let|var)\\s+${symbol}\\b`,
+    `^\\s*(export\\s+)?(declare\\s+)?(interface|type|class|enum|function|const|let|var)\\s+${escapeRegExp(symbol)}\\b`,
     'm',
   );
 const duplicates = [];

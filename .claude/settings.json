@@ -5,7 +5,10 @@
       "Bash(rm enterprise-gpt-api/scripts/project-schema.sql)",
       "Bash(rmdir enterprise-gpt-api/scripts)",
       "Bash(dotnet build *)",
-      "Bash(dotnet test *)"
+      "Bash(dotnet test *)",
+      "Bash(node -e ' *)",
+      "Bash(grep -rn 'replace\\(/\\\\[\\\\.\\\\*+' src/ scripts/)",
+      "Bash(grep -rn \"escapeRegExp\\\\|\\\\\\\\$&\" src/ scripts/)"
     ]
   },
   "model": "opus",
