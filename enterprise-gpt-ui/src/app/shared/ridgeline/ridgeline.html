@@ -1,0 +1,76 @@
+@switch (variant()) {
+  @case ('divider') {
+    <!-- Sidebar divider under the wordmark. Stretches to the sidebar width, which is
+         why this is the one variant that drops preserveAspectRatio. -->
+    <svg
+      viewBox="0 0 228 10"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+      class="ridge ridge--divider"
+    >
+      <path
+        d="M0 8.5 L22 3 L38 7 L58 1.5 L76 8 L98 3.5 L116 7.5 L138 2 L158 7 L180 3 L202 7.5 L228 4"
+        fill="none"
+        stroke-width="1.2"
+        stroke-linejoin="round"
+      />
+    </svg>
+  }
+  @case ('thinking') {
+    <!-- The pre-first-delta indicator. Two copies of one path: a dim base, and a
+         dashed overlay whose offset animates along it. -->
+    <svg viewBox="0 0 76 16" aria-hidden="true" focusable="false" class="ridge ridge--thinking">
+      <path
+        d="M0 13 L11 5 L18 10 L27 3 L35 11 L45 4 L53 9 L62 3.5 L76 12"
+        fill="none"
+        stroke-width="1.6"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+      />
+      <path
+        class="ridge__dash"
+        d="M0 13 L11 5 L18 10 L27 3 L35 11 L45 4 L53 9 L62 3.5 L76 12"
+        fill="none"
+        stroke-width="1.6"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+        stroke-dasharray="34 78"
+      />
+    </svg>
+  }
+  @case ('auth') {
+    <svg viewBox="0 0 190 22" aria-hidden="true" focusable="false" class="ridge ridge--auth">
+      <path
+        d="M0 18 L28 7 L48 14 L74 3 L100 16 L128 6 L152 13 L172 5 L190 14"
+        fill="none"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+      />
+      <path
+        class="ridge__summit"
+        d="M48 14 L74 3 L100 16"
+        fill="none"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+      />
+    </svg>
+  }
+  @default {
+    <svg viewBox="0 0 170 40" aria-hidden="true" focusable="false" class="ridge ridge--empty">
+      <path
+        d="M0 35 L30 14 L48 26 L72 5 L98 30 L122 12 L146 24 L170 9"
+        fill="none"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+      />
+      <path
+        class="ridge__summit"
+        d="M48 26 L72 5 L98 30"
+        fill="none"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+      />
+    </svg>
+  }
+}

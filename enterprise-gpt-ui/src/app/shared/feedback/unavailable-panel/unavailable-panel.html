@@ -1,0 +1,7 @@
+<!-- A section, not a live region: this is the steady state of the screen, not news. -->
+<section class="unavailable-panel" [attr.aria-labelledby]="headingId">
+  <app-ridgeline variant="empty" />
+
+  <p class="unavailable-panel__heading font-display" [id]="headingId">{{ heading() }}</p>
+  <p class="unavailable-panel__message">{{ message() }}</p>
+</section>

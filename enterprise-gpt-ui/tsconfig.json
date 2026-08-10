@@ -4,6 +4,11 @@
   "compileOnSave": false,
   "compilerOptions": {
     "strict": true,
+    // The compiler owns unused-symbol detection rather than ESLint's
+    // no-unused-vars: tsc counts a `{@link}` in a doc comment as a use, and it runs
+    // on every build and every test rather than only under `npm run lint`.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,

@@ -1,0 +1,56 @@
+:host {
+  display: block;
+  line-height: 0;
+}
+
+.ridge {
+  display: block;
+  stroke: var(--muted);
+}
+
+.ridge--divider {
+  width: 100%;
+  height: 10px;
+  opacity: 0.5;
+}
+
+.ridge--thinking {
+  width: 76px;
+  height: 16px;
+  // The indicator reads as activity rather than decoration, so its base is a dim
+  // accent instead of --muted.
+  stroke: var(--accent);
+  opacity: 0.28;
+}
+
+.ridge--empty {
+  width: 170px;
+  height: 40px;
+  opacity: 0.4;
+}
+
+.ridge--auth {
+  width: 190px;
+  height: 22px;
+  opacity: 0.45;
+}
+
+// The summit segment sits at full strength over the dimmed range behind it.
+.ridge__summit {
+  stroke: var(--accent);
+  opacity: 1;
+}
+
+.ridge__dash {
+  opacity: 1;
+  animation: ridgedash 1.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ridge__dash {
+    // Only the animation goes. Keeping the dash array leaves one brighter segment
+    // frozen on the ridge, which still reads as an indicator; removing it too would
+    // leave a blank gap.
+    animation: none;
+  }
+}

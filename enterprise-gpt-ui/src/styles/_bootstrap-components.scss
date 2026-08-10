@@ -1,0 +1,31 @@
+// The Bootstrap modules that emit component CSS. Split from `_bootstrap.scss` so the
+// token block can be emitted between `root` and these, which is what lets the design
+// tokens win without `!important`.
+//
+// Deliberately absent, with the measured cost of each:
+//   grid              10.8 kB — one `repeat(auto-fill, minmax(280px, 1fr))` replaces it
+//   tables             6.1 kB — the data table's surface, radius and row heights are custom
+//   forms/validation   6.9 kB — ~350 B of .is-invalid in _kit.scss, driven by applyServerErrors
+//   pagination         3.0 kB — the board's pager shares nothing with .pagination
+//   toasts             1.9 kB — no 4px accent, no draining indicator, nothing reusable
+//   placeholders       0.6 kB — would add a fifth keyframe; the skeleton is static
+//   spinners           1.2 kB — would add a sixth; the boards' spinner rides theme.css's `spin`
+//   modal/offcanvas/
+//   dropdown/tooltip  26.7 kB — replaced by native <dialog> and ~4 kB of our own CSS+JS
+//   card, badge, alert, list-group, close, button-group, navbar, breadcrumb,
+//   accordion, popover, carousel, containers, images — ~52 kB, referenced by no frame
+
+@import 'bootstrap/scss/reboot';
+@import 'bootstrap/scss/type';
+@import 'bootstrap/scss/forms/labels';
+@import 'bootstrap/scss/forms/form-text';
+@import 'bootstrap/scss/forms/form-control';
+@import 'bootstrap/scss/forms/form-select';
+@import 'bootstrap/scss/forms/form-check';
+@import 'bootstrap/scss/buttons';
+@import 'bootstrap/scss/transitions';
+@import 'bootstrap/scss/nav';
+@import 'bootstrap/scss/helpers/visually-hidden';
+@import 'bootstrap/scss/helpers/stacks';
+@import 'bootstrap/scss/helpers/text-truncation';
+@import 'bootstrap/scss/helpers/focus-ring';

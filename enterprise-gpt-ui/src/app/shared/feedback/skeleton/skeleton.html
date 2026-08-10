@@ -1,0 +1,8 @@
+@for (row of rows(); track $index; let last = $last) {
+  <span
+    class="skeleton"
+    [class]="'skeleton--' + variant()"
+    [style.width]="last && rows().length > 1 ? '60%' : width()"
+    [style.height]="height()"
+  ></span>
+}

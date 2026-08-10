@@ -1,0 +1,14 @@
+<!-- role="alert" so replacing a loading skeleton with this is announced. -->
+<div class="error-panel" role="alert">
+  <app-icon class="error-panel__icon" name="bi-exclamation-octagon" />
+
+  <p class="error-panel__heading font-display">{{ heading() }}</p>
+  <p class="error-panel__message">{{ message() }}</p>
+  <p class="error-panel__trace font-mono">{{ trace() }}</p>
+
+  @if (canRetry()) {
+    <button class="btn btn-outline-secondary btn-sm" type="button" (click)="retried.emit()">
+      {{ retryLabel() }}
+    </button>
+  }
+</div>

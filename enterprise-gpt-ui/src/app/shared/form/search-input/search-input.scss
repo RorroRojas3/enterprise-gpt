@@ -1,0 +1,30 @@
+:host {
+  display: block;
+}
+
+.search {
+  position: relative;
+}
+
+.search__icon {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.search__field {
+  height: 38px;
+  padding-left: 32px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+
+  // The UA clear button duplicates Escape and does not theme.
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}

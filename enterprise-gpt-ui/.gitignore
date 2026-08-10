@@ -6,6 +6,13 @@
 /out-tsc
 /bazel-out
 
+# Generated assets. `npm run assets` rebuilds both from node_modules and the
+# checked-in icon manifest, and prestart/prebuild/pretest run it. public/brand is
+# NOT here: those are generated on demand by `npm run assets:brand` from the design
+# bundle and committed, so neither sharp nor ../docs is on the build's critical path.
+/public/fonts
+/public/icons
+
 # Node
 /node_modules
 npm-debug.log

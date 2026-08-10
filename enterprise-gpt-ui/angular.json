@@ -31,7 +31,10 @@
             ],
             "styles": ["src/styles.scss"],
             "stylePreprocessorOptions": {
-              "includePaths": ["src/styles"]
+              "includePaths": ["src/styles"],
+              "sass": {
+                "silenceDeprecations": ["import"]
+              }
             }
           },
           "configurations": {
@@ -39,8 +42,20 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "240kB",
-                  "maximumError": "300kB"
+                  "maximumWarning": "360kB",
+                  "maximumError": "400kB"
+                },
+                {
+                  "type": "bundle",
+                  "name": "styles",
+                  "maximumWarning": "65kB",
+                  "maximumError": "80kB"
+                },
+                {
+                  "type": "bundle",
+                  "name": "ui-kit-routes",
+                  "maximumWarning": "80kB",
+                  "maximumError": "120kB"
                 },
                 {
                   "type": "anyComponentStyle",
@@ -48,7 +63,18 @@
                   "maximumError": "8kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "statsJson": true,
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": {
+                  "inline": false
+                }
+              }
             },
             "development": {
               "optimization": false,
@@ -77,7 +103,8 @@
             "tsConfig": "tsconfig.spec.json",
             "runner": "vitest",
             "watch": false,
-            "providersFile": "src/testing/test-providers.ts"
+            "providersFile": "src/testing/test-providers.ts",
+            "setupFiles": ["src/testing/setup-dom.ts"]
           }
         }
       }

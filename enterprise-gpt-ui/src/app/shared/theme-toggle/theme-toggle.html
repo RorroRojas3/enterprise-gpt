@@ -1,0 +1,10 @@
+<button
+  type="button"
+  class="theme-toggle"
+  [attr.aria-label]="label()"
+  [attr.title]="label()"
+  (click)="toggle()"
+>
+  <app-icon class="on-light" name="bi-moon" />
+  <app-icon class="on-dark" name="bi-sun" />
+</button>

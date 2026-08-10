@@ -1,11 +1,169 @@
-// Design tokens.
+// Design tokens. US-105.
 //
-// `angular.json` puts `src/styles` on the Sass load path, so this file is
-// reachable as `@use 'tokens'` from any component stylesheet.
+// Transcribed from `docs/design/project/theme.css`, which is the authority for every
+// value here. `scripts/check-tokens.mjs` compares the two and fails on drift, so a
+// colour changed in one place and not the other is a red build rather than a review
+// comment.
 //
-// Filled in by US-105 with the token set from `docs/design/project/theme.css`,
-// copied verbatim, plus the `[data-bs-theme="dark"]` override block. Bootstrap
-// 5.3's native theme attribute is used rather than a custom `data-theme`, so
-// Bootstrap's own components theme with no bridging layer. Deliberately empty of
-// colour until then — a placeholder palette would get copied into components and
-// outlive it.
+// **Never `@use` this file from a component stylesheet.** It emits `:root` blocks;
+// under emulated encapsulation a component would re-emit them scoped to its own
+// attribute, matching nothing and costing bytes in every component. Components read
+// tokens with `var(--…)` and import nothing.
+@use 'sass:color';
+@use 'sass:map';
+
+// Property names keep their original casing. `--btnP-bg` is unusual, but custom
+// properties are case-sensitive and the check script compares against theme.css.
+$light: (
+  'bs-body-bg': #f7fafc,
+  'bs-body-color': #16283a,
+  'bs-border-color': #dce5ee,
+  'bs-secondary-color': #5a6e82,
+  'bs-link-color': #14324f,
+  'bs-link-hover-color': #0b1f33,
+  'surface': #ffffff,
+  'surface-2': #eff4f9,
+  'muted': #5a6e82,
+  'brand': #14324f,
+  'accent': #21a8d8,
+  'ok': #2e9c58,
+  'warn': #a96a10,
+  'warn-bg': #fbf3e0,
+  'warn-border': #e7ce9c,
+  'fail': #c0392b,
+  'bubble': #14324f,
+  'bubble-fg': #ffffff,
+  'think-bg': #eaf1f8,
+  'active-bg': #e7eff7,
+  'ring': rgba(33, 168, 216, 0.45),
+  'code-bg': #0b1f33,
+  'code-head': #122a42,
+  'code-fg': #d7e3ee,
+  'btnP-bg': #14324f,
+  'btnP-fg': #ffffff,
+  'btnP-hover': #0f2740,
+  'show-light': inline,
+  'show-dark': none,
+);
+
+$dark: (
+  'bs-body-bg': #0b1f33,
+  'bs-body-color': #e6edf4,
+  'bs-border-color': #1e3a55,
+  'bs-secondary-color': #8fa3b8,
+  'bs-link-color': #21a8d8,
+  'bs-link-hover-color': #63c6e6,
+  'surface': #122a42,
+  'surface-2': #17324d,
+  'muted': #8fa3b8,
+  'brand': #21a8d8,
+  'accent': #21a8d8,
+  'ok': #4cc47a,
+  'warn': #e3ac45,
+  'warn-bg': rgba(227, 172, 69, 0.13),
+  'warn-border': rgba(227, 172, 69, 0.4),
+  'fail': #e4655a,
+  'bubble': #1b4266,
+  'bubble-fg': #eaf2f9,
+  'think-bg': #0f2a44,
+  'active-bg': #173a58,
+  'ring': rgba(33, 168, 216, 0.5),
+  'code-bg': #081827,
+  'code-head': #0f2438,
+  'code-fg': #d7e3ee,
+  'btnP-bg': #21a8d8,
+  'btnP-fg': #062231,
+  'btnP-hover': #45b9e1,
+  'show-light': none,
+  'show-dark': inline,
+);
+
+// Tokens this application adds beyond theme.css.
+//
+// The `-rgb` companions are not optional decoration: Bootstrap 5.3 consumes them in
+// `rgba(var(--bs-body-color-rgb), …)` for its .text-*, .bg-* and .link-* opacity
+// utilities. Overriding only the solid values would leave those utilities rendering
+// Bootstrap's default blues over a branded palette — latent in the prototype only
+// because it never used them.
+//
+// The tooltip pair fixes a real defect in the boards: they hard-code the flyout as
+// #0B1F33 on white, and #0B1F33 *is* --bs-body-bg in dark, so the tooltip would be
+// invisible in the theme it is most used in.
+//
+// The code palette is what makes Prism themeable from tokens instead of a second
+// stylesheet. The code surface is dark in both themes by design, so there is no
+// light variant to swap to.
+// The focus indicator is its own token rather than `--accent`. WCAG 2.1 SC 1.4.11
+// wants 3:1 against adjacent colours, and #21A8D8 gives only 2.74:1 on --surface,
+// 2.62:1 on --bs-body-bg and 2.48:1 on --surface-2 — so an accent-coloured ring fails
+// on every light surface in the kit. The darker light-theme value clears 3:1 on all
+// three while staying on the brand ramp; dark theme keeps the accent, which is already
+// 6.09:1 there.
+$extra-light: (
+  'focus-ring': #0e7fa8,
+  'tooltip-bg': #0b1f33,
+  'tooltip-fg': #ffffff,
+  'code-comment': #7b93aa,
+  'code-keyword': #cc99cd,
+  'code-string': #7ec699,
+  'code-number': #f08d49,
+  'code-function': #f8c555,
+  'code-punct': #a4b8cc,
+);
+
+$extra-dark: (
+  'focus-ring': #21a8d8,
+  'tooltip-bg': #e6edf4,
+  'tooltip-fg': #0b1f33,
+  'code-comment': #7b93aa,
+  'code-keyword': #cc99cd,
+  'code-string': #7ec699,
+  'code-number': #f08d49,
+  'code-function': #f8c555,
+  'code-punct': #a4b8cc,
+);
+
+// Bootstrap reads these as three comma-separated channels, not a colour.
+$rgb-companions: ('bs-body-bg', 'bs-body-color', 'bs-link-color', 'bs-link-hover-color');
+
+$light-all: map.merge($light, $extra-light);
+$dark-all: map.merge($dark, $extra-dark);
+
+// A token defined in one theme and forgotten in the other is a compile error rather
+// than a screen that looks wrong only after dark mode is switched on.
+@each $key, $_ in $light-all {
+  @if not map.has-key($dark-all, $key) {
+    @error 'Token --#{$key} is defined in $light but missing from $dark.';
+  }
+}
+@each $key, $_ in $dark-all {
+  @if not map.has-key($light-all, $key) {
+    @error 'Token --#{$key} is defined in $dark but missing from $light.';
+  }
+}
+
+@function to-rgb($value) {
+  @return #{color.channel($value, 'red', $space: rgb)},
+    #{color.channel($value, 'green', $space: rgb)}, #{color.channel($value, 'blue', $space: rgb)};
+}
+
+@mixin emit($tokens) {
+  @each $key, $value in $tokens {
+    --#{$key}: #{$value};
+  }
+  @each $key in $rgb-companions {
+    --#{$key}-rgb: #{to-rgb(map.get($tokens, $key))};
+  }
+}
+
+// Selectors byte-identical to Bootstrap's own `_root.scss`. Equal specificity plus a
+// later source position means these win with no `!important` — which is exactly why
+// `styles.scss` imports this file immediately after `bootstrap/scss/root`.
+:root,
+[data-bs-theme='light'] {
+  @include emit($light-all);
+}
+
+[data-bs-theme='dark'] {
+  @include emit($dark-all);
+}

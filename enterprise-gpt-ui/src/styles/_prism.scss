@@ -1,0 +1,87 @@
+// Syntax highlighting, driven entirely by tokens. US-105 / US-604.
+//
+// No prismjs stylesheet is imported. Its shipped pair would be `prism.css` (light,
+// #f5f2f0) and `prism-tomorrow.css` (dark, #2d2d2d), and neither matches the design:
+// `--code-bg` is #0B1F33 in light and #081827 in dark, so the code surface is dark in
+// *both* themes and there is no light variant to swap to.
+//
+// Because every colour below is a custom property, a theme change re-tints the code
+// block on the identical paint as `data-bs-theme` flipping — no second stylesheet, no
+// `<link>` toggle, no script, and no frame where the old palette is still on screen.
+// prismjs stays a dependency for tokenising; only its themes go unused.
+pre[class*='language-'],
+code[class*='language-'] {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  font-family: $font-mono;
+  font-size: 12.5px;
+  line-height: 1.6;
+  tab-size: 2;
+  hyphens: none;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+}
+
+pre[class*='language-'] {
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+}
+
+:not(pre) > code[class*='language-'] {
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+}
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: var(--code-comment);
+}
+
+.token.punctuation,
+.token.operator {
+  color: var(--code-punct);
+}
+
+.token.keyword,
+.token.tag,
+.token.selector,
+.token.important,
+.token.atrule,
+.token.attr-name {
+  color: var(--code-keyword);
+}
+
+.token.string,
+.token.char,
+.token.attr-value,
+.token.regex,
+.token.inserted {
+  color: var(--code-string);
+}
+
+.token.number,
+.token.boolean,
+.token.constant,
+.token.symbol,
+.token.property,
+.token.deleted {
+  color: var(--code-number);
+}
+
+.token.function,
+.token.class-name,
+.token.builtin {
+  color: var(--code-function);
+}
+
+.token.bold {
+  font-weight: 700;
+}
+
+.token.italic {
+  font-style: italic;
+}

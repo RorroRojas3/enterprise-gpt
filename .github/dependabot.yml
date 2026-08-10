@@ -1,0 +1,12 @@
+version: 2
+
+updates:
+  # SHA-pinning actions is the right posture, but it turns each one into a manually
+  # maintained dependency that will otherwise rot through security releases. This is
+  # the companion to the pins in .github/workflows/.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+    commit-message:
+      prefix: 'ci'

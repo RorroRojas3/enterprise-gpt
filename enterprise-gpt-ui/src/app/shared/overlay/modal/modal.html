@@ -1,0 +1,29 @@
+<!--
+  The click handler detects a press on the ::backdrop, which reports the <dialog>
+  itself as its target. The backdrop is not an interactive element and needs no
+  keyboard equivalent of its own: Escape already dismisses, through the native
+  `cancel` event handled below.
+-->
+<!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+<dialog
+  #dialog
+  class="modal-panel"
+  [class]="'modal-panel--' + size()"
+  [attr.aria-labelledby]="headingId"
+  [attr.aria-busy]="busy() ? 'true' : null"
+  (cancel)="onCancel($event)"
+  (close)="onClose()"
+  (click)="onBackdropClick($event)"
+>
+  <div class="modal-panel__inner">
+    <h2 class="modal-panel__heading" [id]="headingId" tabindex="-1">{{ heading() }}</h2>
+
+    <div class="modal-panel__body">
+      <ng-content />
+    </div>
+
+    <div class="modal-panel__footer">
+      <ng-content select="[modalFooter]" />
+    </div>
+  </div>
+</dialog>

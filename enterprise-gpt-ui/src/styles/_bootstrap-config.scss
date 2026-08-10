@@ -1,0 +1,82 @@
+// Bootstrap 5.3, module by module. US-106.
+//
+// The whole of `bootstrap.scss` compiles to 230 kB, against an initial-bundle budget
+// the global stylesheet counts towards. This file imports the ~15 modules the design
+// actually uses and trims the utilities API to the handful of classes the layouts
+// need, which lands around 50 kB instead.
+//
+// `@import` rather than `@use`: Bootstrap 5.3's partials still `@import` each other
+// and share one global `!default` namespace, so `@use` does not work on them.
+// `angular.json` silences the Dart Sass deprecation for exactly that reason.
+//
+// Nothing here may be reordered casually — see the ordering note in `styles.scss`.
+
+// ── Configuration. Emits no CSS. ─────────────────────────────────────────────
+@import 'bootstrap/scss/functions';
+
+// Project overrides of Bootstrap's !default variables, before `variables` reads them.
+// $theme-colors is trimmed from eight to three: theme.css only ever restyles
+// .btn-primary, .btn-outline-secondary and .btn-danger, and each unused colour costs
+// roughly 1.4 kB across buttons and :root.
+$theme-colors: (
+  'primary': #14324f,
+  'secondary': #5a6e82,
+  'danger': #c0392b,
+);
+$enable-shadows: false;
+$enable-gradients: false;
+// The app's own reduced-motion block in _motion.scss covers this, and Bootstrap's
+// version would apply `scroll-behavior: smooth` to a transcript that has to stay
+// pinned to its tail.
+$enable-smooth-scroll: false;
+$font-family-sans-serif:
+  'Inter',
+  system-ui,
+  -apple-system,
+  'Segoe UI',
+  sans-serif;
+$font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+// 10px — the control radius the boards use throughout.
+$border-radius: 0.625rem;
+
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/variables-dark';
+@import 'bootstrap/scss/maps';
+@import 'bootstrap/scss/mixins';
+@import 'bootstrap/scss/utilities';
+
+// Positive-list trim of $utilities. The full API is 69 kB because every group is a
+// cross-product with six breakpoints; the spacing, sizing and colour groups are
+// cheaper written as component CSS, and the layout groups below are not.
+$kit-utilities: (
+  'display',
+  'flex',
+  'flex-direction',
+  'flex-grow',
+  'flex-shrink',
+  'flex-wrap',
+  'justify-content',
+  'align-items',
+  'align-self',
+  'order',
+  'gap',
+  'row-gap',
+  'column-gap'
+);
+$trimmed-utilities: ();
+@each $key, $value in $utilities {
+  @if index($kit-utilities, $key) {
+    $trimmed-utilities: map-merge(
+      $trimmed-utilities,
+      (
+        $key: $value,
+      )
+    );
+  }
+}
+$utilities: $trimmed-utilities;
+
+// ── Emitting modules ─────────────────────────────────────────────────────────
+// `root` first, so `_tokens.scss` — imported immediately after this file — overrides
+// its --bs-* values from an identical selector at a later source position.
+@import 'bootstrap/scss/root';

@@ -7,13 +7,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <!--
+      Only the two faces on the critical path: Inter 400 carries all body copy, and
+      Montserrat 600 is the first heading weight any user sees (the signing-in
+      interstitial, then the chat empty state). Every other face is fetched by the
+      browser when a rule first needs it. `crossorigin` is required even
+      same-origin — fonts are always fetched in CORS mode, and without it the
+      browser issues a second, unused request.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/inter-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/montserrat-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <!--
       Styles for the startup and fatal shells are inline rather than in
       styles.scss: they have to render when the stylesheet or the bundle never
       loaded, which is the case they exist for.
     -->
     <style>
+      /*
+        Fallback for the case the theme script below did not run at all. The two
+        colour pairs are --bs-body-bg / --bs-body-color per theme, duplicated here
+        because no stylesheet has loaded yet; scripts/check-tokens.mjs asserts they
+        stay equal to the tokens.
+      */
       :root {
         color-scheme: light dark;
+        background: #f7fafc;
+        color: #16283a;
+      }
+      :root[data-bs-theme='dark'] {
+        background: #0b1f33;
+        color: #e6edf4;
       }
       #app-shell[hidden] {
         display: none;
@@ -61,8 +95,53 @@
       #app-shell[data-state='failed'] .on-starting {
         display: none;
       }
+      /*
+        The fatal shell is deliberately outside the theme system — system fonts, a
+        fixed palette, no brand. Now that :root can carry a dark scheme, it has to be
+        pinned or a UA-coloured card would follow the theme and contradict the design.
+        These are the board's own values.
+      */
+      #app-shell[data-state='failed'] {
+        color-scheme: light;
+        background: #f4f5f6;
+        color: #1b1f23;
+      }
+      #app-shell[data-state='failed'] .card {
+        background: #fff;
+        border-color: #d9dcdf;
+      }
+      #app-shell[data-state='failed'] button {
+        background: #1b1f23;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+      }
     </style>
-    <!-- US-105 inserts the pre-paint theme script here. -->
+    <script>
+      // Resolves the theme before first paint. It deliberately duplicates
+      // ThemeService and _tokens.scss: neither has loaded yet, which is the whole
+      // point. scripts/check-tokens.mjs asserts the key and both colours stay in step.
+      (function () {
+        var stored = null;
+        try {
+          stored = localStorage.getItem('egpt.theme');
+        } catch (e) {
+          // Private mode, blocked third-party storage and enterprise policies all
+          // throw on access rather than returning null.
+        }
+        var dark =
+          stored === 'dark' ||
+          (stored !== 'light' &&
+            !!window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var root = document.documentElement;
+        root.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+        // Without this the UA paints scrollbars, form controls and the default canvas
+        // from `color-scheme: light dark`, which follows the OS — so a user on a light
+        // OS with a stored dark preference still gets a light startup shell.
+        root.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <app-root></app-root>

@@ -1,0 +1,18 @@
+.toast-region {
+  position: fixed;
+  top: var(--toast-top, 76px);
+  right: var(--toast-right, 20px);
+  z-index: 1090;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  // The region spans the corner even when empty; without this it would swallow clicks
+  // on whatever is behind it. Each toast restores pointer-events for itself.
+  pointer-events: none;
+}
+
+.toast-region__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

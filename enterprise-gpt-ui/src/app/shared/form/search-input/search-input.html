@@ -1,0 +1,17 @@
+<label class="visually-hidden" [for]="inputId">{{ label() }}</label>
+
+<div class="search">
+  <app-icon class="search__icon" name="bi-search" />
+
+  <input
+    class="form-control search__field"
+    type="search"
+    autocomplete="off"
+    [id]="inputId"
+    [placeholder]="placeholder()"
+    [value]="text()"
+    [attr.aria-busy]="busy() ? 'true' : null"
+    (input)="onInput($event)"
+    (keydown.escape)="onEscape()"
+  />
+</div>

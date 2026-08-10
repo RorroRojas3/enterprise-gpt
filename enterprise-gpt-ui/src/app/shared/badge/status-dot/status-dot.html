@@ -1,0 +1,8 @@
+<span
+  class="status-dot__mark"
+  [class]="'status-dot__mark--' + tone()"
+  [style.width.px]="size()"
+  [style.height.px]="size()"
+  aria-hidden="true"
+></span>
+<span [class.visually-hidden]="labelHidden()">{{ label() }}</span>
