@@ -24,12 +24,21 @@ import { CHAT_ROUTE, FORBIDDEN_ROUTE, SESSION_ERROR_ROUTE } from '../auth-routes
  * the navigation — it declines the route and lets matching continue, so the URL falls
  * through to the wildcard and the user silently lands on chat with no explanation of
  * why. A `UrlTree` names the destination instead.
+ *
+ * Sign-out is the exception, and here declining the route is exactly right: the
+ * wildcard leads to `/chat`, whose own guards are latched off too, and the document is
+ * being replaced regardless. Fetching the admin chunk on the way out would be the only
+ * wrong answer.
  */
 export const adminCanMatch: CanMatchFn = async () => {
   const auth = inject(AuthService);
   const bootstrap = inject(SessionBootstrap);
   const session = inject(SessionStore);
   const router = inject(Router);
+
+  if (auth.isSigningOut()) {
+    return false;
+  }
 
   const { account } = await auth.ready();
 

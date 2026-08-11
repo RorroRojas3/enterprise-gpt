@@ -9,8 +9,9 @@ import {
 } from '@angular/core';
 import { AuthService } from '@core/auth/auth-service';
 import { CHAT_ROUTE } from '@core/auth/auth-routes';
+import { HardNavigation } from '@core/navigation/hard-navigation';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { focusOnRender } from '../focus-on-render';
+import { focusOnRender } from '@shared/a11y/focus-on-render';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**
@@ -31,6 +32,7 @@ import { AuthPage } from '../auth-page/auth-page';
 })
 export class LoginFailed implements OnInit {
   private readonly _auth = inject(AuthService);
+  private readonly _navigation = inject(HardNavigation);
   private readonly _heading = viewChild.required<ElementRef<HTMLElement>>('heading');
 
   /** Latches so a second press cannot start a second redirect over the first. */
@@ -60,7 +62,7 @@ export class LoginFailed implements OnInit {
     // against a lock nothing here can clear, so the action becomes a reload, and the
     // fresh instance releases the lock on the `ready()` in ngOnInit.
     if (this.retryFailed()) {
-      location.reload();
+      this._navigation.reload();
 
       return;
     }

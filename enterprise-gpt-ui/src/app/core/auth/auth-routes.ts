@@ -22,5 +22,12 @@ export const SESSION_ERROR_ROUTE = '/session-error';
 /** Frame `6e`: signed in, but not an administrator. */
 export const FORBIDDEN_ROUTE = '/forbidden';
 
+/**
+ * Where sign-out lands. Unguarded, and it has to be: the whole point is a page that
+ * does *not* start a new sign-in, so that a user leaving a shared machine is not
+ * silently re-authenticated by an Entra session cookie the sign-out failed to end.
+ */
+export const SIGNED_OUT_ROUTE = '/signed-out';
+
 /** The administration area. Behind `adminCanMatch`, so its chunk is withheld, not hidden. */
 export const ADMIN_ROUTE = '/admin';

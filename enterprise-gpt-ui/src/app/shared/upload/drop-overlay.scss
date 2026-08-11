@@ -1,0 +1,26 @@
+// Frame `2a`. The host is the overlay itself, so the zone only has to be positioned.
+:host {
+  position: absolute;
+  z-index: 5;
+  inset: 4px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  // The board's literal rgba(33, 168, 216, .07) is --accent at 7%, and --accent is
+  // #21A8D8 in both themes. Derived rather than hard-coded so check:tokens stays the
+  // single place a colour is asserted.
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border: 2px dashed var(--accent);
+  border-radius: 11px;
+  color: var(--brand);
+  font-size: 14px;
+  font-weight: 600;
+  // The pointer is mid-drag over the zone beneath; an overlay that took hit-testing
+  // would fire its own dragenter and desync the depth counter.
+  pointer-events: none;
+}
+
+.drop-overlay__icon {
+  font-size: 18px;
+}

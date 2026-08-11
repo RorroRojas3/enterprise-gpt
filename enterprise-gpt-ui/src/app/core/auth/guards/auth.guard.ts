@@ -25,6 +25,14 @@ import { LOGIN_FAILED_ROUTE } from '../auth-routes';
  * `false` is the line after `signIn` resolves, unreachable in a browser that is
  * already leaving for Entra.
  *
+ * Sign-out is the documented exception to that rule, and it is not theoretical. A
+ * navigation during teardown would find the handshake memo already cleared, re-run
+ * `handleRedirectPromise` — releasing the `interaction_in_progress` lock the logout
+ * still needs — find no account, and start a *sign-in*, sending the browser to the
+ * authorize endpoint and cancelling the sign-out outright. Returning `false` is safe
+ * here precisely because the document is leaving either way, and a `UrlTree` would be
+ * one more navigation re-running these same guards.
+ *
  * `signIn` is awaited inside a `try` for the same reason. MSAL takes its
  * `interaction_in_progress` lock and discovers the authority metadata *before* it
  * navigates, so an unreachable Entra, a framed redirect, or a lock left behind by an
@@ -34,6 +42,10 @@ import { LOGIN_FAILED_ROUTE } from '../auth-routes';
 export const authGuard: CanActivateFn = async (_route, state) => {
   const auth = inject(AuthService);
   const router = inject(Router);
+
+  if (auth.isSigningOut()) {
+    return false;
+  }
 
   const { account, error } = await auth.ready();
 

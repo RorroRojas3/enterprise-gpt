@@ -340,6 +340,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: As an employee, I want to sign in with my work account so that I can use the assistant without a separate credential.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-102
+- **Status**: ✅ Done (2026-08-11)
 - **Acceptance criteria**:
   - Given an unauthenticated visitor, when they request any route other than `/auth` or `/login-failed`, then they are redirected to Entra ID and no application chunk renders first.
   - Given a completed redirect, when `/auth` handles it, then the active account is selected, `TokenService` can produce a token, and the user lands on the chat route.
@@ -351,6 +352,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: As a signed-in user, I want the app to know my identity, permissions, models, and MCP servers before it renders so that no screen renders an affordance I cannot use.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-201, US-104
+- **Status**: ✅ Done (2026-08-11)
 - **Acceptance criteria**:
   - Given a completed sign-in, when `sessionGuard` resolves, then `POST /api/users/me` has returned and `SessionStore` holds the user and their permission set before any child route activates.
   - Given a resolved session, when the shell renders, then models, permitted MCP servers, conversations, and projects have all been requested, each sequenced after the bootstrap call rather than in parallel with it.
@@ -361,6 +363,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: As a security reviewer, I want the admin code never to reach a non-administrator's browser so that the admin surface is not merely hidden.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-202
+- **Status**: ✅ Done (2026-08-11)
 - **Acceptance criteria**:
   - Given a user without the `Administrator` permission, when they navigate to `/admin`, then the guard runs on `canMatch`, the admin chunk is not requested over the network, and they land on the forbidden page of frame `6e`, which names the Administrator permission and offers one "Back to Chat" action.
   - Given a user without the permission, when the shell renders, then the Admin entry is **absent** from the sidebar navigation — not shown-and-disabled — so frame `6e` is reachable by URL only.
@@ -370,6 +373,7 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: As a user without upload rights, I want the app not to offer me an upload control so that I am not shown a 403 after choosing a file.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-202
+- **Status**: ✅ Done (2026-08-11) — the enforcement primitives, since the composer is US-401's. `SessionStore.canUploadFiles` gates the attach control through `@if`, as US-203 gates the Admin entry; the `[appFileDropTarget]` directive in `shared/upload/` carries the inert-drop half, which `@if` cannot express, and `providePreventDropNavigation()` stops a file dropped anywhere else replacing the app. US-801 consumes both in two lines. Verified against a test host standing in for the composer; the frame `2h` assertion re-runs when the real composer lands.
 - **Acceptance criteria**:
   - Given a user whose permission set omits `b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e`, when the composer and the project files panel render, then no attach control, paperclip button, or drop zone is present and drag-and-drop is inert (frame `2h`).
   - Given an administrator whose permission set omits `Upload File`, when the composer renders, then the upload affordance is still absent — the check is on `Upload File` alone and never inferred from `Administrator`.
@@ -379,10 +383,21 @@ EP-1 carries an unusually high proportion of `[enabler]` stories. That is a prop
 
 - **Story**: As a user on a shared machine, I want signing out to clear my data from the browser so that the next person sees nothing of mine.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-202, US-104
+- **Status**: ✅ Done (2026-08-11)
 - **Acceptance criteria**:
   - Given a signed-in session with loaded conversations, projects, and an open transcript, when the user signs out, then `sessionEvents.signedOut` fires and every store composing `withResetOnSignOut` returns to its initial state.
   - Given sign-out, when `localStorage` is inspected, then theme and sidebar preferences remain and no conversation, project, document, or user data is present.
   - Given an in-flight turn, when the user signs out, then the request is aborted and no orphaned reader continues writing to a store.
+
+Three things exceed the criteria above, each because the criteria are written for one tab and the story ("the next person sees nothing of mine") is not.
+
+- **Cross-tab sign-out.** MSAL's `cacheLocation` is `sessionStorage`, which is per tab, so signing out in one window otherwise leaves every other one fully signed in. `core/session/session-channel.ts` broadcasts, and each receiving tab tears down and leaves.
+- **A `/signed-out` landing page**, and `postLogoutRedirectUri` now points at it. When `logoutRedirect` fails before navigating, the Entra session cookie is still live, so landing on `/` would take the user through `/chat` → `authGuard` → a *silent re-authentication* — the exact failure this story names. Registering `/signed-out` in the Entra app registration is a deployment step; without it Entra shows its own signed-out page, which degrades gracefully.
+- **A `localStorage` allowlist as a build gate.** `core/storage/local-preferences.ts` is the only permitted call site and `scripts/check-forbidden-apis.mjs` fails the build on any other write, so the second criterion holds for stories not yet written rather than only for today's code.
+
+The third criterion has no streaming turn to abort yet (EP-4). `injectSignedOutAbort()` is the primitive it will use — `takeUntil` stops delivery but leaves the connection open and the server generating, so only aborting the `fetch` ends the request. The criterion is met today for every store that exists, via `takeUntil(injectSignedOut())`.
+
+US-205 also builds the frame `3a` sidebar footer — initials avatar, display name, theme control, sign out — which no story owned. It is hosted in the temporary shell bar until US-301 moves it into the sidebar.
 
 ### EP-3: Navigation and conversation sidebar
 

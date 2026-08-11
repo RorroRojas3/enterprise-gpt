@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { THEME_STORAGE_KEY } from '@core/theme/theme-service';
+import { PREFERENCE_KEYS } from '@core/storage/local-preferences';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ThemeToggle } from './theme-toggle';
@@ -42,7 +42,7 @@ describe('ThemeToggle', () => {
     await fixture.whenStable();
 
     expect(document.documentElement.getAttribute('data-bs-theme')).toBe('dark');
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(localStorage.getItem(PREFERENCE_KEYS.theme)).toBe('dark');
     expect(button.getAttribute('aria-label')).toBe('Switch to light theme');
   });
 

@@ -1,0 +1,20 @@
+<!--
+  aria-hidden on the avatar: the initials are a visual restatement of the name that sits
+  immediately beside it, so announcing both reads the user's identity twice.
+-->
+<span class="user-footer__avatar" aria-hidden="true">{{ initials() }}</span>
+
+<span class="user-footer__name">{{ session.displayName() }}</span>
+
+<app-theme-toggle />
+
+<button
+  class="user-footer__action"
+  type="button"
+  [disabled]="signingOut()"
+  aria-label="Sign out"
+  title="Sign out"
+  (click)="signOut()"
+>
+  <app-icon name="bi-box-arrow-right" />
+</button>

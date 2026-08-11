@@ -11,7 +11,7 @@ import { AuthService } from '@core/auth/auth-service';
 import { LOGIN_FAILED_ROUTE } from '@core/auth/auth-routes';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { Ridgeline } from '@shared/ridgeline/ridgeline';
-import { focusOnRender } from '../focus-on-render';
+import { focusOnRender } from '@shared/a11y/focus-on-render';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**

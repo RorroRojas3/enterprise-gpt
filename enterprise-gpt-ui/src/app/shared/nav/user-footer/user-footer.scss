@@ -1,0 +1,68 @@
+// Frame `3a`: a 1px-topped row of avatar, name, theme control, sign out.
+:host {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.user-footer__avatar {
+  display: flex;
+  // Fixed basis as well as width: the name beside it is the flex item that shrinks.
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--btnP-fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.user-footer__name {
+  overflow: hidden;
+  flex: 1;
+  // min-width: 0 is what lets a flex item shrink below its content width, which is
+  // what makes the ellipsis appear at all.
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-footer__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) ease,
+    color var(--t-fast) ease;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--bs-body-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}

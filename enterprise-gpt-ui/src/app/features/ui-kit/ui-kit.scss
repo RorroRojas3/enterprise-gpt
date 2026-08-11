@@ -75,3 +75,9 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+// The overlay is absolutely positioned against its zone, so the zone has to be the
+// containing block. US-801's composer carries the same one line.
+.kit-dropzone {
+  position: relative;
+}

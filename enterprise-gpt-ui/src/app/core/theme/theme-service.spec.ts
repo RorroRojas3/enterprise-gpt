@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
+import { PREFERENCE_KEYS, writePreference } from '@core/storage/local-preferences';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { THEME_STORAGE_KEY, ThemeService } from './theme-service';
+import { ThemeService } from './theme-service';
 
 function root(): HTMLElement {
   return document.documentElement;
@@ -34,7 +35,7 @@ describe('ThemeService', () => {
   });
 
   it('lets a stored preference beat the system setting', () => {
-    localStorage.setItem(THEME_STORAGE_KEY, 'light');
+    writePreference(PREFERENCE_KEYS.theme, 'light');
     setMediaQuery(PREFERS_DARK, true);
 
     expect(TestBed.inject(ThemeService).theme()).toBe('light');
@@ -46,7 +47,7 @@ describe('ThemeService', () => {
 
     service.set('dark');
 
-    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
+    expect(localStorage.getItem(PREFERENCE_KEYS.theme)).toBe('dark');
     expect(root().getAttribute('data-bs-theme')).toBe('dark');
   });
 
@@ -84,7 +85,7 @@ describe('ThemeService', () => {
   });
 
   it('degrades a corrupt stored value to `system` rather than writing it to the DOM', () => {
-    localStorage.setItem(THEME_STORAGE_KEY, 'chartreuse');
+    writePreference(PREFERENCE_KEYS.theme, 'chartreuse');
     setMediaQuery(PREFERS_DARK, true);
 
     const service = TestBed.inject(ThemeService);

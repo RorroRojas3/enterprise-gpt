@@ -1,0 +1,24 @@
+<app-auth-page>
+  <app-brand-logo class="signed-out__logo" alt="Andes Software Solutions" />
+
+  <app-ridgeline variant="auth" />
+
+  <h1 #heading class="signed-out__heading font-display" tabindex="-1">You’re signed out</h1>
+
+  <p class="signed-out__message">
+    Your conversations, projects and files have been cleared from this browser. Only your theme and
+    layout preferences remain.
+  </p>
+
+  <button
+    class="btn btn-primary signed-out__action"
+    type="button"
+    [disabled]="signingIn()"
+    (click)="signIn()"
+  >
+    @if (signingIn()) {
+      <span class="kit-spinner" aria-hidden="true"></span>
+    }
+    Sign in again
+  </button>
+</app-auth-page>

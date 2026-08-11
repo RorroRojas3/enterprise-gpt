@@ -142,17 +142,18 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
-// The storage key is duplicated between the pre-paint script and ThemeService, and a
-// mismatch silently loses every user's stored preference exactly once.
-const themeService = readFileSync(
-  join(UI_ROOT, 'src', 'app', 'core', 'theme', 'theme-service.ts'),
+// The storage key is duplicated between the pre-paint script and the application, and
+// a mismatch silently loses every user's stored preference exactly once. US-205 moved
+// ownership of it into the localStorage allowlist, which is where this now reads it.
+const preferences = readFileSync(
+  join(UI_ROOT, 'src', 'app', 'core', 'storage', 'local-preferences.ts'),
   'utf8',
 );
-const serviceKey = themeService.match(/THEME_STORAGE_KEY\s*=\s*'([^']+)'/)?.[1];
+const serviceKey = preferences.match(/\btheme:\s*'([^']+)'/)?.[1];
 const scriptKey = index.match(/localStorage\.getItem\('([^']+)'\)/)?.[1];
 if (!serviceKey || serviceKey !== scriptKey) {
   problems.push(
-    `The theme storage key differs: ThemeService uses ${serviceKey}, ` +
+    `The theme storage key differs: PREFERENCE_KEYS.theme is ${serviceKey}, ` +
       `the pre-paint script in index.html uses ${scriptKey}`,
   );
 }
