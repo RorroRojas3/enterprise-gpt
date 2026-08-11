@@ -1,0 +1,26 @@
+<main class="chat">
+  <app-brand-logo class="chat__logo" alt="Andes Software Solutions" />
+
+  <h1 class="chat__heading font-display">How can I help you today?</h1>
+
+  <p class="chat__note">
+    Signed in as <strong>{{ session.displayName() }}</strong
+    >. The composer, transcript and sidebar arrive with EP-3 and EP-4.
+  </p>
+
+  <dl class="chat__facts font-mono">
+    <dt>Permissions</dt>
+    <dd>{{ session.permissionIds().size }}</dd>
+
+    <dt>Models</dt>
+    <dd>{{ models.models().length }}</dd>
+
+    <dt>MCP servers</dt>
+    <dd>{{ mcps.servers().length }}</dd>
+  </dl>
+
+  <!-- Absent, not disabled: US-203 requires a non-administrator never to see it. -->
+  @if (session.isAdministrator()) {
+    <a class="btn btn-primary chat__admin" [routerLink]="adminRoute">Admin</a>
+  }
+</main>

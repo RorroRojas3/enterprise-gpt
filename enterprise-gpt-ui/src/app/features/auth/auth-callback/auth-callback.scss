@@ -1,0 +1,52 @@
+:host {
+  display: block;
+}
+
+.auth-callback__logo {
+  width: 250px;
+  max-width: 100%;
+}
+
+.auth-callback__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.auth-callback__spinner {
+  // The kit spinner is sized in em, so one font-size is the whole size control.
+  font-size: 26px;
+}
+
+.auth-callback__heading {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.auth-callback__detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+// Frame 6f: the same component, narrower, with the subtitle dropped so the mark, the
+// ridgeline and the status still fit above the fold on a phone.
+@media (max-width: 575.98px) {
+  .auth-callback__logo {
+    width: 200px;
+  }
+
+  .auth-callback__spinner {
+    font-size: 24px;
+  }
+
+  .auth-callback__heading {
+    font-size: 16px;
+  }
+
+  .auth-callback__detail {
+    display: none;
+  }
+}

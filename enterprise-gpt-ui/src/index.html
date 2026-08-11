@@ -180,7 +180,12 @@
 
     <script>
       // Watchdog for the one failure the application cannot report on its own: the
-      // bundle never ran. Cleared by main.ts on either outcome.
+      // bundle never ran. Cleared on either outcome.
+      //
+      // 60s, not 30s: since US-201 the shell also covers the sign-in handshake and the
+      // session bootstrap, so a cold API can legitimately keep it on screen for tens of
+      // seconds. Firing early would tell a user their app had failed while it was still
+      // starting.
       window.__appShellWatchdog = setTimeout(function () {
         var shell = document.getElementById('app-shell');
         if (shell && shell.dataset.state === 'starting') {
@@ -193,7 +198,7 @@
             location.reload();
           };
         }
-      }, 30000);
+      }, 60000);
     </script>
   </body>
 </html>

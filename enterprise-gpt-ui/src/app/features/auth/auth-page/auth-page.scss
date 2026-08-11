@@ -1,0 +1,24 @@
+:host {
+  display: block;
+}
+
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Not 100vh: on mobile browsers that measures the viewport behind the retracting
+  // address bar, which pushes the content off-centre for the first scroll.
+  min-height: 100dvh;
+  padding: 24px 30px;
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+
+.auth-page__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 420px;
+  text-align: center;
+}

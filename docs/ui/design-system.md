@@ -300,7 +300,7 @@ Two implementation notes that read as odd and are not:
 | --- | --- | --- | --- |
 | `<app-toast-region>` | — (injects `ToastStore`) | `retried` (toast id) | Mounted **once**, in the app shell. Never per route (§8.2) |
 | `<app-toast-item>` | `toast` **required** | `dismissed`, `retried` | Layout only; the region owns the live regions and the queue |
-| `<app-error-panel>` | `error` (`AppError`) **required**, `heading` **required**, `canRetry`, `retryLabel` | `retried` | A surface that failed to load. Names the `traceId` and offers Retry |
+| `<app-error-panel>` | `error` (`AppError`) **required**, `heading` **required**, `headingLevel` `1`&#124;`2`&#124;`3`&#124;`null`, `canRetry`, `retryLabel` | `retried` | A surface that failed to load. Names the `traceId` and offers Retry |
 | `<app-unavailable-panel>` | `heading` **required**, `message` **required** | — | A capability this deployment does not have |
 | `<app-empty-state>` | `heading` **required**, `message`, `illustration` `ridgeline`&#124;`none`, `headingLevel` `2`&#124;`3`&#124;`4` | — | The request succeeded and the answer was zero rows. Action projects into `[emptyStateAction]` |
 | `<app-skeleton>` | `variant` `text`&#124;`block`&#124;`circle`, `width`, `height`, `lines` | — | Loading placeholder |
@@ -308,6 +308,8 @@ Two implementation notes that read as odd and are not:
 **Three failure surfaces, deliberately distinct, and the type signatures enforce the distinction.** `UnavailablePanel` has **no** `error` input, **no** retry output and no action slot, because nothing there is worth retrying — a missing API does not come back because the user pressed a button. `EmptyState` means the request succeeded and returned nothing. Only `ErrorPanel` says something went wrong that might not go wrong next time. Picking the wrong one is the difference between "we have not built this", "your data is empty" and "try again", which the deleted client routinely conflated.
 
 Error copy comes from [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) — `userMessage()` and `traceLine()` — never from the call site, so a panel and a toast raised by the same failure say the same thing.
+
+`ErrorPanel.headingLevel` defaults to `null`, which leaves its heading line as plain emphasised text — right when the panel sits inside a screen that already has a heading (frame `4k`). A full-page state where the panel *is* the page passes a level; the session-error screen of frame `6c` passes `1`. It is applied as `role="heading"` plus `aria-level` rather than by switching the element, so one component does not fan out into six template branches, and the element takes `tabindex="-1"` so the route can move focus to it on arrival.
 
 `Skeleton` is always `aria-hidden` (the container that swaps it for content carries `aria-busy`; a screen reader reading out a row of grey boxes helps nobody) and is static, with no shimmer, which is also what the reduced-motion path would collapse to.
 

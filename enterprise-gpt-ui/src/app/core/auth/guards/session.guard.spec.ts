@@ -1,0 +1,106 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import {
+  ActivatedRouteSnapshot,
+  Router,
+  RouterStateSnapshot,
+  UrlTree,
+  provideRouter,
+} from '@angular/router';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { settle } from '@testing/async';
+import { userFixture } from '@testing/session';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { sessionGuard } from './session.guard';
+
+const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
+const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
+const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
+
+describe('sessionGuard', () => {
+  let backend: HttpTestingController;
+
+  function run(): Promise<boolean | UrlTree> {
+    return TestBed.runInInjectionContext(() =>
+      sessionGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot),
+    ) as Promise<boolean | UrlTree>;
+  }
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestAppConfig(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+      ],
+    });
+
+    backend = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    backend.verify();
+  });
+
+  it('activates once the session resolves', async () => {
+    const activated = run();
+    await settle();
+    backend.expectOne({ method: 'POST', url: ME_URL }).flush(userFixture());
+    await settle();
+
+    backend.expectOne(MODELS_URL).flush([]);
+    backend.expectOne(MCPS_URL).flush([]);
+
+    await expect(activated).resolves.toBe(true);
+  });
+
+  it('requests the catalogs only after the bootstrap has returned', async () => {
+    // US-202: the bootstrap self-provisions the user and warms the API's permission
+    // cache, so a catalog request racing it could be answered before either happened.
+    const activated = run();
+    await settle();
+
+    backend.expectNone(MODELS_URL);
+    backend.expectNone(MCPS_URL);
+
+    backend.expectOne(ME_URL).flush(userFixture());
+    await settle();
+
+    backend.expectOne(MODELS_URL).flush([]);
+    backend.expectOne(MCPS_URL).flush([]);
+    await activated;
+  });
+
+  it('sends a failed bootstrap to frame 6c rather than cancelling the navigation', async () => {
+    // A bare false would fall through to the wildcard, which redirects here again.
+    const activated = run();
+    await settle();
+    backend
+      .expectOne(ME_URL)
+      .flush(PROBLEM_FIXTURES.resourceNotFound, { status: 404, statusText: 'Not Found' });
+
+    const result = await activated;
+
+    expect(result).toBeInstanceOf(UrlTree);
+    expect(TestBed.inject(Router).serializeUrl(result as UrlTree)).toBe('/session-error');
+  });
+
+  it('does not re-issue the bootstrap on a second navigation', async () => {
+    const first = run();
+    await settle();
+    backend.expectOne(ME_URL).flush(userFixture());
+    await settle();
+    backend.expectOne(MODELS_URL).flush([]);
+    backend.expectOne(MCPS_URL).flush([]);
+    await first;
+
+    await expect(run()).resolves.toBe(true);
+    await settle();
+
+    backend.verify();
+  });
+});
