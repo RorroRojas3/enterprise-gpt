@@ -75,6 +75,39 @@
       </section>
 
       <section class="kit-group">
+        <h3>Drop zone — US-204</h3>
+        <p class="kit-note">
+          Toggle the grant and drag a file over the box. With it off nothing lights up and the
+          cursor reads “no drop”; a file dropped on the page background is swallowed either way, so
+          the browser never navigates away from the app.
+        </p>
+        <div class="form-check">
+          <input
+            id="kit-can-upload-{{ theme }}"
+            class="form-check-input"
+            type="checkbox"
+            [checked]="canUpload()"
+            (change)="canUpload.set(!canUpload())"
+          />
+          <label class="form-check-label" for="kit-can-upload-{{ theme }}">
+            Holds <code>Upload File</code>
+          </label>
+        </div>
+        <div
+          class="kit-dropzone"
+          [appFileDropTarget]="canUpload()"
+          (filesDropped)="noteDrop($event)"
+          #drop="appFileDropTarget"
+        >
+          <textarea class="form-control" rows="2" placeholder="Ask anything…"></textarea>
+          @if (drop.isDragOver()) {
+            <app-drop-overlay />
+          }
+        </div>
+        <p class="kit-note">{{ lastDrop() }}</p>
+      </section>
+
+      <section class="kit-group">
         <h3>Project card</h3>
         <app-project-card
           name="Helios 2.4"

@@ -13,6 +13,8 @@ import {
   signedInMsal,
   signedOutMsal,
 } from '@testing/msal';
+import { HardNavigation } from '@core/navigation/hard-navigation';
+import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
 import { PROBLEM_FIXTURES, TRACE_ID } from '@testing/problem-fixtures';
 import { userFixture } from '@testing/session';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,6 +22,7 @@ import { AuthCallback } from './auth-callback/auth-callback';
 import { Forbidden } from './forbidden/forbidden';
 import { LoginFailed } from './login-failed/login-failed';
 import { SessionError } from './session-error/session-error';
+import { SignedOut } from './signed-out/signed-out';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 
@@ -31,6 +34,7 @@ function configure(instance: IPublicClientApplication = signedInMsal()): void {
       provideHttpClient(),
       provideHttpClientTesting(),
       provideRouter([]),
+      provideFakeNavigation(),
     ],
   });
 }
@@ -255,6 +259,62 @@ describe('auth page focus', () => {
     await fixture.whenStable();
 
     expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));
+  });
+
+  it('moves focus to the signed-out heading', async () => {
+    configure(signedOutMsal());
+    const fixture = TestBed.createComponent(SignedOut);
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));
+  });
+});
+
+describe('SignedOut', () => {
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    sessionStorage.clear();
+  });
+
+  it('states what was cleared and what was kept, and offers no automatic return', async () => {
+    configure(signedOutMsal());
+    const fixture = TestBed.createComponent(SignedOut);
+    await fixture.whenStable();
+
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('h1')?.textContent).toContain('You’re signed out');
+    expect(host.textContent).toContain('cleared from this browser');
+    // No routerLink anywhere: after a *failed* sign-out the Entra cookie is still live,
+    // so any path back through a guarded route re-authenticates the departing user.
+    expect(host.querySelectorAll('a')).toHaveLength(0);
+    expect(host.querySelectorAll('button')).toHaveLength(1);
+  });
+
+  it('starts a fresh sign-in only when the user asks, and latches', async () => {
+    const loginRedirect = vi.fn((_request: RedirectRequest) => Promise.resolve());
+    configure(signedOutMsal({ loginRedirect }));
+    const fixture = TestBed.createComponent(SignedOut);
+    await fixture.whenStable();
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector('button');
+    button?.click();
+    await fixture.whenStable();
+
+    expect(loginRedirect).toHaveBeenCalledOnce();
+    expect(button?.disabled).toBe(true);
+  });
+
+  it('reloads when the redirect cannot even start, because the lock outlives this page', async () => {
+    configure(signedOutMsal({ loginRedirect: () => Promise.reject(new Error('in progress')) }));
+    const fixture = TestBed.createComponent(SignedOut);
+    await fixture.whenStable();
+
+    (fixture.nativeElement as HTMLElement).querySelector('button')?.click();
+    await fixture.whenStable();
+
+    expect(
+      (TestBed.inject(HardNavigation) as unknown as FakeNavigation).reload,
+    ).toHaveBeenCalledOnce();
   });
 });
 

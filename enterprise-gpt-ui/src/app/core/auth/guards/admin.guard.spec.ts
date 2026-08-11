@@ -8,9 +8,11 @@ import { IPublicClientApplication } from '@azure/msal-browser';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal, signedOutMsal } from '@testing/msal';
+import { provideFakeNavigation } from '@testing/navigation';
 import { administratorFixture, userFixture } from '@testing/session';
 import { UserDto } from '@domain/api/user';
 import { Mock, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '../auth-service';
 import { adminCanMatch } from './admin.guard';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
@@ -51,6 +53,7 @@ describe('adminCanMatch', () => {
           { path: 'admin', canMatch: [adminCanMatch], loadChildren: loadAdmin },
           { path: '**', redirectTo: 'chat' },
         ]),
+        provideFakeNavigation(),
       ],
     });
 
@@ -124,5 +127,24 @@ describe('adminCanMatch', () => {
 
     expect(loadAdmin).not.toHaveBeenCalled();
     expect(TestBed.inject(Router).url).toBe('/session-error');
+  });
+
+  it('never fetches the admin chunk on the way out of a sign-out', async () => {
+    configure(
+      signedInMsal({
+        // The happy path: the browser leaves, so this never settles.
+        logoutRedirect: () => new Promise<void>(() => undefined),
+      }),
+    );
+    const harness = await RouterTestingHarness.create();
+
+    void TestBed.inject(AuthService).signOut();
+    await harness.navigateByUrl('/admin');
+
+    // Only the chunk is asserted. Where the navigation ends up is not this guard's to
+    // decide once it declines: in production the wildcard leads to /chat, whose own
+    // guards are latched off too, so the navigation is cancelled and the interstitial
+    // owns the screen — an outcome this stub route table cannot reproduce.
+    expect(loadAdmin).not.toHaveBeenCalled();
   });
 });

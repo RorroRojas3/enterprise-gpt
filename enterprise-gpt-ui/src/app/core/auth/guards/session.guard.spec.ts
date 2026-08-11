@@ -11,8 +11,11 @@ import {
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { settle } from '@testing/async';
+import { provideFakeMsal, signedInMsal } from '@testing/msal';
+import { provideFakeNavigation } from '@testing/navigation';
 import { userFixture } from '@testing/session';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { AuthService } from '../auth-service';
 import { sessionGuard } from './session.guard';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
@@ -36,6 +39,10 @@ describe('sessionGuard', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
+        // The guard consults AuthService.isSigningOut before it does anything else,
+        // and AuthService reaches MSAL on construction.
+        provideFakeMsal(signedInMsal({ logoutRedirect: () => new Promise<void>(() => undefined) })),
+        provideFakeNavigation(),
       ],
     });
 
@@ -99,6 +106,25 @@ describe('sessionGuard', () => {
     await first;
 
     await expect(run()).resolves.toBe(true);
+    await settle();
+
+    backend.verify();
+  });
+
+  it('does not repopulate the store for the user who just signed out', async () => {
+    // SessionStore drops its bootstrap memo on sign-out, so an unlatched run here would
+    // issue a fresh POST api/users/me and refill the store this teardown just emptied.
+    const first = run();
+    await settle();
+    backend.expectOne(ME_URL).flush(userFixture());
+    await settle();
+    backend.expectOne(MODELS_URL).flush([]);
+    backend.expectOne(MCPS_URL).flush([]);
+    await first;
+
+    void TestBed.inject(AuthService).signOut();
+
+    await expect(run()).resolves.toBe(false);
     await settle();
 
     backend.verify();

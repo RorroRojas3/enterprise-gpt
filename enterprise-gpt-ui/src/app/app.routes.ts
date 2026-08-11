@@ -7,6 +7,7 @@ import { AuthCallback } from '@features/auth/auth-callback/auth-callback';
 import { Forbidden } from '@features/auth/forbidden/forbidden';
 import { LoginFailed } from '@features/auth/login-failed/login-failed';
 import { SessionError } from '@features/auth/session-error/session-error';
+import { SignedOut } from '@features/auth/signed-out/signed-out';
 
 /**
  * Two structural rules govern this table, and both come from how the router actually
@@ -25,10 +26,12 @@ import { SessionError } from '@features/auth/session-error/session-error';
  * which is why `/admin` uses it and establishes its own session — and why `/chat` can
  * safely use `loadComponent`, which the router resolves only after guards pass.
  *
- * The three public routes are unguarded deliberately. `/auth` is the redirect URI, so
+ * The four public routes are unguarded deliberately. `/auth` is the redirect URI, so
  * a guard there would block the handshake it is waiting on; `/login-failed` and
  * `/session-error` have to render precisely when sign-in or the session cannot
- * succeed, so guarding either would be a loop rather than a protection.
+ * succeed, so guarding either would be a loop rather than a protection; and
+ * `/signed-out` exists specifically so that leaving does not immediately start
+ * arriving again.
  */
 export const routes: Routes = [
   // First, so `/` resolves without relying on the authenticated tree failing to match
@@ -45,6 +48,11 @@ export const routes: Routes = [
     path: 'session-error',
     component: SessionError,
     title: 'Couldn’t start — Enterprise GPT',
+  },
+  {
+    path: 'signed-out',
+    component: SignedOut,
+    title: 'Signed out — Enterprise GPT',
   },
 
   {

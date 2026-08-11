@@ -41,6 +41,27 @@ const FORBIDDEN = [
     why: 'FR-51: Bootstrap, its icons, and every library come from npm, never a CDN.',
     exempt: [],
   },
+  {
+    // Writes only. Reading localStorage cannot leave a user's data on a shared
+    // machine, and index.html's pre-paint script legitimately reads the theme before
+    // any module exists.
+    pattern: /\blocalStorage\s*\.\s*setItem\b/,
+    label: 'a direct localStorage write',
+    why:
+      'US-205: after sign-out localStorage must hold the theme and sidebar ' +
+      'preferences and nothing else. Route writes through core/storage/' +
+      'local-preferences.ts so the surviving keys are enumerated in one reviewable ' +
+      'place rather than spread across call sites.',
+    exempt: [
+      'app/core/storage/local-preferences.ts',
+      // Asserts the wrapper itself, so it has to reach past it.
+      'app/core/storage/local-preferences.spec.ts',
+      // Plants a disallowed key on purpose, to prove sign-out does *not* sweep it —
+      // which is what makes this check, rather than a runtime cleanup, the enforcement
+      // point for US-205's second criterion.
+      'app/shared/nav/user-footer/user-footer.spec.ts',
+    ],
+  },
 ];
 
 const findings = [];

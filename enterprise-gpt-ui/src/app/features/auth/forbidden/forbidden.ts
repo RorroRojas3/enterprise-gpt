@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, viewChild } from '@angu
 import { RouterLink } from '@angular/router';
 import { CHAT_ROUTE } from '@core/auth/auth-routes';
 import { Icon } from '@shared/icon/icon';
-import { focusOnRender } from '../focus-on-render';
+import { focusOnRender } from '@shared/a11y/focus-on-render';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**

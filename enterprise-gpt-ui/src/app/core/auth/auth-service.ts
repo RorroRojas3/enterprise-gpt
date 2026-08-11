@@ -1,11 +1,15 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountInfo } from '@azure/msal-browser';
+import { Dispatcher } from '@ngrx/signals/events';
 import { AppError } from '../errors/app-error';
 import { toAppError } from '../errors/to-app-error';
 import { APP_CONFIG } from '../config/app-config.token';
-import { injectSignedOut } from '../events/session-events';
-import { CHAT_ROUTE } from './auth-routes';
+import { hideStartupShell } from '../config/fatal-shell';
+import { injectSignedOut, sessionEvents } from '../events/session-events';
+import { HardNavigation } from '../navigation/hard-navigation';
+import { SessionChannel } from '../session/session-channel';
+import { CHAT_ROUTE, SIGNED_OUT_ROUTE } from './auth-routes';
 import { MSAL_INSTANCE } from './msal-instance';
 
 /** Where the sign-in redirect should return the user, across the trip to Entra. */
@@ -38,7 +42,21 @@ export interface AuthHandshake {
 export class AuthService {
   private readonly _instance = inject(MSAL_INSTANCE);
   private readonly _scopes = [...inject(APP_CONFIG).auth.apiScopes];
+  private readonly _dispatcher = inject(Dispatcher);
+  private readonly _channel = inject(SessionChannel);
+  private readonly _navigation = inject(HardNavigation);
   private _handshake: Promise<AuthHandshake> | null = null;
+
+  private readonly _signingOut = signal(false);
+
+  /**
+   * Latched from the moment sign-out begins until the document is replaced.
+   *
+   * Read by `App`, which swaps the shell for an interstitial, and by all three guards,
+   * which refuse to activate. Both are needed: the first removes every link a user
+   * could press, the second stops code that navigates anyway.
+   */
+  readonly isSigningOut = this._signingOut.asReadonly();
 
   /**
    * Whether the redirect response has already been applied.
@@ -53,13 +71,50 @@ export class AuthService {
     // stores clear on sign-out — and `withResetOnSignOut` reaches none of them. Left
     // alone, a guard consulting `ready()` after sign-out would keep activating for the
     // departed user until the page happened to reload.
+    //
+    // It is also the recovery path for a stuck interaction lock: MSAL leaves its
+    // `interaction_in_progress` flag set at `SIGNOUT` when `logoutRedirect` throws
+    // after taking it, and clearing this memo is what lets the next `ready()` re-run
+    // `handleRedirectPromise`, which is the only thing that releases it.
+    //
+    // `signOut` dispatches the event this subscribes to, so this is a deliberate
+    // self-loop. It is safe only because the effect is idempotent and non-reentrant:
+    // three assignments, no I/O, nothing that could call back into `signOut`. Adding
+    // anything else here breaks that.
     injectSignedOut()
       .pipe(takeUntilDestroyed())
       .subscribe(() => {
         this._handshake = null;
+        // The inconclusive counter is per sign-in attempt, and sign-out ends the one
+        // it was counting. A tenant broken badly enough to loop will simply start the
+        // count again on the next attempt.
         removeSessionStorage(INCONCLUSIVE_KEY);
         removeSessionStorage(RETURN_URL_KEY);
       });
+
+    // Another tab signed out. Tear this one down the same way and leave — a tab left
+    // showing a populated shell is the shared-machine failure this exists to prevent.
+    this._channel.listen(() => {
+      if (this._signingOut()) {
+        return;
+      }
+
+      this._signingOut.set(true);
+      // The broadcast can land mid-navigation, and a guard latching off cancels it.
+      // `provideStartupShellHandoff` does not treat NavigationCancel as its cue, and
+      // the shell is a block in normal flow rather than an overlay — so without this
+      // the "Starting Enterprise GPT…" card stays stacked above the interstitial for
+      // as long as the wipe takes.
+      hideStartupShell();
+      this._dispatcher.dispatch(sessionEvents.signedOut(), { scope: 'global' });
+
+      void this._instance
+        .clearCache()
+        .catch(() => undefined)
+        // A fresh document, so this tab's MSAL instance and its in-memory state go
+        // with it rather than being cleaned up piecemeal.
+        .finally(() => this._navigation.assign(SIGNED_OUT_ROUTE));
+    });
   }
 
   /** The active account, or null. Read on demand rather than mirrored into a signal. */
@@ -89,6 +144,71 @@ export class AuthService {
     this.setReturnUrl(returnUrl);
 
     await this._instance.loginRedirect({ scopes: this._scopes });
+  }
+
+  /**
+   * Ends the session everywhere it exists, then leaves for Entra's end-session
+   * endpoint.
+   *
+   * The invariant, and the reason for the ordering below: **once this begins, the
+   * application never returns to an interactive signed-in state.** It either leaves for
+   * Entra or replaces the document. Nothing in between is a state any screen renders.
+   *
+   * The event is dispatched *before* `logoutRedirect`, which looks premature and is
+   * not. MSAL clears its own token cache before it does authority discovery, so every
+   * failure that involves the network has already emptied the cache by the time it
+   * throws — dispatching first is what keeps this application's state consistent with
+   * MSAL's, rather than briefly ahead of it. The only failures that throw with the
+   * cache intact are synchronous preflight ones, and the `catch` below covers those by
+   * wiping it outright.
+   *
+   * The latch, the broadcast and the dispatch all land in the same tick. `App` is
+   * `OnPush` under zoneless change detection, so the interstitial and the emptied
+   * stores settle into one render: no screen ever paints a signed-in shell with a
+   * cleared `SessionStore` behind it.
+   *
+   * `postLogoutRedirectUri` is deliberately not passed in the request. `buildMsalConfig`
+   * already resolves it absolutely against `document.baseURI`, and a second source for
+   * the same value is a drift waiting to happen.
+   */
+  async signOut(): Promise<void> {
+    if (this._signingOut()) {
+      return;
+    }
+
+    // Captured before anything can clear it: MSAL empties its cache during logout, and
+    // an account read afterwards is null.
+    const account = this.account;
+
+    this._signingOut.set(true);
+    this._channel.post();
+    this._dispatcher.dispatch(sessionEvents.signedOut(), { scope: 'global' });
+
+    try {
+      await this._instance.logoutRedirect({ account });
+    } catch {
+      // The browser is still here, so the end-session round trip never happened — and
+      // that means the Entra session cookie is still live. Landing on
+      // `postLogoutRedirectUri` would therefore send the user through `/chat` and
+      // `authGuard` straight back into a silent re-authentication, which is exactly the
+      // shared-machine failure this story is about. A local wipe and an explicit
+      // signed-out page is the honest outcome instead.
+      //
+      // `clearCache()` with **no argument** on purpose: passing an account removes only
+      // that account, while the bare call clears browser storage and the crypto
+      // keystore. When Entra cannot be reached, the full local wipe is the whole point.
+      try {
+        await this._instance.clearCache();
+      } catch {
+        // Best effort. A failed wipe must not stop the user from leaving the page.
+      }
+
+      // A hard navigation, never the router: a fresh document is the only thing that
+      // releases MSAL's `interaction_in_progress` lock, which `logoutRedirect` takes
+      // before it can fail. A router navigation would also re-run the guards this
+      // sign-out has latched off.
+      this._navigation.assign(SIGNED_OUT_ROUTE);
+    }
   }
 
   /**

@@ -6,7 +6,7 @@ Companion to [Frontend Foundation](frontend-foundation.md), which covers configu
 
 ## 1. Overview
 
-> **Scope.** This is the kit, not a screen. There is still no sign-in (US-201) and no chat (EP-4); `app.routes.ts` carries exactly one route, the development-only `/ui-kit` gallery. Everything below is what EP-3 onward composes.
+> **Scope.** This is the kit, not a screen. EP-2 has since added sign-in, the guarded route tree and sign-out, so `app.routes.ts` now carries the auth pages and two placeholders alongside the development-only `/ui-kit` gallery — but there is still no chat (EP-4) and no shell (EP-3). Everything below is what EP-3 onward composes. The three components EP-2 contributed to `shared/` are folded into §7: `<app-user-footer>`, `<app-signing-out>`, and the upload drop zone.
 
 Four stories landed together, and they solve one problem each:
 
@@ -27,6 +27,7 @@ Two rules to internalize before writing any component stylesheet:
 | Token maps, the divergence guard, the `--bs-*-rgb` companions | [`src/styles/_tokens.scss`](../../enterprise-gpt-ui/src/styles/_tokens.scss) |
 | Pre-paint theme script, shell colours, font preloads | [`src/index.html`](../../enterprise-gpt-ui/src/index.html) |
 | Theme state and the `<html>` writes | [`core/theme/theme-service.ts`](../../enterprise-gpt-ui/src/app/core/theme/theme-service.ts) |
+| The stored theme preference, and every other permitted `localStorage` key | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
 | Stylesheet order, Bootstrap trim, motion | [`src/styles.scss`](../../enterprise-gpt-ui/src/styles.scss), [`src/styles/`](../../enterprise-gpt-ui/src/styles/) |
 | `@font-face`, the three stacks, `unicode-range` | [`src/styles/_typography.scss`](../../enterprise-gpt-ui/src/styles/_typography.scss) |
 | Icon manifest and the `IconName` union | [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts) |
@@ -85,7 +86,7 @@ Four decisions in that table are worth the paragraph they cost:
 
 **A token defined in one theme and forgotten in the other is a compile error.** `_tokens.scss` walks both merged maps and raises `@error 'Token --x is defined in $light but missing from $dark.'`. Without it the omission is invisible until someone switches themes on a screen nobody checked.
 
-**`npm run check:tokens` diffs the app against the design bundle.** It compares both maps against `theme.css` after normalizing formatting only (`#FFFFFF` equals `#ffffff`, `rgba(33,168,216,.45)` equals the spaced form Prettier writes), never a value. It also checks the two colours per theme that `index.html` duplicates for the pre-paint shell, and that the `localStorage` key is spelled the same way in `ThemeService` and in the inline script. A colour changed in one place and not the other is a red build rather than a review comment.
+**`npm run check:tokens` diffs the app against the design bundle.** It compares both maps against `theme.css` after normalizing formatting only (`#FFFFFF` equals `#ffffff`, `rgba(33,168,216,.45)` equals the spaced form Prettier writes), never a value. It also checks the two colours per theme that `index.html` duplicates for the pre-paint shell, and that the `localStorage` key is spelled the same way in the inline script and in `PREFERENCE_KEYS.theme` — which US-205 moved out of `ThemeService` into [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts), the application's only permitted `localStorage` call site (§10). A colour changed in one place and not the other is a red build rather than a review comment.
 
 ### 2.4 Why the token block sits where it does in `styles.scss`
 
@@ -161,7 +162,7 @@ theme.toggle();           // flips the resolved theme and pins the choice
 - `preference` is **read-only outside the class**. `apply()` is imperative, so a writable signal would let a caller flip `theme()` — and every consumer reading it — while `<html>` kept the old value and nothing was persisted.
 - `apply()` is deliberately **not an `effect()`**. It is a DOM write outside Angular's render tree; an effect would defer it to the next flush and entangle it with the exhaustive check-no-changes pass for no benefit. Writing synchronously is what puts the flip in the same frame as the click that caused it.
 - The service is instantiated eagerly through `provideAppInitializer`, so ownership of `<html>`'s theme attributes is explicit rather than a side effect of whichever component happens to inject it first. A route with no theme control still has to follow the OS while the preference is `system`.
-- `THEME_STORAGE_KEY` is `egpt.theme`. Changing it here without changing the inline script costs every user their stored preference exactly once, silently — hence the check.
+- **The key is `PREFERENCE_KEYS.theme` (`egpt.theme`), and it no longer lives here.** US-205 moved it into `core/storage/local-preferences.ts`, and `ThemeService` reads and writes it through that module's `readPreference` / `writePreference` — which also absorbed the `try`/`catch` around blocked storage. Changing the key without changing the inline script still costs every user their stored preference exactly once, silently, so `check:tokens` follows it to its new home.
 
 `<app-theme-toggle />` is the control. It renders both glyphs and swaps them with `--show-light` / `--show-dark`, so no script picks an icon; the *label* does read the resolved theme, because a screen reader cannot see a custom property. It carries no `aria-pressed` — the label already states the action, and the pair announces as "Switch to dark theme, not pressed", which is worse than either alone.
 
@@ -257,9 +258,12 @@ Three layers catch a wrong name, deliberately, because each sees something the o
 
 ## 7. The component inventory
 
-Everything lives under [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) and is presentational: **no store, no HTTP**. Components are standalone, `OnPush`, and follow the v21 convention (`foo.ts` / `foo.html` / `foo.scss`, no `.component` suffix). All inputs are signal inputs; `model()` marks a two-way binding.
+Everything lives under [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) and is presentational: **it defines no store and makes no HTTP call**. Components are standalone, `OnPush`, and follow the v21 convention (`foo.ts` / `foo.html` / `foo.scss`, no `.component` suffix). All inputs are signal inputs; `model()` marks a two-way binding.
 
-The one exception proves the rule: **toast *state* lives in `core/notifications/toast-store.ts`**, not in `shared/`. It is app-wide singleton state written from interceptors, guards and feature stores, and `shared/` holds no store. The presentation injects it, which is the sanctioned direction.
+Two clarifications, because "presentational" is doing precise work there:
+
+- **State that several unrelated screens share lives in `core/`, and `shared/` injects it.** Toast *state* is `core/notifications/toast-store.ts`, written from interceptors, guards and feature stores; `ToastRegion` injects it. That direction — `shared → core` — is the sanctioned one.
+- **Three components inject a `core/` singleton directly rather than taking inputs**: `ThemeToggle` (`ThemeService`), and since US-205 `UserFooter` (`SessionStore`, `AuthService`). Each is a singleton by construction, and threading inputs and outputs down from whichever screen hosts it would make every future host re-derive the same initials and re-wire the same sign-out call. Everything else takes inputs.
 
 ### 7.1 Accessibility primitives — `shared/a11y/`
 
@@ -304,6 +308,7 @@ Two implementation notes that read as odd and are not:
 | `<app-unavailable-panel>` | `heading` **required**, `message` **required** | — | A capability this deployment does not have |
 | `<app-empty-state>` | `heading` **required**, `message`, `illustration` `ridgeline`&#124;`none`, `headingLevel` `2`&#124;`3`&#124;`4` | — | The request succeeded and the answer was zero rows. Action projects into `[emptyStateAction]` |
 | `<app-skeleton>` | `variant` `text`&#124;`block`&#124;`circle`, `width`, `height`, `lines` | — | Loading placeholder |
+| `<app-signing-out>` | — | — | The full-page state `App` swaps in while sign-out runs. Focuses its own heading on render |
 
 **Three failure surfaces, deliberately distinct, and the type signatures enforce the distinction.** `UnavailablePanel` has **no** `error` input, **no** retry output and no action slot, because nothing there is worth retrying — a missing API does not come back because the user pressed a button. `EmptyState` means the request succeeded and returned nothing. Only `ErrorPanel` says something went wrong that might not go wrong next time. Picking the wrong one is the difference between "we have not built this", "your data is empty" and "try again", which the deleted client routinely conflated.
 
@@ -312,6 +317,8 @@ Error copy comes from [`core/errors/error-message.ts`](../../enterprise-gpt-ui/s
 `ErrorPanel.headingLevel` defaults to `null`, which leaves its heading line as plain emphasised text — right when the panel sits inside a screen that already has a heading (frame `4k`). A full-page state where the panel *is* the page passes a level; the session-error screen of frame `6c` passes `1`. It is applied as `role="heading"` plus `aria-level` rather than by switching the element, so one component does not fan out into six template branches, and the element takes `tabindex="-1"` so the route can move focus to it on arrival.
 
 `Skeleton` is always `aria-hidden` (the container that swaps it for content carries `aria-busy`; a screen reader reading out a row of grey boxes helps nobody) and is static, with no shimmer, which is also what the reduced-motion path would collapse to.
+
+**`SigningOut` is a full page rather than an overlay, and a component rather than markup inline in `App`.** Both are deliberate. Full page, because a blocked sign-out redirect leaves it on screen for MSAL's 30-second timeout, and a frozen shell behind a spinner reads as a hang where an honest full-page state reads as work in progress. A component, because `focusOnRender` needs the heading to exist: a `viewChild.required` declared in `App` would resolve to nothing at `afterNextRender` time, since the `@if` has not instantiated the heading yet. Without it the button the user just pressed is removed from the DOM and focus drops to `<body>`. `focusOnRender` itself moved from `features/auth/` to [`shared/a11y/`](../../enterprise-gpt-ui/src/app/shared/a11y/focus-on-render.ts) for this component's sake.
 
 **Toasts.** `ToastStore` is the only way one appears:
 
@@ -407,11 +414,39 @@ type AttachmentState =
 | --- | --- | --- | --- |
 | `<app-search-input>` | `value` (model), `label` **required**, `placeholder`, `debounceMs` (300), `busy` | `searched` | Debounced; Escape clears |
 | `<app-pill-subnav>` | `items` (`PillItem[]`) **required**, `ariaLabel` **required** | — | The admin area's horizontal navigation below 768 px |
+| `<app-user-footer>` | — (injects `SessionStore`, `AuthService`) | — | Frame `3a`'s sidebar footer: initials avatar, display name, `<app-theme-toggle>`, sign out |
 | `injectMediaQuery` | `(query: string) => Signal<boolean>` | — | Must be called in an injection context |
+
+`UserFooter` currently lives in a temporary fixed shell bar in `App`, gated on `session.isLoaded()` — an ungated footer would put an empty avatar, a blank name and a live Sign out button over the chrome-free auth frames. **US-301 moves it into the sidebar**, where the collapsed 60 px strip shows the avatar alone. Three of its decisions are worth carrying into that move: the initials come from the composed `fullName` and fall back to one letter for a single-word name rather than rendering a stray comma; the avatar is `aria-hidden`, because the initials restate the name sitting next to them; and **sign-out asks for no confirmation**, matching the board — nothing is lost by signing out, since conversations are on the server, so a dialog would be friction guarding nothing. The button latches disabled while sign-out runs, so a second press has nothing to press rather than merely being ignored.
 
 `SearchInput`'s label is **required and rendered as a real `<label for>`**. A placeholder is not an accessible name: it disappears the moment the user types, and several screen readers do not announce it at all. The in-flight field text is a `linkedSignal` derived from `value` — writable state derived from an input, which is exactly what `linkedSignal` is for — so clearing the filter from an empty state or restoring a query from the URL puts the field back in step with no extra pass. Debouncing is a `setTimeout` inside an `effect` with `onCleanup`, which needs no `rxjs-interop` import and which `vi.useFakeTimers()` drives directly.
 
 `injectMediaQuery` writes a signal from the `change` listener, which is the zoneless-correct way to notify Angular of something that happened outside its own event handling — no `ApplicationRef.tick()`, no zone patch.
+
+### 7.7 Upload — `shared/upload/`
+
+| Export | Key inputs | Outputs | Notes |
+| --- | --- | --- | --- |
+| `[appFileDropTarget]` | `appFileDropTarget` **required** (boolean) | `filesDropped` (`readonly File[]`) | Directive. `exportAs: 'appFileDropTarget'` exposes `isDragOver()` |
+| `<app-drop-overlay>` | `label` (`'Drop file(s)'`) | — | Frame `2a`'s dashed affordance. `aria-hidden` |
+
+```html
+<div [appFileDropTarget]="session.canUploadFiles()" (filesDropped)="attach($event)" #drop="appFileDropTarget">
+  <textarea …></textarea>
+  @if (drop.isDragOver()) { <app-drop-overlay /> }
+</div>
+```
+
+**The split between `@if` and the directive is the design decision here, and it generalizes.** A permission-gated *affordance* is `@if` — absent, not disabled — which is the same answer US-203 gave the Admin navigation entry. The directive exists only for the one thing `@if` cannot express: an element that must still render and simply not react. The prompt box has to accept typing whether or not the user may upload; it just must not accept a file. Reach for the directive only when that is genuinely the shape of the problem.
+
+Two consequences for anyone using it:
+
+- **The permission is a required input, never an injected `SessionStore` read.** That keeps the authorization decision visible at the call site and keeps the directive usable for a drop zone that has nothing to do with uploads. Required, so an unbound directive is a `strictTemplates` compile error rather than a silently open drop zone.
+- **The overlay is `aria-hidden` on purpose.** A drag is a pointer gesture with no keyboard equivalent, so no assistive-technology user ever has this element on screen; the accessible path to the same outcome is the attach button beside it.
+
+`DropOverlay` is a separate component from the directive because the directive owns state and not pixels: the overlay is specified down to the token, and a component is reviewable against the board where DOM assembled inside a directive is not. US-801's composer and US-902's project files panel render the same one.
+
+The mechanics — the depth counter rather than a boolean, the `AbortController`-scoped listeners, the `types` filter that keeps a text drag working, and the window-level `providePreventDropNavigation()` that stops a missed drop replacing the application — are in [Authentication and Session §10](authentication-and-session.md#10-upload-gated-on-the-grant-us-204), because they exist to satisfy a permission criterion rather than a visual one.
 
 ## 8. Accessibility contracts
 
@@ -475,8 +510,8 @@ Each is a deliberate departure, authorised by the PRD's accessibility-precedence
 | --- | --- |
 | `npm run lint:es` | Flat config: ESLint 10, typescript-eslint 8.66, angular-eslint 21.4 (`tsRecommended` + `templateRecommended` + `templateAccessibility`), `@ngrx/eslint-plugin` 21.1.1 at `signalsTypeChecked`, and `no-restricted-syntax` banning `bypassSecurityTrustHtml` in three syntactic forms |
 | `npm run check:icons` | Every `bi-*` reference under `src/` is in the sprite manifest |
-| `npm run check:forbidden` | Text backstop: `bypassSecurityTrustHtml`, a Google Fonts origin, a CDN origin — comment-stripped, so prose is fine |
-| `npm run check:tokens` | Tokens versus `theme.css`, `index.html`'s duplicated colours versus the tokens, and the theme storage key in both places |
+| `npm run check:forbidden` | Text backstop over four patterns: `bypassSecurityTrustHtml`, a Google Fonts origin, a CDN origin, and — since US-205 — any `localStorage.setItem` outside `core/storage/local-preferences.ts`. Comment-stripped, so prose is fine |
+| `npm run check:tokens` | Tokens versus `theme.css`, `index.html`'s duplicated colours versus the tokens, and the theme storage key in both places (now `PREFERENCE_KEYS.theme`) |
 | `npm run check:contract` | The vendored streaming contract, byte-for-byte against the NuGet package (see [the README's "Vendored contract"](../../enterprise-gpt-ui/README.md#vendored-contract)) |
 | `npm run build` | The budgets, then `check-initial-chunk.mjs` over the esbuild metafile |
 
@@ -486,6 +521,7 @@ Four points about that set that will otherwise look arbitrary:
 - **`@typescript-eslint/no-unused-vars` is off, on purpose.** `tsconfig.json`'s `noUnusedLocals` / `noUnusedParameters` own that class of mistake: they run on every build and every test rather than only under `npm run lint`, and unlike the ESLint rule they count a `{@link}` in a doc comment as a use.
 - **`check-initial-chunk.mjs` guards identity, not size.** A `bundle`-type budget names a chunk only from `initialFiles` or an `entryPoint`, and a chunk produced by `import('mermaid')` has neither — so the budget sums zero bytes and can never fail. This script walks static imports from `src/main.ts` and fails if mermaid or katex ever enter that graph, naming the library and the input path that put it there.
 - **`check:forbidden` exists even though ESLint carries the same rule structurally.** ESLint cannot see a property name assembled at run time, and it cannot see an inline `// eslint-disable-next-line`. A text scan sees both. Running it as a Node script rather than a CI `grep` step means Windows developers get the identical gate locally.
+- **The `localStorage` pattern is a *policy* gate, not a safety one, and it is the enforcement point for a criterion.** US-205 requires that after sign-out the browser retains the theme and sidebar preferences and nothing else. Sign-out deliberately sweeps nothing — a runtime cleanup would make the rule look optional and would eventually delete a key some story meant to keep — so the guarantee comes from there being exactly one call site with an enumerated key list. Three files are exempt: the module itself, its spec, and `user-footer.spec.ts`, which plants a disallowed key on purpose to prove sign-out does *not* remove it.
 
 `.github/workflows/ui-ci.yml` runs format, lint, test and build on one job, and the contract check on a second — isolated because it is the only thing here that needs the .NET toolchain, and roughly 60 s of `dotnet restore` does not belong on the critical path of every UI pull request.
 
@@ -497,6 +533,8 @@ npm start
 ```
 
 Every kit component, light and dark **side by side**, because `data-bs-theme` is per-subtree. It exists because the kit has no consumer until EP-3 and two of its properties cannot be checked by a unit test: that a component reads correctly in dark as well as light, and that motion stops under `prefers-reduced-motion`.
+
+US-204 added a third kind of entry, and it is the more interesting use of the gallery: a **drop zone with a checkbox on the grant**, standing in for `SessionStore.canUploadFiles()`, which no development session can toggle. Tick it off and drag a file over the box — nothing lights up, the cursor reads "no drop", and a file released on the page background is swallowed rather than navigating away. That is the half of US-204 only a real pointer can check.
 
 The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **never requested in production** — the same mechanism US-203 uses to keep the admin chunk off a non-administrator's device. It is scaffolding; delete it once the real screens exercise the kit.
 
@@ -513,6 +551,9 @@ The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **nev
 | A component's styles have no effect and the bundle grew | The component `@use`d `tokens` or `typography`. Remove the import and read `var(--…)` (§1) |
 | A table column renders blank | The `appTableCell` key does not match `TableColumn.key`, or the template is inside a wrapper — `descendants: true` covers most of those, a mismatched key covers the rest |
 | A checkbox looks dead: clicking changes nothing | A selection updater mutated the `Set` and wrote back the same reference, so `patchState` performed no write (§7.4) |
+| A drop zone highlights and then does nothing when the file is released | `preventDefault()` is missing on `dragover`. Without it the element never becomes a drop target and `drop` never fires — the single most common cause of a zone that looks right |
+| The drop overlay flickers off while the pointer is still inside the zone | The drag state was reduced to a boolean. `dragleave` fires on every crossing into a child, which is why `FileDropTarget` counts depth (§7.7) |
+| `npm run lint` fails naming a `localStorage` write | Route it through `core/storage/local-preferences.ts` and add the key to `PREFERENCE_KEYS` — after checking against §10's rule that the value is about the browser, not about the user |
 | `format:check` fails on files nobody touched | Git for Windows checked the tree out as CRLF. `enterprise-gpt-ui/.gitattributes` pins `eol=lf`; delete the files and check them out again |
 
 ## 13. Key files
@@ -526,9 +567,12 @@ The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **nev
 | Motion | [`_motion.scss`](../../enterprise-gpt-ui/src/styles/_motion.scss) |
 | Pre-paint script, preloads, shell | [`src/index.html`](../../enterprise-gpt-ui/src/index.html) |
 | Theme state | [`core/theme/theme-service.ts`](../../enterprise-gpt-ui/src/app/core/theme/theme-service.ts) |
+| Stored preferences and the `localStorage` allowlist | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
 | Icon manifest / sprite / injection | [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts), [`scripts/build-icon-sprite.mjs`](../../enterprise-gpt-ui/scripts/build-icon-sprite.mjs), [`core/icons/load-icon-sprite.ts`](../../enterprise-gpt-ui/src/app/core/icons/load-icon-sprite.ts) |
 | Brand images | [`scripts/build-brand-images.mjs`](../../enterprise-gpt-ui/scripts/build-brand-images.mjs), [`shared/brand-logo/`](../../enterprise-gpt-ui/src/app/shared/brand-logo/) |
-| Accessibility primitives | [`shared/a11y/`](../../enterprise-gpt-ui/src/app/shared/a11y/) |
+| Accessibility primitives | [`shared/a11y/`](../../enterprise-gpt-ui/src/app/shared/a11y/) — including `focus-on-render.ts`, which US-205 moved here from `features/auth/` |
+| Upload drop zone and overlay | [`shared/upload/`](../../enterprise-gpt-ui/src/app/shared/upload/), [`core/dnd/prevent-drop-navigation.ts`](../../enterprise-gpt-ui/src/app/core/dnd/prevent-drop-navigation.ts) |
+| User footer and sign-out interstitial | [`shared/nav/user-footer/`](../../enterprise-gpt-ui/src/app/shared/nav/user-footer/), [`shared/feedback/signing-out/`](../../enterprise-gpt-ui/src/app/shared/feedback/signing-out/) |
 | Toast state | [`core/notifications/toast-store.ts`](../../enterprise-gpt-ui/src/app/core/notifications/toast-store.ts) |
 | Lint and checks | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs), [`scripts/`](../../enterprise-gpt-ui/scripts/) |
 | CI | [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml) |

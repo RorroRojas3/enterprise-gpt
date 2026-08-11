@@ -6,7 +6,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), which is the au
 
 ## 1. Overview
 
-> **Scope, stated plainly.** This is foundation only — the substrate the feature stories build on, all of it covered by specs that run without a backend. Sign-in, the session, and the guarded route tree arrived afterwards in EP-2 and have their own reference in [Authentication and Session](authentication-and-session.md); several sections below hand off to it where the two meet.
+> **Scope, stated plainly.** This is foundation only — the substrate the feature stories build on, all of it covered by specs that run without a backend. Sign-in, the session, permission gating, the guarded route tree and sign-out arrived afterwards in EP-2 and have their own reference in [Authentication and Session](authentication-and-session.md); several sections below hand off to it where the two meet.
 
 Three pieces landed here, each solving a problem the deleted `enterprise-ui/` client had. The presentation half of EP-1 — design tokens, theming, self-hosted assets and the shared component kit — has its own reference in [Design System](design-system.md).
 
@@ -28,9 +28,11 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | Retry and refresh policy | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts), [`core/http/interceptors/retry.interceptor.ts`](../../enterprise-gpt-ui/src/app/core/http/interceptors/retry.interceptor.ts) |
 | User-facing error text | [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) |
 | The five store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
-| Cross-store events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
+| Cross-store events, and the sign-out abort primitive | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
 | API URL building and ownership | [`core/http/api-url.ts`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts) |
-| Sign-in, tokens, guards, session (EP-2) | [Authentication and Session](authentication-and-session.md), [`core/auth/`](../../enterprise-gpt-ui/src/app/core/auth/), [`core/session/`](../../enterprise-gpt-ui/src/app/core/session/), [`core/catalog/`](../../enterprise-gpt-ui/src/app/core/catalog/) |
+| The one permitted `localStorage` call site | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
+| Replacing the document, as opposed to routing | [`core/navigation/hard-navigation.ts`](../../enterprise-gpt-ui/src/app/core/navigation/hard-navigation.ts) |
+| Sign-in, tokens, guards, session, sign-out (EP-2) | [Authentication and Session](authentication-and-session.md), [`core/auth/`](../../enterprise-gpt-ui/src/app/core/auth/), [`core/session/`](../../enterprise-gpt-ui/src/app/core/session/), [`core/catalog/`](../../enterprise-gpt-ui/src/app/core/catalog/), [`core/dnd/`](../../enterprise-gpt-ui/src/app/core/dnd/) |
 | The vendored streaming contract (US-107) | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) — copied byte-for-byte from `Andes.Extensions.AI.UI` and **never hand-edited**; see [the README](../../enterprise-gpt-ui/README.md#vendored-contract) |
 | Tokens, theming, assets, the shared UI kit (US-105/106/109) | [Design System](design-system.md), [`src/styles/`](../../enterprise-gpt-ui/src/styles/), [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) |
 | Asset builds and drift checks | [`enterprise-gpt-ui/scripts/`](../../enterprise-gpt-ui/scripts/) — `copy-fonts`, `build-icon-sprite`, `build-brand-images`, `check-andes-contract`, `check-tokens`, `check-icon-names`, `check-forbidden-apis`, `check-initial-chunk` |
@@ -46,10 +48,10 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | Layering | `features → shared → core → domain`, one way only. `domain/` imports nothing from Angular, so the SSE codec and the activity fold will test in Node with no `TestBed` |
 | Path aliases | `@core/*`, `@domain/*`, `@shared/*`, `@features/*`, `@testing/*`. No barrel `index.ts` files; components are `foo.ts`/`foo.html`/`foo.scss` with no `.component` suffix |
 | TypeScript | Strict, plus `strictTemplates`, `noPropertyAccessFromIndexSignature`, and `noUncheckedIndexedAccess` |
-| Initial bundle | **629.33 kB raw / 151.96 kB transfer**, re-baselined at the end of US-203, against a **650 kB warn / 720 kB error** budget. It was 349.83 kB / 88.13 kB at the end of EP-1; MSAL added 248.9 kB and is unavoidably initial ([Authentication and Session §10.2](authentication-and-session.md#102-bundle-re-baseline)). A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB |
+| Initial bundle | **637.10 kB raw / 153.38 kB transfer** at the end of EP-2, against the **650 kB warn / 720 kB error** budget re-baselined at US-203. It was 349.83 kB / 88.13 kB at the end of EP-1; MSAL added 248.9 kB and is unavoidably initial, while US-204 and US-205 added 7.77 kB between them and needed no re-baseline ([Authentication and Session §12.2](authentication-and-session.md#122-bundle-re-baseline)). A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB |
 | Lint | **ESLint 10** flat config (`eslint.config.mjs`) over typescript-eslint 8.66, angular-eslint 21.4 (`tsRecommended`, `templateRecommended`, `templateAccessibility`) and `@ngrx/eslint-plugin` 21.1.1 at **`signalsTypeChecked`** — which needs `projectService: true`, because the one rule the plain `signals` preset omits throws without type information. Its four NgRx rules are the ones §5 was written against: no arrays at the root of `withState`, writes only through `patchState`, no `store.method()` inside a `computed`, and the `with*` naming convention. `no-restricted-syntax` bans `bypassSecurityTrustHtml`; `@typescript-eslint/no-unused-vars` is **off**, because tsc's `noUnusedLocals`/`noUnusedParameters` own that and, unlike the rule, count a `{@link}` as a use |
 
-**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30) and `dompurify` 3.4.13 are in `package.json` and referenced nowhere in `src/`, so the 629.33 kB baseline is still a *pre-markdown* figure and EP-6 will have to pay for them and re-baseline. `@azure/msal-angular` 6.0.3 is also on this list, and permanently: EP-2 uses `@azure/msal-browser` 5.18.0 directly and rejected the Angular wrapper for three verified reasons ([Authentication and Session §3](authentication-and-session.md#3-azuremsal-angular-is-installed-and-unused)); it stays installed only because US-101's acceptance criteria require it. `bootstrap-icons` 1.13.1 has left this list without entering the bundle: `scripts/build-icon-sprite.mjs` reads its individual SVGs at build time and emits a sprite into `public/`, so the package is a build-time input rather than a dependency the browser ever sees.
+**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30) and `dompurify` 3.4.13 are in `package.json` and referenced nowhere in `src/`, so the 637.10 kB figure is still a *pre-markdown* baseline and EP-6 will have to pay for them and re-baseline. `@azure/msal-angular` 6.0.3 is also on this list, and permanently: EP-2 uses `@azure/msal-browser` 5.18.0 directly and rejected the Angular wrapper for three verified reasons ([Authentication and Session §3](authentication-and-session.md#3-azuremsal-angular-is-installed-and-unused)); it stays installed only because US-101's acceptance criteria require it. `bootstrap-icons` 1.13.1 has left this list without entering the bundle: `scripts/build-icon-sprite.mjs` reads its individual SVGs at build time and emits a sprite into `public/`, so the package is a build-time input rather than a dependency the browser ever sees.
 
 ## 2. Quick start — a store that composes the foundation
 
@@ -127,7 +129,7 @@ The failure this prevents is specific and familiar: a build-time replacement bak
     "clientId": "b40defa0-5309-45c4-82fc-cb284010cc10",
     "authority": "https://login.microsoftonline.com/{tenantId}",
     "redirectUri": "/auth",
-    "postLogoutRedirectUri": "/",
+    "postLogoutRedirectUri": "/signed-out",
     "apiScopes": ["api://{apiClientId}/access_as_user"]
   },
   "features": { "diagrams": false, "math": false, "rawStreamCodec": false }
@@ -140,7 +142,7 @@ The failure this prevents is specific and familiar: a build-time replacement bak
 | `auth.clientId` | non-empty string **and a GUID** | Checked here rather than at sign-in, where Entra reports it as an opaque "application not found" long after the cause scrolled away |
 | `auth.authority` | absolute **`https:`** URL | The tenant id is part of it |
 | `auth.redirectUri` | non-empty string | Relative to the app origin |
-| `auth.postLogoutRedirectUri` | non-empty string | Relative to the app origin |
+| `auth.postLogoutRedirectUri` | non-empty string | Relative to the app origin. Since US-205 it points at `/signed-out`, and must be registered as a post-logout redirect URI in the Entra app registration ([Authentication and Session §11.3](authentication-and-session.md#113-what-the-failure-path-lands-on)) |
 | `auth.apiScopes` | non-empty array of non-empty strings | The API access token's scopes |
 | `features.diagrams` | boolean | Load the diagram renderer chunk |
 | `features.math` | boolean | Load the math renderer chunk |
@@ -148,7 +150,7 @@ The failure this prevents is specific and familiar: a build-time replacement bak
 
 Two deliberate choices in that table. The booleans are **rejected when they arrive as the string `"false"`**, which is exactly what environment-variable substitution produces when a template forgets to strip the quotes — the case where a flag silently reads truthy forever. And **unknown extra keys are accepted**, so a `config.json` written for a newer bundle still boots an older one during a rollback.
 
-MSAL's `cacheLocation`, `allowRedirectInIframe` and logger options are deliberately *not* here: they are a security posture rather than an environment value, so they are fixed in `buildMsalConfig` where no deployment can weaken them by editing one file ([Authentication and Session §10.1](authentication-and-session.md#101-posture)). `storeAuthStateInCookie` is not here either, and could not be — msal-browser 5 removed it from the package.
+MSAL's `cacheLocation`, `allowRedirectInIframe` and logger options are deliberately *not* here: they are a security posture rather than an environment value, so they are fixed in `buildMsalConfig` where no deployment can weaken them by editing one file ([Authentication and Session §12.1](authentication-and-session.md#121-posture)). `storeAuthStateInCookie` is not here either, and could not be — msal-browser 5 removed it from the package.
 
 ### 3.3 The startup sequence
 
@@ -425,9 +427,28 @@ export const sessionEvents = eventGroup({
 
 `turnEvents` (US-409) and `adminEvents` (US-1207, US-1208) will follow this shape. Everything else stays on plain store methods.
 
-Every store written since — `SessionStore`, `ModelCatalogStore`, `McpCatalogStore` — already resets on `signedOut` and cancels its in-flight request with `takeUntil`, and `AuthService` clears its handshake memo on it. **Nothing dispatches it yet**: US-205 owns the sign-out control, and until it lands this event is a contract with no producer.
+**It has exactly one producer, and only one is wanted.** Since US-205 that is `AuthService.signOut()`, which dispatches it with `{ scope: 'global' }` — plus the `SessionChannel` listener, which does the same when *another tab* signs out. Every store — `SessionStore`, `ModelCatalogStore`, `McpCatalogStore` — resets on it and cancels its in-flight request with `takeUntil`; `AuthService` also clears its own handshake memo and the two `sessionStorage` keys it owns. Do not dispatch it from a component to "reset things": the event means the session has ended, and the guards, the interstitial and MSAL's cache are all keyed to that meaning ([Authentication and Session §11](authentication-and-session.md#11-sign-out-us-205)).
 
 > **Dispatch `signedOut` on the global scope.** `Dispatcher` and `Events` are `platform`-scoped by default, but a component or route calling `provideDispatcher()` creates a local scope, and an event dispatched inside one is invisible to ancestors and siblings. A sign-out dispatched from within such a scope must carry `{ scope: 'global' }`, or the route-scoped stores in every other scope never reset — which is the entire failure this event exists to prevent.
+
+#### `injectSignedOutAbort()` — for work `takeUntil` cannot stop
+
+```ts
+const signedOutSignal = injectSignedOutAbort();   // injection context, once
+
+fetch(url, { signal: AbortSignal.any([stop.signal, signedOutSignal()]) });
+```
+
+`takeUntil(injectSignedOut())` stops **delivery**. It leaves the HTTP connection open and, for EP-4's streaming turn, leaves the model generating on the server — only aborting the underlying `fetch` ends the request. That is the gap this fills, and it is the primitive US-405's Stop composes with.
+
+Four properties are deliberate:
+
+- **A factory, not one shared signal.** Two concurrent requests need signals that can be told apart, or a store cancelling one turn also aborts the other. (`AbortSignal.any` composes without consuming its sources, so sharing one would not *break* a caller's Stop — it would just make every request indistinguishable.)
+- **`AbortSignal.any` is what keeps it from leaking.** The DOM Standard holds a signal's dependent signals in a **weak set**, so each minted signal is collectable as soon as the caller drops it, and a thousand-turn session accumulates no controllers.
+- **It also aborts on `DestroyRef.onDestroy`.** A stream can outlive the store that opened it; without this, a route-scoped store's in-flight request keeps running after the route is gone.
+- **A signal minted after the session ended is already aborted**, which is correct rather than incidental: sign-in here is always a redirect, so a session never resumes within the same document. The request fails immediately as an `aborted` `AppError`, which `shouldNotify` maps to no toast (§4.7).
+
+The abort reason is `SIGNED_OUT_ABORT_REASON`, exported so a reader can tell a sign-out from a user's Stop.
 
 ### 5.7 Composition order
 
@@ -454,10 +475,13 @@ Everything above is covered by Vitest specs that run with no backend and, for th
 | Errors | `to-app-error` (31 cases), `to-app-error-from-response`, `problem-details`, `problem-types`, `apply-server-errors`, `camel-case`, `error-message`, `retry-policy` | Timeout-versus-abort ordering; a `bodyUsed` body; PascalCase, dotted and indexed keys; the `AUTH_DECISIONS` key set |
 | HTTP | `api-url`, `retry.interceptor` | GET-only, the 409 and app-typed-503 exclusions, jitter bounds via a pinned `random` |
 | State | `with-request-status`, `with-offset-pagination` (15 cases), `with-pending-ids`, `with-client-query` (16 cases), `with-reset-on-sign-out`, `toast-store` | The exact-multiple page boundary; the empty-page cap; the replace-not-mutate signal write; `isAuthoritative` false suppressing sort; the dev-only ordering guard throwing; a toast timer cancelled on sign-out |
+| Storage and navigation | `local-preferences` | The allowlist holding only values about the browser; storage that throws rather than returning `null` |
 | Theme and assets | `theme-service`, `load-icon-sprite`, `icon`, `icon-names`, `brand-logo`, `ridgeline`, `theme-toggle` | Blocked `localStorage`; an OS change while the preference is `system`; a sprite response that is really `index.html`; both logo variants carrying the same `alt` |
-| UI kit | `a11y`, `modal`, `offcanvas`, `menu`, `tooltip`, `feedback`, `data`, `badge`, `attachment-chip` | Focus in and focus return; Escape and outside-pointer dismissal; roving menu focus; the two live regions; the polite result summary; selection updaters returning a new `Set` |
+| UI kit | `a11y`, `modal`, `offcanvas`, `menu`, `tooltip`, `feedback`, `data`, `badge`, `attachment-chip`, `upload`, `user-footer` | Focus in and focus return; Escape and outside-pointer dismissal; roving menu focus; the two live regions; the polite result summary; selection updaters returning a new `Set`; a drop zone that binds no listeners without the grant |
 | Streaming contract | `assistant-ui.contract` | `foldAssistantEvents` over the vendored types, in Node with no `TestBed` |
-| Auth and session (EP-2) | `auth-service`, `token-service`, `auth.interceptor`, the three guards, `session-store`, `auth-pages` | Covered in [Authentication and Session §12](authentication-and-session.md#12-testing-and-verification-status) |
+| Auth and session (EP-2) | `auth-service`, `token-service`, `auth.interceptor`, the three guards, `session-store`, `session-channel`, `session-events`, `auth-pages`, `app` | Covered in [Authentication and Session §14](authentication-and-session.md#14-testing-and-verification-status) |
+
+The suite is **550 specs** across 51 files as of the end of EP-2.
 
 ```bash
 # from enterprise-gpt-ui/
@@ -471,17 +495,18 @@ npm run build          # production build; the budgets, then check-initial-chunk
 
 Those five gates are what `.github/workflows/ui-ci.yml` runs — the repository's first CI workflow. `check:contract` sits on its own job because it is the only one that needs the .NET toolchain. What each gate enforces, and why several of them are Node scripts rather than lint rules, is in [Design System §10](design-system.md#10-gates).
 
+**One of those gates constrains code you are about to write.** Since US-205, `check:forbidden` fails the build on any `localStorage.setItem` outside [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts). Writes only — reading cannot leave a user's data on a shared machine, and `index.html`'s pre-paint script legitimately reads the theme before any module exists. The rule behind it: `localStorage` survives sign-out by design, so it holds only values **about the browser, not about the user**, and `PREFERENCE_KEYS` enumerates them (today: theme and the sidebar collapse state US-301 will write). Anything identifying, anything fetched from the API, and anything a second person on a shared machine should not see belongs in `sessionStorage` or in a store. `check:tokens` reads the theme key from that file too, so the pre-paint script and the application cannot drift.
+
 ## 7. What is not here yet
 
 | Missing | Owner |
 | --- | --- |
 | The app shell — sidebar, navigation, and any screen behind the guards; `/chat` is a placeholder | EP-3 onward |
-| Sign-out, and anything that dispatches `sessionEvents.signedOut` | US-205 |
 | Any *route-scoped feature* store. `ToastStore`, `SessionStore` and the two catalog stores are all app-wide singletons | US-302 sets the reference pattern |
 | Markdown rendering; `ngx-markdown` is installed but imported nowhere | EP-6 / US-601 |
-| The SSE codec and the chat transport. The vendored contract and its `foldAssistantEvents` are in place; nothing consumes them yet | EP-4 |
+| The SSE codec and the chat transport. The vendored contract and its `foldAssistantEvents` are in place; nothing consumes them yet. `injectSignedOutAbort()` (§5.6) is the cancellation primitive waiting for it | EP-4 |
 
-Sign-in, `TokenService`, `authInterceptor` and the guarded route tree have since landed — see [Authentication and Session](authentication-and-session.md).
+Sign-in, `TokenService`, `authInterceptor`, the guarded route tree and sign-out have all since landed — EP-2 is complete. See [Authentication and Session](authentication-and-session.md).
 
 ## 8. Key files
 
@@ -496,7 +521,9 @@ Sign-in, `TokenService`, `authInterceptor` and the guarded route tree have since
 | Arm selection | [`core/errors/build-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/build-app-error.ts) |
 | Retry and refresh policy | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts) |
 | Store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
-| Session events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
+| Session events and the abort primitive | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
+| `localStorage` allowlist | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
+| Document replacement seam | [`core/navigation/hard-navigation.ts`](../../enterprise-gpt-ui/src/app/core/navigation/hard-navigation.ts) |
 | Pagination envelope mirror | [`domain/api/paginated-response.ts`](../../enterprise-gpt-ui/src/app/domain/api/paginated-response.ts) |
 | Test providers | [`src/testing/test-providers.ts`](../../enterprise-gpt-ui/src/testing/test-providers.ts) |
 | Vendored streaming contract | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts), [`scripts/check-andes-contract.mjs`](../../enterprise-gpt-ui/scripts/check-andes-contract.mjs) |

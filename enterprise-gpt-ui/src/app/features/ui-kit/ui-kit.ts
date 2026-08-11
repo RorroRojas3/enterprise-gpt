@@ -29,6 +29,8 @@ import { Modal } from '@shared/overlay/modal/modal';
 import { Offcanvas } from '@shared/overlay/offcanvas/offcanvas';
 import { Tooltip } from '@shared/overlay/tooltip/tooltip';
 import { Ridgeline } from '@shared/ridgeline/ridgeline';
+import { DropOverlay } from '@shared/upload/drop-overlay';
+import { FileDropTarget } from '@shared/upload/file-drop-target';
 
 interface DemoRow {
   readonly id: string;
@@ -55,8 +57,10 @@ interface DemoRow {
     BulkActionBar,
     CardRow,
     DataTable,
+    DropOverlay,
     EmptyState,
     ErrorPanel,
+    FileDropTarget,
     Icon,
     KindBadge,
     Menu,
@@ -88,6 +92,14 @@ export class UiKit {
   protected readonly selectedIds = signal<ReadonlySet<string>>(new Set<string>());
   protected readonly search = signal('');
   protected readonly page = signal(7);
+
+  /** Stands in for `SessionStore.canUploadFiles()`, which no dev session can toggle. */
+  protected readonly canUpload = signal(true);
+  protected readonly lastDrop = signal('Nothing dropped yet.');
+
+  protected noteDrop(files: readonly File[]): void {
+    this.lastDrop.set(`Dropped: ${files.map((file) => file.name).join(', ')}`);
+  }
 
   protected readonly rows: readonly DemoRow[] = [
     { id: 'a', name: 'Helios release status', owner: 'Sofía Herrera' },

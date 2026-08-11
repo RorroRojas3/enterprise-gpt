@@ -1,0 +1,31 @@
+:host {
+  display: block;
+}
+
+.signed-out__logo {
+  width: 210px;
+  max-width: 100%;
+}
+
+.signed-out__heading {
+  margin: 6px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.signed-out__message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.signed-out__action {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 22px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+}

@@ -1,0 +1,27 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px;
+  text-align: center;
+}
+
+.signing-out__heading {
+  margin: 4px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+
+  // Focused programmatically, so the ring would fire on a move the user did not make.
+  &:focus {
+    outline: none;
+  }
+}
+
+.signing-out__detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}

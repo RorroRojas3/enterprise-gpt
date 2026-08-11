@@ -1,4 +1,5 @@
 import { DOCUMENT, DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
+import { PREFERENCE_KEYS, readPreference, writePreference } from '@core/storage/local-preferences';
 
 /** What the user chose. `system` defers to `prefers-color-scheme`. */
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -6,23 +7,14 @@ export type ThemePreference = 'light' | 'dark' | 'system';
 /** What is actually on `<html>`. */
 export type ResolvedTheme = 'light' | 'dark';
 
-/**
- * Shared with the pre-paint script in `index.html`. Changing it here without changing
- * it there costs every user their stored preference exactly once, silently.
- */
-export const THEME_STORAGE_KEY = 'egpt.theme';
-
 const SYSTEM_DARK_QUERY = '(prefers-color-scheme: dark)';
 
 function readStoredPreference(): ThemePreference {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
-  } catch {
-    // Private mode and enterprise storage policies throw on access. Following the OS
-    // is the right answer when we cannot know what the user picked.
-    return 'system';
-  }
+  // Following the OS is the right answer when we cannot know what the user picked,
+  // which is what a null from blocked storage means.
+  const stored = readPreference(PREFERENCE_KEYS.theme);
+
+  return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
 }
 
 /**
@@ -79,11 +71,7 @@ export class ThemeService {
   /** Records a preference and applies it. `system` resumes following the OS. */
   set(preference: ThemePreference): void {
     this.preferenceValue.set(preference);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, preference);
-    } catch {
-      // Blocked storage costs persistence across reloads, not the change itself.
-    }
+    writePreference(PREFERENCE_KEYS.theme, preference);
     this.apply();
   }
 
