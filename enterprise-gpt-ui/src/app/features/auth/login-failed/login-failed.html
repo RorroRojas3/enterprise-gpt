@@ -1,0 +1,28 @@
+<app-auth-page>
+  <app-brand-logo class="login-failed__logo" alt="Andes Software Solutions" />
+
+  <h1 #heading class="login-failed__heading font-display" tabindex="-1">Sign-in didn’t complete</h1>
+
+  <p class="login-failed__message">
+    Your work account couldn’t be verified — this usually happens when the sign-in window sat open
+    too long. Nothing is wrong with your account.
+  </p>
+
+  @if (retryFailed()) {
+    <p class="login-failed__message login-failed__message--fail" role="alert">
+      We couldn’t reach Microsoft Entra ID just now. Check your connection and try again.
+    </p>
+  }
+
+  <button
+    class="btn btn-primary login-failed__action"
+    type="button"
+    [disabled]="retrying()"
+    (click)="retry()"
+  >
+    @if (retrying()) {
+      <span class="kit-spinner" aria-hidden="true"></span>
+    }
+    {{ retryFailed() ? 'Reload and try again' : 'Try again' }}
+  </button>
+</app-auth-page>

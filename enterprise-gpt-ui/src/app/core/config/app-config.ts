@@ -15,9 +15,10 @@ export interface AppConfig {
 }
 
 /**
- * The Entra ID values MSAL needs. Deliberately excludes `cacheLocation` and
- * `storeAuthStateInCookie`: those are a security posture rather than an
- * environment value, so they are fixed in the MSAL configuration itself.
+ * The Entra ID values MSAL needs. Deliberately excludes `cacheLocation`,
+ * `allowRedirectInIframe` and the logger options: those are a security posture rather
+ * than an environment value, so they are fixed in `buildMsalConfig` where no
+ * deployment can weaken them by editing one file.
  */
 export interface AuthConfig {
   /** Application (client) id of the SPA's Entra ID app registration. */

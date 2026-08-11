@@ -25,8 +25,10 @@ namespace Enterprise.Gpt.Entity
         [StringLength(1024)]
         public string Description { get; set; } = null!;
 
+        [Column(TypeName = "decimal(18, 2)")]
         public decimal ContextWindowSize { get; set; }
 
+        [Column(TypeName = "decimal(18, 2)")]
         public decimal MaxOutputTokens { get; set; }
 
         public bool IsToolEnabled { get; set; } = true;

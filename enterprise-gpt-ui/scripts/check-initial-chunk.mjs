@@ -14,10 +14,15 @@ import { fileURLToPath } from 'node:url';
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const STATS = join(UI_ROOT, 'dist', 'enterprise-gpt-ui', 'stats.json');
 
-/** Libraries EP-6 loads on demand (US-605) and that must never be statically imported. */
+/** Code that must never be statically imported into the initial graph. */
 const FORBIDDEN = [
   { label: 'diagrams (US-605)', match: /(^|\/)node_modules\/(mermaid|@mermaid-js\/[^/]+)\// },
   { label: 'math (US-605)', match: /(^|\/)node_modules\/(katex|mathjax|mathjax-full)\// },
+  // US-203 is a statement about the network, not about visibility: the admin chunk
+  // must not be *requested* by a non-administrator. A `canMatch` guard is what keeps
+  // it off the wire, but one stray static import from a shared module would put it in
+  // the initial graph and hand it to everyone before any guard ran.
+  { label: 'admin area (US-203)', match: /(^|\/)src\/app\/features\/admin\// },
 ];
 
 function die(...lines) {
@@ -83,5 +88,6 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `initial chunk OK — ${initial.size} chunks reachable from src/main.ts, no diagram or math inputs`,
+  `initial chunk OK — ${initial.size} chunks reachable from src/main.ts, none carrying ` +
+    `${FORBIDDEN.map(({ label }) => label).join(', ')}`,
 );

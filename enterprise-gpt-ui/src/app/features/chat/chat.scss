@@ -1,0 +1,61 @@
+:host {
+  display: block;
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  // The conversation column cap the design sets; the transcript inherits it in EP-6.
+  max-width: 820px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 60px 24px;
+  text-align: center;
+}
+
+.chat__logo {
+  width: 240px;
+  max-width: 100%;
+}
+
+.chat__heading {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.chat__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.chat__facts {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+
+  dt {
+    text-align: right;
+    font-weight: 500;
+  }
+
+  dd {
+    margin: 0;
+    text-align: left;
+  }
+}
+
+.chat__admin {
+  margin-top: 6px;
+  padding: 9px 22px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+}

@@ -1,0 +1,14 @@
+<app-auth-page>
+  @if (error(); as sessionError) {
+    <app-brand-logo class="session-error__mark" variant="mark" />
+
+    <app-error-panel
+      [error]="sessionError"
+      heading="We couldn’t start Enterprise GPT"
+      [headingLevel]="1"
+      [canRetry]="canRetry()"
+      retryLabel="Retry"
+      (retried)="retry()"
+    />
+  }
+</app-auth-page>

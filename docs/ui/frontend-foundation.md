@@ -6,7 +6,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), which is the au
 
 ## 1. Overview
 
-> **Scope, stated plainly.** This is foundation only, and **the app is not usable yet**. There is no sign-in (US-201) and no chat screen; `app.routes.ts` carries exactly one route, the development-only `/ui-kit` gallery, and `App` is a router outlet, the toast region and a temporary theme control. Everything below is the substrate those stories build on, and all of it is covered by specs that run without a backend.
+> **Scope, stated plainly.** This is foundation only — the substrate the feature stories build on, all of it covered by specs that run without a backend. Sign-in, the session, and the guarded route tree arrived afterwards in EP-2 and have their own reference in [Authentication and Session](authentication-and-session.md); several sections below hand off to it where the two meet.
 
 Three pieces landed here, each solving a problem the deleted `enterprise-ui/` client had. The presentation half of EP-1 — design tokens, theming, self-hosted assets and the shared component kit — has its own reference in [Design System](design-system.md).
 
@@ -29,7 +29,8 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | User-facing error text | [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) |
 | The five store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
 | Cross-store events | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
-| API URL building | [`core/http/api-url.ts`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts) |
+| API URL building and ownership | [`core/http/api-url.ts`](../../enterprise-gpt-ui/src/app/core/http/api-url.ts) |
+| Sign-in, tokens, guards, session (EP-2) | [Authentication and Session](authentication-and-session.md), [`core/auth/`](../../enterprise-gpt-ui/src/app/core/auth/), [`core/session/`](../../enterprise-gpt-ui/src/app/core/session/), [`core/catalog/`](../../enterprise-gpt-ui/src/app/core/catalog/) |
 | The vendored streaming contract (US-107) | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) — copied byte-for-byte from `Andes.Extensions.AI.UI` and **never hand-edited**; see [the README](../../enterprise-gpt-ui/README.md#vendored-contract) |
 | Tokens, theming, assets, the shared UI kit (US-105/106/109) | [Design System](design-system.md), [`src/styles/`](../../enterprise-gpt-ui/src/styles/), [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) |
 | Asset builds and drift checks | [`enterprise-gpt-ui/scripts/`](../../enterprise-gpt-ui/scripts/) — `copy-fonts`, `build-icon-sprite`, `build-brand-images`, `check-andes-contract`, `check-tokens`, `check-icon-names`, `check-forbidden-apis`, `check-initial-chunk` |
@@ -45,14 +46,14 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | Layering | `features → shared → core → domain`, one way only. `domain/` imports nothing from Angular, so the SSE codec and the activity fold will test in Node with no `TestBed` |
 | Path aliases | `@core/*`, `@domain/*`, `@shared/*`, `@features/*`, `@testing/*`. No barrel `index.ts` files; components are `foo.ts`/`foo.html`/`foo.scss` with no `.component` suffix |
 | TypeScript | Strict, plus `strictTemplates`, `noPropertyAccessFromIndexSignature`, and `noUncheckedIndexedAccess` |
-| Initial bundle | **349.83 kB raw / 88.13 kB transfer**, re-baselined at the end of US-106, against a **360 kB warn / 400 kB error** budget. A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB. MSAL is roughly 150 kB and unavoidably initial, so US-201 needs its own re-baseline past 400 kB |
+| Initial bundle | **629.33 kB raw / 151.96 kB transfer**, re-baselined at the end of US-203, against a **650 kB warn / 720 kB error** budget. It was 349.83 kB / 88.13 kB at the end of EP-1; MSAL added 248.9 kB and is unavoidably initial ([Authentication and Session §10.2](authentication-and-session.md#102-bundle-re-baseline)). A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB |
 | Lint | **ESLint 10** flat config (`eslint.config.mjs`) over typescript-eslint 8.66, angular-eslint 21.4 (`tsRecommended`, `templateRecommended`, `templateAccessibility`) and `@ngrx/eslint-plugin` 21.1.1 at **`signalsTypeChecked`** — which needs `projectService: true`, because the one rule the plain `signals` preset omits throws without type information. Its four NgRx rules are the ones §5 was written against: no arrays at the root of `withState`, writes only through `patchState`, no `store.method()` inside a `computed`, and the `with*` naming convention. `no-restricted-syntax` bans `bypassSecurityTrustHtml`; `@typescript-eslint/no-unused-vars` is **off**, because tsc's `noUnusedLocals`/`noUnusedParameters` own that and, unlike the rule, count a `{@link}` as a use |
 
-**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30) and `dompurify` 3.4.13 are in `package.json` and referenced nowhere in `src/`, so the 349.83 kB baseline is still a *pre-markdown* figure and EP-6 will have to pay for them and re-baseline. `@azure/msal-angular` 6 and `@azure/msal-browser` 5 are in the same position, waiting on US-201. `bootstrap-icons` 1.13.1 has left this list without entering the bundle: `scripts/build-icon-sprite.mjs` reads its individual SVGs at build time and emits a sprite into `public/`, so the package is a build-time input rather than a dependency the browser ever sees.
+**Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30) and `dompurify` 3.4.13 are in `package.json` and referenced nowhere in `src/`, so the 629.33 kB baseline is still a *pre-markdown* figure and EP-6 will have to pay for them and re-baseline. `@azure/msal-angular` 6.0.3 is also on this list, and permanently: EP-2 uses `@azure/msal-browser` 5.18.0 directly and rejected the Angular wrapper for three verified reasons ([Authentication and Session §3](authentication-and-session.md#3-azuremsal-angular-is-installed-and-unused)); it stays installed only because US-101's acceptance criteria require it. `bootstrap-icons` 1.13.1 has left this list without entering the bundle: `scripts/build-icon-sprite.mjs` reads its individual SVGs at build time and emits a sprite into `public/`, so the package is a build-time input rather than a dependency the browser ever sees.
 
 ## 2. Quick start — a store that composes the foundation
 
-Illustrative, since no store exists yet; US-302 sets the reference pattern. It shows the composition order §5.7 requires and the two cancellation concerns §5.5 explains.
+Illustrative. The real stores that exist today — `ToastStore`, `SessionStore`, and the two catalog stores — are all app-wide singletons over short lists, so none of them exercises pagination or client query; US-302 sets the reference pattern for a route-scoped collection store. The sketch below shows the composition order §5.7 requires and the two cancellation concerns §5.5 explains.
 
 ```ts
 import { computed, inject } from '@angular/core';
@@ -147,7 +148,7 @@ The failure this prevents is specific and familiar: a build-time replacement bak
 
 Two deliberate choices in that table. The booleans are **rejected when they arrive as the string `"false"`**, which is exactly what environment-variable substitution produces when a template forgets to strip the quotes — the case where a flag silently reads truthy forever. And **unknown extra keys are accepted**, so a `config.json` written for a newer bundle still boots an older one during a rollback.
 
-MSAL's `cacheLocation` and `storeAuthStateInCookie` are deliberately *not* here: they are a security posture rather than an environment value, so they are fixed in the MSAL configuration itself.
+MSAL's `cacheLocation`, `allowRedirectInIframe` and logger options are deliberately *not* here: they are a security posture rather than an environment value, so they are fixed in `buildMsalConfig` where no deployment can weaken them by editing one file ([Authentication and Session §10.1](authentication-and-session.md#101-posture)). `storeAuthStateInCookie` is not here either, and could not be — msal-browser 5 removed it from the package.
 
 ### 3.3 The startup sequence
 
@@ -160,16 +161,18 @@ index.html paints the startup shell            ← visible immediately, before a
        │    ├─ response.json()       → else AppConfigError "not valid JSON"
        │    ├─ assertAppConfig(body) → else AppConfigError naming the offending field
        │    └─ normalizeAppConfig    → frozen, trailing slash stripped
-       ├─ bootstrapApplication(App, { providers: [{ provide: APP_CONFIG, useValue: config }] })
-       └─ hideStartupShell()
+       ├─ createStandardPublicClientApplication(buildMsalConfig(config, document.baseURI))   ← US-201
+       └─ bootstrapApplication(App, { providers: [APP_CONFIG, MSAL_INSTANCE] })
 ```
+
+The startup shell is **not** removed here. Since US-201 that is `provideStartupShellHandoff()`'s job, on the first settled navigation, because bootstrap now resolves while the guards are still deciding — see [Authentication and Session §8](authentication-and-session.md#8-startup-paint).
 
 Four details of that flow are load-bearing:
 
 - **`cache: 'no-store'`.** A cached `config.json` is how one environment ends up pointed at another after a promotion.
 - **Resolved against `document.baseURI`**, not `/config.json` and not `./config.json`. The first breaks a sub-path deployment; the second breaks a hard reload on a deep route such as `/chat/{id}`, where the relative resolution would look for `/chat/config.json`.
 - **`response.ok` is checked before the body is read.** A host with SPA fallback routing answers a missing `config.json` with `index.html` and a `200`, so trusting the status alone would produce a JSON parse error with a misleading message; trusting the body alone would miss the 404.
-- **The value is resolved *before* `bootstrapApplication`**, not inside an app initializer. That is what makes `APP_CONFIG` genuinely available to every provider factory from the first moment of the injector's life — `ApiUrl` reads it in a field initializer, and MSAL will need it at provider-construction time.
+- **The value is resolved *before* `bootstrapApplication`**, not inside an app initializer. That is what makes `APP_CONFIG` genuinely available to every provider factory from the first moment of the injector's life — `ApiUrl` reads it in a field initializer, and `MSAL_INSTANCE` is built from it in the same pre-bootstrap step, since `initialize()` is asynchronous and no synchronous DI factory can await it.
 
 `APP_CONFIG` carries **no `factory`**. A missing provider must fail loudly at injection rather than hand out a default that quietly points at the wrong environment. Tests and any injector created outside the bootstrap path use `provideAppConfig(config)`.
 
@@ -181,7 +184,7 @@ Three properties matter, and each covers a failure the app cannot report from in
 
 - **It is visible from first paint.** Starting hidden and revealing it from script would leave a blank page whenever the *bundle itself* never loads — a hashed-filename mismatch, a CDN miss, a CSP block — because nothing would be running to reveal it.
 - **Its styles are inline in `index.html`, system fonts only.** It has to render when `styles.scss` never loaded, which is one of the cases it exists for.
-- **A 30-second watchdog** runs from an inline `<script>` and flips the shell to `failed` if `main.ts` has not cleared it. That is the only report available for "the bundle never ran at all"; `main.ts` clears the timer on both of its outcomes.
+- **A 60-second watchdog** runs from an inline `<script>` and flips the shell to `failed` if nothing has cleared it. That is the only report available for "the bundle never ran at all". It was 30 seconds until US-201 put a sign-in handshake and a session bootstrap inside the shell's lifetime, where a cold API can legitimately hold the screen for tens of seconds and an early alarm would tell a user their app had failed while it was still starting.
 
 The failure state names the offending field in a `<code>` block, tells the reader this is a deployment problem rather than their account, and offers a **Try again** button that reloads. Smaller decisions inside `fatal-shell.ts` are worth knowing before editing it: the detail is written with `textContent` and never `innerHTML`, because the reason can carry a server-supplied status line and this page renders before any sanitizer exists; the retry handler is attached with `addEventListener` rather than an inline `onclick`, so the page stays CSP-clean; and `role="alert"` is applied to the status region **after** its content is final, because setting the role up front and mutating afterwards is the usual way a live region ends up announcing nothing.
 
@@ -269,7 +272,7 @@ Messages land under a dedicated `server` error key, so Angular drops them on the
 authErrorDecision(error); // 'refresh' | 'passthrough'
 ```
 
-**Only a bare 401 may trigger a token refresh.** The authentication interceptor arrives with US-201 and consults this rather than re-deriving the rule.
+**Only a bare 401 may trigger a token refresh.** `authInterceptor` (US-201) consults this rather than re-deriving the rule, and replays the request exactly once with a forced refresh when it answers `refresh` — see [Authentication and Session §5.4](authentication-and-session.md#54-the-401-replay).
 
 The arm that matters most is `mcp-authorization-required`. The API answers it **403, deliberately not 401**, because it asks for interactive consent to a downstream tool server — something no number of token refreshes can supply. A client that treats it as an authentication failure enters a refresh loop that cannot terminate. `forbidden` and `permission-required` are 403s for the same underlying reason: the token is fine, the grant is not.
 
@@ -277,7 +280,7 @@ The decision is backed by `AUTH_DECISIONS`, an exhaustive `as const satisfies Re
 
 ### 4.6 `retryInterceptor` — GETs, gateway errors, full jitter
 
-`retryInterceptor` is first in `withInterceptors([...])` in `app.config.ts`, and **must stay first**: when the authentication interceptor lands it has to run *inside* each retry, so a retried request acquires a fresh token instead of replaying the one that already failed.
+`retryInterceptor` is first in `withInterceptors([retryInterceptor, authInterceptor])` in `app.config.ts`, and **must stay first**: `authInterceptor` runs *inside* each retry, so a retried request acquires a fresh token instead of replaying the one that already failed. A spec pins that — three attempts carry three distinct tokens — and it holds only because `authInterceptor` defers its acquisition to subscription time ([Authentication and Session §5.2](authentication-and-session.md#52-interceptor-order-and-the-defer-that-makes-it-true)).
 
 | Rule | Value |
 | --- | --- |
@@ -422,6 +425,8 @@ export const sessionEvents = eventGroup({
 
 `turnEvents` (US-409) and `adminEvents` (US-1207, US-1208) will follow this shape. Everything else stays on plain store methods.
 
+Every store written since — `SessionStore`, `ModelCatalogStore`, `McpCatalogStore` — already resets on `signedOut` and cancels its in-flight request with `takeUntil`, and `AuthService` clears its handshake memo on it. **Nothing dispatches it yet**: US-205 owns the sign-out control, and until it lands this event is a contract with no producer.
+
 > **Dispatch `signedOut` on the global scope.** `Dispatcher` and `Events` are `platform`-scoped by default, but a component or route calling `provideDispatcher()` creates a local scope, and an event dispatched inside one is invisible to ancestors and siblings. A sign-out dispatched from within such a scope must carry `{ scope: 'global' }`, or the route-scoped stores in every other scope never reset — which is the entire failure this event exists to prevent.
 
 ### 5.7 Composition order
@@ -452,6 +457,7 @@ Everything above is covered by Vitest specs that run with no backend and, for th
 | Theme and assets | `theme-service`, `load-icon-sprite`, `icon`, `icon-names`, `brand-logo`, `ridgeline`, `theme-toggle` | Blocked `localStorage`; an OS change while the preference is `system`; a sprite response that is really `index.html`; both logo variants carrying the same `alt` |
 | UI kit | `a11y`, `modal`, `offcanvas`, `menu`, `tooltip`, `feedback`, `data`, `badge`, `attachment-chip` | Focus in and focus return; Escape and outside-pointer dismissal; roving menu focus; the two live regions; the polite result summary; selection updaters returning a new `Set` |
 | Streaming contract | `assistant-ui.contract` | `foldAssistantEvents` over the vendored types, in Node with no `TestBed` |
+| Auth and session (EP-2) | `auth-service`, `token-service`, `auth.interceptor`, the three guards, `session-store`, `auth-pages` | Covered in [Authentication and Session §12](authentication-and-session.md#12-testing-and-verification-status) |
 
 ```bash
 # from enterprise-gpt-ui/
@@ -469,11 +475,13 @@ Those five gates are what `.github/workflows/ui-ci.yml` runs — the repository'
 
 | Missing | Owner |
 | --- | --- |
-| Sign-in, `TokenService`, `authInterceptor` — MSAL is installed but unwired | US-201 |
-| The app shell, and any route beyond the development-only `/ui-kit` gallery | EP-3 onward |
-| Any *feature* store; `ToastStore` is the only store so far, and it is app-wide singleton state | US-302 sets the reference pattern |
+| The app shell — sidebar, navigation, and any screen behind the guards; `/chat` is a placeholder | EP-3 onward |
+| Sign-out, and anything that dispatches `sessionEvents.signedOut` | US-205 |
+| Any *route-scoped feature* store. `ToastStore`, `SessionStore` and the two catalog stores are all app-wide singletons | US-302 sets the reference pattern |
 | Markdown rendering; `ngx-markdown` is installed but imported nowhere | EP-6 / US-601 |
 | The SSE codec and the chat transport. The vendored contract and its `foldAssistantEvents` are in place; nothing consumes them yet | EP-4 |
+
+Sign-in, `TokenService`, `authInterceptor` and the guarded route tree have since landed — see [Authentication and Session](authentication-and-session.md).
 
 ## 8. Key files
 
@@ -493,4 +501,4 @@ Those five gates are what `.github/workflows/ui-ci.yml` runs — the repository'
 | Test providers | [`src/testing/test-providers.ts`](../../enterprise-gpt-ui/src/testing/test-providers.ts) |
 | Vendored streaming contract | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts), [`scripts/check-andes-contract.mjs`](../../enterprise-gpt-ui/scripts/check-andes-contract.mjs) |
 | Lint and CI | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs), [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml) |
-| Related reference | [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |
+| Related reference | [Authentication and Session](authentication-and-session.md), [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |

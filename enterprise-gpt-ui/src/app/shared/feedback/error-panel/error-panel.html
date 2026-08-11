@@ -1,8 +1,21 @@
-<!-- role="alert" so replacing a loading skeleton with this is announced. -->
-<div class="error-panel" role="alert">
+<!--
+  role="alert" so replacing a loading skeleton with this is announced — but only where
+  nothing takes focus. It implies aria-atomic, so on a full-page state whose heading is
+  focused it would read the entire panel and then the heading again. Where focus moves,
+  focus is the announcement.
+-->
+<div class="error-panel" [attr.role]="headingLevel() === null ? 'alert' : null">
   <app-icon class="error-panel__icon" name="bi-exclamation-octagon" />
 
-  <p class="error-panel__heading font-display">{{ heading() }}</p>
+  <p
+    #headingText
+    class="error-panel__heading font-display"
+    [attr.role]="headingLevel() === null ? null : 'heading'"
+    [attr.aria-level]="headingLevel()"
+    [attr.tabindex]="headingLevel() === null ? null : -1"
+  >
+    {{ heading() }}
+  </p>
   <p class="error-panel__message">{{ message() }}</p>
   <p class="error-panel__trace font-mono">{{ trace() }}</p>
 

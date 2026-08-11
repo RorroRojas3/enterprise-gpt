@@ -1,0 +1,18 @@
+<app-auth-page>
+  <app-brand-logo class="auth-callback__logo" alt="Andes Software Solutions" />
+
+  <app-ridgeline variant="auth" />
+
+  <div class="auth-callback__status">
+    <span class="kit-spinner auth-callback__spinner" aria-hidden="true"></span>
+
+    <!--
+      Focused on render rather than announced through a live region. A region inserted
+      into the DOM together with its text announces nothing, because aria-live reports
+      changes to a region that was already in the accessibility tree — the same reason
+      core/config/fatal-shell.ts focuses its heading instead.
+    -->
+    <h1 #heading class="auth-callback__heading font-display" tabindex="-1">Signing you in…</h1>
+    <p class="auth-callback__detail">Finishing up with Microsoft Entra ID</p>
+  </div>
+</app-auth-page>

@@ -20,7 +20,14 @@ import { ThemeToggle } from '@shared/theme-toggle/theme-toggle';
     <app-toast-region />
   `,
   styles: `
+    /* Fixed rather than in flow: the auth pages are full-height and centred, and a
+       header taking layout space would push their content off centre and add a
+       scrollbar. Temporary either way — see the note above. */
     .dev-shell-bar {
+      position: fixed;
+      z-index: 10;
+      top: 0;
+      right: 0;
       display: flex;
       justify-content: flex-end;
       padding: 10px 16px;

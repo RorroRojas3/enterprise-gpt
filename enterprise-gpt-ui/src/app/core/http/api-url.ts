@@ -24,6 +24,23 @@ export class ApiUrl {
   }
 
   /**
+   * Whether a URL addresses this deployment's API.
+   *
+   * The one definition of "our API", shared by `authInterceptor` and by the chat
+   * stream's raw `fetch`, because both decide whether to attach a bearer token and
+   * neither may attach one to a third-party host.
+   *
+   * The separator is required explicitly rather than left to a bare prefix test: the
+   * base URL carries no trailing slash, so `startsWith` alone would also match a
+   * lookalike origin whose host merely begins with the configured one.
+   *
+   * @param url An absolute URL.
+   */
+  owns(url: string): boolean {
+    return url === this._baseUrl || url.startsWith(`${this._baseUrl}/`);
+  }
+
+  /**
    * Escapes a value for use as a single path segment.
    *
    * @param value The identifier to encode.
