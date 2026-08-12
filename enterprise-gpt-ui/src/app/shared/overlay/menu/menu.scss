@@ -28,6 +28,21 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
+
+  // A projected trigger face (the model and tools pills) brings its own box:
+  // the 28px icon square and its hover fill would fight the pill's own styling.
+  &--content {
+    width: auto;
+    height: auto;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+
+  &[aria-disabled='true'] {
+    cursor: default;
+  }
 }
 
 .menu__panel {

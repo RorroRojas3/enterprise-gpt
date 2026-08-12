@@ -1,0 +1,84 @@
+:host {
+  display: block;
+}
+
+.composer {
+  position: relative;
+  padding: 8px 12px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(11, 31, 51, 0.05);
+
+  // The card carries the focus indication for the borderless textarea — the
+  // same treatment Bootstrap gives a focused form control.
+  &:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+}
+
+.composer__prompt {
+  display: block;
+  width: 100%;
+  padding: 6px 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--bs-body-color);
+  font-size: 15px;
+  line-height: 1.5;
+  resize: none;
+
+  &::placeholder {
+    color: var(--muted);
+  }
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.composer__note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--warn);
+  font-size: 12px;
+
+  app-icon {
+    flex: 0 0 auto;
+    font-size: 12px;
+  }
+
+  &--visible {
+    padding-bottom: 8px;
+  }
+}
+
+.composer__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.composer__spacer {
+  flex: 1;
+}
+
+.composer__send {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+
+  app-icon {
+    font-size: 14px;
+    transform: translate(-1px, 1px);
+  }
+}

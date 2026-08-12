@@ -99,6 +99,12 @@ $dark: (
 // on every light surface in the kit. The darker light-theme value clears 3:1 on all
 // three while staying on the brand ramp; dark theme keeps the accent, which is already
 // 6.09:1 there.
+// The provider dots (frame 2b) are pinned rather than aliased to --accent/--ok:
+// a provider's colour is its identity across themes and must not silently
+// rebrand when the palette moves. Azure and Anthropic come from the frame;
+// Bedrock has no frame value (the prototype's "Meta" green is an artifact), so
+// it takes the palette's green ramp, which the design family already uses for
+// its third dot.
 $extra-light: (
   'focus-ring': #0e7fa8,
   'tooltip-bg': #0b1f33,
@@ -109,6 +115,9 @@ $extra-light: (
   'code-number': #f08d49,
   'code-function': #f8c555,
   'code-punct': #a4b8cc,
+  'provider-azure-openai': #21a8d8,
+  'provider-anthropic': #8a6fd1,
+  'provider-bedrock': #2e9c58,
 );
 
 $extra-dark: (
@@ -121,6 +130,9 @@ $extra-dark: (
   'code-number': #f08d49,
   'code-function': #f8c555,
   'code-punct': #a4b8cc,
+  'provider-azure-openai': #21a8d8,
+  'provider-anthropic': #8a6fd1,
+  'provider-bedrock': #4cc47a,
 );
 
 // Bootstrap reads these as three comma-separated channels, not a colour.

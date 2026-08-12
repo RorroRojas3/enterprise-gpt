@@ -20,6 +20,7 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ChatEmptyState } from './chat-empty-state';
+import { Composer } from './composer/composer';
 import { ConversationStore } from './conversation-store';
 
 /**
@@ -35,7 +36,7 @@ import { ConversationStore } from './conversation-store';
 @Component({
   selector: 'app-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ChatEmptyState, ErrorPanel, Icon, Menu, MenuItem, MenuSeparator, Skeleton],
+  imports: [ChatEmptyState, Composer, ErrorPanel, Icon, Menu, MenuItem, MenuSeparator, Skeleton],
   providers: [ConversationStore],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',

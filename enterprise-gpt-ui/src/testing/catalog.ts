@@ -1,0 +1,38 @@
+import { McpDto } from '../app/domain/api/mcp';
+import { ModelDto } from '../app/domain/api/model';
+import { PROVIDER_ID } from '../app/domain/api/provider';
+
+let modelSequence = 0;
+
+/** A `ModelDto` exactly as `GET api/models` returns one. */
+export function modelFixture(overrides: Partial<ModelDto> = {}): ModelDto {
+  const index = modelSequence++;
+
+  return {
+    // No modulo — a repeating id collapses list joins silently. See conversations.ts.
+    id: `${String(index).padStart(8, '0')}-aaaa-4bbb-8ccc-dddddddddddd`,
+    providerId: PROVIDER_ID.azureOpenAi,
+    name: `Model ${index}`,
+    deploymentName: `model-${index}`,
+    description: `Test model ${index}.`,
+    contextWindowSize: 400_000,
+    maxOutputTokens: 16_384,
+    isToolEnabled: true,
+    isDefault: false,
+    ...overrides,
+  };
+}
+
+let mcpSequence = 0;
+
+/** An `McpDto` exactly as `GET api/mcps` returns one. */
+export function mcpFixture(overrides: Partial<McpDto> = {}): McpDto {
+  const index = mcpSequence++;
+
+  return {
+    id: `${String(index).padStart(8, '0')}-1111-4222-8333-555555555555`,
+    name: `Tool Server ${index}`,
+    description: null,
+    ...overrides,
+  };
+}

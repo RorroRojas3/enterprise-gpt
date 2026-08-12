@@ -34,6 +34,15 @@ describe('StatusDot', () => {
     const label = host.querySelector('.visually-hidden');
     expect(label?.textContent).toContain('Active');
   });
+
+  it.each(['provider-azure-openai', 'provider-bedrock', 'provider-anthropic'])(
+    'renders the %s provider tone the model picker uses',
+    async (tone) => {
+      const host = await render({ label: '', tone, labelHidden: true });
+
+      expect(host.querySelector(`.status-dot__mark--${tone}`)).not.toBeNull();
+    },
+  );
 });
 
 describe('KindBadge', () => {

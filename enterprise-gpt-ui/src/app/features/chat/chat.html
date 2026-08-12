@@ -76,3 +76,14 @@
     <app-chat-empty-state [asPageHeading]="!conversation.isOpen()" />
   }
 </div>
+
+<!--
+  US-402/403: the composer, on the empty screen and on an open conversation
+  alike — but not under a conversation that failed to open, where sending has
+  no target.
+-->
+@if (!conversation.error()) {
+  <div class="chat__composer">
+    <app-composer />
+  </div>
+}

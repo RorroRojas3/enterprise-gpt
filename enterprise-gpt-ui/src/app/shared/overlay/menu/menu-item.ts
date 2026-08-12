@@ -7,6 +7,14 @@ import { Directive } from '@angular/core';
  *
  * `tabindex="-1"` is what makes the menu's roving focus work: Tab leaves the menu
  * entirely, and the arrow keys move within it.
+ *
+ * The host `role` is a default: a static host attribute yields to one written in
+ * the consumer's template, which is how the pickers' rows widen to
+ * `role="menuitemradio"` / `role="menuitemcheckbox"` — binding their own
+ * `[attr.aria-checked]` beside it, where the template linter can verify the
+ * pairing. (A real `<input type="checkbox">` is not a valid child of
+ * `role="menu"`.) Roving focus keys on the `appMenuItem` attribute, so widened
+ * rows rove identically.
  */
 @Directive({
   selector: '[appMenuItem]',

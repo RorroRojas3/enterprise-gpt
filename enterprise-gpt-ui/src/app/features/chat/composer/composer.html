@@ -1,0 +1,35 @@
+<div class="composer">
+  <textarea
+    class="composer__prompt"
+    rows="2"
+    aria-label="Message Enterprise GPT"
+    placeholder="Message Enterprise GPT…"
+    [value]="prompt()"
+    (input)="onPromptInput($event)"
+  ></textarea>
+
+  <!--
+    The live region exists from first render and the @if toggles its content:
+    a region created together with its content is not reliably announced.
+  -->
+  <p class="composer__note" [class.composer__note--visible]="note() !== null" role="status">
+    @if (note(); as note) {
+      <app-icon name="bi-exclamation-triangle-fill" />
+      {{ note }}
+    }
+  </p>
+
+  <div class="composer__controls">
+    <app-model-menu />
+    <app-tools-menu />
+    <span class="composer__spacer"></span>
+    <button
+      type="button"
+      class="composer__send btn btn-primary"
+      aria-label="Send"
+      [disabled]="sendDisabled()"
+    >
+      <app-icon name="bi-send-fill" />
+    </button>
+  </div>
+</div>

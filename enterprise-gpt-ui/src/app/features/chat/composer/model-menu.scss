@@ -1,0 +1,93 @@
+:host {
+  display: inline-flex;
+}
+
+// The frame's pill: 30px tall, fully rounded, on the raised surface.
+.model-menu__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--bs-body-color);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.model-menu__pill-context {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.model-menu__chevron {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.model-menu__status {
+  padding: 8px 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+// Two-line rows; the base .menu__item centering would stack the lines oddly,
+// so the dot tops out beside the first line and the check centers itself.
+.model-menu__option {
+  align-items: flex-start;
+  padding: 7px 9px;
+}
+
+.model-menu__option--selected {
+  background: var(--surface-2);
+}
+
+.model-menu__option-dot {
+  margin-top: 5px;
+}
+
+.model-menu__option-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.model-menu__option-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.model-menu__default-badge {
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.model-menu__option-caption {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+
+  .font-mono {
+    font-size: 11px;
+  }
+}
+
+.model-menu__check {
+  align-self: center;
+  color: var(--brand);
+  font-size: 14px;
+}

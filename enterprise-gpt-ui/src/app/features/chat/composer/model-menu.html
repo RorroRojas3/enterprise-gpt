@@ -1,0 +1,71 @@
+<app-menu
+  [label]="menuLabel()"
+  align="start"
+  direction="up"
+  [panelWidth]="360"
+  [stayOpen]="models.error() !== null && settings.selectedModel() === null"
+>
+  <span appMenuTriggerContent class="model-menu__pill">
+    <app-status-dot [tone]="pillTone()" label="" [labelHidden]="true" [size]="7" />
+    <span class="model-menu__pill-name">{{ pillName() }}</span>
+    @if (pillContext(); as context) {
+      <span class="model-menu__pill-context font-mono">{{ context }}</span>
+    }
+    <app-icon class="model-menu__chevron" name="bi-chevron-down" />
+  </span>
+
+  <!--
+    The status arms are disabled menu items, not <p> text: role="menu" allows
+    only menuitem* children, and a menu with zero items both fails AXE and
+    strands the roving focus. A dimmed, focusable row is what native menus do.
+  -->
+  @if (models.error() !== null && settings.selectedModel() === null) {
+    <button appMenuItem type="button" aria-disabled="true" class="model-menu__status">
+      The model catalog failed to load.
+    </button>
+    <button appMenuItem type="button" (click)="models.reload()">
+      <app-icon name="bi-arrow-clockwise" />
+      Retry
+    </button>
+  } @else if (models.models().length === 0) {
+    <button appMenuItem type="button" aria-disabled="true" class="model-menu__status">
+      {{ models.isFulfilled() ? 'No models are available.' : 'Loading models…' }}
+    </button>
+  } @else {
+    @for (model of models.models(); track model.id) {
+      <button
+        appMenuItem
+        type="button"
+        role="menuitemradio"
+        class="model-menu__option"
+        [attr.aria-checked]="isSelected(model)"
+        [class.model-menu__option--selected]="isSelected(model)"
+        (click)="settings.selectModel(model.id)"
+      >
+        <app-status-dot
+          class="model-menu__option-dot"
+          [tone]="toneOf(model)"
+          label=""
+          [labelHidden]="true"
+          [size]="8"
+        />
+        <span class="model-menu__option-text">
+          <span class="model-menu__option-name">
+            {{ model.name }}
+            @if (model.isDefault) {
+              <span class="model-menu__default-badge">Default</span>
+            }
+          </span>
+          <span class="model-menu__option-caption"
+            ><span>{{ captionPrefix(model) }}</span
+            ><span class="font-mono">{{ contextOf(model) }}</span
+            ><span>{{ captionSuffix(model) }}</span></span
+          >
+        </span>
+        @if (isSelected(model)) {
+          <app-icon class="model-menu__check" name="bi-check-lg" />
+        }
+      </button>
+    }
+  }
+</app-menu>

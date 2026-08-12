@@ -1,0 +1,53 @@
+<app-menu
+  [label]="'Tool servers: ' + settings.toolsLabel()"
+  align="start"
+  direction="up"
+  [panelWidth]="320"
+  [stayOpen]="true"
+  [disabled]="settings.toolsDisabled()"
+>
+  <span
+    appMenuTriggerContent
+    class="tools-menu__pill"
+    [class.tools-menu__pill--disabled]="settings.toolsDisabled()"
+  >
+    <app-icon class="tools-menu__icon" name="bi-tools" />
+    <span>{{ settings.toolsLabel() }}</span>
+    <app-icon class="tools-menu__chevron" name="bi-chevron-down" />
+  </span>
+
+  <p class="tools-menu__heading" aria-hidden="true">Tool servers</p>
+
+  <!--
+    A disabled menu item, not <p> text: role="menu" allows only menuitem*
+    children, and a menu with zero items fails AXE and strands roving focus.
+  -->
+  @if (mcps.servers().length === 0) {
+    <button appMenuItem type="button" aria-disabled="true" class="tools-menu__status">
+      {{ mcps.isFulfilled() ? 'No tool servers are available to you.' : 'Loading tool servers…' }}
+    </button>
+  } @else {
+    @for (server of mcps.servers(); track server.id) {
+      <button
+        appMenuItem
+        type="button"
+        role="menuitemcheckbox"
+        class="tools-menu__option"
+        [attr.aria-checked]="settings.selectedIdSet().has(server.id)"
+        (click)="settings.toggleMcpServer(server.id)"
+      >
+        <app-icon
+          class="tools-menu__checkbox"
+          [class.tools-menu__checkbox--checked]="settings.selectedIdSet().has(server.id)"
+          [name]="settings.selectedIdSet().has(server.id) ? 'bi-check-square-fill' : 'bi-square'"
+        />
+        <span class="tools-menu__name">{{ server.name }}</span>
+      </button>
+    }
+    <hr appMenuSeparator />
+    <!-- Redundant with the menu's own stay-open behavior, so hidden from AT. -->
+    <p class="tools-menu__footnote" aria-hidden="true">
+      Stays open while you toggle — applies to the next turn.
+    </p>
+  }
+</app-menu>

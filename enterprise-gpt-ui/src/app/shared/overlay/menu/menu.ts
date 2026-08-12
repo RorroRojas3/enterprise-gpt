@@ -4,7 +4,10 @@ import {
   DOCUMENT,
   DestroyRef,
   ElementRef,
+  afterEveryRender,
   afterRenderEffect,
+  computed,
+  contentChild,
   effect,
   inject,
   input,
@@ -15,6 +18,7 @@ import {
 import { onDismiss } from '@shared/a11y/dismiss';
 import { Icon } from '@shared/icon/icon';
 import { IconName } from '@shared/icon/icon-names';
+import { MenuTriggerContent } from './menu-trigger-content';
 
 let nextId = 0;
 
@@ -50,14 +54,50 @@ export class Menu {
   private readonly triggerRef = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
   private readonly panelRef = viewChild<ElementRef<HTMLDivElement>>('panel');
 
-  /** The accessible name of the trigger. Name the subject: "Actions for Helios". */
+  /**
+   * The accessible name of the trigger. Name the subject: "Actions for Helios" —
+   * and when the trigger projects its own face, include the current value
+   * ("Model: GPT-5 Enterprise"), because the name is all a screen reader gets.
+   */
   readonly label = input.required<string>();
   readonly icon = input<IconName>('bi-three-dots-vertical');
   readonly align = input<'start' | 'end'>('end');
   readonly open = model<boolean>(false);
+  /**
+   * Keeps the panel open when an item is activated — the multi-select shape
+   * (frame `2c`), where each toggle applies immediately and closing would force
+   * a reopen per choice. Escape, Tab, outside-pointerdown, and scroll still
+   * dismiss: the panel stays open *while toggling*, it is not modal.
+   */
+  readonly stayOpen = input<boolean>(false);
+  /**
+   * `aria-disabled` + inert, never the native attribute — a natively disabled
+   * button cannot take focus, which would strand keyboard users with no
+   * element to read the disabled state from.
+   */
+  readonly disabled = input<boolean>(false);
+  readonly panelWidth = input<number>(204);
+  /**
+   * `up` opens above the trigger — the composer sits at the bottom of the
+   * screen. Static rather than flipped at the viewport edge, which is exactly
+   * why this panel never needed Popper.
+   */
+  readonly direction = input<'down' | 'up'>('down');
+
+  private readonly triggerContent = contentChild(MenuTriggerContent);
+  /** Whether a consumer projected its own trigger face. */
+  protected readonly hasTriggerContent = computed(() => this.triggerContent() !== undefined);
 
   protected readonly panelId = `menu-panel-${nextId++}`;
-  protected readonly position = signal({ top: 0, left: 0 });
+  /**
+   * `up` panels anchor by `bottom`, not a measured `top`: the pickers swap
+   * panel content while open (retry → loading → rows), and a top-anchored
+   * panel would grow *downward* over the trigger it is supposed to sit above.
+   * Bottom-anchoring makes growth extend upward with no re-measurement.
+   */
+  protected readonly position = signal<{ top: number | null; bottom: number | null; left: number }>(
+    { top: 0, bottom: null, left: 0 },
+  );
 
   /** Set when opening by keyboard, so focus lands on the right end of the list. */
   private focusLastOnOpen = false;
@@ -108,12 +148,45 @@ export class Menu {
           return;
         }
         const width = panel.nativeElement.offsetWidth;
+        const up = this.direction() === 'up';
+        // The viewport, not documentElement.clientHeight: a fixed-position
+        // `bottom` resolves against the viewport, and the two differ by the
+        // horizontal scrollbar when one exists.
+        const viewportHeight =
+          this.document.defaultView?.innerHeight ?? this.document.documentElement.clientHeight;
         this.position.set({
-          top: box.bottom + 4,
+          top: up ? null : box.bottom + 4,
+          bottom: up ? viewportHeight - box.top + 4 : null,
           left: this.align() === 'end' ? box.right - width : box.left,
         });
-        this.focusItem(this.focusLastOnOpen ? -1 : 0);
+        if (this.items().length === 0) {
+          // No item to rove onto (a pending or empty picker state): focus the
+          // panel itself so Escape and the status content stay reachable.
+          panel.nativeElement.focus();
+        } else {
+          this.focusItem(this.focusLastOnOpen ? -1 : 0);
+        }
         this.focusLastOnOpen = false;
+      },
+    });
+
+    // A content swap while open can unmount the focused item — the retry flow
+    // replaces the Retry button with a status row — dropping focus to <body>,
+    // where every key the panel handles goes dead. While the panel is open,
+    // focus belongs inside it, so a fall-through is corrected rather than a
+    // user choice overridden: any deliberate way out (Tab, Escape, outside
+    // press, activation) closes the menu first.
+    afterEveryRender({
+      mixedReadWrite: () => {
+        if (!this.open()) {
+          return;
+        }
+        const panel = this.panelRef()?.nativeElement;
+        const active = this.document.activeElement;
+        if (!panel || (active !== null && active !== this.document.body && active.isConnected)) {
+          return;
+        }
+        (this.items()[0] ?? panel).focus();
       },
     });
 
@@ -121,6 +194,9 @@ export class Menu {
   }
 
   protected toggle(): void {
+    if (this.disabled()) {
+      return;
+    }
     if (this.open()) {
       this.close();
     } else {
@@ -129,6 +205,17 @@ export class Menu {
   }
 
   protected onTriggerKeydown(event: KeyboardEvent): void {
+    if (this.disabled()) {
+      return;
+    }
+    // Focus can legitimately sit on the trigger while the panel is open (a
+    // panel with no items focuses itself, but never steals from the trigger),
+    // so Escape must work from here too, not only inside the panel.
+    if (event.key === 'Escape' && this.open()) {
+      event.preventDefault();
+      this.close();
+      return;
+    }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       this.focusLastOnOpen = event.key === 'ArrowUp';
@@ -171,9 +258,15 @@ export class Menu {
     }
   }
 
-  /** Any activation inside the panel closes it — that is what a menu item is for. */
+  /**
+   * Any activation inside the panel closes it — that is what a menu item is
+   * for — unless the consumer opted into `stayOpen`, where each activation is
+   * a toggle that applies in place. A disabled item never closes: native menus
+   * leave the panel open when a dimmed row is clicked.
+   */
   protected onPanelClick(event: MouseEvent): void {
-    if ((event.target as HTMLElement).closest('[appMenuItem]')) {
+    const item = (event.target as HTMLElement).closest('[appMenuItem]');
+    if (!this.stayOpen() && item && item.getAttribute('aria-disabled') !== 'true') {
       this.close();
     }
   }

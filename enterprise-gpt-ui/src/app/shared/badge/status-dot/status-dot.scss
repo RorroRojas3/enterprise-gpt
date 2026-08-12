@@ -33,3 +33,15 @@
 .status-dot__mark--brand {
   background: var(--brand);
 }
+
+.status-dot__mark--provider-azure-openai {
+  background: var(--provider-azure-openai);
+}
+
+.status-dot__mark--provider-bedrock {
+  background: var(--provider-bedrock);
+}
+
+.status-dot__mark--provider-anthropic {
+  background: var(--provider-anthropic);
+}

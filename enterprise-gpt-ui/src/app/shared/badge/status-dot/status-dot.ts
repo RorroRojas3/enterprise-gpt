@@ -1,6 +1,15 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type StatusTone = 'ok' | 'warn' | 'fail' | 'muted' | 'accent' | 'brand';
+export type StatusTone =
+  | 'ok'
+  | 'warn'
+  | 'fail'
+  | 'muted'
+  | 'accent'
+  | 'brand'
+  | 'provider-azure-openai'
+  | 'provider-bedrock'
+  | 'provider-anthropic';
 
 /**
  * A coloured dot with its meaning beside it — provider dots in the model picker,

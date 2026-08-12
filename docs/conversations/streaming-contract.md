@@ -1,6 +1,6 @@
 # Conversation Streaming Contract
 
-End-to-end reference for what `POST api/conversations/{id}/stream` writes on the wire: the server-sent-event framing, the JSON event contract inside each frame, and how a client folds a sequence of those events back into the assistant's answer and its tree of tool activity. Audience: whoever writes or maintains a client of this endpoint — starting with the `enterprise-ui` rewrite, for which **this release is a breaking change** (§7). Companion to [Conversation Usage and Favourites](usage-and-favorites.md), which covers what the same turn records in the database.
+End-to-end reference for what `POST api/conversations/{id}/stream` writes on the wire: the server-sent-event framing, the JSON event contract inside each frame, and how a client folds a sequence of those events back into the assistant's answer and its tree of tool activity. Audience: whoever writes or maintains a client of this endpoint. The shipped consumer is the rebuilt `enterprise-gpt-ui/` client, whose streaming layer is documented in [Conversation Streaming Client](streaming-client.md) and mapped file by file in §7. Companion to [Conversation Usage and Favourites](usage-and-favorites.md), which covers what the same turn records in the database.
 
 ## 1. Overview
 
@@ -280,19 +280,15 @@ The consequence for a client: the activity tree is **not** available on `GET api
 
 One turn per conversation at a time — a second concurrent `POST` gets `409`. A dropped connection cancels the turn; it does not pause it.
 
-## 7. Breaking change for `enterprise-ui`
+## 7. The client that reads this stream
 
-**The SPA is broken by this release, knowingly, with the user's explicit agreement.** No frontend code was changed here; the client will be rewritten as its own piece of work.
+This section used to record a breaking change: the old `enterprise-ui/` client read the body with `body.getReader()` and appended each chunk as answer text, so the framed contract broke it loudly — the literal `data: {"kind":"TextDelta",…}` frames landed in the chat bubble. That client is deleted, nothing was migrated, and the rebuild at `enterprise-gpt-ui/` shipped its streaming layer against this document (US-404, US-405). [Conversation Streaming Client](streaming-client.md) documents that layer end to end; what follows maps the rewrite steps this section used to prescribe onto where each one landed.
 
-`ConversationService.streamChat` in [`conversation.service.ts`](../../enterprise-ui/src/app/services/conversation.service.ts) reads the response with `body.getReader()`, decodes each chunk as text, and appends it straight to the message being rendered. There is no SSE parsing anywhere in it. Against the new contract that appends the literal frames — `data: {"kind":"TextDelta",…}` — into the chat bubble. It fails loudly and immediately, which is the failure mode to prefer: there is no silent-corruption path where some events render and others do not.
-
-What the rewrite needs, in the order it will need it:
-
-1. **Frame parsing** — split the body on `\n\n`, strip the `data: ` prefix, buffer the partial tail across reads (§2).
-2. **The reducer** — copy `andes-assistant-ui.ts` out of the package into the SPA and fold with it (§5.2). Do not hand-roll it.
-3. **A store, not a string** — the message being streamed is now a snapshot (text + reasoning + an activity tree + usage), so the state it lives in has to hold that shape. Follow the `ngrx-signal-store` skill; do not extend the legacy `store.service.ts`.
-4. **Activity rendering** — a card per activity with `displayName` as the label and `toolKind` as a badge, `subStatuses` beneath it, `children` indented, and `durationSeconds`/`usage` on completion. Never compose `"Calling {displayName} {toolKind}"`; the contract keeps them separate precisely so the kind word is not repeated.
-5. **Cancellation** — unchanged. Aborting the fetch still ends the turn, and the server still records what it spent.
+1. **Frame parsing** — shipped as [`createSseFrameCodec()`](../../enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts), a synchronous push decoder behind the [`StreamCodec`](../../enterprise-gpt-ui/src/app/domain/stream/stream-codec.ts) interface: §3.2's framing, a carry-over buffer for chunk boundaries that fall mid-frame or mid-character, and a `flush()` that salvages a final frame that truncation robbed of its blank line. A raw-text fallback ([`raw-text-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/raw-text-codec.ts)), selected by the `features.rawStreamCodec` config flag, serves a deployment still running a pre-framing server.
+2. **The reducer** — vendored byte-for-byte at [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) and drift-checked by `npm run check:contract`, exactly as §5.2 prescribes. Its fold semantics for all eight event kinds are pinned by [`assistant-ui.fold.spec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.fold.spec.ts) — which exercises the vendored `foldAssistantEvents`, never a reimplementation.
+3. **A store, not a string** — the transport half exists: [`ConversationStreamClient`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts) delivers batches of already-decoded events, checks the problem body before reading a single body byte (§3.3's "before" table), and treats a fault after the body began as §3.3's "after" case — a graceful completion, leaving "ended without `Finished`" detection to the turn store US-406 builds. The selection half also exists: [`TurnSettingsStore`](../../enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts) holds the model and MCP servers the next turn will use (US-402, US-403).
+4. **Activity rendering** — still to come (US-406 and EP-5/EP-6), on top of the snapshot the vendored fold produces.
+5. **Cancellation** — shipped with the transport: the caller's Stop, sign-out, and unsubscription compose into one `AbortSignal` that aborts the fetch. The server-side behaviour is unchanged — aborting still ends the turn, and the server still records what it spent.
 
 ## 8. Testing
 
@@ -322,6 +318,7 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 | Framing, serialization, headers | [`Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs) |
 | Event production, transcription, finalization | [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) |
 | Pipeline registration (`UseToolTracking` before `UseFunctionInvocation`) | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
-| Current (now-broken) client | [`enterprise-ui/src/app/services/conversation.service.ts`](../../enterprise-ui/src/app/services/conversation.service.ts) |
-| TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.5.0, `typescript/andes-assistant-ui.ts` |
-| Related reference | [Conversation Usage and Favourites](usage-and-favorites.md), [Model Management](../models/model-management.md) |
+| Client codec | [`enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts) |
+| Client transport | [`enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts) |
+| TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.5.0, `typescript/andes-assistant-ui.ts`, vendored at [`enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) |
+| Related reference | [Conversation Streaming Client](streaming-client.md), [Conversation Usage and Favourites](usage-and-favorites.md), [Model Management](../models/model-management.md) |
