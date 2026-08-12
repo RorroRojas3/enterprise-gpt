@@ -432,9 +432,11 @@ describe('ConversationListStore', () => {
 
     store.search('helios');
     flush();
-    expectSearch().flush(conversationPage([conversationFixture({ name: 'Helios 2.4' })], {
-      totalCount: 1,
-    }));
+    expectSearch().flush(
+      conversationPage([conversationFixture({ name: 'Helios 2.4' })], {
+        totalCount: 1,
+      }),
+    );
     flush();
 
     store.restoreRow(removal!);

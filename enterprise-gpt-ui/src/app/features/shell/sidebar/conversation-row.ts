@@ -37,9 +37,7 @@ export class ConversationRow {
   readonly conversation = input.required<ConversationDto>();
 
   /** This row's own action is in flight — e.g. a rename whose dialog was force-closed. */
-  protected readonly pending = computed(() =>
-    this._list.pendingIds().has(this.conversation().id),
-  );
+  protected readonly pending = computed(() => this._list.pendingIds().has(this.conversation().id));
 
   protected readonly link = computed(() => ['/chat', this.conversation().id]);
 

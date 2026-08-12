@@ -72,9 +72,7 @@ describe('ConversationActionsStore', () => {
   function loadList(items: ConversationDto[]): void {
     list.ensureLoaded();
     flush();
-    backend
-      .expectOne((request) => request.url === SEARCH_URL)
-      .flush(conversationPage(items));
+    backend.expectOne((request) => request.url === SEARCH_URL).flush(conversationPage(items));
     flush();
   }
 

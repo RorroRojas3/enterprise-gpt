@@ -77,9 +77,7 @@ export class RenameConversationDialog {
    */
   protected readonly canSubmit = computed(
     () =>
-      this.f.name().value().trim() !== '' &&
-      !this.f.name().invalid() &&
-      !this.actions.renameBusy(),
+      this.f.name().value().trim() !== '' && !this.f.name().invalid() && !this.actions.renameBusy(),
   );
 
   /**
@@ -88,8 +86,7 @@ export class RenameConversationDialog {
    */
   protected readonly showErrors = computed(
     () =>
-      this.f.name().invalid() &&
-      (this.f.name().touched() || this.actions.renameError() !== null),
+      this.f.name().invalid() && (this.f.name().touched() || this.actions.renameError() !== null),
   );
 
   /**

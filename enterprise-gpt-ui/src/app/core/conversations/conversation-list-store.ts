@@ -27,11 +27,7 @@ import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import { ToastStore } from '@core/notifications/toast-store';
 import { setFirstPage, setPage, withOffsetPagination } from '@core/state/with-offset-pagination';
-import {
-  addPendingId,
-  removePendingId,
-  withPendingIds,
-} from '@core/state/with-pending-ids';
+import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
 import {
   setError,
   setFulfilled,

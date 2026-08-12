@@ -94,7 +94,10 @@ describe('DeleteConversationDialog', () => {
     expect(document.activeElement).toBe(main);
 
     backend
-      .expectOne({ method: 'DELETE', url: `${TEST_API_BASE_URL}/api/conversations/${conversation.id}` })
+      .expectOne({
+        method: 'DELETE',
+        url: `${TEST_API_BASE_URL}/api/conversations/${conversation.id}`,
+      })
       .flush(null, { status: 204, statusText: 'No Content' });
   });
 
