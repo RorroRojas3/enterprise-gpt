@@ -375,6 +375,29 @@ describe('Chat', () => {
     expect(element().querySelector('.chat__menu')).not.toBeNull();
   });
 
+  it('renders the composer on the empty route and on an open conversation alike', async () => {
+    await harness.navigateByUrl('/chat', Chat);
+    expect(element().querySelector('app-composer')).not.toBeNull();
+
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('app-composer')).not.toBeNull();
+  });
+
+  it('withholds the composer from a conversation that failed to open', async () => {
+    // Sending has no target when the conversation could not be opened; the
+    // error panel is the screen's only content.
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(PROBLEM_FIXTURES.resourceNotFound, { status: 404, statusText: 'Not Found' });
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('app-composer')).toBeNull();
+  });
+
   it('keeps the sidebar row in step with the name the server reports', async () => {
     const list = TestBed.inject(ConversationListStore);
     list.ensureLoaded();

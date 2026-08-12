@@ -2,14 +2,19 @@
   #trigger
   type="button"
   class="menu__trigger"
+  [class.menu__trigger--content]="hasTriggerContent()"
   aria-haspopup="menu"
   [attr.aria-expanded]="open()"
   [attr.aria-controls]="open() ? panelId : null"
+  [attr.aria-disabled]="disabled() ? 'true' : null"
+  [attr.aria-label]="hasTriggerContent() ? label() : null"
   (click)="toggle()"
   (keydown)="onTriggerKeydown($event)"
 >
-  <app-icon [name]="icon()" />
-  <span class="visually-hidden">{{ label() }}</span>
+  <ng-content select="[appMenuTriggerContent]">
+    <app-icon [name]="icon()" />
+    <span class="visually-hidden">{{ label() }}</span>
+  </ng-content>
 </button>
 
 @if (open()) {
@@ -21,7 +26,9 @@
     [id]="panelId"
     [attr.aria-label]="label()"
     [style.top.px]="position().top"
+    [style.bottom.px]="position().bottom"
     [style.left.px]="position().left"
+    [style.width.px]="panelWidth()"
     (keydown)="onPanelKeydown($event)"
     (keydown.escape)="close()"
     (click)="onPanelClick($event)"
