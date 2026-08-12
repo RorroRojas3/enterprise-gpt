@@ -153,17 +153,21 @@ describe('Shell', () => {
       await TestBed.inject(Router).navigateByUrl(`/chat/${open.id}`);
       await fixture.whenStable();
 
-      const rows = [...host(fixture).querySelectorAll<HTMLAnchorElement>('a.row')];
-      expect(rows[0]?.getAttribute('aria-current')).toBe('page');
+      // Since US-304 the row is a wrapper around the link and its kebab: the wrapper
+      // paints the selected surface, while `aria-current` stays on the link element.
+      const rows = [...host(fixture).querySelectorAll<HTMLElement>('.row')];
+      const links = [...host(fixture).querySelectorAll<HTMLAnchorElement>('a.row__link')];
+      expect(links[0]?.getAttribute('aria-current')).toBe('page');
       expect(rows[0]?.classList.contains('row--selected')).toBe(true);
       // Exact matching, or every row would light up under /chat.
-      expect(rows[1]?.getAttribute('aria-current')).toBeNull();
+      expect(links[1]?.getAttribute('aria-current')).toBeNull();
+      expect(rows[1]?.classList.contains('row--selected')).toBe(false);
 
-      // And only the row claims `page`: the Chat nav link stays active under
+      // And only the link claims `page`: the Chat nav link stays active under
       // /chat/{id} by prefix match, so it announces `true` instead of competing.
       const current = [...host(fixture).querySelectorAll('[aria-current="page"]')];
       expect(current).toHaveLength(1);
-      expect(current[0]).toBe(rows[0]);
+      expect(current[0]).toBe(links[0]);
     });
 
     it('scrolls the list on its own rather than the whole sidebar', async () => {

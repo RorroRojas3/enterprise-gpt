@@ -8,12 +8,14 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
+import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
 import { EMPTY, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ConversationDetailDto } from '@domain/api/conversation';
+import { ConversationDetailDto, ConversationDto } from '@domain/api/conversation';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { toAppError } from '@core/errors/to-app-error';
+import { conversationEvents } from '@core/events/conversation-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import {
@@ -76,6 +78,30 @@ export const ConversationStore = signalStore(
 
       return store.conversation()?.name ?? store._list.entityMap()[id]?.name ?? '';
     }),
+    /**
+     * The DTO the header's actions operate on (US-308). Detail preferred — its
+     * `projectId` is the fresh one the rename must echo — with the sidebar's copy
+     * while the detail request is in flight. Null for a deep link the list never
+     * held: the kebab waits one round trip rather than acting on a guess.
+     */
+    current: computed<ConversationDto | null>(() => {
+      const id = store.conversationId();
+      if (id === null) {
+        return null;
+      }
+
+      return store.conversation() ?? store._list.entityMap()[id] ?? null;
+    }),
+    /**
+     * This conversation's own rename or delete is in flight; the header kebab's
+     * items disable for the duration. Reads `pendingIds()` directly so the
+     * dependency is explicit to the computed.
+     */
+    actionPending: computed(() => {
+      const id = store.conversationId();
+
+      return id !== null && store._list.pendingIds().has(id);
+    }),
   })),
   withMethods((store) => {
     function detailUrl(id: string): string {
@@ -127,6 +153,21 @@ export const ConversationStore = signalStore(
       },
     };
   }),
+  withEventHandlers((store, events = inject(Events)) => [
+    // A rename confirmed by the server (US-304) lands here even when the sidebar
+    // list does not hold the row — the deep-link case `refreshRow` ignores. Without
+    // it the header would keep showing the old name, because `name` prefers the
+    // detail copy this store holds.
+    events.on(conversationEvents.updated).pipe(
+      tap(({ payload }) => {
+        const current = store.conversation();
+        if (current !== null && current.id === payload.id) {
+          // The spread keeps `mcpServerIds`, which `ConversationDto` does not carry.
+          patchState(store, { conversation: { ...current, ...payload } });
+        }
+      }),
+    ),
+  ]),
   // Last, as the feature requires.
   withResetOnSignOut(),
 );

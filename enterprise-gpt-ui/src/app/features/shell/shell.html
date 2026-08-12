@@ -19,3 +19,12 @@
 <main #main id="main-content" class="shell__main" tabindex="-1">
   <router-outlet />
 </main>
+
+<!--
+  The conversation dialogs mount once, here, because the shell wraps both of their
+  invokers — the sidebar's row kebabs and the chat header's kebab — and neither
+  feature may import the other. A native <dialog> renders in the top layer, so the
+  position in this template carries no visual meaning.
+-->
+<app-rename-conversation-dialog />
+<app-delete-conversation-dialog />

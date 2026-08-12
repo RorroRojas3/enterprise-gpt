@@ -1,0 +1,25 @@
+<app-modal heading="Delete conversation?" size="sm" [open]="open()" (closed)="onClosed()">
+  @if (actions.deleteTarget(); as target) {
+    <!-- Frame 3d: names the thing; messages go, uploaded files stay. -->
+    <p class="delete__body">
+      “{{ target.name }}” and its messages will be permanently deleted. Files it uploaded stay in
+      your documents.
+    </p>
+  }
+
+  <!--
+    modalFooter on each button (not a wrapper): the kit's footer supplies frame 3d's
+    right-aligned, gapped row. Initial focus lands on Cancel, the non-destructive
+    action — Enter on a freshly opened destructive confirm must not destroy anything.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    data-modal-autofocus
+    (click)="actions.cancelDelete()"
+  >
+    Cancel
+  </button>
+  <button modalFooter class="btn btn-danger" type="button" (click)="confirm()">Delete</button>
+</app-modal>

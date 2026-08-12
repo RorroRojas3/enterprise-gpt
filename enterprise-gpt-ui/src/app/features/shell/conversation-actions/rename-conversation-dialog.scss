@@ -1,0 +1,25 @@
+// Frame 3c: error text and counter share one row below the field — message left,
+// counter right — and the counter survives the invalid state.
+.rename__meta {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+
+.rename__errors {
+  min-width: 0;
+}
+
+.rename__error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fail);
+}
+
+.rename__counter {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+}

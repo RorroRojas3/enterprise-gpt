@@ -9,6 +9,8 @@ import {
 } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { UiStore } from '@core/ui/ui-store';
+import { DeleteConversationDialog } from './conversation-actions/delete-conversation-dialog';
+import { RenameConversationDialog } from './conversation-actions/rename-conversation-dialog';
 import { Sidebar } from './sidebar/sidebar';
 
 /**
@@ -22,7 +24,7 @@ import { Sidebar } from './sidebar/sidebar';
 @Component({
   selector: 'app-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, Sidebar],
+  imports: [DeleteConversationDialog, RenameConversationDialog, RouterOutlet, Sidebar],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
   host: {

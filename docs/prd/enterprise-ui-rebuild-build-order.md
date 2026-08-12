@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 17 / 94 done.** Current position: P2, `US-304`.
+**Progress: 20 / 94 done.** Current position: P3, `US-404`.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -28,7 +28,7 @@ Within a phase, stories on the same table row have no ordering constraint betwee
 
 US-109 sits ahead of US-105 and US-106 despite its number: it ships the assets both of them consume.
 
-## P2 — Signed-in shell · in progress
+## P2 — Signed-in shell · ✅ complete
 
 | Order | Story | Depends on | Pri | Status |
 | --- | --- | --- | --- | --- |
@@ -41,13 +41,13 @@ US-109 sits ahead of US-105 and US-106 despite its number: it ships the assets b
 | — | ⛔ **Pattern gate** — review `ConversationListStore` before any second list store | | | ✅ reviewed 2026-08-11 |
 | 16 | US-301 Collapse the sidebar and have it stay collapsed | US-106 | P0 | ✅ 2026-08-11 |
 | 17 | US-303 Start a new conversation without creating one | US-302 | P0 | ✅ 2026-08-11 — prompt chips deferred to US-401 |
-| **18** | **US-304 Rename a conversation without unlinking it** | US-302, US-106 | P0 | **next** |
-| 19 | US-306 Delete a conversation | US-302, US-106 | P0 | |
-| 20 | US-308 Act on the open conversation from its header | US-302 | P1 | ⚠ see note |
+| 18 | US-304 Rename a conversation without unlinking it | US-302, US-106 | P0 | ✅ 2026-08-11 — first Signal Form; row kebab ships Rename-only |
+| 19 | US-306 Delete a conversation | US-302, US-106 | P0 | ✅ 2026-08-11 — optimistic removal, navigation on the 204 |
+| 20 | US-308 Act on the open conversation from its header | US-302 | P1 | ✅ 2026-08-11 — ⚠ shipped per the note below |
 
 US-302 leads the phase on two counts: US-303, US-304, US-306, and US-308 all hang off it, and the PRD's risk table requires it be reviewed as a *pattern decision* before the 15 stores that copy it exist. US-301 needs only US-106, so it can run alongside.
 
-⚠ **US-308 is scheduled ahead of its own criteria.** §8 places it in P2, but its header star routes through US-305 (P4) and two of its four kebab items through US-307 (P5). Build the 52px header bar with those controls absent and revisit in P4/P5, or move the whole story to P4.
+⚠ **US-308 was scheduled ahead of its own criteria, and shipped that way.** §8 places it in P2, but its header star routes through US-305 (P4) and two of its four kebab items through US-307 (P5); the 52px header bar shipped with those controls absent, per this note. Its sub-768px mobile-navbar criterion was additionally deferred to US-1403 on 2026-08-11 — frame `1d`'s hamburger opens frame `3e`'s sidebar overlay, which does not exist until the responsive shell does. All three deferrals are tracked in the interim-behaviors table below.
 
 ## P3 — MVP chat · the minimum viable replacement, and the first phase worth deploying
 
@@ -176,6 +176,7 @@ Each of these ships deliberately incomplete and is closed later. Kept here so no
 | Interim behavior | Shipped in | Retired by |
 | --- | --- | --- |
 | Header star and two kebab items absent | US-308 (P2) | US-305 (P4), US-307 (P5) |
+| Chat header does not collapse into frame `1d`'s 54px mobile navbar below 768px | US-308 (P2) | US-1403 (P7) |
 | Upload gating verified against a test host, not the composer | US-204 (P2) | US-801 (P5) |
 | MCP consent message without the server's consent scope | US-412 (P4) | US-411 (P8) |
 | Conversation and project sort disabled with a stated reason | US-705 (P5) | US-706 (P8) |

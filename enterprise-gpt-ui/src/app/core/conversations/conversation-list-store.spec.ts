@@ -333,6 +333,128 @@ describe('ConversationListStore', () => {
     expect(store.totalCount()).toBe(11);
   });
 
+  it('optimistically renames a held row and ignores one it does not hold', () => {
+    const [first] = load();
+
+    store.renameRow(first!.id, 'Renamed locally');
+    expect(store.entities()[0]?.name).toBe('Renamed locally');
+    // dateModified stays put: the server's own value arrives via refreshRow on
+    // success, and a local bump would diverge from it on the next fetch.
+    expect(store.entities()[0]?.dateModified).toBe(first!.dateModified);
+
+    store.renameRow('deadbeef-0000-4000-8000-000000000000', 'Nope');
+    expect(store.entities()).toHaveLength(2);
+    expect(store.entities().some((c) => c.name === 'Nope')).toBe(false);
+  });
+
+  it('tracks per-row pending state and clears it on sign-out', () => {
+    const [first, second] = load();
+
+    store.setRowPending(first!.id, true);
+    expect(store.isRowPending(first!.id)).toBe(true);
+    // Per-row, not global: the other row stays actionable.
+    expect(store.isRowPending(second!.id)).toBe(false);
+
+    store.setRowPending(first!.id, false);
+    expect(store.isRowPending(first!.id)).toBe(false);
+
+    store.setRowPending(first!.id, true);
+    signOut();
+    expect(store.isRowPending(first!.id)).toBe(false);
+  });
+
+  it('optimistically removes a held row and shifts the window back with it', () => {
+    const [first, second] = load([conversationFixture(), conversationFixture()], 10);
+
+    const removal = store.removeRow(first!.id);
+
+    expect(removal?.conversation.id).toBe(first!.id);
+    expect(removal?.index).toBe(0);
+    expect(store.entities().map((c) => c.id)).toEqual([second!.id]);
+    // The inverse of prependNewest: the server no longer counts the row, so the next
+    // "Load more" window must not skip a survivor.
+    expect(store.skip()).toBe(1);
+    expect(store.totalCount()).toBe(9);
+    expect(store.hasMore()).toBe(true);
+  });
+
+  it('returns null for a row it does not hold and changes nothing', () => {
+    load([conversationFixture()], 5);
+
+    expect(store.removeRow('deadbeef-0000-4000-8000-000000000000')).toBeNull();
+    expect(store.entities()).toHaveLength(1);
+    expect(store.skip()).toBe(1);
+    expect(store.totalCount()).toBe(5);
+  });
+
+  it('restores a removed row at its previous position with the window re-advanced', () => {
+    const [a, b, c] = load(
+      [conversationFixture(), conversationFixture(), conversationFixture()],
+      10,
+    );
+
+    const removal = store.removeRow(b!.id);
+    expect(store.entities().map((x) => x.id)).toEqual([a!.id, c!.id]);
+
+    store.restoreRow(removal!);
+
+    expect(store.entities().map((x) => x.id)).toEqual([a!.id, b!.id, c!.id]);
+    expect(store.skip()).toBe(3);
+    expect(store.totalCount()).toBe(10);
+
+    // A no-op when the id is already back — a refetch raced the failed delete.
+    store.restoreRow(removal!);
+    expect(store.entities()).toHaveLength(3);
+    expect(store.totalCount()).toBe(10);
+  });
+
+  it('cancels a Load-more page in flight when a row is removed beneath it', () => {
+    // The page's URL carries the pre-removal offset; served after the server-side
+    // delete it would leave a one-row hole between the windows.
+    load([conversationFixture()], 10);
+
+    store.loadMore();
+    const stale = expectSearch();
+
+    store.removeRow(store.entities()[0]!.id);
+
+    expect(stale.cancelled).toBe(true);
+    expect(store.loadingMore()).toBe(false);
+  });
+
+  it('refuses to restore into a result set the removal never touched', () => {
+    // The user searched while the delete was in flight; the failed delete's row may
+    // not even match the query on screen, and the counter bump would starve a
+    // genuine row out of the next Load-more window.
+    const [first] = load([conversationFixture({ name: 'Doomed' })], 10);
+
+    const removal = store.removeRow(first!.id);
+
+    store.search('helios');
+    flush();
+    expectSearch().flush(conversationPage([conversationFixture({ name: 'Helios 2.4' })], {
+      totalCount: 1,
+    }));
+    flush();
+
+    store.restoreRow(removal!);
+
+    expect(store.entities().map((c) => c.name)).toEqual(['Helios 2.4']);
+    expect(store.totalCount()).toBe(1);
+    expect(store.skip()).toBe(1);
+  });
+
+  it('clamps a restore index that no longer exists', () => {
+    const [a, b] = load([conversationFixture(), conversationFixture()], 2);
+
+    const removal = store.removeRow(b!.id);
+    store.removeRow(a!.id);
+
+    store.restoreRow(removal!);
+
+    expect(store.entities().map((x) => x.id)).toEqual([b!.id]);
+  });
+
   it('keeps detail-only fields out of the list entities', () => {
     // ConversationStore hands this store a ConversationDetailDto; letting mcpServerIds
     // through would leave entities() non-uniformly shaped.

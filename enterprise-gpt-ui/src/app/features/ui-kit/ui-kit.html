@@ -267,12 +267,21 @@
 <app-modal [(open)]="modalOpen" heading="Rename conversation" size="sm">
   <label class="form-label" for="kit-rename">Name</label>
   <input id="kit-rename" class="form-control" data-modal-autofocus value="Helios release status" />
-  <div modalFooter>
-    <button class="btn btn-outline-secondary" type="button" (click)="modalOpen.set(false)">
-      Cancel
-    </button>
-    <button class="btn btn-primary" type="button" (click)="modalOpen.set(false)">Rename</button>
-  </div>
+  <!--
+    modalFooter goes on each button, never on a wrapper div: the footer itself is the
+    flex row, and a wrapper collapses its gap once template whitespace is stripped.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    (click)="modalOpen.set(false)"
+  >
+    Cancel
+  </button>
+  <button modalFooter class="btn btn-primary" type="button" (click)="modalOpen.set(false)">
+    Rename
+  </button>
 </app-modal>
 
 <app-offcanvas [(open)]="offcanvasOpen" heading="User details">

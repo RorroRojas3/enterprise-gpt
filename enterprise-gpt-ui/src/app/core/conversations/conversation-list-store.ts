@@ -12,6 +12,7 @@ import {
 import {
   addEntities,
   prependEntity,
+  removeEntity,
   setAllEntities,
   updateEntity,
   withEntities,
@@ -26,6 +27,11 @@ import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import { ToastStore } from '@core/notifications/toast-store';
 import { setFirstPage, setPage, withOffsetPagination } from '@core/state/with-offset-pagination';
+import {
+  addPendingId,
+  removePendingId,
+  withPendingIds,
+} from '@core/state/with-pending-ids';
 import {
   setError,
   setFulfilled,
@@ -57,13 +63,29 @@ interface ConversationListState {
    * rows stay on screen instead of collapsing back to a skeleton.
    */
   readonly loadingMore: boolean;
+  /**
+   * Which result set the entities belong to; every query bump replaces it. Private:
+   * it exists so a {@link RemovedRow} can prove it still describes the list on
+   * screen — `restoreRow` must not splice a row into a result set its removal never
+   * touched, nor advance counters that never lost it.
+   */
+  readonly _queryGeneration: number;
 }
 
 const initialState: ConversationListState = {
   name: '',
   _started: false,
   loadingMore: false,
+  _queryGeneration: 0,
 };
+
+/** What {@link ConversationListStore.removeRow} captured, so `restoreRow` can undo it. */
+export interface RemovedRow {
+  readonly conversation: ConversationDto;
+  readonly index: number;
+  /** The result set the row was removed from; a restore into any other is refused. */
+  readonly generation: number;
+}
 
 /**
  * Narrows a value to the fields the list holds.
@@ -106,7 +128,10 @@ function listFields(conversation: ConversationDto): ConversationDto {
  * offered, which is the PRD's regime **B**: the API accepts no sort parameter, and
  * sorting a page in hand would put a second sorted run under the first.
  *
- * `withPendingIds` is deliberately absent: nothing has a per-row action until US-304.
+ * `withPendingIds` arrived with US-304, the first per-row action. The mutation surface
+ * around it — {@link renameRow}, {@link setRowPending} — exists because the store that
+ * drives renames and deletes (`ConversationActionsStore`) cannot `patchState` a store
+ * whose state is protected; entity writes stay methods here, decisions stay there.
  *
  * The `_started` + release-the-query trio (`ensureLoaded`, the `null` arm of
  * `_runQuery`, and the `onInit` computation) is the obvious candidate for a sixth
@@ -120,6 +145,7 @@ export const ConversationListStore = signalStore(
   withEntities<ConversationDto>(),
   withRequestStatus(),
   withOffsetPagination(SIDEBAR_PAGE_SIZE),
+  withPendingIds(),
   withProps(() => ({
     _http: inject(HttpClient),
     _toasts: inject(ToastStore),
@@ -171,7 +197,10 @@ export const ConversationListStore = signalStore(
         filter((name): name is string => name !== null),
         tap(() => {
           store._querySuperseded$.next();
-          patchState(store, setPending(), { loadingMore: false });
+          patchState(store, setPending(), (state) => ({
+            loadingMore: false,
+            _queryGeneration: state._queryGeneration + 1,
+          }));
         }),
         switchMap((name) => {
           const { url, params } = searchUrl(name, 0);
@@ -282,6 +311,92 @@ export const ConversationListStore = signalStore(
             updateEntity({ id: conversation.id, changes: listFields(conversation) }),
           );
         }
+      },
+
+      /**
+       * Optimistically renames a held row (US-304). The caller rolls a failure back
+       * by calling it again with the previous name.
+       *
+       * A row the list does not hold is ignored for the same reason as
+       * {@link refreshRow}. `dateModified` is deliberately untouched: the server's
+       * value arrives via `refreshRow` when the request succeeds, and a local bump
+       * would diverge from it on the next fetch.
+       */
+      renameRow(id: string, name: string): void {
+        if (store.entityMap()[id] !== undefined) {
+          patchState(store, updateEntity({ id, changes: { name } }));
+        }
+      },
+
+      /**
+       * Marks or clears a row's own in-flight action (US-304 rename; US-306 delete).
+       *
+       * Driven by `ConversationActionsStore` around its requests — always through
+       * `tapResponse`'s `finalize`, so the flag clears on success, failure and
+       * sign-out cancellation alike.
+       */
+      setRowPending(id: string, pending: boolean): void {
+        patchState(store, pending ? addPendingId(id) : removePendingId(id));
+      },
+
+      /**
+       * Optimistically removes a held row (US-306), returning what {@link restoreRow}
+       * needs to undo it — null when the list does not hold the row.
+       *
+       * The inverse of {@link prependNewest}'s bookkeeping: the server no longer
+       * counts this row, so the window the next "Load more" asks for must shift back
+       * with it. Both counters clamp at zero because a page response landing between
+       * remove and restore can already have moved them.
+       *
+       * A "Load more" page already on the wire is superseded here too: its URL was
+       * built against the pre-removal offset, and if the server deletes first, the
+       * row that slid into the last fetched position would fall between the windows
+       * — a permanent one-row hole. Cancelling lets the next press use the
+       * corrected offset.
+       */
+      removeRow(id: string): RemovedRow | null {
+        const conversation = store.entityMap()[id];
+        if (conversation === undefined) {
+          return null;
+        }
+
+        store._querySuperseded$.next();
+        const index = store.entities().findIndex((c) => c.id === id);
+        patchState(store, removeEntity(id), (state) => ({
+          skip: Math.max(0, state.skip - 1),
+          totalCount: Math.max(0, state.totalCount - 1),
+        }));
+
+        return { conversation, index, generation: store._queryGeneration() };
+      },
+
+      /**
+       * Reinserts a removed row at its previous position — the rollback of a delete
+       * the server refused. `setAllEntities` over a spliced copy, because the entity
+       * catalogue has no insert-at and hand-patching `ids` would bypass it.
+       *
+       * Refused outright when the removal belonged to a different result set (the
+       * user searched while the delete was in flight): the row may not match the
+       * query on screen, and the counter bump would starve a genuine row out of the
+       * next "Load more" window. The error toast has already reported the failed
+       * delete; the row reappears with the next refetch of a set it belongs to.
+       * Also a no-op when the id is already back, and index-clamped because pages
+       * may have appended meanwhile.
+       */
+      restoreRow({ conversation, index, generation }: RemovedRow): void {
+        if (
+          generation !== store._queryGeneration() ||
+          store.entityMap()[conversation.id] !== undefined
+        ) {
+          return;
+        }
+
+        const next = [...store.entities()];
+        next.splice(Math.min(index, next.length), 0, conversation);
+        patchState(store, setAllEntities(next), (state) => ({
+          skip: state.skip + 1,
+          totalCount: state.totalCount + 1,
+        }));
       },
 
       /**
