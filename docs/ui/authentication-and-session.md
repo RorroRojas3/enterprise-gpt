@@ -286,9 +286,15 @@ The single replay needs no attempt counter. `catchError` does not catch the obse
       path: '',
       canActivate: [sessionGuard],   // ← only then, POST api/users/me
       children: [
-        { path: 'chat', loadComponent: /* … */ },
         { path: 'forbidden', component: Forbidden },
-        { path: 'admin', canMatch: [adminCanMatch], loadChildren: /* … */ },
+        {
+          path: '',
+          loadComponent: /* Shell — the signed-in chrome, lazy */,
+          children: [
+            { matcher: chatMatcher, loadComponent: /* … */ },
+            { path: 'admin', canMatch: [adminCanMatch], loadChildren: /* … */ },
+          ],
+        },
       ],
     },
   ],
@@ -354,7 +360,7 @@ async ensureSession(): Promise<boolean> {
 
 The catalogs are then **not** awaited. They are two independent GETs whose absence each screen already has to handle, and holding the startup shell on screen for them would trade a rendered app for a spinner.
 
-> **Scoped deviation from US-202.** The story's wording also lists conversations and projects among what the bootstrap requests. Those belong to EP-3 and EP-9, which own their stores; adding placeholder loads here would either duplicate that work or constrain it. `SessionBootstrap` exists precisely so those two epics have one obvious place to add their calls — the guard already delegates to it rather than reaching into stores itself.
+> **Scoped deviation from US-202, since closed on one side.** The story's wording also lists conversations and projects among what the bootstrap requests. Those belong to EP-3 and EP-9, which own their stores. EP-3 has landed, and `ensureSession` now ends with `this._conversations.ensureLoaded()` — which only flips a release flag, because a signal-valued `rxMethod` needs an injection context this service does not have ([Shell and Navigation §4.2](shell-and-navigation.md#42-the-declarative-load-and-the-flag-sessionbootstrap-flips)). Projects follow in EP-9, in the same place. That `SessionBootstrap` exists at all is why the guard never has to reach into a store itself.
 
 ### 7.3 The catalog stores
 
@@ -539,7 +545,7 @@ A receiving tab latches, hides the startup shell, dispatches `signedOut`, wipes 
 - **It never broadcasts in response.** Receiving is one-way and terminal, so there is no echo to guard against and no way for two tabs to bounce a sign-out between them. A spec asserts it.
 - **It hides the startup shell explicitly.** The broadcast can land mid-navigation, and a guard latching off *cancels* that navigation — which `provideStartupShellHandoff` deliberately does not treat as its cue (§8). Without the explicit call, the "Starting Enterprise GPT…" card stays stacked above the interstitial for as long as the wipe takes, because the shell is a block in normal flow rather than an overlay.
 
-`AuthService` is constructed eagerly through `provideAppInitializer`, and that is load-bearing rather than tidy: its constructor is what subscribes this tab to another tab's sign-out. Left lazy, the cross-tab teardown would exist only on routes that happen to inject the service, and US-301 deleting the temporary shell bar would silently switch it off.
+`AuthService` is constructed eagerly through `provideAppInitializer`, and that is load-bearing rather than tidy: its constructor is what subscribes this tab to another tab's sign-out. Left lazy, the cross-tab teardown would exist only on routes that happen to inject the service — and US-301 has since deleted the temporary shell bar that used to guarantee one, so the eager construction is now the *only* thing keeping it wired.
 
 ### 11.6 What survives, and how that is enforced
 
@@ -570,7 +576,7 @@ It is a **factory** rather than one shared signal, so two concurrent requests ha
 
 | Surface | Where | Notes |
 | --- | --- | --- |
-| `<app-user-footer>` | [`shared/nav/user-footer/`](../../enterprise-gpt-ui/src/app/shared/nav/user-footer/) | Frame `3a`: initials avatar, display name, theme toggle, sign out. Hosted in the temporary `.dev-shell-bar` and gated on `session.isLoaded()`; US-301 relocates it into the sidebar |
+| `<app-user-footer>` | [`shared/nav/user-footer/`](../../enterprise-gpt-ui/src/app/shared/nav/user-footer/) | Frame `3a`: initials avatar, display name, theme toggle, sign out. Since US-301 it sits in the sidebar footer, where it needs no session gate — the shell renders only behind `sessionGuard`. Its `compact` input stacks it into the collapsed 60 px strip ([Shell and Navigation §5.3](shell-and-navigation.md#53-two-widths-two-template-branches)) |
 | `<app-signing-out>` | [`shared/feedback/signing-out/`](../../enterprise-gpt-ui/src/app/shared/feedback/signing-out/) | The full-page interstitial that replaces the routed area while sign-out runs |
 | `/signed-out` | [`features/auth/signed-out/`](../../enterprise-gpt-ui/src/app/features/auth/signed-out/) | Unguarded landing page. One "Sign in again" control, latched |
 
@@ -617,10 +623,11 @@ The security-relevant MSAL settings are fixed in `buildMsalConfig` and deliberat
 | End of EP-1 (US-106) | 349.83 kB | 88.13 kB | 360 kB / 400 kB |
 | End of US-203 | 629.33 kB | 151.96 kB | 650 kB / 720 kB |
 | **End of EP-2 (US-205)** | **637.10 kB** | **153.38 kB** | **650 kB / 720 kB** |
+| End of EP-3 (US-303) | 643.62 kB | 158.05 kB | 660 kB / 720 kB |
 
 US-204 and US-205 cost 7.77 kB between them — the drop directive and overlay, the session channel, the storage allowlist, the navigation seam, and three components — so the budget set at US-203 still holds and **no re-baseline was needed**. None of the MSAL cost is deferrable: `main.ts` must create and initialize the instance before bootstrap, so it is unavoidably initial. The `styles` bundle budget is unchanged at 65 kB warn / 80 kB error, and the global stylesheet still compiles to 60.32 kB — the new components carry their own scoped styles.
 
-The PRD's §9 open question on the initial-bundle budget is re-stated with these figures.
+The PRD's §9 open question on the initial-bundle budget is re-stated with these figures. EP-3 added 6.52 kB and moved only the *warning* threshold, because both the shell and the chat route are lazy ([Shell and Navigation §9](shell-and-navigation.md#9-bundle-and-budgets)).
 
 ## 13. What is not here yet
 
@@ -629,15 +636,14 @@ The PRD's §9 open question on the initial-bundle budget is re-stated with these
 | The composer that consumes US-204 | US-401 / **US-801** | `[appFileDropTarget]` and `@if (session.canUploadFiles())` are both ready; wiring them is the two-line snippet in §2.4. The frame `2h` acceptance assertion re-runs against the real composer |
 | The project files panel's drop zone | US-902 | Renders the same `<app-drop-overlay>` |
 | The streaming turn that `injectSignedOutAbort()` exists for | EP-4 | US-205's third criterion is met today for every store that exists, through `takeUntil(injectSignedOut())`; the abort primitive is what the raw-`fetch` path will use (§11.7) |
-| Conversation and project loads in the bootstrap | EP-3 / EP-9 | Add them to `SessionBootstrap.ensureSession()`, after the awaited session |
-| A real chat screen | EP-3 / EP-4 | `features/chat/chat.ts` is a placeholder that renders session and catalog state so a live sign-in can be eyeballed. It is replaced entirely |
+| The project load in the bootstrap | EP-9 | Add it to `SessionBootstrap.ensureSession()`, after the awaited session, beside the conversation list EP-3 added there |
+| A real chat screen | EP-4 | EP-3 built the route, its header and its empty state; the composer and the transcript are US-401 onward ([Shell and Navigation §7](shell-and-navigation.md#7-the-chat-route)) |
 | A real admin area | EP-12 | `features/admin/` is one lazy route rendering "admin users", enough for the chunk-withholding gate to be real |
-| The sidebar that owns `<app-user-footer>` | US-301 | It currently lives in a temporary fixed `.dev-shell-bar` in `App`, which US-301 deletes |
 | Removing `@azure/msal-angular` | — | Unused; kept only because US-101 requires it installed (§3) |
 
 ## 14. Testing and verification status
 
-The suite is **550 specs**, all green, with `npm run lint` and `npm run build` green alongside them.
+The suite was **550 specs** at the end of EP-2, all green, with `npm run lint` and `npm run build` green alongside them. (It stands at 610 after EP-3 — [Shell and Navigation §10](shell-and-navigation.md#10-testing).)
 
 | Area | Specs | Notable cases |
 | --- | --- | --- |
@@ -658,11 +664,11 @@ The suite is **550 specs**, all green, with `npm run lint` and `npm run build` g
 ```bash
 # from enterprise-gpt-ui/
 npm run lint    # ESLint + check:icons + check:forbidden + check:tokens
-npm test        # Vitest, single run — 550 specs
+npm test        # Vitest, single run — 550 specs at the end of this epic
 npm run build   # budgets, then check-initial-chunk.mjs (which covers features/admin/)
 ```
 
-> **Verification status, stated honestly.** The three gates above are green. **No part of this epic has been exercised against a real Entra tenant** — not the sign-in redirect round trip, not the token audience, not `POST api/users/me`, and, since US-205, not the end-session round trip or the `/signed-out` landing either. The API could not be started locally to check the flow end to end: it crashes at startup in `CreateDatabaseIfNotExistsAsync` because Cosmos DB is not running in this environment. Treat all of it as unverified against a live tenant until someone runs it, and note that `/signed-out` also needs registering as a post-logout redirect URI in the app registration before that first run (§11.9). The `features/chat` placeholder renders session and catalog state specifically so that run needs no devtools session.
+> **Verification status, stated honestly.** The three gates above are green. **No part of this epic has been exercised against a real Entra tenant** — not the sign-in redirect round trip, not the token audience, not `POST api/users/me`, and, since US-205, not the end-session round trip or the `/signed-out` landing either. The API could not be started locally to check the flow end to end: it crashes at startup in `CreateDatabaseIfNotExistsAsync` because Cosmos DB is not running in this environment. Treat all of it as unverified against a live tenant until someone runs it, and note that `/signed-out` also needs registering as a post-logout redirect URI in the app registration before that first run (§11.9). Since EP-3 the first screen after sign-in is the real shell, so that run now exercises the conversation list against the API as well.
 
 ## 15. Troubleshooting
 
@@ -713,4 +719,4 @@ npm run build   # budgets, then check-initial-chunk.mjs (which covers features/a
 | Drag test shims | [`src/testing/drag.ts`](../../enterprise-gpt-ui/src/testing/drag.ts), [`src/testing/navigation.ts`](../../enterprise-gpt-ui/src/testing/navigation.ts) |
 | Startup handoff and watchdog | [`core/config/startup-shell-handoff.ts`](../../enterprise-gpt-ui/src/app/core/config/startup-shell-handoff.ts), [`src/index.html`](../../enterprise-gpt-ui/src/index.html) |
 | Admin-chunk and `localStorage` gates | [`scripts/check-initial-chunk.mjs`](../../enterprise-gpt-ui/scripts/check-initial-chunk.mjs), [`scripts/check-forbidden-apis.mjs`](../../enterprise-gpt-ui/scripts/check-forbidden-apis.mjs) |
-| Related reference | [Frontend Foundation](frontend-foundation.md), [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [User Management](../users/user-management.md) |
+| Related reference | [Frontend Foundation](frontend-foundation.md), [Shell and Navigation](shell-and-navigation.md), [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [User Management](../users/user-management.md) |

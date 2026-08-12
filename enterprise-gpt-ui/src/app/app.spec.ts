@@ -93,18 +93,22 @@ describe('App', () => {
     expect(host.querySelector('app-signing-out')).not.toBeNull();
   });
 
-  it('shows the user footer only once a session exists', async () => {
-    // The four unguarded routes have none. An ungated footer puts an empty avatar, a
-    // blank name and a live Sign out button over a deliberately chrome-free frame.
+  it('renders no signed-in chrome of its own, session or not', async () => {
+    // The chrome belongs to `Shell`, a layout route under sessionGuard. Rendered here
+    // it would put an avatar, a name and a live Sign out button over /auth,
+    // /login-failed, /session-error and /signed-out, every one of which is deliberately
+    // chrome-free.
     const fixture = await render();
     const host = fixture.nativeElement as HTMLElement;
 
     expect(host.querySelector('app-user-footer')).toBeNull();
+    expect(host.querySelector('app-sidebar')).toBeNull();
 
     await session();
     await fixture.whenStable();
 
-    expect(host.querySelector('app-user-footer')).not.toBeNull();
+    expect(host.querySelector('app-user-footer')).toBeNull();
+    expect(host.querySelector('app-sidebar')).toBeNull();
   });
 
   it('keeps the toast region mounted throughout, so the first toast is announced', async () => {

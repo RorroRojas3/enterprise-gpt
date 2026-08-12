@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 14 / 94 done.** Current position: P2, `US-302`.
+**Progress: 17 / 94 done.** Current position: P2, `US-304`.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -37,11 +37,11 @@ US-109 sits ahead of US-105 and US-106 despite its number: it ships the assets b
 | 12 | US-203 Keep the admin area off non-admin devices | US-202 | P0 | ✅ 2026-08-11 |
 | 13 | US-204 Gate upload affordances on the Upload File permission | US-202 | P1 | ✅ 2026-08-11 — primitives only; frame `2h` re-asserts under US-801 |
 | 14 | US-205 Sign out and leave nothing behind | US-202, US-104 | P0 | ✅ 2026-08-11 |
-| **15** | **US-302 See my recent conversations** | US-202, US-104 | P0 | **next** |
-| — | ⛔ **Pattern gate** — review `ConversationListStore` before any second list store | | | |
-| 16 | US-301 Collapse the sidebar and have it stay collapsed | US-106 | P0 | |
-| 17 | US-303 Start a new conversation without creating one | US-302 | P0 | |
-| 18 | US-304 Rename a conversation without unlinking it | US-302, US-106 | P0 | |
+| 15 | US-302 See my recent conversations | US-202, US-104 | P0 | ✅ 2026-08-11 — with the shell that hosts the sidebar |
+| — | ⛔ **Pattern gate** — review `ConversationListStore` before any second list store | | | ✅ reviewed 2026-08-11 |
+| 16 | US-301 Collapse the sidebar and have it stay collapsed | US-106 | P0 | ✅ 2026-08-11 |
+| 17 | US-303 Start a new conversation without creating one | US-302 | P0 | ✅ 2026-08-11 — prompt chips deferred to US-401 |
+| **18** | **US-304 Rename a conversation without unlinking it** | US-302, US-106 | P0 | **next** |
 | 19 | US-306 Delete a conversation | US-302, US-106 | P0 | |
 | 20 | US-308 Act on the open conversation from its header | US-302 | P1 | ⚠ see note |
 

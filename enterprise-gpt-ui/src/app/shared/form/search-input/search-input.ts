@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   effect,
   input,
   linkedSignal,
   model,
   output,
+  viewChild,
 } from '@angular/core';
 import { Icon } from '@shared/icon/icon';
 
@@ -54,6 +56,19 @@ export class SearchInput {
    * from the URL — puts the field back in step with no extra pass.
    */
   protected readonly text = linkedSignal(() => this.value());
+
+  private readonly _field = viewChild.required<ElementRef<HTMLInputElement>>('field');
+
+  /**
+   * Puts the caret in the field.
+   *
+   * Exposed as a method so a caller that *reveals* the field — the collapsed sidebar's
+   * search button, which expands the sidebar first — does not have to reach into
+   * markup this component owns.
+   */
+  focusField(): void {
+    this._field().nativeElement.focus();
+  }
 
   constructor() {
     effect((onCleanup) => {

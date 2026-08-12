@@ -1,0 +1,21 @@
+<!--
+  The skip link is the first focusable thing in the signed-in app, so a keyboard user
+  reaches the screen without tabbing the whole conversation list. `.skip-link` is styled
+  globally in `_kit.scss`, because it has to sit outside every component.
+
+  The click is handled rather than left to the browser: `PathLocationStrategy` listens
+  for `hashchange` as well as `popstate`, so a bare `href="#main-content"` would send the
+  router to `/chat#main-content`, re-run the guards, and leave the fragment in the URL
+  for the rest of the session. The `href` stays for the affordance and for a middle-click.
+-->
+<a class="skip-link" href="#main-content" (click)="skipToMain($event)">Skip to main content</a>
+
+<app-sidebar class="shell__sidebar" />
+
+<!--
+  tabindex="-1" so focus can actually be moved here. Without it the browser scrolls to
+  the target and leaves focus on <body>, and the next Tab restarts at the top of the page.
+-->
+<main #main id="main-content" class="shell__main" tabindex="-1">
+  <router-outlet />
+</main>

@@ -1,0 +1,292 @@
+// No `overflow: hidden` here, deliberately. The collapsed strip's tooltip flyout is
+// positioned at `left: 54px` inside a 60px column, so it sits *outside* this element
+// by design (frame 3b) — clipping it would silently drop US-301's tooltip criterion.
+// During the 200ms expand the contents reflow at the animating width instead of
+// overflowing, which is what a sidebar animation looks like anyway.
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.sidebar,
+.strip {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--bs-border-color);
+}
+
+// ── Brand ────────────────────────────────────────────────────────────────────
+.sidebar__brand {
+  flex: 0 0 auto;
+  padding: 16px 16px 0;
+}
+
+.sidebar__brand-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+// Frame 3a sizes the lockup by height (48px); BrandLogo is sized by width, because its
+// image keeps `height: auto` to preserve the aspect ratio. 48px on the 754×535 asset is
+// 68px wide — the same picture, expressed the way the component takes it.
+.sidebar__logo {
+  width: 68px;
+}
+
+.sidebar__ridge {
+  margin-top: 12px;
+}
+
+.sidebar__collapse {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) ease,
+    color var(--t-fast) ease;
+
+  &:hover {
+    background: var(--surface-2);
+    color: var(--bs-body-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+.sidebar__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 10px;
+}
+
+.sidebar__new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--bs-body-color);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color var(--t-fast) ease;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+}
+
+.sidebar__nav-link--active {
+  background: var(--active-bg);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.sidebar__nav-icon {
+  width: 18px;
+  font-size: 15px;
+  text-align: center;
+}
+
+.sidebar__nav-label {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__nav-shield {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+// ── Conversations ────────────────────────────────────────────────────────────
+// flex: 1 with min-height: 0 is what confines the scroll to the list: without the zero
+// minimum a flex child refuses to shrink below its content and the whole sidebar
+// scrolls instead, taking the brand and the footer with it.
+.sidebar__conversations {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 2px 12px 6px;
+}
+
+.sidebar__heading {
+  margin: 0;
+  padding: 8px 10px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.sidebar__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sidebar__skeleton {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sidebar__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Recoloured through Bootstrap's own custom properties rather than a `color`
+// declaration, which `.btn`'s `color: var(--bs-btn-color)` would win on equal
+// specificity depending on stylesheet order.
+.sidebar__more {
+  --bs-btn-color: var(--muted);
+  --bs-btn-hover-color: var(--bs-body-color);
+
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+// ── Footer ───────────────────────────────────────────────────────────────────
+// UserFooter already styles itself as frame 3a's footer row — restating its padding and
+// rule here would be two places to change one design. Only the flex behaviour it cannot
+// know about is set from here.
+.sidebar__footer {
+  flex: 0 0 auto;
+}
+
+// ── Collapsed strip (frame 3b) ───────────────────────────────────────────────
+.strip {
+  align-items: center;
+  gap: 7px;
+  padding: 12px 0 10px;
+}
+
+.strip__mark {
+  width: 32px;
+}
+
+.strip__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// 44px square: the strip's controls are the app's only icon-only primary targets, and
+// 44px is the WCAG 2.2 AA target size the board already draws them at.
+.strip__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) ease,
+    color var(--t-fast) ease;
+
+  &:hover {
+    background: var(--surface-2);
+    color: var(--bs-body-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+// The primary action keeps Bootstrap's own colours — `.btn-primary` already resolves
+// them from the --btnP-* tokens — so only its size is set here.
+.strip__button.btn-primary {
+  font-size: 16px;
+}
+
+.strip__button--active {
+  background: var(--active-bg);
+  color: var(--brand);
+}
+
+.strip__rule {
+  width: 32px;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--bs-border-color);
+  opacity: 1;
+}
+
+.strip__spacer {
+  flex: 1;
+}

@@ -1,33 +1,48 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
-import { ADMIN_ROUTE } from '@core/auth/auth-routes';
-import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
-import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { SessionStore } from '@core/session/session-store';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
+import { Skeleton } from '@shared/feedback/skeleton/skeleton';
+import { ChatEmptyState } from './chat-empty-state';
+import { ConversationStore } from './conversation-store';
 
 /**
- * Placeholder for the chat surface.
+ * The chat screen, served for both `/chat` and `/chat/{conversationId}` by the single
+ * `chatMatcher` route — so moving between them changes a parameter rather than
+ * remounting the page.
  *
- * **EP-3 and EP-4 replace this entirely** — the sidebar (US-301, US-302), the empty
- * state of frame `1a`, and the composer all land there. It exists now so EP-2's
- * guards have somewhere to succeed to, and it renders the session and catalog state
- * so a live sign-in can be verified end to end without a browser devtools session.
- *
- * The Admin link is gated on the permission rather than shown-and-disabled: US-203
- * requires the entry to be **absent** for a non-administrator, so `@if` is the
- * criterion, not a styling choice. It moves to the sidebar in US-301.
+ * The transcript and the composer arrive with EP-4 and EP-6. Until then an open
+ * conversation shows its 52px header (frame `1b`) over the empty state; the header is
+ * **absent** rather than empty when no conversation is open, which is frame `1a`.
+ * Its favourite star and kebab belong to US-308.
  */
 @Component({
   selector: 'app-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BrandLogo, RouterLink],
+  imports: [ChatEmptyState, ErrorPanel, Skeleton],
+  providers: [ConversationStore],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
 export class Chat {
-  protected readonly adminRoute = ADMIN_ROUTE;
-  protected readonly session = inject(SessionStore);
-  protected readonly models = inject(ModelCatalogStore);
-  protected readonly mcps = inject(McpCatalogStore);
+  /**
+   * Bound from the route by `withComponentInputBinding()`, and set back to `undefined`
+   * when the parameter disappears — which is how navigating from `/chat/{id}` to
+   * `/chat` closes the conversation without a remount.
+   */
+  readonly conversationId = input<string>();
+
+  protected readonly conversation = inject(ConversationStore);
+
+  /**
+   * A 404 here means the conversation does not exist *or* belongs to someone else, and
+   * neither starts being true on a second attempt — so the panel offers no Retry.
+   */
+  protected readonly canRetry = canRetry;
+
+  constructor() {
+    // The constructor is an injection context, which a signal-valued reactive method
+    // requires: it binds the subscription to this component rather than to the root
+    // injector, where it would outlive the screen.
+    this.conversation.open(this.conversationId);
+  }
 }

@@ -6,7 +6,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), which is the au
 
 ## 1. Overview
 
-> **Scope, stated plainly.** This is foundation only — the substrate the feature stories build on, all of it covered by specs that run without a backend. Sign-in, the session, permission gating, the guarded route tree and sign-out arrived afterwards in EP-2 and have their own reference in [Authentication and Session](authentication-and-session.md); several sections below hand off to it where the two meet.
+> **Scope, stated plainly.** This is foundation only — the substrate the feature stories build on, all of it covered by specs that run without a backend. Sign-in, the session, permission gating, the guarded route tree and sign-out arrived afterwards in EP-2 and have their own reference in [Authentication and Session](authentication-and-session.md); the signed-in shell, the conversation sidebar and the chat route followed in EP-3, in [Shell and Navigation](shell-and-navigation.md). Several sections below hand off to both where they meet.
 
 Three pieces landed here, each solving a problem the deleted `enterprise-ui/` client had. The presentation half of EP-1 — design tokens, theming, self-hosted assets and the shared component kit — has its own reference in [Design System](design-system.md).
 
@@ -33,6 +33,7 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | The one permitted `localStorage` call site | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
 | Replacing the document, as opposed to routing | [`core/navigation/hard-navigation.ts`](../../enterprise-gpt-ui/src/app/core/navigation/hard-navigation.ts) |
 | Sign-in, tokens, guards, session, sign-out (EP-2) | [Authentication and Session](authentication-and-session.md), [`core/auth/`](../../enterprise-gpt-ui/src/app/core/auth/), [`core/session/`](../../enterprise-gpt-ui/src/app/core/session/), [`core/catalog/`](../../enterprise-gpt-ui/src/app/core/catalog/), [`core/dnd/`](../../enterprise-gpt-ui/src/app/core/dnd/) |
+| The shell, the conversation sidebar, the chat route (EP-3) | [Shell and Navigation](shell-and-navigation.md), [`core/conversations/`](../../enterprise-gpt-ui/src/app/core/conversations/), [`core/ui/`](../../enterprise-gpt-ui/src/app/core/ui/), [`features/shell/`](../../enterprise-gpt-ui/src/app/features/shell/), [`features/chat/`](../../enterprise-gpt-ui/src/app/features/chat/) |
 | The vendored streaming contract (US-107) | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) — copied byte-for-byte from `Andes.Extensions.AI.UI` and **never hand-edited**; see [the README](../../enterprise-gpt-ui/README.md#vendored-contract) |
 | Tokens, theming, assets, the shared UI kit (US-105/106/109) | [Design System](design-system.md), [`src/styles/`](../../enterprise-gpt-ui/src/styles/), [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) |
 | Asset builds and drift checks | [`enterprise-gpt-ui/scripts/`](../../enterprise-gpt-ui/scripts/) — `copy-fonts`, `build-icon-sprite`, `build-brand-images`, `check-andes-contract`, `check-tokens`, `check-icon-names`, `check-forbidden-apis`, `check-initial-chunk` |
@@ -48,14 +49,16 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | Layering | `features → shared → core → domain`, one way only. `domain/` imports nothing from Angular, so the SSE codec and the activity fold will test in Node with no `TestBed` |
 | Path aliases | `@core/*`, `@domain/*`, `@shared/*`, `@features/*`, `@testing/*`. No barrel `index.ts` files; components are `foo.ts`/`foo.html`/`foo.scss` with no `.component` suffix |
 | TypeScript | Strict, plus `strictTemplates`, `noPropertyAccessFromIndexSignature`, and `noUncheckedIndexedAccess` |
-| Initial bundle | **637.10 kB raw / 153.38 kB transfer** at the end of EP-2, against the **650 kB warn / 720 kB error** budget re-baselined at US-203. It was 349.83 kB / 88.13 kB at the end of EP-1; MSAL added 248.9 kB and is unavoidably initial, while US-204 and US-205 added 7.77 kB between them and needed no re-baseline ([Authentication and Session §12.2](authentication-and-session.md#122-bundle-re-baseline)). A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB |
+| Initial bundle | **643.62 kB raw / 158.05 kB transfer** at the end of EP-3, against a **660 kB warn / 720 kB error** budget. It was 349.83 kB / 88.13 kB at the end of EP-1; MSAL added 248.9 kB and is unavoidably initial ([Authentication and Session §12.2](authentication-and-session.md#122-bundle-re-baseline)), while EP-3 added only 6.52 kB because both the shell and the chat route are lazy ([Shell and Navigation §9](shell-and-navigation.md#9-bundle-and-budgets)). A separate `styles` budget caps the global stylesheet at **65 kB warn / 80 kB error**; it currently compiles to 60.32 kB |
 | Lint | **ESLint 10** flat config (`eslint.config.mjs`) over typescript-eslint 8.66, angular-eslint 21.4 (`tsRecommended`, `templateRecommended`, `templateAccessibility`) and `@ngrx/eslint-plugin` 21.1.1 at **`signalsTypeChecked`** — which needs `projectService: true`, because the one rule the plain `signals` preset omits throws without type information. Its four NgRx rules are the ones §5 was written against: no arrays at the root of `withState`, writes only through `patchState`, no `store.method()` inside a `computed`, and the `with*` naming convention. `no-restricted-syntax` bans `bypassSecurityTrustHtml`; `@typescript-eslint/no-unused-vars` is **off**, because tsc's `noUnusedLocals`/`noUnusedParameters` own that and, unlike the rule, count a `{@link}` as a use |
 
 **Installed but not imported.** `ngx-markdown` 21.3.0 (over `marked` 18 and `prismjs` 1.30) and `dompurify` 3.4.13 are in `package.json` and referenced nowhere in `src/`, so the 637.10 kB figure is still a *pre-markdown* baseline and EP-6 will have to pay for them and re-baseline. `@azure/msal-angular` 6.0.3 is also on this list, and permanently: EP-2 uses `@azure/msal-browser` 5.18.0 directly and rejected the Angular wrapper for three verified reasons ([Authentication and Session §3](authentication-and-session.md#3-azuremsal-angular-is-installed-and-unused)); it stays installed only because US-101's acceptance criteria require it. `bootstrap-icons` 1.13.1 has left this list without entering the bundle: `scripts/build-icon-sprite.mjs` reads its individual SVGs at build time and emits a sprite into `public/`, so the package is a build-time input rather than a dependency the browser ever sees.
 
 ## 2. Quick start — a store that composes the foundation
 
-Illustrative. The real stores that exist today — `ToastStore`, `SessionStore`, and the two catalog stores — are all app-wide singletons over short lists, so none of them exercises pagination or client query; US-302 sets the reference pattern for a route-scoped collection store. The sketch below shows the composition order §5.7 requires and the two cancellation concerns §5.5 explains.
+Illustrative — the sketch below shows the composition order §5.7 requires and the two cancellation concerns §5.5 explains.
+
+> **The real reference now exists.** US-302's [`ConversationListStore`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts) is the collection store the remaining fifteen copy, and it is documented decision by decision in [Shell and Navigation §4](shell-and-navigation.md#4-conversationliststore--the-reference-list-store). Copy it rather than this sketch, which predates it: it is the one that exercises pagination, a declaratively wired load, and the two cancellation rules a paged list needs. `ToastStore`, `SessionStore` and the two catalog stores are app-wide singletons over short lists and exercise none of that; `ConversationStore` (`features/chat/`) is the first genuinely route-scoped store.
 
 ```ts
 import { computed, inject } from '@angular/core';
@@ -302,6 +305,7 @@ Anything not retried is rethrown as the **identical `HttpErrorResponse` instance
 [`error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts) holds the presentation policy, ready for the toast component in US-106:
 
 - `shouldNotify(error)` — whether the failure deserves a toast. `aborted` does not (the user pressed Stop; announcing it says their own action failed) and `validation-error` does not (the messages are already on the fields). Backed by the same exhaustive `satisfies` pattern.
+- `canRetry(error)` — whether to render a Retry control at all. Added by US-302. **A different question from §4.6's**, which decides whether the *interceptor* may silently replay a GET; this is the slower one of whether a person pressing a button could plausibly get past the failure. A 403, a 404 or a missing grant answers identically however many times it is asked, and a Retry that cannot work reads as a broken button. The `http` arm is decided by status (`>= 500 || 408`), since it also covers a routing 404 that is not going to start existing.
 - `userMessage(error)` — one actionable sentence per arm, preferring a written line over the server's `detail`, which is aimed at a developer reading a log.
 - `traceLine(error)` — `Trace ID: …`, or a real sentence when there is none, since a 499 carries no body at all.
 
@@ -480,8 +484,9 @@ Everything above is covered by Vitest specs that run with no backend and, for th
 | UI kit | `a11y`, `modal`, `offcanvas`, `menu`, `tooltip`, `feedback`, `data`, `badge`, `attachment-chip`, `upload`, `user-footer` | Focus in and focus return; Escape and outside-pointer dismissal; roving menu focus; the two live regions; the polite result summary; selection updaters returning a new `Set`; a drop zone that binds no listeners without the grant |
 | Streaming contract | `assistant-ui.contract` | `foldAssistantEvents` over the vendored types, in Node with no `TestBed` |
 | Auth and session (EP-2) | `auth-service`, `token-service`, `auth.interceptor`, the three guards, `session-store`, `session-channel`, `session-events`, `auth-pages`, `app` | Covered in [Authentication and Session §14](authentication-and-session.md#14-testing-and-verification-status) |
+| Shell and navigation (EP-3) | `conversation-list-store`, `shell`, `chat`, `ui-store` | Covered in [Shell and Navigation §10](shell-and-navigation.md#10-testing) |
 
-The suite is **550 specs** across 51 files as of the end of EP-2.
+The suite is **610 specs** across 55 files as of the end of EP-3.
 
 ```bash
 # from enterprise-gpt-ui/
@@ -495,18 +500,17 @@ npm run build          # production build; the budgets, then check-initial-chunk
 
 Those five gates are what `.github/workflows/ui-ci.yml` runs — the repository's first CI workflow. `check:contract` sits on its own job because it is the only one that needs the .NET toolchain. What each gate enforces, and why several of them are Node scripts rather than lint rules, is in [Design System §10](design-system.md#10-gates).
 
-**One of those gates constrains code you are about to write.** Since US-205, `check:forbidden` fails the build on any `localStorage.setItem` outside [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts). Writes only — reading cannot leave a user's data on a shared machine, and `index.html`'s pre-paint script legitimately reads the theme before any module exists. The rule behind it: `localStorage` survives sign-out by design, so it holds only values **about the browser, not about the user**, and `PREFERENCE_KEYS` enumerates them (today: theme and the sidebar collapse state US-301 will write). Anything identifying, anything fetched from the API, and anything a second person on a shared machine should not see belongs in `sessionStorage` or in a store. `check:tokens` reads the theme key from that file too, so the pre-paint script and the application cannot drift.
+**One of those gates constrains code you are about to write.** Since US-205, `check:forbidden` fails the build on any `localStorage.setItem` outside [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts). Writes only — reading cannot leave a user's data on a shared machine, and `index.html`'s pre-paint script legitimately reads the theme before any module exists. The rule behind it: `localStorage` survives sign-out by design, so it holds only values **about the browser, not about the user**, and `PREFERENCE_KEYS` enumerates them (today: the theme, and the sidebar collapse state US-301 writes — which is why `UiStore` is the one store that must **not** compose `withResetOnSignOut`, [Shell and Navigation §6](shell-and-navigation.md#6-uistore--a-preference-about-the-browser-not-the-user)). Anything identifying, anything fetched from the API, and anything a second person on a shared machine should not see belongs in `sessionStorage` or in a store. `check:tokens` reads the theme key from that file too, so the pre-paint script and the application cannot drift.
 
 ## 7. What is not here yet
 
 | Missing | Owner |
 | --- | --- |
-| The app shell — sidebar, navigation, and any screen behind the guards; `/chat` is a placeholder | EP-3 onward |
-| Any *route-scoped feature* store. `ToastStore`, `SessionStore` and the two catalog stores are all app-wide singletons | US-302 sets the reference pattern |
+| The composer, the transcript, and any per-row conversation action. The shell and the chat route are built; a conversation cannot yet be renamed, favourited, deleted or talked to | US-304 onward, EP-4 |
 | Markdown rendering; `ngx-markdown` is installed but imported nowhere | EP-6 / US-601 |
 | The SSE codec and the chat transport. The vendored contract and its `foldAssistantEvents` are in place; nothing consumes them yet. `injectSignedOutAbort()` (§5.6) is the cancellation primitive waiting for it | EP-4 |
 
-Sign-in, `TokenService`, `authInterceptor`, the guarded route tree and sign-out have all since landed — EP-2 is complete. See [Authentication and Session](authentication-and-session.md).
+Sign-in, `TokenService`, `authInterceptor`, the guarded route tree and sign-out have all since landed — EP-2 is complete. So has EP-3: the signed-in shell, the conversation sidebar, the reference list store and the chat route. See [Authentication and Session](authentication-and-session.md) and [Shell and Navigation](shell-and-navigation.md).
 
 ## 8. Key files
 
@@ -521,6 +525,7 @@ Sign-in, `TokenService`, `authInterceptor`, the guarded route tree and sign-out 
 | Arm selection | [`core/errors/build-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/build-app-error.ts) |
 | Retry and refresh policy | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts) |
 | Store features | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/) |
+| The reference store that composes them | [`core/conversations/conversation-list-store.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts) |
 | Session events and the abort primitive | [`core/events/session-events.ts`](../../enterprise-gpt-ui/src/app/core/events/session-events.ts) |
 | `localStorage` allowlist | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
 | Document replacement seam | [`core/navigation/hard-navigation.ts`](../../enterprise-gpt-ui/src/app/core/navigation/hard-navigation.ts) |
@@ -528,4 +533,4 @@ Sign-in, `TokenService`, `authInterceptor`, the guarded route tree and sign-out 
 | Test providers | [`src/testing/test-providers.ts`](../../enterprise-gpt-ui/src/testing/test-providers.ts) |
 | Vendored streaming contract | [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts), [`scripts/check-andes-contract.mjs`](../../enterprise-gpt-ui/scripts/check-andes-contract.mjs) |
 | Lint and CI | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs), [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml) |
-| Related reference | [Authentication and Session](authentication-and-session.md), [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |
+| Related reference | [Authentication and Session](authentication-and-session.md), [Shell and Navigation](shell-and-navigation.md), [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |

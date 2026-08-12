@@ -37,6 +37,50 @@ export function shouldNotify(error: AppError): boolean {
 }
 
 /**
+ * Which arms a *person* pressing Retry could plausibly get past.
+ *
+ * Distinct from `retry-policy.ts`'s `isTransientRetriable`, which decides whether the
+ * interceptor may replay a GET automatically: this is the broader, slower question of
+ * whether to offer the control at all. A 500 or a dropped connection is worth another
+ * go; a 403, a 404 or a missing grant will answer identically however many times it is
+ * asked, and a Retry that cannot work reads as a broken button.
+ *
+ * `satisfies` rather than an annotation, for the same reason as above: a new arm cannot
+ * be added without deciding.
+ */
+const RETRYABLE_KINDS = {
+  'validation-error': false,
+  'upload-too-large': false,
+  'resource-not-found': false,
+  forbidden: false,
+  'permission-required': false,
+  // The whole point of the 409: the turn in front of it finishes and the next one works.
+  'conversation-busy': true,
+  // Consent is interactive and happens elsewhere; retrying the same call cannot supply it.
+  'mcp-authorization-required': false,
+  'mcp-server-unavailable': true,
+  'provider-not-configured': false,
+  'storage-not-configured': false,
+  http: true,
+  network: true,
+  aborted: true,
+  client: true,
+} as const satisfies Record<AppErrorKind, boolean>;
+
+/**
+ * Whether to offer the user a Retry for this failure.
+ *
+ * @param error The normalized error.
+ */
+export function canRetry(error: AppError): boolean {
+  // A 404 on a route that does not exist is not going to start existing, but the `http`
+  // arm also covers 5xx, so the status decides within it.
+  return error.kind === 'http'
+    ? error.status >= 500 || error.status === 408
+    : RETRYABLE_KINDS[error.kind];
+}
+
+/**
  * The headline for an error toast or inline error panel.
  *
  * Prefers a specific, actionable sentence over the server's `detail`, which is

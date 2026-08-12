@@ -1,26 +1,39 @@
-<main class="chat">
-  <app-brand-logo class="chat__logo" alt="Andes Software Solutions" />
+<!--
+  Frame 1b's header bar. Rendered only when a conversation is open: frame 1a has no
+  header at all, and an empty 52px rule above the empty state is not the same screen.
+-->
+@if (conversation.isOpen()) {
+  <header class="chat__header">
+    <!--
+      The skeleton sits *inside* the h1 rather than replacing it: a deep link to a row
+      the sidebar has not loaded has no name for the length of a round trip, and
+      swapping the heading out would leave the document with no level-1 heading at all
+      until it arrives.
+    -->
+    <h1 class="chat__title">
+      @if (conversation.name(); as name) {
+        {{ name }}
+      } @else {
+        <app-skeleton class="chat__title-skeleton" variant="text" width="200px" height="15px" />
+      }
+    </h1>
+  </header>
+}
 
-  <h1 class="chat__heading font-display">How can I help you today?</h1>
-
-  <p class="chat__note">
-    Signed in as <strong>{{ session.displayName() }}</strong
-    >. The composer, transcript and sidebar arrive with EP-3 and EP-4.
-  </p>
-
-  <dl class="chat__facts font-mono">
-    <dt>Permissions</dt>
-    <dd>{{ session.permissionIds().size }}</dd>
-
-    <dt>Models</dt>
-    <dd>{{ models.models().length }}</dd>
-
-    <dt>MCP servers</dt>
-    <dd>{{ mcps.servers().length }}</dd>
-  </dl>
-
-  <!-- Absent, not disabled: US-203 requires a non-administrator never to see it. -->
-  @if (session.isAdministrator()) {
-    <a class="btn btn-primary chat__admin" [routerLink]="adminRoute">Admin</a>
+<div class="chat__body">
+  @if (conversation.error(); as error) {
+    <!--
+      A 404 here means the conversation does not exist *or* belongs to someone else —
+      the API deliberately does not distinguish the two, and neither does this copy.
+    -->
+    <app-error-panel
+      class="chat__error"
+      [error]="error"
+      [canRetry]="canRetry(error)"
+      heading="This conversation couldn’t be opened"
+      (retried)="conversation.retry()"
+    />
+  } @else {
+    <app-chat-empty-state [asPageHeading]="!conversation.isOpen()" />
   }
-</main>
+</div>

@@ -7,6 +7,13 @@
   border-top: 1px solid var(--bs-border-color);
 }
 
+// Frame 3b: the 60px strip stacks the same controls with the name dropped.
+:host(.user-footer--compact) {
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 10px;
+}
+
 .user-footer__avatar {
   display: flex;
   // Fixed basis as well as width: the name beside it is the flex item that shrinks.
