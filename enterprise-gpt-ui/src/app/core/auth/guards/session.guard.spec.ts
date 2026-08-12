@@ -21,6 +21,7 @@ import { sessionGuard } from './session.guard';
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
+const CONVERSATIONS_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 
 describe('sessionGuard', () => {
   let backend: HttpTestingController;
@@ -29,6 +30,15 @@ describe('sessionGuard', () => {
     return TestBed.runInInjectionContext(() =>
       sessionGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot),
     ) as Promise<boolean | UrlTree>;
+  }
+
+  /** The three loads the bootstrap starts once the session has resolved. */
+  function flushPostBootstrapLoads(): void {
+    backend.expectOne(MODELS_URL).flush([]);
+    backend.expectOne(MCPS_URL).flush([]);
+    backend
+      .expectOne((request) => request.url === CONVERSATIONS_URL)
+      .flush({ items: [], totalCount: 0, pageSize: 50, currentPage: 1, totalPages: 0 });
   }
 
   beforeEach(() => {
@@ -59,8 +69,7 @@ describe('sessionGuard', () => {
     backend.expectOne({ method: 'POST', url: ME_URL }).flush(userFixture());
     await settle();
 
-    backend.expectOne(MODELS_URL).flush([]);
-    backend.expectOne(MCPS_URL).flush([]);
+    flushPostBootstrapLoads();
 
     await expect(activated).resolves.toBe(true);
   });
@@ -73,12 +82,12 @@ describe('sessionGuard', () => {
 
     backend.expectNone(MODELS_URL);
     backend.expectNone(MCPS_URL);
+    backend.expectNone((request) => request.url === CONVERSATIONS_URL);
 
     backend.expectOne(ME_URL).flush(userFixture());
     await settle();
 
-    backend.expectOne(MODELS_URL).flush([]);
-    backend.expectOne(MCPS_URL).flush([]);
+    flushPostBootstrapLoads();
     await activated;
   });
 
@@ -101,8 +110,7 @@ describe('sessionGuard', () => {
     await settle();
     backend.expectOne(ME_URL).flush(userFixture());
     await settle();
-    backend.expectOne(MODELS_URL).flush([]);
-    backend.expectOne(MCPS_URL).flush([]);
+    flushPostBootstrapLoads();
     await first;
 
     await expect(run()).resolves.toBe(true);
@@ -118,8 +126,7 @@ describe('sessionGuard', () => {
     await settle();
     backend.expectOne(ME_URL).flush(userFixture());
     await settle();
-    backend.expectOne(MODELS_URL).flush([]);
-    backend.expectOne(MCPS_URL).flush([]);
+    flushPostBootstrapLoads();
     await first;
 
     void TestBed.inject(AuthService).signOut();

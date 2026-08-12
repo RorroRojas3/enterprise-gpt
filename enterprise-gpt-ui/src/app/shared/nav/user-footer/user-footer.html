@@ -1,10 +1,20 @@
 <!--
   aria-hidden on the avatar: the initials are a visual restatement of the name that sits
-  immediately beside it, so announcing both reads the user's identity twice.
+  immediately beside it, so announcing both reads the user's identity twice. In the
+  compact strip the name is not rendered at all, so the avatar carries it instead.
 -->
 <span class="user-footer__avatar" aria-hidden="true">{{ initials() }}</span>
 
-<span class="user-footer__name">{{ session.displayName() }}</span>
+<!--
+  The strip has no room for the name, so it is carried off-screen instead of dropped —
+  the avatar stays aria-hidden either way, or a screen reader reads the initials and
+  then the name it abbreviates.
+-->
+@if (compact()) {
+  <span class="visually-hidden">Signed in as {{ session.displayName() }}</span>
+} @else {
+  <span class="user-footer__name">{{ session.displayName() }}</span>
+}
 
 <app-theme-toggle />
 

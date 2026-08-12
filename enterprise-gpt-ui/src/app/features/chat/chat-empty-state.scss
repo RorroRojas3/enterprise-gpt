@@ -1,0 +1,43 @@
+:host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+// Frame 1a: centred column, 18px gap, 24px gutter.
+.chat-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  text-align: center;
+}
+
+.chat-empty__logo {
+  width: 250px;
+  max-width: 100%;
+}
+
+.chat-empty__prompt {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 600;
+}
+
+// Frame 3g: the same screen at 768–1023px drops to a smaller lockup and heading.
+@media (max-width: 1023.98px) {
+  .chat-empty {
+    gap: 16px;
+  }
+
+  .chat-empty__logo {
+    width: 210px;
+  }
+
+  .chat-empty__prompt {
+    font-size: 20px;
+  }
+}

@@ -8,6 +8,7 @@ import { Forbidden } from '@features/auth/forbidden/forbidden';
 import { LoginFailed } from '@features/auth/login-failed/login-failed';
 import { SessionError } from '@features/auth/session-error/session-error';
 import { SignedOut } from '@features/auth/signed-out/signed-out';
+import { chatMatcher } from '@features/chat/chat-route';
 
 /**
  * Two structural rules govern this table, and both come from how the router actually
@@ -69,18 +70,36 @@ export const routes: Routes = [
         path: '',
         canActivate: [sessionGuard],
         children: [
-          {
-            path: 'chat',
-            loadComponent: () => import('@features/chat/chat').then((m) => m.Chat),
-            title: 'Chat — Enterprise GPT',
-          },
+          // The forbidden page is a sibling of the shell rather than a child of it.
+          // Frame 6e is a full-page state with no chrome, and a sidebar around it
+          // would offer the navigation it exists to refuse.
           { path: 'forbidden', component: Forbidden, title: 'Access denied — Enterprise GPT' },
           {
-            // canMatch belongs on the route that owns loadChildren: a parent's runs
-            // before the child config is resolved, a child's runs after.
-            path: 'admin',
-            canMatch: [adminCanMatch],
-            loadChildren: () => import('@features/admin/admin.routes'),
+            // Lazy, not eager: the signed-in chrome is ~24 kB of sidebar, tooltip,
+            // search field, ridgeline and two stores, none of which /auth,
+            // /login-failed, /session-error or /signed-out render. `sessionGuard` has
+            // already awaited a round trip by the time this resolves, so the fetch
+            // costs nothing anybody waits on.
+            path: '',
+            loadComponent: () => import('@features/shell/shell').then((m) => m.Shell),
+            children: [
+              {
+                // One config for `/chat` and `/chat/{id}`, so the router reuses the
+                // component across both instead of remounting. See `chatMatcher`.
+                matcher: chatMatcher,
+                loadComponent: () => import('@features/chat/chat').then((m) => m.Chat),
+                title: 'Chat — Enterprise GPT',
+              },
+              {
+                // canMatch belongs on the route that owns loadChildren: a parent's runs
+                // before the child config is resolved, a child's runs after. It still
+                // runs during URL recognition from inside the shell, so a non-admin's
+                // browser never requests the chunk.
+                path: 'admin',
+                canMatch: [adminCanMatch],
+                loadChildren: () => import('@features/admin/admin.routes'),
+              },
+            ],
           },
         ],
       },

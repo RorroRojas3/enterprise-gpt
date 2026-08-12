@@ -34,7 +34,7 @@ erDiagram
 |---|---|
 | Project CRUD + document listing/removal | [`ProjectEndpoints`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ProjectEndpoints.cs) → [`ProjectService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ProjectService.cs) |
 | Uploading **into** a project | [`DocumentEndpoints`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/DocumentEndpoints.cs) → [`DocumentService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs) (§6) |
-| Attaching a conversation to a project | [`ConversationsController`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Controllers/ConversationsController.cs) → [`ConversationService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) (§4) |
+| Attaching a conversation to a project | [`ConversationEndpoints`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs) → [`ConversationService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) (§4) |
 | Instructions at chat time | `ConversationService.StreamConversationCoreAsync` + [`ConversationPrompts`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/ConversationPrompts.cs) (§5) |
 | Schema | The EF model only — no migration, no DDL script (§8.3) |
 
@@ -210,12 +210,7 @@ Ownership is verified on **both** create and update by `ConversationService.Ensu
 
 Removal is the *only* way this is expressed, which is why it is not an accident: sending `{ "id": …, "name": …, "projectId": null }` is how a client takes a conversation out of a project. The alternative — treating `null` as "leave unchanged" — would leave no way to express removal at all without a second route.
 
-**The frontend has not caught up.** Both call sites that build an `UpdateConversationActionDto` pass only the id and the new name:
-
-- [`menu-offcanvas.component.ts`](../../enterprise-ui/src/app/shared/menu-offcanvas/menu-offcanvas.component.ts) `handleRenameConversation`
-- [`conversations.component.ts`](../../enterprise-ui/src/app/pages/conversations/conversations.component.ts) `handleRenameConversation`
-
-Today that is harmless because nothing in the UI puts a conversation *into* a project yet (§10.3). It stops being harmless the moment a project UI ships: renaming a conversation would quietly eject it. Fix both call sites in the same change that adds project selection.
+**This is the trap the rebuilt client is written against.** The deleted `enterprise-ui/` had two rename call sites that passed only the id and the new name, either of which would have silently ejected a conversation from its project the moment a project UI shipped. Nothing was migrated, so the defect went with it — and the replacement at `enterprise-gpt-ui/` turns the rule into an acceptance criterion instead: US-304 requires a rename to echo the current `projectId`, and US-307 requires **every** update path to build its body through one `toUpdateBody()` helper, so no caller can omit it by accident. Neither story has landed yet; see [the rebuild PRD](../prd/enterprise-ui-rebuild.md) and [Shell and Navigation](../ui/shell-and-navigation.md#22-adding-a-per-row-action--what-us-304-does-next).
 
 ## 5. Instructions at chat time
 
@@ -411,7 +406,7 @@ It returns a `List<ProjectDocumentDto>` for every active document in the project
 
 ### 10.3 No frontend
 
-`enterprise-ui` has scaffolding but no project UI: a `projectId` signal in the legacy `store.service.ts`, `projectId` on the conversation action DTOs, and a menu item that routes to `/projects` — a path with **no route**, so `app.routes.ts` sends it to the wildcard redirect back to `/conversation`. There is no `project.service.ts` and no project components. The existing [`UpsertProjectActionDto.ts`](../../enterprise-ui/src/app/dtos/actions/project/UpsertProjectActionDto.ts) also does not match the API: it carries an `id` (the API takes it from the route) and declares `description`/`instructions` as required strings (both are optional and nullable on the wire). Align it when building the UI — and fix the two rename call sites in §4.1 at the same time.
+The old `enterprise-ui/` client is deleted, and its project scaffolding — a stray `projectId` signal, a menu item routing to a `/projects` path that had no route, and an `UpsertProjectActionDto` that did not match this API — went with it. The rebuilt client at `enterprise-gpt-ui/` has no project UI either: **EP-9 owns it** (US-901 through US-908), and US-307 is the story that puts a conversation into one. Nothing was migrated, so the DTOs are written fresh against the shapes in §2 rather than corrected.
 
 ### 10.4 Everything else
 

@@ -1,20 +1,9 @@
 {
   "permissions": {
-    "allow": [
-      "PowerShell(dotnet restore \"c:\\\\Users\\\\Rorro\\\\source\\\\repos\\\\enterprise-gpt\\\\enterprise-gpt-api\\\\Enterprise.Gpt.sln\" --no-cache 2>&1)",
-      "Bash(rm enterprise-gpt-api/scripts/project-schema.sql)",
-      "Bash(rmdir enterprise-gpt-api/scripts)",
-      "Bash(dotnet build *)",
-      "Bash(dotnet test *)",
-      "Bash(node -e ' *)",
-      "Bash(grep -rn 'replace\\(/\\\\[\\\\.\\\\*+' src/ scripts/)",
-      "Bash(grep -rn \"escapeRegExp\\\\|\\\\\\\\$&\" src/ scripts/)"
-    ]
+    "allow": []
   },
-  "model": "opus",
-  "availableModels": [
-    "opus"
-  ],
+  "model": "fable",
+  "availableModels": ["fable"],
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "microsoft-learn",

@@ -1,0 +1,324 @@
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { computed, inject } from '@angular/core';
+import {
+  patchState,
+  signalStore,
+  withComputed,
+  withHooks,
+  withMethods,
+  withProps,
+  withState,
+} from '@ngrx/signals';
+import {
+  addEntities,
+  prependEntity,
+  setAllEntities,
+  updateEntity,
+  withEntities,
+} from '@ngrx/signals/entities';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { tapResponse } from '@ngrx/operators';
+import { Subject, exhaustMap, filter, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
+import { ConversationDto } from '@domain/api/conversation';
+import { PaginatedResponseDto } from '@domain/api/paginated-response';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { ApiUrl } from '@core/http/api-url';
+import { ToastStore } from '@core/notifications/toast-store';
+import { setFirstPage, setPage, withOffsetPagination } from '@core/state/with-offset-pagination';
+import {
+  setError,
+  setFulfilled,
+  setPending,
+  withRequestStatus,
+} from '@core/state/with-request-status';
+import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+
+/**
+ * How many rows the sidebar asks for at a time.
+ *
+ * Below the server's 1–100 clamp and high enough that most users never reach the
+ * "Load more" row; EP-7's full library pages properly.
+ */
+export const SIDEBAR_PAGE_SIZE = 50;
+
+interface ConversationListState {
+  /** The `name=` filter currently in force. Empty means unfiltered. */
+  readonly name: string;
+  /**
+   * Whether `ensureLoaded` has released the query. See the `onInit` hook.
+   *
+   * Private: it is a release sentinel, not something a screen should render or reason
+   * about, and `@ngrx/signals` strips `_`-prefixed members from the public store type.
+   */
+  readonly _started: boolean;
+  /**
+   * A page beyond the first is in flight. Separate from `requestStatus` so the loaded
+   * rows stay on screen instead of collapsing back to a skeleton.
+   */
+  readonly loadingMore: boolean;
+}
+
+const initialState: ConversationListState = {
+  name: '',
+  _started: false,
+  loadingMore: false,
+};
+
+/**
+ * Narrows a value to the fields the list holds.
+ *
+ * Callers legitimately hand this store a `ConversationDetailDto` — `ConversationStore`
+ * does, after `GET api/conversations/{id}` — and spreading one straight into an entity
+ * would leave `mcpServerIds` on some rows and not others, so `entities()` would stop
+ * being uniformly `ConversationDto`-shaped.
+ */
+function listFields(conversation: ConversationDto): ConversationDto {
+  const { id, projectId, modelId, name, isFavorite, dateCreated, dateModified } = conversation;
+
+  return { id, projectId, modelId, name, isFavorite, dateCreated, dateModified };
+}
+
+/**
+ * The signed-in user's conversations, from `GET api/conversations/search`.
+ *
+ * **This is the reference list store.** Fifteen more are written against its shape,
+ * so four things in it are decisions rather than details:
+ *
+ * 1. **`rxMethod` + `switchMap`, not the promise-and-generation-counter shape
+ *    `SessionStore` and `ModelCatalogStore` use.** Those two exist to be awaited by a
+ *    guard. This one is driven by typing, where a slow response to `"ang"` must not
+ *    paint over a fast response to `"angular"` — and cancellation is what `switchMap`
+ *    is for.
+ * 2. **Loading is declarative.** The query is wired once, in `onInit`, to a
+ *    computation over `started` and `name`; changing either refetches with no second
+ *    call site. `ensureLoaded` therefore only flips a flag — it is called from
+ *    `SessionBootstrap`, where there is no injection context to bind a signal-valued
+ *    reactive method to.
+ * 3. **No `debounceTime` here.** `SearchInput` already debounces 300ms and emits only
+ *    the committed value; a second debounce would add 300ms of latency for nothing.
+ *    Add one here only if a caller ever drives `search` from raw keystrokes.
+ * 4. **`takeUntil(signedOut$)` on the inner request.** `withResetOnSignOut` clears
+ *    state and nothing else — a response already on the wire would otherwise write
+ *    the previous user's rows back over an emptied store.
+ *
+ * Rows keep the server's order (`dateCreated` descending) and no sort control is
+ * offered, which is the PRD's regime **B**: the API accepts no sort parameter, and
+ * sorting a page in hand would put a second sorted run under the first.
+ *
+ * `withPendingIds` is deliberately absent: nothing has a per-row action until US-304.
+ *
+ * The `_started` + release-the-query trio (`ensureLoaded`, the `null` arm of
+ * `_runQuery`, and the `onInit` computation) is the obvious candidate for a sixth
+ * feature in `core/state/`. It stays inline here on the skill's own rule — two stores
+ * sharing a shape is a coincidence, three is a feature — so the extraction trigger is
+ * the *third* store that needs a bootstrap-released load, not this one.
+ */
+export const ConversationListStore = signalStore(
+  { providedIn: 'root' },
+  withState(initialState),
+  withEntities<ConversationDto>(),
+  withRequestStatus(),
+  withOffsetPagination(SIDEBAR_PAGE_SIZE),
+  withProps(() => ({
+    _http: inject(HttpClient),
+    _toasts: inject(ToastStore),
+    _url: inject(ApiUrl).build('conversations/search'),
+    _signedOut$: injectSignedOut(),
+    /**
+     * Fires when the result set the list is paging through is replaced.
+     *
+     * `switchMap` cancels the *query* pipeline's own request, but a "Load more" is a
+     * second pipeline and nothing in the first reaches it. Left running, its page —
+     * rows from the previous result set — would be appended under the new one and its
+     * `setPage` would advance `skip` past a window that no longer exists.
+     */
+    _querySuperseded$: new Subject<void>(),
+  })),
+  withComputed(({ entities, name, isFulfilled }) => {
+    const hasQuery = computed(() => name().trim() !== '');
+    const isEmpty = computed(() => isFulfilled() && entities().length === 0);
+
+    return {
+      hasQuery,
+      /** Loaded, and there is genuinely nothing — distinct from "not loaded yet". */
+      isEmpty,
+      /** Loaded, nothing matched, and a filter is why. A different empty state. */
+      hasNoMatches: computed(() => isEmpty() && hasQuery()),
+    };
+  }),
+  withMethods((store) => {
+    function searchUrl(name: string, skip: number): { url: string; params: HttpParams } {
+      const trimmed = name.trim();
+      let params = new HttpParams().set('skip', String(skip)).set('take', String(store.take()));
+
+      // Omitted rather than sent empty: US-302's first criterion, and `name=` blank
+      // would still take the server down its LIKE branch.
+      if (trimmed !== '') {
+        params = params.set('name', trimmed);
+      }
+
+      return { url: store._url, params };
+    }
+
+    // Deliberately no `distinctUntilChanged`. The signal computation below only emits
+    // when `started` or `name` actually change, so it would be redundant for that path
+    // — and it would break the other two: `retry()` pushes the same name a second time
+    // on purpose, and after sign-out resets the store the very next query is the
+    // identical one the previous user ran.
+    const _runQuery = rxMethod<string | null>(
+      pipe(
+        filter((name): name is string => name !== null),
+        tap(() => {
+          store._querySuperseded$.next();
+          patchState(store, setPending(), { loadingMore: false });
+        }),
+        switchMap((name) => {
+          const { url, params } = searchUrl(name, 0);
+
+          return store._http.get<PaginatedResponseDto<ConversationDto>>(url, { params }).pipe(
+            takeUntil(store._signedOut$),
+            tapResponse({
+              next: (page) =>
+                patchState(
+                  store,
+                  // setFirstPage, not setPage: a narrowed search must discard the old
+                  // offset, or the list comes back empty until the user pages back.
+                  setAllEntities(page.items),
+                  setFirstPage(page),
+                  setFulfilled(),
+                  { loadingMore: false },
+                ),
+              error: (cause: unknown) =>
+                patchState(store, setError(toAppError(cause, { url })), { loadingMore: false }),
+            }),
+          );
+        }),
+      ),
+    );
+
+    const _loadNextPage = rxMethod<void>(
+      // exhaustMap: a second press while a page is in flight is a double-click, not a
+      // request for the page after next.
+      exhaustMap(() => {
+        const { url, params } = searchUrl(store.name(), store.skip());
+        patchState(store, { loadingMore: true });
+
+        return store._http.get<PaginatedResponseDto<ConversationDto>>(url, { params }).pipe(
+          takeUntil(merge(store._signedOut$, store._querySuperseded$)),
+          tapResponse({
+            next: (page) =>
+              patchState(
+                store,
+                // addEntities, not setEntities: a concurrent insert can shift the
+                // window and repeat a row, and the copy already on screen wins.
+                addEntities(page.items),
+                setPage(page),
+              ),
+            error: (cause: unknown) =>
+              // A toast rather than `setError`: the rows already loaded are still
+              // valid, and swapping them for an error panel would lose them.
+              void store._toasts.fromError(toAppError(cause, { url })),
+            // Runs on cancellation too, which is the case the flag would otherwise
+            // stick on: a superseded page never reaches `next` or `error`.
+            finalize: () => patchState(store, { loadingMore: false }),
+          }),
+        );
+      }),
+    );
+
+    return {
+      _runQuery,
+
+      /**
+       * Releases the query. Idempotent, and called by `SessionBootstrap` after
+       * `POST api/users/me` resolves — never alongside it, because the request would
+       * otherwise go out before a token exists.
+       */
+      ensureLoaded(): void {
+        if (!store._started()) {
+          patchState(store, { _started: true });
+        }
+      },
+
+      /** Narrows the list. The wired query refetches itself; nothing else to call. */
+      search(name: string): void {
+        patchState(store, { name });
+      },
+
+      /** Re-issues the current query, which is what the error panel's Retry does. */
+      retry(): void {
+        // A static value rather than a state change: it needs no injection context,
+        // and `switchMap` still cancels whatever the wired query had in flight.
+        _runQuery(store.name());
+      },
+
+      loadMore(): void {
+        // `isPending()` is the load-bearing half. `_querySuperseded$` cancels a page
+        // that a *later* query overtook, but it cannot help a page started *after* a
+        // query was already on the wire: that request carries the old `skip` against
+        // the new result set, and when it lands after the query's `setFirstPage` it
+        // appends a window from the middle of a list that no longer exists — leaving a
+        // hole the user can never scroll to, with `hasMore()` reading false.
+        if (!store.isPending() && !store.loadingMore() && store.hasMore()) {
+          _loadNextPage();
+        }
+      },
+
+      /**
+       * Adopts a fresher copy of a row the list already holds — the title the server
+       * generates out of band after a first turn (US-409), or an edit made from the
+       * conversation header (US-304, US-305).
+       *
+       * A conversation the list does not hold is **ignored**, because it could be
+       * anywhere in the server's order and inserting it at either end would be a
+       * guess. A conversation that was just *created* is the one case where the
+       * position is known — see {@link prependNewest}.
+       */
+      refreshRow(conversation: ConversationDto): void {
+        if (store.entityMap()[conversation.id] !== undefined) {
+          patchState(
+            store,
+            updateEntity({ id: conversation.id, changes: listFields(conversation) }),
+          );
+        }
+      },
+
+      /**
+       * Puts a just-created conversation at the head of the list.
+       *
+       * Correct only for a conversation created in this session, and only because the
+       * server orders by `dateCreated` **descending**: a row created a moment ago is at
+       * server position 0 by construction. `skip` and `totalCount` both advance with
+       * it, so the window the next "Load more" asks for still lines up — and if the
+       * server returns the same row in that page, `addEntities` no-ops on the id.
+       *
+       * US-401 calls this when `POST api/conversations` returns.
+       */
+      prependNewest(conversation: ConversationDto): void {
+        if (store.entityMap()[conversation.id] !== undefined) {
+          return;
+        }
+
+        patchState(store, prependEntity(listFields(conversation)), (state) => ({
+          skip: state.skip + 1,
+          totalCount: state.totalCount + 1,
+        }));
+      },
+    };
+  }),
+  withHooks({
+    onInit(store) {
+      // An injection context, which a signal-valued rxMethod argument requires — and
+      // the reason `ensureLoaded` sets a flag instead of calling this itself, from
+      // `SessionBootstrap`, where there is no injection context to bind the
+      // subscription to.
+      store._runQuery(() => (store._started() ? store.name() : null));
+    },
+    onDestroy(store) {
+      store._querySuperseded$.complete();
+    },
+  }),
+  // Last, as the feature requires.
+  withResetOnSignOut(),
+);

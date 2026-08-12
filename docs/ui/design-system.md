@@ -6,7 +6,7 @@ Companion to [Frontend Foundation](frontend-foundation.md), which covers configu
 
 ## 1. Overview
 
-> **Scope.** This is the kit, not a screen. EP-2 has since added sign-in, the guarded route tree and sign-out, so `app.routes.ts` now carries the auth pages and two placeholders alongside the development-only `/ui-kit` gallery — but there is still no chat (EP-4) and no shell (EP-3). Everything below is what EP-3 onward composes. The three components EP-2 contributed to `shared/` are folded into §7: `<app-user-footer>`, `<app-signing-out>`, and the upload drop zone.
+> **Scope.** This is the kit, not a screen. EP-2 has since added sign-in, the guarded route tree and sign-out, and EP-3 the signed-in shell, the conversation sidebar and the chat route — the first screens assembled from these pieces, documented in [Shell and Navigation](shell-and-navigation.md). The composer and the transcript are still EP-4. The three components EP-2 contributed to `shared/` are folded into §7: `<app-user-footer>`, `<app-signing-out>`, and the upload drop zone.
 
 Four stories landed together, and they solve one problem each:
 
@@ -412,12 +412,12 @@ type AttachmentState =
 
 | Export | Key inputs | Outputs | Notes |
 | --- | --- | --- | --- |
-| `<app-search-input>` | `value` (model), `label` **required**, `placeholder`, `debounceMs` (300), `busy` | `searched` | Debounced; Escape clears |
+| `<app-search-input>` | `value` (model), `label` **required**, `placeholder`, `debounceMs` (300), `busy` | `searched` | Debounced; Escape clears. `focusField()` puts the caret in it |
 | `<app-pill-subnav>` | `items` (`PillItem[]`) **required**, `ariaLabel` **required** | — | The admin area's horizontal navigation below 768 px |
-| `<app-user-footer>` | — (injects `SessionStore`, `AuthService`) | — | Frame `3a`'s sidebar footer: initials avatar, display name, `<app-theme-toggle>`, sign out |
+| `<app-user-footer>` | `compact` | — | Frame `3a`'s sidebar footer: initials avatar, display name, `<app-theme-toggle>`, sign out. Injects `SessionStore` and `AuthService` |
 | `injectMediaQuery` | `(query: string) => Signal<boolean>` | — | Must be called in an injection context |
 
-`UserFooter` currently lives in a temporary fixed shell bar in `App`, gated on `session.isLoaded()` — an ungated footer would put an empty avatar, a blank name and a live Sign out button over the chrome-free auth frames. **US-301 moves it into the sidebar**, where the collapsed 60 px strip shows the avatar alone. Three of its decisions are worth carrying into that move: the initials come from the composed `fullName` and fall back to one letter for a single-word name rather than rendering a stray comma; the avatar is `aria-hidden`, because the initials restate the name sitting next to them; and **sign-out asks for no confirmation**, matching the board — nothing is lost by signing out, since conversations are on the server, so a dialog would be friction guarding nothing. The button latches disabled while sign-out runs, so a second press has nothing to press rather than merely being ignored.
+`UserFooter` lives in the sidebar footer since US-301, so it needs no session gate of its own — the shell renders only behind `sessionGuard`. Its `compact` input stacks it into the collapsed 60 px strip, where frame `3b` draws the avatar alone; the theme control and sign out are **kept** there as icon buttons, because a collapsed sidebar is a persisted state and hiding them would make signing out require expanding first. In that width the display name is carried off-screen with `visually-hidden` rather than dropped, and the avatar stays `aria-hidden` either way — otherwise a screen reader reads the initials and then the name they abbreviate. Three further decisions: the initials come from the composed `fullName` and fall back to one letter for a single-word name rather than rendering a stray comma; **sign-out asks for no confirmation**, matching the board — nothing is lost by signing out, since conversations are on the server, so a dialog would be friction guarding nothing; and the button latches disabled while sign-out runs, so a second press has nothing to press rather than merely being ignored.
 
 `SearchInput`'s label is **required and rendered as a real `<label for>`**. A placeholder is not an accessible name: it disappears the moment the user types, and several screen readers do not announce it at all. The in-flight field text is a `linkedSignal` derived from `value` — writable state derived from an input, which is exactly what `linkedSignal` is for — so clearing the filter from an empty state or restoring a query from the URL puts the field back in step with no extra pass. Debouncing is a `setTimeout` inside an `effect` with `onCleanup`, which needs no `rxjs-interop` import and which `vi.useFakeTimers()` drives directly.
 
@@ -576,4 +576,4 @@ The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **nev
 | Toast state | [`core/notifications/toast-store.ts`](../../enterprise-gpt-ui/src/app/core/notifications/toast-store.ts) |
 | Lint and checks | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs), [`scripts/`](../../enterprise-gpt-ui/scripts/) |
 | CI | [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml) |
-| Related reference | [Frontend Foundation](frontend-foundation.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |
+| Related reference | [Frontend Foundation](frontend-foundation.md), [Authentication and Session](authentication-and-session.md), [Shell and Navigation](shell-and-navigation.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [`enterprise-gpt-ui/README.md`](../../enterprise-gpt-ui/README.md) |

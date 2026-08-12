@@ -1,0 +1,48 @@
+// 100dvh rather than 100%: the host is a routed sibling of <router-outlet> inside
+// <app-root>, which has no height of its own, and dvh is what keeps the composer clear
+// of the mobile browser's collapsing toolbar later.
+//
+// Flex rather than grid: `flex-basis` and `width` are plain interpolable lengths, where
+// animating `grid-template-columns` depends on both track lists staying interpolable.
+:host {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.shell__sidebar {
+  flex: 0 0 260px;
+  width: 260px;
+}
+
+:host(.shell--collapsed) .shell__sidebar {
+  flex-basis: 60px;
+  width: 60px;
+}
+
+// 200ms, from the one transition scale in `_motion.scss`, whose `--t-slow` names the
+// sidebar width as its example. The global prefers-reduced-motion block suppresses it.
+:host(.shell--animated) .shell__sidebar {
+  transition:
+    flex-basis var(--t-slow) ease,
+    width var(--t-slow) ease;
+}
+
+// min-width: 0 is load-bearing on a flex child: without it the screen's own content
+// sets the item's minimum and the sidebar gets squeezed instead.
+.shell__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+
+  // The skip link's target. Focus only ever lands here from that link, so the ring is
+  // the confirmation the link worked — suppressing it would leave a keyboard user with
+  // no signal that anything happened. `:focus-visible`, so a mouse user who happens to
+  // click into the region gets nothing.
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+}
