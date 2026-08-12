@@ -17,6 +17,45 @@
         <app-skeleton class="chat__title-skeleton" variant="text" width="200px" height="15px" />
       }
     </h1>
+
+    <!--
+      US-308: the kebab routes through the same ConversationActionsStore flows as the
+      sidebar row — nothing reimplemented. It waits for a full DTO (`current`) because
+      rename must echo the fresh projectId and delete names the conversation.
+      Deliberately absent until their stories land: the favourite star (US-305), the
+      move/remove-project items (US-307), and the sub-768px collapse into frame 1d's
+      mobile navbar (US-1403, which builds the responsive shell it collapses into).
+    -->
+    @if (conversation.current(); as current) {
+      <!--
+        aria-disabled, never the native attribute: a natively disabled item cannot
+        take focus, which strands the menu's roving focus and its Escape handling.
+        The store's begin* methods already refuse a pending row, so the click is a
+        guarded no-op, not a hole.
+      -->
+      <app-menu class="chat__menu" [label]="'Actions for ' + current.name">
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+          (click)="actions.beginRename(current)"
+        >
+          <app-icon name="bi-pencil" />
+          Rename
+        </button>
+        <hr appMenuSeparator />
+        <button
+          appMenuItem
+          type="button"
+          class="menu__item--danger"
+          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+          (click)="actions.beginDelete(current)"
+        >
+          <app-icon name="bi-trash3" />
+          Delete
+        </button>
+      </app-menu>
+    }
   </header>
 }
 

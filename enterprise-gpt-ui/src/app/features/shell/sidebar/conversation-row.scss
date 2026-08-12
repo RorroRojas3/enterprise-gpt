@@ -2,25 +2,17 @@
   display: block;
 }
 
-// Frame 3a: 34px minimum, 8px radius, ellipsised title, star trailing.
+// Frame 3a: 34px minimum, 8px radius, ellipsised title, star trailing, kebab last.
 .row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
   min-height: 34px;
-  padding: 0 10px;
   border-radius: 8px;
-  color: var(--bs-body-color);
-  text-decoration: none;
   transition: background-color var(--t-fast) ease;
 
   &:hover {
     background: var(--surface-2);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
   }
 }
 
@@ -29,6 +21,24 @@
 
   .row__title {
     font-weight: 600;
+  }
+}
+
+.row__link {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 4px 0 10px;
+  border-radius: 8px;
+  color: var(--bs-body-color);
+  text-decoration: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
   }
 }
 
@@ -46,4 +56,27 @@
   flex: 0 0 auto;
   color: var(--accent);
   font-size: 10px;
+}
+
+// Revealed rather than inserted: opacity keeps the trigger in the tab order and the
+// accessibility tree, so keyboard focus can reach it — and :focus-within is what
+// reveals it when it does. Hidden-until-hover has no meaning on a touch screen, so
+// (hover: none) shows it outright.
+.row__menu {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+
+.row:hover .row__menu,
+.row:focus-within .row__menu,
+.row--selected .row__menu {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .row__menu {
+    opacity: 1;
+  }
 }

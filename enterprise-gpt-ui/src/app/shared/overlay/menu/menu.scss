@@ -69,9 +69,33 @@
     box-shadow: inset 0 0 0 2px var(--focus-ring);
   }
 
+  // Frame 3a: 13px leading icons on the muted tone, whatever the item's own text
+  // colour — except the danger item, whose icon shares its red.
+  app-icon {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
   // Red is used here and on bulk delete, nowhere else.
   &--danger {
     color: var(--fail);
+
+    app-icon {
+      color: inherit;
+    }
+  }
+
+  // Disabled items use aria-disabled, never the native attribute: a natively
+  // disabled button cannot take focus, which breaks the roving focus the panel's
+  // keyboard handling depends on and leaves Escape with nowhere to fire from.
+  &[aria-disabled='true'] {
+    color: var(--muted);
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
   }
 }
 

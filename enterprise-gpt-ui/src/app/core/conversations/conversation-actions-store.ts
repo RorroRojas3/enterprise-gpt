@@ -1,0 +1,271 @@
+import { HttpClient } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { patchState, signalStore, withMethods, withProps, withState } from '@ngrx/signals';
+import { Dispatcher } from '@ngrx/signals/events';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { tapResponse } from '@ngrx/operators';
+import { exhaustMap, mergeMap, takeUntil } from 'rxjs';
+import { ConversationDto } from '@domain/api/conversation';
+import { ValidationAppError } from '@core/errors/app-error';
+import { traceLine } from '@core/errors/error-message';
+import { toAppError } from '@core/errors/to-app-error';
+import { conversationEvents } from '@core/events/conversation-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { ApiUrl } from '@core/http/api-url';
+import { ToastStore } from '@core/notifications/toast-store';
+import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { ConversationListStore } from './conversation-list-store';
+import { toUpdateBody } from './conversation-update';
+
+interface ConversationActionsState {
+  /** The conversation the rename dialog is editing. Null keeps the dialog closed. */
+  readonly renameTarget: ConversationDto | null;
+  /**
+   * A rename request is in flight: the dialog blocks dismissal and disables its
+   * buttons. In-flight tracking, not dialog state — a dialog force-closed mid-flight
+   * (a second Escape is uncancelable in Chromium) leaves this true until the request
+   * settles, so a reopened dialog honestly reports that `exhaustMap` is still
+   * occupied instead of swallowing the next submit silently.
+   */
+  readonly renameBusy: boolean;
+  /** The validation problem the server returned for the last rename attempt. */
+  readonly renameError: ValidationAppError | null;
+  /**
+   * The exact name the server rejected. The dialog shows {@link renameError}'s
+   * messages only while the field still holds this value, which is what makes the
+   * inline error clear itself on the user's next edit without an imperative reset —
+   * Signal Forms has no `setErrors` to clear.
+   */
+  readonly renameRejectedName: string | null;
+  /** The conversation the delete confirmation names (US-306). Null keeps it closed. */
+  readonly deleteTarget: ConversationDto | null;
+}
+
+const initialState: ConversationActionsState = {
+  renameTarget: null,
+  renameBusy: false,
+  renameError: null,
+  renameRejectedName: null,
+  deleteTarget: null,
+};
+
+/**
+ * The rename and delete flows every conversation surface shares.
+ *
+ * Root-scoped on purpose: the invokers live in two features that must not import each
+ * other — the sidebar row kebab (`features/shell`) and the conversation header kebab
+ * (`features/chat`) — while the dialogs themselves are mounted once in the shell,
+ * which wraps both. Everyone talks to this store; nobody talks to a dialog.
+ *
+ * Three boundaries shape what lives here:
+ *
+ * - **Entity writes go through `ConversationListStore` methods** (`renameRow`,
+ *   `setRowPending`, `refreshRow`): its state is protected, so this store cannot
+ *   `patchState` it — and should not, because how a row is patched is the list's
+ *   decision.
+ * - **The route-scoped `ConversationStore` is reached by event, not by method.**
+ *   A root store cannot inject a route-scoped one, so server-confirmed outcomes are
+ *   dispatched as `conversationEvents` and the chat surface subscribes.
+ * - **Failures follow the `core/errors` conventions**: validation problems render
+ *   inline in the dialog and are never toasted; anything else rolls back the
+ *   optimistic patch and goes through `ToastStore.fromError`.
+ */
+export const ConversationActionsStore = signalStore(
+  { providedIn: 'root' },
+  withState(initialState),
+  withProps(() => ({
+    _http: inject(HttpClient),
+    _api: inject(ApiUrl),
+    _list: inject(ConversationListStore),
+    _toasts: inject(ToastStore),
+    _dispatcher: inject(Dispatcher),
+    _signedOut$: injectSignedOut(),
+  })),
+  withMethods((store) => {
+    const _rename = rxMethod<{ target: ConversationDto; name: string }>(
+      // exhaustMap: a second submit while one is in flight is a double-click, not a
+      // second rename. `renameBusy` disables the buttons; this closes the race under
+      // them.
+      exhaustMap(({ target, name }) => {
+        // Inside the projection rather than a leading `tap`, so an emission
+        // exhaustMap drops leaves no optimistic patch behind with no request to
+        // resolve it.
+        patchState(store, { renameBusy: true, renameError: null, renameRejectedName: null });
+        store._list.setRowPending(target.id, true);
+        store._list.renameRow(target.id, name);
+        const url = store._api.build('conversations');
+
+        return store._http.put<ConversationDto>(url, toUpdateBody(target, { name })).pipe(
+          takeUntil(store._signedOut$),
+          tapResponse({
+            next: (updated) => {
+              // Adopt the server's DTO — its `dateModified`, not a local guess.
+              store._list.refreshRow(updated);
+              store._dispatcher.dispatch(conversationEvents.updated(updated));
+              patchState(store, { renameTarget: null });
+            },
+            error: (cause: unknown) => {
+              const error = toAppError(cause, { url });
+              store._list.renameRow(target.id, target.name);
+
+              // Inline only while the dialog is still up: a validation problem
+              // landing after the user cancelled has no field to render under, so it
+              // degrades to the toast path rather than being dropped.
+              if (error.kind === 'validation-error' && store.renameTarget() !== null) {
+                patchState(store, { renameError: error, renameRejectedName: name });
+              } else {
+                if (error.kind === 'validation-error') {
+                  // `fromError` silences validation problems on the assumption they
+                  // render inline; with the dialog force-closed there is no inline,
+                  // so this one is raised by hand — the single deliberate exception
+                  // to "fromError is the only place an AppError becomes a toast".
+                  store._toasts.show({
+                    tone: 'error',
+                    title: 'The rename was rejected',
+                    detail: Object.values(error.errors).flat().join(' ') || error.message,
+                    traceLine: traceLine(error),
+                  });
+                } else {
+                  store._toasts.fromError(error);
+                }
+                patchState(store, { renameTarget: null });
+              }
+            },
+            // Runs on success, failure and sign-out cancellation alike — the one
+            // path that reliably releases the row and the busy flag. Busy is not
+            // cleared anywhere else: `cancelRename` closing the dialog must not
+            // pretend a request still on the wire is finished.
+            finalize: () => {
+              store._list.setRowPending(target.id, false);
+              patchState(store, { renameBusy: false });
+            },
+          }),
+        );
+      }),
+    );
+
+    const _delete = rxMethod<ConversationDto>(
+      // mergeMap: deletes of different conversations are independent and may overlap
+      // — exhaustMap would silently drop the second. Same-id overlap cannot happen:
+      // the row and its dialog are gone, and beginDelete guards on the pending id.
+      mergeMap((target) => {
+        // Pending before removeRow, so the header kebab stays disabled for the whole
+        // flight even though the sidebar row disappears immediately.
+        store._list.setRowPending(target.id, true);
+        // Null when the list does not hold the row (a deep link beyond the first
+        // page); the DELETE still goes out and there is nothing to restore.
+        const removal = store._list.removeRow(target.id);
+        const url = store._api.build(`conversations/${ApiUrl.segment(target.id)}`);
+
+        return store._http.delete<void>(url).pipe(
+          takeUntil(store._signedOut$),
+          tapResponse({
+            next: () => {
+              store._toasts.success('Conversation deleted');
+              // Only on the 204: navigating away from a deleted open conversation
+              // happens when the delete completes, never optimistically.
+              store._dispatcher.dispatch(conversationEvents.deleted(target.id));
+            },
+            error: (cause: unknown) => {
+              if (removal !== null) {
+                store._list.restoreRow(removal);
+              }
+              store._toasts.fromError(toAppError(cause, { url }));
+            },
+            finalize: () => store._list.setRowPending(target.id, false),
+          }),
+        );
+      }),
+    );
+
+    return {
+      /** Opens the rename dialog for a conversation, unless its own action is in flight. */
+      beginRename(conversation: ConversationDto): void {
+        if (store._list.isRowPending(conversation.id)) {
+          return;
+        }
+
+        // `renameBusy` is deliberately left alone: it tracks the request, not the
+        // dialog, and a flight still occupying `exhaustMap` must stay visible.
+        patchState(store, {
+          renameTarget: conversation,
+          renameError: null,
+          renameRejectedName: null,
+        });
+      },
+
+      /**
+       * Closes the rename dialog. Safe to call from every close path — Cancel,
+       * Escape, backdrop — including redundantly after a submit already closed it.
+       */
+      cancelRename(): void {
+        patchState(store, {
+          renameTarget: null,
+          renameError: null,
+          renameRejectedName: null,
+        });
+      },
+
+      /**
+       * Renames the open target to `rawName`, trimmed.
+       *
+       * The sidebar row updates optimistically and rolls back on failure. An
+       * unchanged name is a close, not a request; an empty one is ignored — the
+       * dialog disables its submit for both, and this guard is what makes that
+       * unbypassable.
+       */
+      submitRename(rawName: string): void {
+        const target = store.renameTarget();
+        if (target === null || store.renameBusy()) {
+          return;
+        }
+
+        const name = rawName.trim();
+        if (name === '') {
+          return;
+        }
+
+        if (name === target.name) {
+          patchState(store, { renameTarget: null, renameError: null, renameRejectedName: null });
+          return;
+        }
+
+        _rename({ target, name });
+      },
+
+      /** Opens the delete confirmation, unless the row's own action is in flight. */
+      beginDelete(conversation: ConversationDto): void {
+        if (store._list.isRowPending(conversation.id)) {
+          return;
+        }
+
+        patchState(store, { deleteTarget: conversation });
+      },
+
+      /** Closes the delete confirmation. Safe on every close path, confirm included. */
+      cancelDelete(): void {
+        patchState(store, { deleteTarget: null });
+      },
+
+      /**
+       * Deletes the open target. The modal closes and the row disappears at once —
+       * removal is optimistic, per the acceptance criteria — while the request
+       * settles in the background: a 204 raises the success toast and announces the
+       * deletion, a failure restores the row and raises an error toast. The API
+       * always answers 204 (idempotent, never a 404), so the only failures here are
+       * transport and 5xx.
+       */
+      confirmDelete(): void {
+        const target = store.deleteTarget();
+        if (target === null) {
+          return;
+        }
+
+        patchState(store, { deleteTarget: null });
+        _delete(target);
+      },
+    };
+  }),
+  // Last, as the feature requires.
+  withResetOnSignOut(),
+);

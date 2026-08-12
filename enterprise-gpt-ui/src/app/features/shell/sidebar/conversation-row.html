@@ -1,18 +1,62 @@
-<a
-  class="row"
-  [routerLink]="link()"
-  routerLinkActive="row--selected"
-  [routerLinkActiveOptions]="exact"
-  ariaCurrentWhenActive="page"
->
-  <span class="row__title">{{ conversation().name }}</span>
+<!--
+  Two RouterLinkActive instances on purpose. The wrapper's paints the row surface —
+  it tracks the descendant link — while the anchor's own instance carries
+  `ariaCurrentWhenActive`, because `aria-current` belongs on the link element, not
+  the container. Both are exact, so the visual and announced states stay one fact.
+
+  The kebab is the anchor's *sibling*: an interactive element nested inside an <a>
+  is invalid HTML and splits the accessible name.
+-->
+<div class="row" routerLinkActive="row--selected" [routerLinkActiveOptions]="exact">
+  <a
+    class="row__link"
+    [routerLink]="link()"
+    routerLinkActive
+    [routerLinkActiveOptions]="exact"
+    ariaCurrentWhenActive="page"
+  >
+    <span class="row__title">{{ conversation().name }}</span>
+
+    <!--
+      Labelled rather than decorative: the star is the only thing distinguishing a
+      favourited row, so a screen reader has to hear it too. It joins the link's
+      accessible name, which reads "<name>, Favourite".
+    -->
+    @if (conversation().isFavorite) {
+      <app-icon class="row__star" name="bi-star-fill" label="Favourite" />
+    }
+  </a>
 
   <!--
-    Labelled rather than decorative: the star is the only thing distinguishing a
-    favourited row, so a screen reader has to hear it too. It joins the link's
-    accessible name, which reads "<name>, Favourite".
+    Frame 3a: revealed on hover, focus, and the selected row; always on touch.
+    Delete is the only red item. Favorite (US-305) and the project moves (US-307)
+    join this menu when their stories land.
   -->
-  @if (conversation().isFavorite) {
-    <app-icon class="row__star" name="bi-star-fill" label="Favourite" />
-  }
-</a>
+  <app-menu class="row__menu" [label]="'Actions for ' + conversation().name">
+    <!--
+      aria-disabled rather than the native attribute, for the same reason as the
+      chat header's kebab: native disabled breaks the panel's roving focus. The
+      store's begin* guards make the click a no-op while the row is pending.
+    -->
+    <button
+      appMenuItem
+      type="button"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="actions.beginRename(conversation())"
+    >
+      <app-icon name="bi-pencil" />
+      Rename
+    </button>
+    <hr appMenuSeparator />
+    <button
+      appMenuItem
+      type="button"
+      class="menu__item--danger"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="actions.beginDelete(conversation())"
+    >
+      <app-icon name="bi-trash3" />
+      Delete
+    </button>
+  </app-menu>
+</div>

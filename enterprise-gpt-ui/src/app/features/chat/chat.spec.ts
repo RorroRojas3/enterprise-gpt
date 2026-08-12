@@ -4,13 +4,17 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideLocationMocks } from '@angular/common/testing';
 import {
+  Router,
   RouterOutlet,
   UrlSegment,
   provideRouter,
   withComponentInputBinding,
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Dispatcher } from '@ngrx/signals/events';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { conversationEvents } from '@core/events/conversation-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import {
   conversationDetailFixture,
@@ -209,6 +213,166 @@ describe('Chat', () => {
 
     expect(element().querySelector('app-error-panel')).toBeNull();
     expect(element().querySelector('.chat__title')?.textContent).toContain('Helios 2.4');
+  });
+
+  it('re-renders the header when a rename is announced for the open conversation', async () => {
+    // US-304: a rename made from the sidebar row must reach the header even when the
+    // list never held the row — the event carries the server-confirmed DTO.
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    TestBed.inject(Dispatcher).dispatch(
+      conversationEvents.updated({ ...conversation, name: 'Renamed elsewhere' }),
+    );
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__title')?.textContent).toContain('Renamed elsewhere');
+  });
+
+  it('ignores an update announced for a different conversation', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    TestBed.inject(Dispatcher).dispatch(
+      conversationEvents.updated(conversationFixture({ name: 'Someone else’s rename' })),
+    );
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__title')?.textContent).toContain(
+      'Helios 2.4 release status',
+    );
+  });
+
+  it('navigates to the empty chat only after a delete of the open conversation completes', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    const actions = TestBed.inject(ConversationActionsStore);
+    actions.beginDelete(conversation);
+    actions.confirmDelete();
+    await harness.fixture.whenStable();
+
+    // Removal is optimistic; navigation is not — a failed delete restores the row
+    // and the user must still be standing on the conversation it belongs to.
+    expect(TestBed.inject(Router).url).toBe(`/chat/${conversation.id}`);
+
+    backend
+      .expectOne({ method: 'DELETE', url: detailUrl(conversation.id) })
+      .flush(null, { status: 204, statusText: 'No Content' });
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/chat');
+    expect(element().querySelector('.chat__header')).toBeNull();
+    expect(element().querySelector('h1')?.textContent).toContain('How can I help you today?');
+  });
+
+  it('moves fallen-through focus to the main landmark after a header-initiated delete', async () => {
+    // The navigation's render unmounts the header kebab that held focus; the fixup
+    // must wait for that render (afterNextRender) or it finds the trigger still
+    // connected and skips — leaving focus on <body>.
+    const main = document.createElement('main');
+    main.id = 'main-content';
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+
+    try {
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+      await harness.fixture.whenStable();
+
+      const trigger = element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger');
+      trigger?.focus();
+
+      const actions = TestBed.inject(ConversationActionsStore);
+      actions.beginDelete(conversation);
+      actions.confirmDelete();
+      backend
+        .expectOne({ method: 'DELETE', url: detailUrl(conversation.id) })
+        .flush(null, { status: 204, statusText: 'No Content' });
+      await harness.fixture.whenStable();
+
+      expect(TestBed.inject(Router).url).toBe('/chat');
+      expect(document.activeElement).toBe(main);
+    } finally {
+      main.remove();
+    }
+  });
+
+  it('stays put when the deletion announced is someone else’s', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    TestBed.inject(Dispatcher).dispatch(conversationEvents.deleted(conversationFixture().id));
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe(`/chat/${conversation.id}`);
+    expect(element().querySelector('.chat__title')?.textContent).toContain(
+      'Helios 2.4 release status',
+    );
+  });
+
+  it('offers rename and delete from the header kebab, routed through the shared store', async () => {
+    // US-308: the detail DTO is what the kebab hands over — its projectId is the
+    // fresh one a rename must echo. A distinctive projectId proves detail preference.
+    const projectId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(conversationDetailFixture({ ...conversation, projectId }));
+    await harness.fixture.whenStable();
+
+    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
+    await harness.fixture.whenStable();
+
+    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+    const rename = items.find((item) => item.textContent?.includes('Rename'));
+    const danger = items.filter((item) => item.classList.contains('menu__item--danger'));
+    expect(danger).toHaveLength(1);
+    expect(danger[0]?.textContent).toContain('Delete');
+
+    rename?.click();
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(ConversationActionsStore).renameTarget()?.projectId).toBe(projectId);
+  });
+
+  it('disables the header kebab items while the conversation’s own action is in flight', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    TestBed.inject(ConversationListStore).setRowPending(conversation.id, true);
+    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
+    await harness.fixture.whenStable();
+
+    // aria-disabled, not the native attribute: the items stay focusable so the
+    // menu's roving focus and Escape keep working; the store guards make the
+    // clicks no-ops.
+    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(true);
+    expect(items.every((item) => !item.disabled)).toBe(true);
+
+    items[0]?.click();
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(ConversationActionsStore).renameTarget()).toBeNull();
+  });
+
+  it('withholds the kebab for a deep link until the detail supplies a full DTO', async () => {
+    // Acting needs more than a name: rename echoes projectId, delete names the
+    // conversation — so the kebab waits a round trip rather than acting on a guess.
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+
+    expect(element().querySelector('.chat__menu')).toBeNull();
+
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__menu')).not.toBeNull();
   });
 
   it('keeps the sidebar row in step with the name the server reports', async () => {

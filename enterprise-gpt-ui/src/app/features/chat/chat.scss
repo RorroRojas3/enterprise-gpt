@@ -27,6 +27,12 @@
   white-space: nowrap;
 }
 
+// Frame 1b: the kebab sits at the far edge; the title ellipsises, the kebab does not.
+.chat__menu {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .chat__body {
   display: flex;
   flex: 1;

@@ -1,7 +1,24 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DOCUMENT,
+  Injector,
+  afterNextRender,
+  inject,
+  input,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
+import { Events } from '@ngrx/signals/events';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { canRetry } from '@core/errors/error-message';
+import { conversationEvents } from '@core/events/conversation-events';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
+import { Icon } from '@shared/icon/icon';
+import { Menu } from '@shared/overlay/menu/menu';
+import { MenuItem } from '@shared/overlay/menu/menu-item';
+import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ChatEmptyState } from './chat-empty-state';
 import { ConversationStore } from './conversation-store';
 
@@ -18,7 +35,7 @@ import { ConversationStore } from './conversation-store';
 @Component({
   selector: 'app-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ChatEmptyState, ErrorPanel, Skeleton],
+  imports: [ChatEmptyState, ErrorPanel, Icon, Menu, MenuItem, MenuSeparator, Skeleton],
   providers: [ConversationStore],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
@@ -32,6 +49,7 @@ export class Chat {
   readonly conversationId = input<string>();
 
   protected readonly conversation = inject(ConversationStore);
+  protected readonly actions = inject(ConversationActionsStore);
 
   /**
    * A 404 here means the conversation does not exist *or* belongs to someone else, and
@@ -44,5 +62,41 @@ export class Chat {
     // requires: it binds the subscription to this component rather than to the root
     // injector, where it would outlive the screen.
     this.conversation.open(this.conversationId);
+
+    const router = inject(Router);
+    const document = inject(DOCUMENT);
+    const injector = inject(Injector);
+
+    // US-306: the open conversation was deleted. The event fires only on the 204,
+    // so this navigates when the delete *completes*, never optimistically — and the
+    // `conversationId` input is the authoritative "is this the one open" fact, so a
+    // user who moved to another conversation mid-flight is left alone. `chatMatcher`
+    // serves both URLs, so this is an input change, not a remount.
+    inject(Events)
+      .on(conversationEvents.deleted)
+      .pipe(takeUntilDestroyed())
+      .subscribe(({ payload: id }) => {
+        if (id !== this.conversationId()) {
+          return;
+        }
+
+        void router.navigateByUrl('/chat').then(() => {
+          // The navigation unmounts whatever held focus — the header kebab (US-308)
+          // — but only on the *next render*: the promise resolves in a microtask,
+          // before zoneless change detection has removed the header, so an
+          // immediate check would still find the trigger connected and skip the
+          // fixup. afterNextRender waits that render out. Only a fall-through is
+          // corrected; a user focused elsewhere is not yanked.
+          afterNextRender(
+            () => {
+              const active = document.activeElement;
+              if (active === null || active === document.body || !active.isConnected) {
+                document.getElementById('main-content')?.focus();
+              }
+            },
+            { injector },
+          );
+        });
+      });
   }
 }
