@@ -30,6 +30,7 @@
               }
             ],
             "styles": ["src/styles.scss"],
+            "allowedCommonJsDependencies": ["prismjs"],
             "stylePreprocessorOptions": {
               "includePaths": ["src/styles"],
               "sass": {
@@ -42,7 +43,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "660kB",
+                  "maximumWarning": "665kB",
                   "maximumError": "720kB"
                 },
                 {

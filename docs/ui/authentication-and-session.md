@@ -624,10 +624,11 @@ The security-relevant MSAL settings are fixed in `buildMsalConfig` and deliberat
 | End of US-203 | 629.33 kB | 151.96 kB | 650 kB / 720 kB |
 | **End of EP-2 (US-205)** | **637.10 kB** | **153.38 kB** | **650 kB / 720 kB** |
 | End of EP-3 (US-303) | 643.62 kB | 158.05 kB | 660 kB / 720 kB |
+| Current, after EP-6's US-601/602/606 | 660.24 kB | 161.01 kB | 665 kB / 720 kB |
 
 US-204 and US-205 cost 7.77 kB between them — the drop directive and overlay, the session channel, the storage allowlist, the navigation seam, and three components — so the budget set at US-203 still holds and **no re-baseline was needed**. None of the MSAL cost is deferrable: `main.ts` must create and initialize the instance before bootstrap, so it is unavoidably initial. The `styles` bundle budget is unchanged at 65 kB warn / 80 kB error, and the global stylesheet still compiles to 60.32 kB — the new components carry their own scoped styles.
 
-The PRD's §9 open question on the initial-bundle budget is re-stated with these figures. EP-3 added 6.52 kB and moved only the *warning* threshold, because both the shell and the chat route are lazy ([Shell and Navigation §9](shell-and-navigation.md#9-bundle-and-budgets)).
+The PRD's §9 open question on the initial-bundle budget is re-stated with these figures. Everything after EP-2 has moved only the *warning* threshold, because both the shell and the chat route are lazy — EP-3 added 6.52 kB, and EP-6's markdown renderer added none of its 124.8 kB, riding the chat chunk instead ([Shell and Navigation §9](shell-and-navigation.md#9-bundle-and-budgets), [Answer Rendering §6](answer-rendering.md#6-the-bundle-gate-resolved)). MSAL remains the largest single item in the initial graph.
 
 ## 13. What is not here yet
 

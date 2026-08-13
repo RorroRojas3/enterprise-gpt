@@ -50,14 +50,14 @@ const initialState: ConversationActionsState = {
 };
 
 /**
- * The rename and delete flows every conversation surface shares.
+ * The rename, favourite and delete flows every conversation surface shares.
  *
  * Root-scoped on purpose: the invokers live in two features that must not import each
  * other — the sidebar row kebab (`features/shell`) and the conversation header kebab
- * (`features/chat`) — while the dialogs themselves are mounted once in the shell,
- * which wraps both. Everyone talks to this store; nobody talks to a dialog.
+ * and star (`features/chat`) — while the dialogs themselves are mounted once in the
+ * shell, which wraps both. Everyone talks to this store; nobody talks to a dialog.
  *
- * Three boundaries shape what lives here:
+ * Four boundaries shape what lives here:
  *
  * - **Entity writes go through `ConversationListStore` methods** (`renameRow`,
  *   `setRowPending`, `refreshRow`): its state is protected, so this store cannot
@@ -69,6 +69,10 @@ const initialState: ConversationActionsState = {
  * - **Failures follow the `core/errors` conventions**: validation problems render
  *   inline in the dialog and are never toasted; anything else rolls back the
  *   optimistic patch and goes through `ToastStore.fromError`.
+ * - **`conversationEvents.updated` carries the server's own DTO**, with one deliberate
+ *   exception: the favourite endpoint answers 204 with no body, so that event is built
+ *   from the target and the flag the server just accepted. An idempotent SET confirms
+ *   exactly that and changes nothing else, so nothing is being guessed at.
  */
 export const ConversationActionsStore = signalStore(
   { providedIn: 'root' },
@@ -178,6 +182,50 @@ export const ConversationActionsStore = signalStore(
       }),
     );
 
+    const _favorite = rxMethod<{ target: ConversationDto; isFavorite: boolean }>(
+      // mergeMap: favourites of different conversations are independent and may
+      // overlap, exactly as with delete. Same-id overlap cannot happen — toggleFavorite
+      // refuses while the row's pending id is set.
+      mergeMap(({ target, isFavorite }) => {
+        // Both writes sit in the projection, which rxMethod runs synchronously with the
+        // call: that is what lets toggleFavorite's guard see the pending id on a
+        // double-click's second call, and it keeps the optimistic patch inseparable
+        // from the request that resolves it.
+        store._list.setRowPending(target.id, true);
+        store._list.favoriteRow(target.id, isFavorite);
+        const url = store._api.build(`conversations/${ApiUrl.segment(target.id)}/favorite`);
+
+        // A SET, not a toggle: the body carries the state being asked for, so a
+        // retried or duplicated request cannot land on the opposite value.
+        return store._http.put<void>(url, { isFavorite }).pipe(
+          takeUntil(store._signedOut$),
+          tapResponse({
+            next: () => {
+              // Re-asserted rather than refreshed: the 204 carries no DTO to adopt, so
+              // this is the same flag again — idempotent when nothing intervened, and
+              // the repair when something did. The optimistic patch is not safe on its
+              // own, because the detail request `ConversationStore` fires on open ends
+              // in `refreshRow`, and a search or Retry ends in `setAllEntities`; either
+              // one landing mid-flight writes the server's pre-`PUT` `isFavorite` back
+              // over the row, and without this the list and the detail copy would
+              // disagree for good — leaving the header star, which reads the list,
+              // showing the opposite of what the server holds.
+              store._list.favoriteRow(target.id, isFavorite);
+              store._dispatcher.dispatch(conversationEvents.updated({ ...target, isFavorite }));
+            },
+            // No validation arm — the endpoint has no validator, so every failure,
+            // a 404 for a foreign or deleted conversation included, is roll back and
+            // toast.
+            error: (cause: unknown) => {
+              store._list.favoriteRow(target.id, target.isFavorite);
+              store._toasts.fromError(toAppError(cause, { url }));
+            },
+            finalize: () => store._list.setRowPending(target.id, false),
+          }),
+        );
+      }),
+    );
+
     return {
       /** Opens the rename dialog for a conversation, unless its own action is in flight. */
       beginRename(conversation: ConversationDto): void {
@@ -263,6 +311,24 @@ export const ConversationActionsStore = signalStore(
 
         patchState(store, { deleteTarget: null });
         _delete(target);
+      },
+
+      /**
+       * Flips a conversation's favourite flag (US-305). The sidebar row and the chat
+       * header both update at once, and a failure rolls them back behind an error
+       * toast carrying the trace id.
+       *
+       * With no dialog in front of it, this guard is the whole re-entry story: a
+       * double-click's second call finds the pending id the first one set and no-ops,
+       * rather than sending an opposite SET that would race the first to decide the
+       * final state.
+       */
+      toggleFavorite(conversation: ConversationDto): void {
+        if (store._list.isRowPending(conversation.id)) {
+          return;
+        }
+
+        _favorite({ target: conversation, isFavorite: !conversation.isFavorite });
       },
     };
   }),

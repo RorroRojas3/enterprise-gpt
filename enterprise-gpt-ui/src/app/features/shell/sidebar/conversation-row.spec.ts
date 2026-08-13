@@ -1,17 +1,18 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { provideTestAppConfig } from '@testing/app-config';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationRow } from './conversation-row';
 
 describe('ConversationRow', () => {
   let fixture: ComponentFixture<ConversationRow>;
   let actions: InstanceType<typeof ConversationActionsStore>;
+  let backend: HttpTestingController;
 
   const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
 
@@ -29,7 +30,12 @@ describe('ConversationRow', () => {
     fixture = TestBed.createComponent(ConversationRow);
     fixture.componentRef.setInput('conversation', conversation);
     actions = TestBed.inject(ConversationActionsStore);
+    backend = TestBed.inject(HttpTestingController);
     await fixture.whenStable();
+  });
+
+  afterEach(() => {
+    backend.verify();
   });
 
   function element(): HTMLElement {
@@ -93,5 +99,41 @@ describe('ConversationRow', () => {
     expect(actions.renameTarget()).toEqual(conversation);
     // Activation closes the menu — the dialog is the next surface.
     expect(element().querySelector('.menu__panel')).toBeNull();
+  });
+
+  it('offers Favourite between Rename and Delete, and toggles it through the store', async () => {
+    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
+    await fixture.whenStable();
+
+    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+    // Frame 3a's order: Rename, Favourite, then the separator and Delete.
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'Rename',
+      'Favourite',
+      'Delete',
+    ]);
+    expect(items[1]?.querySelector('use')?.getAttribute('href')).toBe('#bi-star');
+
+    items[1]?.click();
+    await fixture.whenStable();
+
+    const request = backend.expectOne(
+      `${TEST_API_BASE_URL}/api/conversations/${conversation.id}/favorite`,
+    );
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({ isFavorite: true });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('reads Unfavourite with a filled star on a row already favourited', async () => {
+    fixture.componentRef.setInput('conversation', conversationFixture({ isFavorite: true }));
+    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
+    await fixture.whenStable();
+
+    const item = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')].find(
+      (candidate) => candidate.textContent?.includes('Unfavourite'),
+    );
+    expect(item).toBeDefined();
+    expect(item?.querySelector('use')?.getAttribute('href')).toBe('#bi-star-fill');
   });
 });

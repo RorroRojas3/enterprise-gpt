@@ -63,6 +63,7 @@
     "@ngrx/eslint-plugin": "21.1.1",
     "@types/bootstrap": "^5.2.11",
     "@types/node": "^26.2.0",
+    "@types/prismjs": "^1.26.6",
     "@vitest/coverage-v8": "^4.1.10",
     "angular-eslint": "^21.4.0",
     "eslint": "^10.8.1",

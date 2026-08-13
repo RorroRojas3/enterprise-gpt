@@ -414,4 +414,177 @@ describe('ConversationActionsStore', () => {
       expect(toasts.assertiveToasts()).toHaveLength(0);
     });
   });
+
+  describe('favorite', () => {
+    function favoriteUrl(id: string): string {
+      return `${TEST_API_BASE_URL}/api/conversations/${id}/favorite`;
+    }
+
+    function expectFavorite(id: string): TestRequest {
+      return backend.expectOne({ method: 'PUT', url: favoriteUrl(id) });
+    }
+
+    function flush204(request: TestRequest): void {
+      request.flush(null, { status: 204, statusText: 'No Content' });
+    }
+
+    it('flips the row optimistically and sends the state it is asking for', () => {
+      const target = conversationFixture();
+      loadList([target]);
+
+      store.toggleFavorite(target);
+
+      expect(list.entities()[0]?.isFavorite).toBe(true);
+      expect(list.isRowPending(target.id)).toBe(true);
+      // The server does not bump dateModified for a favourite, so neither does the
+      // optimistic patch — the two would diverge on the next fetch.
+      expect(list.entities()[0]?.dateModified).toBe(target.dateModified);
+
+      const request = expectFavorite(target.id);
+      // A SET, not a toggle: the body names the state, so a duplicate cannot invert it.
+      expect(request.request.body).toEqual({ isFavorite: true });
+
+      flush204(request);
+
+      expect(list.isRowPending(target.id)).toBe(false);
+      // The 204 carries no DTO, so the announcement is the target plus the flag the
+      // server accepted.
+      expect(updates).toEqual([{ ...target, isFavorite: true }]);
+    });
+
+    it('unfavourites a favourited row', () => {
+      const target = conversationFixture({ isFavorite: true });
+      loadList([target]);
+
+      store.toggleFavorite(target);
+
+      expect(list.entities()[0]?.isFavorite).toBe(false);
+
+      const request = expectFavorite(target.id);
+      expect(request.request.body).toEqual({ isFavorite: false });
+      flush204(request);
+
+      expect(updates).toEqual([{ ...target, isFavorite: false }]);
+    });
+
+    it('rolls the flag back and raises a toast naming the trace id on failure', () => {
+      const target = conversationFixture();
+      loadList([target]);
+      const toasts = TestBed.inject(ToastStore);
+
+      store.toggleFavorite(target);
+      expectFavorite(target.id).flush(PROBLEM_FIXTURES.providerNotConfigured, {
+        status: 503,
+        statusText: 'Service Unavailable',
+      });
+
+      expect(list.entities()[0]?.isFavorite).toBe(false);
+      expect(toasts.assertiveToasts()).toHaveLength(1);
+      expect(toasts.assertiveToasts()[0]?.traceLine).toContain(
+        PROBLEM_FIXTURES.providerNotConfigured.traceId,
+      );
+      expect(updates).toHaveLength(0);
+      expect(list.isRowPending(target.id)).toBe(false);
+    });
+
+    it('re-asserts the flag over a row a concurrent refresh clobbered mid-flight', () => {
+      // ConversationStore's detail request ends in refreshRow, and it is in flight for
+      // exactly as long as the header star is clickable — so the server's pre-PUT
+      // isFavorite can land on top of the optimistic patch. Without the re-assert the
+      // list would keep saying false while the server and the detail copy say true.
+      const target = conversationFixture();
+      loadList([target]);
+
+      store.toggleFavorite(target);
+      const request = expectFavorite(target.id);
+
+      list.refreshRow(target);
+      expect(list.entities()[0]?.isFavorite).toBe(false);
+
+      flush204(request);
+
+      expect(list.entities()[0]?.isFavorite).toBe(true);
+    });
+
+    it('issues one request for a double toggle of the same row', () => {
+      const target = conversationFixture();
+      loadList([target]);
+
+      store.toggleFavorite(target);
+      store.toggleFavorite(target);
+
+      // The pending id is set synchronously inside the pipeline, so the second call
+      // finds it — expectOne would throw on the opposite PUT it would otherwise send.
+      const request = expectFavorite(target.id);
+      expect(request.request.body).toEqual({ isFavorite: true });
+      flush204(request);
+
+      expect(list.entities()[0]?.isFavorite).toBe(true);
+    });
+
+    it('refuses a row whose own action is already in flight', () => {
+      const target = conversationFixture();
+      loadList([target]);
+
+      list.setRowPending(target.id, true);
+      store.toggleFavorite(target);
+
+      backend.expectNone(favoriteUrl(target.id));
+      expect(list.entities()[0]?.isFavorite).toBe(false);
+    });
+
+    it('lets favourites of different conversations overlap', () => {
+      // mergeMap, not exhaustMap: favouriting B while A is on the wire is legal and
+      // must issue both requests.
+      const [a, b] = [conversationFixture(), conversationFixture()];
+      loadList([a, b]);
+
+      store.toggleFavorite(a);
+      store.toggleFavorite(b);
+
+      const first = expectFavorite(a.id);
+      const second = expectFavorite(b.id);
+      flush204(first);
+      flush204(second);
+
+      expect(updates).toEqual([
+        { ...a, isFavorite: true },
+        { ...b, isFavorite: true },
+      ]);
+    });
+
+    it('favourites a conversation the list does not hold and still announces it', () => {
+      // The deep-link case: nothing to patch locally, but the header still needs the
+      // confirmed flag.
+      const target = conversationFixture();
+      loadList([conversationFixture()]);
+
+      store.toggleFavorite(target);
+
+      expect(list.entities()).toHaveLength(1);
+      expect(list.entities().some((c) => c.isFavorite)).toBe(false);
+
+      flush204(expectFavorite(target.id));
+
+      expect(updates).toEqual([{ ...target, isFavorite: true }]);
+    });
+
+    it('drops the response and clears pending when the user signs out mid-toggle', () => {
+      const target = conversationFixture();
+      loadList([target]);
+      const toasts = TestBed.inject(ToastStore);
+
+      store.toggleFavorite(target);
+      const request = expectFavorite(target.id);
+
+      signOut();
+
+      expect(request.cancelled).toBe(true);
+      // finalize runs on cancellation too — without it the id would stay pending for
+      // the next user.
+      expect(list.isRowPending(target.id)).toBe(false);
+      expect(updates).toHaveLength(0);
+      expect(toasts.assertiveToasts()).toHaveLength(0);
+    });
+  });
 });

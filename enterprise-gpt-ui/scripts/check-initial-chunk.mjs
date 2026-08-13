@@ -18,6 +18,16 @@ const STATS = join(UI_ROOT, 'dist', 'enterprise-gpt-ui', 'stats.json');
 const FORBIDDEN = [
   { label: 'diagrams (US-605)', match: /(^|\/)node_modules\/(mermaid|@mermaid-js\/[^/]+)\// },
   { label: 'math (US-605)', match: /(^|\/)node_modules\/(katex|mathjax|mathjax-full)\// },
+  // US-601 resolved the budget question by putting the transcript renderer behind
+  // the lazy chat route rather than by raising the ceiling: the initial graph had
+  // ~11 kB of headroom under its warning line and this stack is an order of
+  // magnitude more than that. `provideChatMarkdown()` is therefore provided at the
+  // `Chat` component, and one static import from anywhere eagerly reachable would
+  // silently undo that — which is what this entry catches.
+  {
+    label: 'markdown renderer (US-601)',
+    match: /(^|\/)node_modules\/(ngx-markdown|marked|prismjs|dompurify)\//,
+  },
   // US-203 is a statement about the network, not about visibility: the admin chunk
   // must not be *requested* by a non-administrator. A `canMatch` guard is what keeps
   // it off the wire, but one stray static import from a shared module would put it in

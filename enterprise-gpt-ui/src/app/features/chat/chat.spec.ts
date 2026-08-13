@@ -390,6 +390,101 @@ describe('Chat', () => {
     expect(element().querySelector('.chat__menu')).not.toBeNull();
   });
 
+  it('fills the header star from the sidebar copy of a favourited conversation', async () => {
+    const list = TestBed.inject(ConversationListStore);
+    list.ensureLoaded();
+    TestBed.tick();
+    backend
+      .expectOne((request) => request.url === SEARCH_URL)
+      .flush(conversationPage([{ ...conversation, isFavorite: true }]));
+    TestBed.tick();
+
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(conversationDetailFixture({ ...conversation, isFavorite: true }));
+    await harness.fixture.whenStable();
+
+    const star = element().querySelector<HTMLButtonElement>('.chat__star');
+    expect(star?.classList.contains('chat__star--on')).toBe(true);
+    // The label says which way the control goes, which is why it carries no
+    // aria-pressed on top.
+    expect(star?.getAttribute('aria-label')).toBe('Unfavourite Helios 2.4 release status');
+  });
+
+  it('flips the header star and the sidebar row together, before the server answers', async () => {
+    // US-308's deferred criterion: the star performs US-305's toggle and both surfaces
+    // reflect it — the header reads the list's optimistically patched copy.
+    const list = TestBed.inject(ConversationListStore);
+    list.ensureLoaded();
+    TestBed.tick();
+    backend
+      .expectOne((request) => request.url === SEARCH_URL)
+      .flush(conversationPage([conversation]));
+    TestBed.tick();
+
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    element().querySelector<HTMLButtonElement>('.chat__star')?.click();
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+    expect(list.entities()[0]?.isFavorite).toBe(true);
+
+    const request = backend.expectOne({
+      method: 'PUT',
+      url: `${detailUrl(conversation.id)}/favorite`,
+    });
+    expect(request.request.body).toEqual({ isFavorite: true });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+  });
+
+  it('disables the header star while the conversation’s own action is in flight', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    TestBed.inject(ConversationListStore).setRowPending(conversation.id, true);
+    await harness.fixture.whenStable();
+
+    // Native disabled, unlike the kebab's items: a standalone button is not part of a
+    // roving-focus panel it could be stranded out of.
+    expect(element().querySelector<HTMLButtonElement>('.chat__star')?.disabled).toBe(true);
+  });
+
+  it('fills the star from the detail DTO for a deep link the list never held', async () => {
+    // GET api/conversations/{id} reports isFavorite truthfully — unlike
+    // GET {id}/messages — so the deep-link header is honest, one round trip late.
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+
+    expect(element().querySelector('.chat__star')).toBeNull();
+
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(conversationDetailFixture({ ...conversation, isFavorite: true }));
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+  });
+
+  it('follows a favourite announced for the open conversation', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    TestBed.inject(Dispatcher).dispatch(
+      conversationEvents.updated({ ...conversation, isFavorite: true }),
+    );
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+  });
+
   it('renders the composer on the empty route and on an open conversation alike', async () => {
     await harness.navigateByUrl('/chat', Chat);
     expect(element().querySelector('app-composer')).not.toBeNull();

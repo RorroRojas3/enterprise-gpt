@@ -36,26 +36,12 @@
   padding-top: 3px;
 }
 
-// Plain text until US-601's sanitized markdown; pre-wrap keeps the model's
-// line breaks without letting long tokens break the column.
-.assistant-turn__text {
-  margin: 2px 0 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+// Holds US-602's head/tail pair together as one item in the column above, so the
+// growing answer is spaced exactly like the single render that replaces it.
+.assistant-turn__live {
+  min-width: 0;
 }
 
-// Frame 1b's streaming caret: an 8×17px --accent bar on the kit's `blink`.
-.assistant-turn__caret {
-  display: inline-block;
-  width: 8px;
-  height: 17px;
-  margin-left: 3px;
-  border-radius: 2px;
-  background: var(--accent);
-  vertical-align: -3px;
-  animation: blink 1s steps(1) infinite;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
+// Rendered markdown and its caret live in the global `_markdown.scss`: the
+// renderer writes innerHTML, which carries no component scoping attribute for
+// these rules to match.

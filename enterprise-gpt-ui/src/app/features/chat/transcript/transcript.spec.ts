@@ -15,6 +15,7 @@ import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store
 import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
+import { provideChatMarkdown } from '../markdown/markdown-providers';
 import { TurnStore } from '../turn-store';
 import { Transcript } from './transcript';
 
@@ -55,6 +56,9 @@ describe('Transcript', () => {
           useValue: { streamSelection: () => SELECTION, applyConversationSettings },
         },
         TurnStore,
+        // US-601: the transcript renders markdown, so its specs need the same
+        // sanitized pipeline the lazy chat route provides in the application.
+        provideChatMarkdown(),
       ],
     });
 
@@ -123,9 +127,9 @@ describe('Transcript', () => {
         'app-activity-card',
         'app-activity-card',
         'app-activity-card',
-        'p',
+        'markdown',
       ]);
-      expect(host.querySelector('.assistant-turn__text')?.textContent).toBe('Hello, world.');
+      expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Hello, world.');
     });
 
     it('badges the kind separately from the label, never composed', async () => {
@@ -208,15 +212,17 @@ describe('Transcript', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
 
       expect(host.querySelector('app-ridgeline')).toBeNull();
-      expect(host.querySelector('.assistant-turn__text')?.textContent).toContain('Hello');
-      expect(host.querySelector('.assistant-turn__caret')).not.toBeNull();
+      // Mid-stream the growing block is a head/tail pair (US-602), and text this
+      // short has no block boundary yet — so it is the tail that carries it.
+      expect(host.querySelector('.assistant-turn__content')?.textContent).toContain('Hello');
+      expect(host.querySelector('.assistant-turn__md--caret')).not.toBeNull();
     });
 
     it('drops aria-busy and the caret once the turn settles', async () => {
       await streamFullTurn();
 
       expect(host.getAttribute('aria-busy')).toBeNull();
-      expect(host.querySelector('.assistant-turn__caret')).toBeNull();
+      expect(host.querySelector('.assistant-turn__md--caret')).toBeNull();
     });
 
     it('renders a cut-off turn as the warning card above the partial answer', async () => {
@@ -230,7 +236,7 @@ describe('Transcript', () => {
       expect(notice?.textContent).toContain('This response was cut off');
       expect(notice?.textContent).toContain('the answer below may be incomplete');
       expect(notice?.querySelector('.notice__retry')).not.toBeNull();
-      expect(host.querySelector('.assistant-turn__text')?.textContent).toBe('Partial ans');
+      expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Partial ans');
       // The persistent live region carries the announcement — the card is not
       // a live region, because it appears together with its content.
       expect(notice?.getAttribute('role')).toBeNull();

@@ -4,14 +4,47 @@
   </div>
 
   <div class="assistant-turn__content">
-    @for (node of renderedNodes(); track $index) {
+    <!-- Keyed on where a block starts and on the activity's own scope, both of
+         which are fixed once the node exists. The index fallback covers an
+         activity that arrived without a scope id, where two nodes would
+         otherwise share a key. -->
+    @for (
+      node of renderedNodes();
+      track node.kind === 'text' ? 't' + node.start : 'a' + (node.activity.scopeId || $index)
+    ) {
       @switch (node.kind) {
         @case ('text') {
-          <!-- The paragraph is white-space: pre-wrap, so template whitespace is
-               rendering, not formatting: a reflow here paints stray spaces
-               around the answer and between the text and its caret. -->
-          <!-- prettier-ignore -->
-          <p class="assistant-turn__text">{{ node.text }}@if ($index === caretIndex()) {<span class="assistant-turn__caret" aria-hidden="true"></span>}</p>
+          <!-- The caret is a CSS pseudo-element on the rendered block rather than
+               an element of its own: the markdown output is written as innerHTML,
+               so there is no template position left inside it to put a span. -->
+          @if ($index === caretIndex()) {
+            <!-- US-602: the node still growing renders as a stable head and a
+                 volatile tail, two renderers rather than one bound to the whole
+                 accumulating string — ngx-markdown re-parses its entire input on
+                 every change, so one instance would re-parse the answer per
+                 flush. The caret rides whichever of the two ends the text.
+
+                 They are wrapped so the pair counts as one child of the content
+                 column: as two, the column's own 10px gap would space them apart
+                 and then close to a paragraph margin the moment the turn settled
+                 into a single render. -->
+            <div class="assistant-turn__live">
+              <markdown
+                class="assistant-turn__md"
+                [class.assistant-turn__md--caret]="liveTail() === ''"
+                [data]="liveHead()"
+              />
+              <markdown
+                class="assistant-turn__md"
+                [class.assistant-turn__md--caret]="liveTail() !== ''"
+                [data]="liveTail()"
+              />
+            </div>
+          } @else {
+            <!-- Settled, or closed by a later activity: one canonical render of
+                 the untouched source, highlighting included. -->
+            <markdown class="assistant-turn__md" [data]="node.text" />
+          }
         }
         @case ('activity') {
           <app-activity-card [activity]="node.activity" />

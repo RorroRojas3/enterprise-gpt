@@ -2,8 +2,8 @@
   "permissions": {
     "allow": []
   },
-  "model": "fable",
-  "availableModels": ["fable"],
+  "model": "opus",
+  "availableModels": ["opus"],
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "microsoft-learn",

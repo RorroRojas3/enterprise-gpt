@@ -125,9 +125,10 @@ function listFields(conversation: ConversationDto): ConversationDto {
  * sorting a page in hand would put a second sorted run under the first.
  *
  * `withPendingIds` arrived with US-304, the first per-row action. The mutation surface
- * around it — {@link renameRow}, {@link setRowPending} — exists because the store that
- * drives renames and deletes (`ConversationActionsStore`) cannot `patchState` a store
- * whose state is protected; entity writes stay methods here, decisions stay there.
+ * around it — {@link renameRow}, {@link favoriteRow}, {@link setRowPending} — exists
+ * because the store that drives renames, favourites and deletes
+ * (`ConversationActionsStore`) cannot `patchState` a store whose state is protected;
+ * entity writes stay methods here, decisions stay there.
  *
  * The `_started` + release-the-query trio (`ensureLoaded`, the `null` arm of
  * `_runQuery`, and the `onInit` computation) is the obvious candidate for a sixth
@@ -321,6 +322,21 @@ export const ConversationListStore = signalStore(
       renameRow(id: string, name: string): void {
         if (store.entityMap()[id] !== undefined) {
           patchState(store, updateEntity({ id, changes: { name } }));
+        }
+      },
+
+      /**
+       * Optimistically sets a held row's favourite flag (US-305). The caller rolls a
+       * failure back by calling it again with the previous value.
+       *
+       * A row the list does not hold is ignored for the same reason as
+       * {@link refreshRow}. Only `isFavorite` moves: the server does not bump
+       * `dateModified` for a favourite, so unlike a rename there is never a server
+       * value to adopt afterwards, and a local bump would be pure divergence.
+       */
+      favoriteRow(id: string, isFavorite: boolean): void {
+        if (store.entityMap()[id] !== undefined) {
+          patchState(store, updateEntity({ id, changes: { isFavorite } }));
         }
       },
 

@@ -19,14 +19,35 @@
     </h1>
 
     <!--
-      US-308: the kebab routes through the same ConversationActionsStore flows as the
-      sidebar row — nothing reimplemented. It waits for a full DTO (`current`) because
-      rename must echo the fresh projectId and delete names the conversation.
-      Deliberately absent until their stories land: the favourite star (US-305), the
+      US-308: the star and the kebab route through the same ConversationActionsStore
+      flows as the sidebar row — nothing reimplemented. Both wait for a full DTO
+      (`current`) because rename must echo the fresh projectId and every action names
+      the conversation, so a deep link shows neither for one round trip rather than
+      acting on a guess. Deliberately absent until their stories land: the
       move/remove-project items (US-307), and the sub-768px collapse into frame 1d's
       mobile navbar (US-1403, which builds the responsive shell it collapses into).
     -->
     @if (conversation.current(); as current) {
+      <!--
+        A label swap and a state class rather than aria-pressed, exactly as on
+        project-card: the label already says which way the control goes, and carrying
+        the state twice announces as "Unfavourite …, pressed". Native [disabled] is
+        right here — unlike the kebab's items, this button is not part of a
+        roving-focus panel it would drop out of.
+      -->
+      <button
+        class="chat__star"
+        type="button"
+        [class.chat__star--on]="conversation.isFavorite()"
+        [attr.aria-label]="
+          (conversation.isFavorite() ? 'Unfavourite ' : 'Favourite ') + current.name
+        "
+        [disabled]="conversation.actionPending()"
+        (click)="actions.toggleFavorite(current)"
+      >
+        <app-icon [name]="conversation.isFavorite() ? 'bi-star-fill' : 'bi-star'" />
+      </button>
+
       <!--
         aria-disabled, never the native attribute: a natively disabled item cannot
         take focus, which strands the menu's roving focus and its Escape handling.
@@ -59,29 +80,55 @@
   </header>
 }
 
-<div class="chat__body">
-  @if (conversation.error(); as error) {
-    <!--
-      A 404 here means the conversation does not exist *or* belongs to someone else —
-      the API deliberately does not distinguish the two, and neither does this copy.
-    -->
-    <app-error-panel
-      class="chat__error"
-      [error]="error"
-      [canRetry]="canRetry(error)"
-      heading="This conversation couldn’t be opened"
-      (retried)="conversation.retry()"
-    />
-  } @else if (turn.hasContent()) {
-    <div class="chat__transcript">
-      <app-transcript />
-    </div>
-  } @else {
-    <app-chat-empty-state
-      [asPageHeading]="!conversation.isOpen()"
-      (suggested)="turn.seedComposer($event)"
-    />
-  }
+<!--
+  tabindex="-1" so the jump-to-latest control has somewhere deliberate to hand
+  focus when it removes itself, rather than letting it fall to <body>. Negative,
+  so the container never joins the tab order itself.
+-->
+<div
+  class="chat__body"
+  tabindex="-1"
+  [appTranscriptPinning]="bottomSentinel"
+  [pinningContent]="pinnedContent"
+  #pinning="appTranscriptPinning"
+>
+  <!--
+    US-606: one wrapper around every branch, so the pinning directive has a single
+    stable element whose height it can watch. Watching the scroll container itself
+    would report nothing — its own box never changes as the answer grows.
+  -->
+  <div class="chat__content" #pinnedContent>
+    @if (conversation.error(); as error) {
+      <!--
+        A 404 here means the conversation does not exist *or* belongs to someone else —
+        the API deliberately does not distinguish the two, and neither does this copy.
+      -->
+      <app-error-panel
+        class="chat__error"
+        [error]="error"
+        [canRetry]="canRetry(error)"
+        heading="This conversation couldn’t be opened"
+        (retried)="conversation.retry()"
+      />
+    } @else if (turn.hasContent()) {
+      <div class="chat__transcript">
+        <app-transcript />
+      </div>
+    } @else {
+      <app-chat-empty-state
+        [asPageHeading]="!conversation.isOpen()"
+        (suggested)="turn.seedComposer($event)"
+      />
+    }
+  </div>
+
+  <!--
+    US-606: the bottom marker, deliberately outside the branches above so that it
+    is one element for the whole life of the screen — a sentinel inside a branch
+    would be replaced whenever the body swapped, and the observer would be left
+    watching a detached node.
+  -->
+  <div class="chat__sentinel" #bottomSentinel aria-hidden="true"></div>
 </div>
 
 <!--
@@ -91,6 +138,24 @@
 -->
 @if (!conversation.error()) {
   <div class="chat__composer">
+    <!--
+      US-606: centred above the composer, and only while the reader is away from
+      the newest content. The ring is a wrapper rather than the button because
+      `ringpulse` animates box-shadow, which would otherwise replace the button's
+      own drop shadow for most of every cycle.
+    -->
+    @if (pinning.showJump()) {
+      <div class="chat__jump" [class.chat__jump--pulsing]="pinning.pulsing()">
+        <button
+          class="chat__jump-button"
+          type="button"
+          aria-label="Jump to latest message"
+          (click)="pinning.jumpToLatest()"
+        >
+          <app-icon name="bi-arrow-down" />
+        </button>
+      </div>
+    }
     <app-composer />
   </div>
 }

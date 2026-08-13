@@ -1,0 +1,82 @@
+# Repository-wide ignores.
+#
+# Both projects keep their own file, and those stay authoritative for their own
+# build output: `enterprise-gpt-ui/.gitignore` is the Angular CLI set plus this
+# project's generated assets, and `enterprise-gpt-api/.gitignore` is the standard
+# Visual Studio set. Their patterns are rooted to their own directory, which is
+# correct — nothing here is meant to replace them.
+#
+# What belongs here is the repository-level surface those two cannot see: local
+# tool state beside the checked-in configuration, and the same build artefacts
+# turning up anywhere other than the two project roots.
+
+# --- Local tool state --------------------------------------------------------
+
+# Worktrees are checkouts of this repository nested inside it, so git offers the
+# whole second tree as untracked content. Ignored as a directory rather than by
+# branch name, because the path is where `git worktree add` puts them and the
+# names change per feature.
+.claude/worktrees/
+
+# Personal overrides layered on the checked-in .claude/settings.json.
+.claude/settings.local.json
+.claude/*.local.json
+
+# --- Editors -----------------------------------------------------------------
+
+# Mirrors the allow-list in the UI project's file: the three committed workspace
+# files are shared configuration, everything else in here is per-developer.
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
+.vs/
+.idea/
+.history/
+*.swp
+*~
+
+# --- Node and Angular --------------------------------------------------------
+#
+# Unrooted on purpose. The UI project already rooted these to itself, so these
+# are the net for a tool run from the repository root or from a directory that
+# does not exist yet.
+node_modules/
+dist/
+.angular/
+coverage/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- .NET --------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esults/
+BenchmarkDotNet.Artifacts/
+*.user
+*.suo
+*.rsuser
+
+# --- Secrets and machine-local configuration ---------------------------------
+#
+# The application takes its secrets from Key Vault through DefaultAzureCredential
+# and its runtime configuration from `config.json`, so nothing below should ever
+# exist in a clean checkout. They are listed because the cost of missing one is
+# a committed credential.
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+appsettings.local.json
+*.pfx
+*.snk
+*.p12
+secrets.json
+
+# --- Operating system --------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
