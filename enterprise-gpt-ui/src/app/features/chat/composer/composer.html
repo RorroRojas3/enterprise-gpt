@@ -1,5 +1,6 @@
-<div class="composer">
+<div class="composer" [class.composer--streaming]="turn.inFlight()">
   <textarea
+    #promptBox
     class="composer__prompt"
     rows="2"
     aria-label="Message Enterprise GPT"
@@ -23,13 +24,26 @@
     <app-model-menu />
     <app-tools-menu />
     <span class="composer__spacer"></span>
+    <!-- One persistent button morphs between Send and Stop (frames 1b/2g):
+         swapping elements with @if would destroy the control mid-press and
+         drop keyboard focus to <body> on the app's primary interaction. -->
     <button
+      #actionButton
       type="button"
-      class="composer__send btn btn-primary"
-      aria-label="Send"
-      [disabled]="sendDisabled()"
+      class="composer__action btn"
+      [class.btn-primary]="!turn.inFlight()"
+      [class.composer__send]="!turn.inFlight()"
+      [class.composer__stop]="turn.inFlight()"
+      [attr.aria-label]="turn.inFlight() ? 'Stop' : 'Send'"
+      [disabled]="!turn.inFlight() && sendDisabled()"
+      (click)="onAction()"
     >
-      <app-icon name="bi-send-fill" />
+      @if (turn.inFlight()) {
+        <!-- A drawn square in a --brand ring, not a glyph. -->
+        <span class="composer__stop-glyph" aria-hidden="true"></span>
+      } @else {
+        <app-icon name="bi-send-fill" />
+      }
     </button>
   </div>
 </div>

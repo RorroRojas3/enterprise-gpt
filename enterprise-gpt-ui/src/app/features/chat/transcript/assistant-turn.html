@@ -1,0 +1,22 @@
+<div class="assistant-turn">
+  <div class="assistant-turn__avatar">
+    <app-brand-logo variant="mark" />
+  </div>
+
+  <div class="assistant-turn__content">
+    @for (node of renderedNodes(); track $index) {
+      @switch (node.kind) {
+        @case ('text') {
+          <!-- The paragraph is white-space: pre-wrap, so template whitespace is
+               rendering, not formatting: a reflow here paints stray spaces
+               around the answer and between the text and its caret. -->
+          <!-- prettier-ignore -->
+          <p class="assistant-turn__text">{{ node.text }}@if ($index === caretIndex()) {<span class="assistant-turn__caret" aria-hidden="true"></span>}</p>
+        }
+        @case ('activity') {
+          <app-activity-card [activity]="node.activity" />
+        }
+      }
+    }
+  </div>
+</div>

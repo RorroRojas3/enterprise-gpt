@@ -1,0 +1,26 @@
+<!-- Not a live region: the Transcript's persistent status region announces the stop. -->
+<div class="stopped">
+  <div class="stopped__header">
+    <app-icon class="stopped__icon" name="bi-stop-circle" />
+    <span class="stopped__title">Stopped — not saved to this conversation</span>
+  </div>
+
+  @if (text(); as text) {
+    <p class="stopped__text">{{ text }}</p>
+  }
+
+  <div class="stopped__actions">
+    <button type="button" class="btn btn-outline-secondary btn-sm stopped__action" (click)="copy()">
+      <app-icon name="bi-copy" />
+      {{ copied() ? 'Copied' : 'Copy' }}
+    </button>
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm stopped__action"
+      (click)="retried.emit()"
+    >
+      <app-icon name="bi-arrow-clockwise" />
+      Retry
+    </button>
+  </div>
+</div>

@@ -25,11 +25,14 @@ export class KindBadge {
   });
 }
 
+// US-501 pins the badge to exactly four values — Reasoning, Function, MCP tool,
+// Agent — one per `ToolKind` arm, so `Unknown` (the kind reasoning phases stream
+// under) renders as "Reasoning" rather than a fifth word the design lacks.
 const KIND_LABELS: Readonly<Record<string, string>> = {
   Function: 'Function',
   McpTool: 'MCP tool',
   Agent: 'Agent',
-  Unknown: 'Tool',
+  Unknown: 'Reasoning',
 };
 
 function titleCase(value: string): string {

@@ -12,21 +12,28 @@ import {
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Dispatcher } from '@ngrx/signals/events';
+import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { conversationEvents } from '@core/events/conversation-events';
+import { TokenService } from '@core/auth/token-service';
+import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { modelFixture } from '@testing/catalog';
 import {
   conversationDetailFixture,
   conversationFixture,
   conversationPage,
 } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { streamingResponse } from '@testing/stream-frames';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chat } from './chat';
 import { CONVERSATION_ID_PARAM, chatMatcher } from './chat-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
+const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
+const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
 
 function segments(...paths: string[]): UrlSegment[] {
   return paths.map((path) => new UrlSegment(path, {}));
@@ -73,16 +80,23 @@ class TestHost {}
 describe('Chat', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
+  let streamFetch: ReturnType<typeof vi.fn>;
 
   const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
 
   beforeEach(async () => {
+    // Pending unless a test swaps it: these specs exercise the screen, and an
+    // unresolved fetch keeps a sent turn in its thinking state.
+    streamFetch = vi.fn(() => new Promise<Response>(() => {}));
+
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
         provideTestAppConfig(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        { provide: STREAM_FETCH, useValue: streamFetch },
+        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
         provideRouter(
           [
             { matcher: chatMatcher, component: Chat },
@@ -161,8 +175,9 @@ describe('Chat', () => {
   });
 
   it('keeps the component instance across opening and closing a conversation', async () => {
-    // The property US-401 depends on: it creates the conversation mid-turn and updates
-    // the URL with Location.replaceState while an answer is already streaming.
+    // The property US-401 depends on: it creates the conversation mid-turn and
+    // replaces the URL (navigateByUrl with replaceUrl) while an answer is
+    // already streaming — a parameter change, never a remount.
     const first = await harness.navigateByUrl('/chat', Chat);
 
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
@@ -396,6 +411,85 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     expect(element().querySelector('app-composer')).toBeNull();
+  });
+
+  it('offers the four suggested prompts on the landing screen only', async () => {
+    await harness.navigateByUrl('/chat', Chat);
+
+    const labels = [...element().querySelectorAll('.chat-empty__chip')].map(
+      (chip) => chip.textContent?.trim() ?? '',
+    );
+    expect(labels).toEqual([
+      'Summarize a document',
+      'Draft a status update',
+      'Find open Jira blockers',
+      'Explain a code change',
+    ]);
+
+    // An open conversation's body is not the landing screen (frame 1a).
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.chat-empty__chip')).toBeNull();
+  });
+
+  it('seeds the composer when a suggested prompt is chosen, creating nothing', async () => {
+    await harness.navigateByUrl('/chat', Chat);
+
+    element().querySelector<HTMLButtonElement>('.chat-empty__chip')?.click();
+    await harness.fixture.whenStable();
+
+    const prompt = element().querySelector<HTMLTextAreaElement>('.composer__prompt');
+    expect(prompt?.value).toBe('Summarize a document');
+    expect(document.activeElement).toBe(prompt);
+    // A chip only seeds text; sending is still the user's move (US-303).
+    backend.expectNone(CREATE_URL);
+  });
+
+  it('runs the first send end to end: create, prepend, replace the URL, stream (US-401)', async () => {
+    streamFetch.mockImplementation((_input: unknown, init?: RequestInit) => {
+      const handle = streamingResponse();
+      handle.abortOn(init?.signal);
+      return Promise.resolve(handle.response);
+    });
+    await harness.navigateByUrl('/chat', Chat);
+
+    const models = TestBed.inject(ModelCatalogStore).ensureLoaded();
+    backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true })]);
+    await models;
+    await harness.fixture.whenStable();
+
+    const prompt = element().querySelector<HTMLTextAreaElement>('.composer__prompt');
+    prompt!.value = 'First prompt';
+    prompt!.dispatchEvent(new Event('input', { bubbles: true }));
+    await harness.fixture.whenStable();
+    element().querySelector<HTMLButtonElement>('.composer__send')?.click();
+    await harness.fixture.whenStable();
+
+    const created = conversationFixture({ name: 'New conversation' });
+    const create = backend.expectOne(CREATE_URL);
+    expect(create.request.body).toEqual({ projectId: null });
+    create.flush(created);
+    await harness.fixture.whenStable();
+
+    // The URL was replaced through the router, so the route input caught up —
+    // and the equality guard means the live turn survived it.
+    expect(TestBed.inject(Router).url).toBe(`/chat/${created.id}`);
+    expect(TestBed.inject(ConversationListStore).entities()[0]?.id).toBe(created.id);
+    expect(streamFetch).toHaveBeenCalledTimes(1);
+
+    // The transcript replaced the empty state: optimistic bubble, thinking
+    // ridgeline, aria-busy — the turn is in flight against the new id.
+    expect(element().querySelector('.transcript__bubble')?.textContent).toBe('First prompt');
+    expect(element().querySelector('app-ridgeline')).not.toBeNull();
+    expect(element().querySelector('app-transcript')?.getAttribute('aria-busy')).toBe('true');
+    expect(element().querySelector('.chat-empty__chip')).toBeNull();
+
+    // The navigation opened the conversation detail, exactly as a sidebar click would.
+    backend.expectOne(detailUrl(created.id)).flush(conversationDetailFixture(created));
+    await harness.fixture.whenStable();
+    expect(element().querySelector('.chat__title')?.textContent).toContain('New conversation');
   });
 
   it('keeps the sidebar row in step with the name the server reports', async () => {
