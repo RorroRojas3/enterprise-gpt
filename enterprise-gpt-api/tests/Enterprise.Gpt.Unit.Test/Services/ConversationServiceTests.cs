@@ -387,8 +387,6 @@ public sealed class ConversationServiceTests : IDisposable
                 && operations[0].OperationType == PatchOperationType.Set && operations[0].Path == "/name"
                 && operations[1].OperationType == PatchOperationType.Set && operations[1].Path == "/dateModified"),
             Arg.Any<CancellationToken>());
-        await _cosmosService.DidNotReceiveWithAnyArgs().UpdateItemAsync(
-            default(CosmosConversation)!, default!, default!, TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -513,8 +511,6 @@ public sealed class ConversationServiceTests : IDisposable
                 && operations[3].OperationType == PatchOperationType.Increment && operations[3].Path == "/totalTokens"
                 && operations[4].OperationType == PatchOperationType.Set && operations[4].Path == "/dateModified"),
             Arg.Any<CancellationToken>());
-        await _cosmosService.DidNotReceiveWithAnyArgs().UpdateItemAsync(
-            default(CosmosConversation)!, default!, default!, TestContext.Current.CancellationToken);
     }
 
     /// <summary>

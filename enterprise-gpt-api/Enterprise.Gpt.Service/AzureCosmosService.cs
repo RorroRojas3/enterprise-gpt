@@ -1,4 +1,7 @@
-﻿using Microsoft.Azure.Cosmos;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Settings;
+using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Options;
 using System.Net;
 
 /// <summary>
@@ -7,190 +10,335 @@ using System.Net;
 namespace Enterprise.Gpt.Service
 {
     /// <summary>
-    /// Defines operations for interacting with Azure Cosmos DB.
+    /// Defines operations against the transcript container.
     /// </summary>
+    /// <remarks>
+    /// Every member takes the conversation's owning user and its identifier rather than a
+    /// pre-built partition key. That is deliberate: the container is partitioned hierarchically on
+    /// <c>/userId</c> then <c>/conversationId</c>, and taking both levels as parameters makes a
+    /// cross-partition query and a partial-key purge impossible to express, rather than mistakes
+    /// caught at runtime.
+    /// </remarks>
     public interface IAzureCosmosService
     {
         /// <summary>
-        /// Retrieves a single item from the Cosmos DB container.
+        /// Reads a single document by identifier.
         /// </summary>
-        /// <typeparam name="T">The type of the item to retrieve.</typeparam>
-        /// <param name="id">The unique identifier of the item.</param>
-        /// <param name="partitionKey">The partition key value of the item.</param>
+        /// <typeparam name="T">The document type.</typeparam>
+        /// <param name="id">The document identifier.</param>
+        /// <param name="userId">The owning user, the first partition key level.</param>
+        /// <param name="conversationId">The conversation, the second partition key level.</param>
         /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the item if found; otherwise, <see langword="null"/>.</returns>
-        Task<T?> GetItemAsync<T>(string id, string partitionKey, CancellationToken cancellationToken);
+        /// <returns>The document, or <see langword="null"/> when no document with that identifier exists.</returns>
+        Task<T?> GetItemAsync<T>(string id, Guid userId, Guid conversationId, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Retrieves multiple items from the Cosmos DB container based on a query.
+        /// Applies partial-update operations to a document and returns the result.
         /// </summary>
-        /// <typeparam name="T">The type of the items to retrieve.</typeparam>
-        /// <param name="query">The SQL query string to execute.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains a collection of items matching the query.</returns>
-        Task<IEnumerable<T>> GetItemsAsync<T>(string query);
-
-        /// <summary>
-        /// Creates a new item in the Cosmos DB container.
-        /// </summary>
-        /// <typeparam name="T">The type of the item to create.</typeparam>
-        /// <param name="item">The item to create.</param>
-        /// <param name="partitionKey">The partition key value for the item.</param>
+        /// <typeparam name="T">The document type.</typeparam>
+        /// <param name="id">The document identifier.</param>
+        /// <param name="userId">The owning user, the first partition key level.</param>
+        /// <param name="conversationId">The conversation, the second partition key level.</param>
+        /// <param name="operations">The patch operations to apply, at most ten.</param>
         /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the created item.</returns>
-        Task<T> CreateItemAsync<T>(T item, string partitionKey, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Updates an existing item in the Cosmos DB container.
-        /// </summary>
-        /// <typeparam name="T">The type of the item to update.</typeparam>
-        /// <param name="item">The updated item.</param>
-        /// <param name="id">The unique identifier of the item to update.</param>
-        /// <param name="partitionKey">The partition key value of the item.</param>
-        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the updated item.</returns>
+        /// <returns>The patched document, or <see langword="null"/> when no document with that identifier exists.</returns>
         /// <remarks>
-        /// This replaces the whole document unconditionally, so anything written between the read
-        /// that produced <paramref name="item"/> and this call is silently lost. Prefer
-        /// <see cref="PatchItemAsync"/> whenever only some fields change — it needs no prior read
-        /// and therefore has no lost-update window.
-        /// </remarks>
-        Task<T> UpdateItemAsync<T>(T item, string id, string partitionKey, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Applies a set of partial-update operations to an item without reading and rewriting it.
-        /// </summary>
-        /// <param name="id">The unique identifier of the item to patch.</param>
-        /// <param name="partitionKey">The partition key value of the item.</param>
-        /// <param name="operations">The patch operations to apply. Cosmos DB permits at most 10 per call.</param>
-        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation. The task result is <see langword="true"/>
-        /// if the item was patched, or <see langword="false"/> if no item with that identifier exists.
-        /// </returns>
-        /// <remarks>
-        /// Patching is the only way to mutate a document without a read-modify-write window.
-        /// Use it for appends and counters so concurrent writers cannot lose each other's updates.
+        /// Returns the patched document because callers need values the server computed — a
+        /// counter incremented under concurrency reads back as the value this caller was allocated,
+        /// which is what makes it usable as a sequence allocator.
         /// </remarks>
         /// <example>
         /// <code language="csharp">
-        /// await cosmosService.PatchItemAsync(id, userId,
-        /// [
-        ///     PatchOperation.Add("/messages/-", message),
-        ///     PatchOperation.Increment("/totalTokens", tokens),
-        /// ], cancellationToken);
+        /// var header = await cosmosService.PatchItemAsync&lt;CosmosConversationHeader&gt;(
+        ///     conversationId.ToString(), userId, conversationId,
+        ///     [PatchOperation.Increment("/messageCount", 2)], cancellationToken);
         /// </code>
         /// </example>
-        Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken);
+        Task<T?> PatchItemAsync<T>(string id, Guid userId, Guid conversationId, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Deletes an item from the Cosmos DB container.
+        /// Runs a query against one conversation's documents and returns a single page.
         /// </summary>
-        /// <param name="id">The unique identifier of the item to delete.</param>
-        /// <param name="partitionKey">The partition key value of the item.</param>
+        /// <typeparam name="T">The type the query projects to.</typeparam>
+        /// <param name="query">The query, with its parameters bound.</param>
+        /// <param name="userId">The owning user, the first partition key level.</param>
+        /// <param name="conversationId">The conversation, the second partition key level.</param>
+        /// <param name="maxItemCount">The maximum number of items in the page. Must be positive.</param>
+        /// <param name="continuationToken">The token from the previous page, or <see langword="null"/> for the first.</param>
         /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>A task that represents the asynchronous delete operation.</returns>
-        Task DeleteItemAsync(string id, string partitionKey, CancellationToken cancellationToken);
+        /// <returns>One page of results and the token for the next, if any.</returns>
+        Task<CosmosPage<T>> QueryPageAsync<T>(QueryDefinition query, Guid userId, Guid conversationId, int maxItemCount, string? continuationToken, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Executes operations as a single transaction scoped to one conversation.
+        /// </summary>
+        /// <param name="userId">The owning user, the first partition key level.</param>
+        /// <param name="conversationId">The conversation, the second partition key level.</param>
+        /// <param name="operations">The operations to execute, at most one hundred.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <exception cref="CosmosBatchFailedException">
+        /// Thrown when the batch is rejected. Nothing in it was written.
+        /// </exception>
+        Task ExecuteBatchAsync(Guid userId, Guid conversationId, IReadOnlyList<CosmosBatchOperation> operations, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Deletes every document belonging to one conversation.
+        /// </summary>
+        /// <param name="userId">The owning user, the first partition key level.</param>
+        /// <param name="conversationId">The conversation, the second partition key level.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>The number of documents deleted.</returns>
+        /// <remarks>
+        /// Both partition key levels are required. A partial hierarchical key does not address a
+        /// complete logical partition, so a purge given only a user would either fail at the
+        /// service or, worse, be interpreted more broadly than intended.
+        /// </remarks>
+        Task<int> PurgeConversationAsync(Guid userId, Guid conversationId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Reads a single document from a container partitioned on <c>/userId</c> alone.
+        /// </summary>
+        /// <typeparam name="T">The document type.</typeparam>
+        /// <param name="id">The document identifier.</param>
+        /// <param name="partitionKey">The single-level partition key value.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>The document, or <see langword="null"/> when it does not exist.</returns>
+        /// <remarks>
+        /// Serves the one-document-per-conversation transcript that the per-message shape replaces.
+        /// Removed once the write and read paths move onto the new container.
+        /// </remarks>
+        [Obsolete("Single-level partition key. Use the (userId, conversationId) overload; removed when the per-message transcript lands.")]
+        Task<T?> GetItemAsync<T>(string id, string partitionKey, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Creates a document in a container partitioned on <c>/userId</c> alone.
+        /// </summary>
+        /// <typeparam name="T">The document type.</typeparam>
+        /// <param name="item">The document to create.</param>
+        /// <param name="partitionKey">The single-level partition key value.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>The created document.</returns>
+        /// <remarks>
+        /// Serves the retired transcript shape. Replaced by <see cref="ExecuteBatchAsync"/>, which
+        /// creates the header and its seeded message atomically.
+        /// </remarks>
+        [Obsolete("Single-level partition key. Use ExecuteBatchAsync; removed when the per-message transcript lands.")]
+        Task<T> CreateItemAsync<T>(T item, string partitionKey, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Patches a document in a container partitioned on <c>/userId</c> alone.
+        /// </summary>
+        /// <param name="id">The document identifier.</param>
+        /// <param name="partitionKey">The single-level partition key value.</param>
+        /// <param name="operations">The patch operations to apply, at most ten.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns><see langword="true"/> when the document was patched; <see langword="false"/> when it does not exist.</returns>
+        /// <remarks>
+        /// Serves the retired transcript shape. Replaced by the generic overload, which also
+        /// returns the patched document.
+        /// </remarks>
+        [Obsolete("Single-level partition key. Use the generic (userId, conversationId) overload; removed when the per-message transcript lands.")]
+        Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken);
     }
 
     /// <summary>
     /// Provides implementation for Azure Cosmos DB operations.
     /// </summary>
     /// <remarks>
-    /// This service wraps the <see cref="CosmosClient"/> to provide simplified CRUD operations
-    /// against a specific Cosmos DB container.
+    /// Stateless over a singleton <see cref="CosmosClient"/>, and registered as a singleton itself.
     /// </remarks>
-    public class AzureCosmosService : IAzureCosmosService
+    /// <param name="cosmosClient">The client used to reach the account.</param>
+    /// <param name="options">The validated Cosmos settings naming the database and container.</param>
+    public class AzureCosmosService(CosmosClient cosmosClient, IOptions<CosmosOptions> options) : IAzureCosmosService
     {
         /// <summary>
         /// The maximum number of operations Cosmos DB accepts in a single patch request.
         /// </summary>
         private const int MaxPatchOperations = 10;
 
-        private readonly CosmosClient _cosmosClient;
-        private readonly Container _container;
+        /// <summary>
+        /// The maximum number of operations Cosmos DB accepts in a single transactional batch.
+        /// </summary>
+        private const int MaxBatchOperations = 100;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="AzureCosmosService"/> class.
+        /// How many identifiers a purge reads per round trip before deleting them.
         /// </summary>
-        /// <param name="cosmosClient">The Cosmos DB client used to connect to the database.</param>
-        /// <param name="databaseId">The identifier of the database to connect to.</param>
-        /// <param name="containerId">The identifier of the container within the database.</param>
-        /// <exception cref="ArgumentNullException">Thrown when <paramref name="cosmosClient"/> is <see langword="null"/>.</exception>
-        public AzureCosmosService(CosmosClient cosmosClient, string databaseId, string containerId)
+        private const int PurgePageSize = MaxBatchOperations;
+
+        private readonly Container _container = cosmosClient
+            .GetDatabase(options.Value.DatabaseId)
+            .GetContainer(options.Value.TranscriptContainerId);
+
+        /// <inheritdoc/>
+        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs (except for NotFound, which returns <see langword="null"/>).</exception>
+        public async Task<T?> GetItemAsync<T>(string id, Guid userId, Guid conversationId, CancellationToken cancellationToken)
         {
-            _cosmosClient = cosmosClient;
-            var database = _cosmosClient.GetDatabase(databaseId);
-            _container = database.GetContainer(containerId);
+            try
+            {
+                return await _container.ReadItemAsync<T>(id, BuildPartitionKey(userId, conversationId), cancellationToken: cancellationToken);
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return default;
+            }
+        }
+
+        /// <inheritdoc/>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when more than ten operations are supplied.</exception>
+        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during the patch.</exception>
+        public async Task<T?> PatchItemAsync<T>(string id, Guid userId, Guid conversationId, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxPatchOperations);
+            ArgumentOutOfRangeException.ThrowIfZero(operations.Count);
+
+            var requestOptions = new PatchItemRequestOptions { EnableContentResponseOnWrite = true };
+
+            try
+            {
+                var response = await _container.PatchItemAsync<T>(id, BuildPartitionKey(userId, conversationId), [.. operations], requestOptions, cancellationToken);
+                return response.Resource;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return default;
+            }
+        }
+
+        /// <inheritdoc/>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxItemCount"/> is not positive.</exception>
+        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during query execution.</exception>
+        public async Task<CosmosPage<T>> QueryPageAsync<T>(QueryDefinition query, Guid userId, Guid conversationId, int maxItemCount, string? continuationToken, CancellationToken cancellationToken)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxItemCount);
+
+            var requestOptions = new QueryRequestOptions
+            {
+                PartitionKey = BuildPartitionKey(userId, conversationId),
+                MaxItemCount = maxItemCount
+            };
+
+            using var iterator = _container.GetItemQueryIterator<T>(query, continuationToken, requestOptions);
+            if (!iterator.HasMoreResults)
+            {
+                return new CosmosPage<T>([], null);
+            }
+
+            var response = await iterator.ReadNextAsync(cancellationToken);
+            return new CosmosPage<T>([.. response], response.ContinuationToken);
+        }
+
+        /// <inheritdoc/>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the batch is empty, exceeds one hundred operations, or contains a patch of more than ten operations.</exception>
+        public async Task ExecuteBatchAsync(Guid userId, Guid conversationId, IReadOnlyList<CosmosBatchOperation> operations, CancellationToken cancellationToken)
+        {
+            ArgumentOutOfRangeException.ThrowIfZero(operations.Count);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxBatchOperations);
+
+            foreach (var operation in operations)
+            {
+                if (operation is PatchItemOperation patch)
+                {
+                    ArgumentOutOfRangeException.ThrowIfGreaterThan(patch.Operations.Count, MaxPatchOperations);
+                }
+            }
+
+            var batch = _container.CreateTransactionalBatch(BuildPartitionKey(userId, conversationId));
+            foreach (var operation in operations)
+            {
+                operation.AddTo(batch);
+            }
+
+            using var response = await batch.ExecuteAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            // Every sibling of the offending operation comes back as FailedDependency, so the first
+            // status that is not that one names the operation that actually broke the batch.
+            var failedIndex = 0;
+            for (var index = 0; index < response.Count; index++)
+            {
+                if (response[index].StatusCode != HttpStatusCode.FailedDependency)
+                {
+                    failedIndex = index;
+                    break;
+                }
+            }
+
+            var failedStatus = response.Count > failedIndex ? response[failedIndex].StatusCode : response.StatusCode;
+            throw new CosmosBatchFailedException(
+                failedIndex,
+                failedStatus,
+                $"Transactional batch failed at operation {failedIndex} with status {(int)failedStatus} ({failedStatus}). No document in the batch was written.");
+        }
+
+        /// <inheritdoc/>
+        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during the purge.</exception>
+        /// <remarks>
+        /// Reads identifiers a page at a time and deletes each page as a batch, rather than calling
+        /// the server-side delete-by-partition-key operation: that operation is in preview, needs
+        /// an account-level capability this deployment does not assume, and is unavailable on the
+        /// emulator the storage tests run against. The batch form is a page of round trips instead
+        /// of one, which a purge can afford.
+        /// </remarks>
+        public async Task<int> PurgeConversationAsync(Guid userId, Guid conversationId, CancellationToken cancellationToken)
+        {
+            var query = new QueryDefinition("SELECT VALUE c.id FROM c");
+            var deleted = 0;
+
+            while (true)
+            {
+                // No continuation token: each page's documents are deleted before the next read, so
+                // resuming from a token would skip past documents that have shifted forward.
+                var page = await QueryPageAsync<string>(query, userId, conversationId, PurgePageSize, null, cancellationToken);
+                if (page.Items.Count == 0)
+                {
+                    return deleted;
+                }
+
+                await ExecuteBatchAsync(userId, conversationId, [.. page.Items.Select(CosmosBatchOperation.DeleteItem)], cancellationToken);
+                deleted += page.Items.Count;
+            }
         }
 
         /// <inheritdoc/>
         /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs (except for NotFound, which returns <see langword="null"/>).</exception>
+        [Obsolete("Single-level partition key. Use the (userId, conversationId) overload; removed when the per-message transcript lands.")]
         public async Task<T?> GetItemAsync<T>(string id, string partitionKey, CancellationToken cancellationToken)
         {
             try
             {
-                var response = await _container.ReadItemAsync<T>(id, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
-                return response;
+                return await _container.ReadItemAsync<T>(id, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
             }
-            catch (CosmosException ex)
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
-                if (ex.StatusCode == HttpStatusCode.NotFound)
-                {
-                    return default;
-                }
-                else
-                {
-                    throw;
-                }
+                return default;
             }
-        }
-
-        /// <inheritdoc/>
-        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during query execution.</exception>
-        public async Task<IEnumerable<T>> GetItemsAsync<T>(string query)
-        {
-            var items = new List<T>();
-            var iterator = _container.GetItemQueryIterator<T>(query);
-
-            while (iterator.HasMoreResults)
-            {
-                var response = await iterator.ReadNextAsync();
-                items.AddRange(response);
-            }
-
-            return items;
         }
 
         /// <inheritdoc/>
         /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during item creation.</exception>
+        [Obsolete("Single-level partition key. Use ExecuteBatchAsync; removed when the per-message transcript lands.")]
         public async Task<T> CreateItemAsync<T>(T item, string partitionKey, CancellationToken cancellationToken)
         {
-            var response = await _container.CreateItemAsync(item, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
-            return response;
-        }
-
-        /// <inheritdoc/>
-        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during item update.</exception>
-        public async Task<T> UpdateItemAsync<T>(T item, string id, string partitionKey, CancellationToken cancellationToken)
-        {
-            var response = await _container.ReplaceItemAsync(item, id, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
-            return response;
+            return await _container.CreateItemAsync(item, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc/>
         /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during the patch.</exception>
+        [Obsolete("Single-level partition key. Use the generic (userId, conversationId) overload; removed when the per-message transcript lands.")]
         public async Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken)
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxPatchOperations);
 
-            // Suppressing the content response matters more here than on other writes: the patched
-            // resource is a whole conversation transcript, and returning it on every appended
-            // message would undo most of the bandwidth saved by patching instead of replacing.
             var options = new PatchItemRequestOptions { EnableContentResponseOnWrite = false };
 
             try
             {
-                await _container.PatchItemAsync<dynamic>(id, new PartitionKey(partitionKey), operations, options, cancellationToken);
+                await _container.PatchItemAsync<dynamic>(id, new PartitionKey(partitionKey), [.. operations], options, cancellationToken);
                 return true;
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -199,11 +347,13 @@ namespace Enterprise.Gpt.Service
             }
         }
 
-        /// <inheritdoc/>
-        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during item deletion.</exception>
-        public async Task DeleteItemAsync(string id, string partitionKey, CancellationToken cancellationToken)
-        {
-            await _container.DeleteItemAsync<dynamic>(id, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
-        }
+        /// <summary>
+        /// Builds the complete two-level partition key addressing one conversation.
+        /// </summary>
+        private static PartitionKey BuildPartitionKey(Guid userId, Guid conversationId) =>
+            new PartitionKeyBuilder()
+                .Add(userId.ToString())
+                .Add(conversationId.ToString())
+                .Build();
     }
 }

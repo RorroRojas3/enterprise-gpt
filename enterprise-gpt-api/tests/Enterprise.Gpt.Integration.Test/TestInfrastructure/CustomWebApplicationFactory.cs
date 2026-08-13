@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Azure.Cosmos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -19,9 +20,11 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 /// <see cref="TestAuthHandler"/>.
 /// </summary>
 /// <param name="connectionString">Connection string of the containerized test database.</param>
-public class CustomWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+/// <param name="cosmosConnectionString">Connection string of the containerized Cosmos emulator.</param>
+public class CustomWebApplicationFactory(string connectionString, string cosmosConnectionString) : WebApplicationFactory<Program>
 {
     private readonly string _connectionString = connectionString;
+    private readonly string _cosmosConnectionString = cosmosConnectionString;
 
     /// <summary>
     /// Gets the in-memory directory backing <see cref="IGraphService"/> for the whole run. Tests
@@ -39,12 +42,6 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     /// Gets the stub embedding generator, so upload tests can assert that chunks are embedded in batches.
     /// </summary>
     public FakeEmbeddingGenerator EmbeddingGenerator { get; } = new();
-
-    /// <summary>
-    /// Gets the in-memory transcript store backing <see cref="IAzureCosmosService"/> for the whole
-    /// run, so conversation writes complete without a Cosmos DB account or the emulator.
-    /// </summary>
-    public FakeAzureCosmosService Cosmos { get; } = new();
 
     /// <inheritdoc />
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -67,12 +64,14 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["AzureAIFoundry:ApiKey"] = "test-key",
             ["AzureAIFoundry:DefaultModel"] = "test-model",
             ["AzureAIFoundry:EmbeddingModel"] = "test-embedding",
-            // The AccountKey is the well-known public Cosmos DB emulator key, published in
-            // Microsoft's docs — not a secret, and nothing ever connects to it under test.
-            ["CosmosDb:ConnectionString"] =
-                "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
+            // Points at the Testcontainers emulator, which these tests really do connect to: the
+            // storage layer's whole point is behaviour a fake cannot reproduce.
+            ["CosmosDb:ConnectionString"] = _cosmosConnectionString,
             ["CosmosDb:DatabaseId"] = "test-db",
-            ["CosmosDb:ContainerId"] = "test-container",
+            // Deliberately not CosmosDb:ContainerId — options validation rejects that retired key,
+            // so leaving it here would make every integration test fail at host startup, which is
+            // exactly the signal a deployment that has not cut over should get.
+            ["CosmosDb:TranscriptContainerId"] = "test-transcripts",
             ["AzureStorage:ConnectionString"] = "UseDevelopmentStorage=true",
             ["AzureStorage:DocumentsContainer"] = "test-documents",
             ["DocumentIntelligence:Endpoint"] = "https://localhost/",
@@ -102,9 +101,9 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
             // Only the services that would otherwise make live network calls against the fake
-            // credentials above are substituted: Microsoft Graph for user provisioning, blob storage
-            // plus the embedding generator for document ingestion, and Cosmos DB for the conversation
-            // transcript. Extraction, chunking and relational persistence all run for real.
+            // credentials above are substituted: Microsoft Graph for user provisioning, and blob
+            // storage plus the embedding generator for document ingestion. Extraction, chunking,
+            // relational persistence and the Cosmos transcript all run for real.
             services.RemoveAll<IGraphService>();
             services.AddSingleton<IGraphService>(GraphService);
 
@@ -114,10 +113,18 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             services.RemoveAll<IEmbeddingGenerator<string, Embedding<float>>>();
             services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(EmbeddingGenerator);
 
-            // Without this, every conversation write blocks until the Cosmos SDK gives up on the
-            // emulator address configured above and the endpoint answers 500 after ~25 seconds.
-            services.RemoveAll<IAzureCosmosService>();
-            services.AddSingleton<IAzureCosmosService>(Cosmos);
+            // The emulator serves a self-signed certificate on a mapped port, so the client needs
+            // gateway mode, an endpoint it will not try to look past, and a validation callback
+            // that accepts the certificate. Everything else — the serializer above all — matches
+            // what Program.cs configures, so the tests exercise the real serialization contract.
+            services.RemoveAll<CosmosClient>();
+            services.AddSingleton(new CosmosClient(_cosmosConnectionString, new CosmosClientOptions
+            {
+                ConnectionMode = ConnectionMode.Gateway,
+                LimitToEndpoint = true,
+                ServerCertificateCustomValidationCallback = (_, _, _) => true,
+                UseSystemTextJsonSerializerWithOptions = CosmosSerialization.Options
+            }));
 
             // Scoped to the access-log category on purpose: an unfiltered collector accumulates every
             // record the whole suite produces — EF Core included — for the lifetime of the shared

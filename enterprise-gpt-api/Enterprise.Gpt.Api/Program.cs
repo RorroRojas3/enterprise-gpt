@@ -334,23 +334,37 @@ builder.Services.AddSingleton(sp =>
     return new DocumentIntelligenceClient(new Uri(endpoint!), credential);
 });
 
-// Register Azure Cosmos DB
-var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"];
-var cosmosDatabaseId = builder.Configuration["CosmosDb:DatabaseId"];
-var cosmosContainerId = builder.Configuration["CosmosDb:ContainerId"];
-var cosmosClientOptions = new CosmosClientOptions
+// Register Azure Cosmos DB. Validated at startup because a missing database or container id used
+// to surface as a null-forgiving bang here and then as a failure on a user's first conversation.
+// CosmosDb:ContainerId is rejected rather than ignored: it names the retired one-document-per-
+// conversation container, whose shape this application can no longer read, so a deployment that
+// still configures it has not performed the cutover and must not start.
+builder.Services.AddOptions<CosmosOptions>()
+    .Bind(builder.Configuration.GetSection(CosmosOptions.SectionName))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ConnectionString),
+        "CosmosDb:ConnectionString must be configured.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.DatabaseId),
+        "CosmosDb:DatabaseId must be configured.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.TranscriptContainerId),
+        "CosmosDb:TranscriptContainerId must be configured.")
+    .Validate(options => options.ContainerId is null,
+        "CosmosDb:ContainerId is retired and names a transcript shape this application cannot read. "
+        + "Remove it and configure CosmosDb:TranscriptContainerId with the new container.")
+    .ValidateOnStart();
+builder.Services.AddSingleton(provider =>
 {
-    SerializerOptions = new CosmosSerializationOptions
+    var cosmosOptions = provider.GetRequiredService<IOptions<CosmosOptions>>().Value;
+
+    // System.Text.Json rather than the SDK default, so the [JsonPropertyName] annotations on the
+    // document types are the naming contract instead of coinciding with it.
+    var cosmosClientOptions = new CosmosClientOptions
     {
-        PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
-    }
-};
-builder.Services.AddSingleton(sp => new CosmosClient(cosmosConnectionString, cosmosClientOptions));
-builder.Services.AddScoped<IAzureCosmosService>(provider =>
-{
-    var cosmosClient = provider.GetRequiredService<CosmosClient>();
-    return new AzureCosmosService(cosmosClient, cosmosDatabaseId!, cosmosContainerId!);
+        UseSystemTextJsonSerializerWithOptions = CosmosSerialization.Options
+    };
+
+    return new CosmosClient(cosmosOptions.ConnectionString, cosmosClientOptions);
 });
+builder.Services.AddSingleton<IAzureCosmosService, AzureCosmosService>();
 
 // MCP client/tool cache: singleton cache of live MCP connections, scoped provider that
 // resolves permissions and acquires OBO tokens per request. The named HttpClient gets an
@@ -445,10 +459,12 @@ if (!app.Environment.IsEnvironment("Testing"))
         throw; // Rethrow to prevent app startup if migration fails
     }
 
-    // Apply cosmos DB migrations or setup if needed
+    // Create the transcript container when absent and verify its partition key paths when
+    // present. A container whose paths differ cannot be addressed by this application, so the
+    // bootstrap fails startup rather than serving reads that silently match nothing.
     var cosmosClient = services.GetRequiredService<CosmosClient>();
-    var database = await cosmosClient.CreateDatabaseIfNotExistsAsync(cosmosDatabaseId);
-    await database.Database.CreateContainerIfNotExistsAsync(cosmosContainerId, "/userId");
+    var cosmosOptions = services.GetRequiredService<IOptions<CosmosOptions>>().Value;
+    await CosmosContainerBootstrap.EnsureTranscriptContainerAsync(cosmosClient, cosmosOptions, app.Logger);
 }
 
 // Configure the HTTP request pipeline.

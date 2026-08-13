@@ -2,13 +2,23 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using System.Text.Json.Serialization;
 using Testcontainers.MsSql;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Settings;
 using Xunit;
+// Aliased rather than imported wholesale: Microsoft.Azure.Cosmos also declares Permission and
+// User, which collide with the entity types this fixture seeds.
+using CosmosClient = Microsoft.Azure.Cosmos.CosmosClient;
+using PartitionKeyBuilder = Microsoft.Azure.Cosmos.PartitionKeyBuilder;
+using QueryDefinition = Microsoft.Azure.Cosmos.QueryDefinition;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
@@ -26,6 +36,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest")
             .Build();
 
+    private readonly CosmosEmulatorContainer _cosmos = new();
+
     /// <summary>
     /// The permissions seeded by <c>PermissionConfiguration</c>. Resets must leave these in place: the
     /// schema is created once for the whole run, so deleting a seeded row would remove it permanently and
@@ -41,19 +53,23 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <inheritdoc />
     public async ValueTask InitializeAsync()
     {
-        await _container.StartAsync();
+        // Started together: the Cosmos emulator takes appreciably longer to become ready than SQL
+        // Server, and running them in sequence adds that whole delay to every integration run.
+        await Task.WhenAll(_container.StartAsync(), _cosmos.StartAsync());
 
         var connectionString = new SqlConnectionStringBuilder(_container.GetConnectionString())
         {
             InitialCatalog = "EnterpriseGptTests"
         }.ConnectionString;
 
-        Factory = new CustomWebApplicationFactory(connectionString);
+        Factory = new CustomWebApplicationFactory(connectionString, _cosmos.ConnectionString);
 
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
         await ctx.Database.EnsureCreatedAsync();
         await SeedTestUsersAsync(ctx);
+
+        await EnsureTranscriptContainerAsync();
     }
 
     /// <inheritdoc />
@@ -65,7 +81,62 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         }
 
         await _container.DisposeAsync();
+        await _cosmos.DisposeAsync();
     }
+
+    /// <summary>
+    /// Provisions the transcript container through the same bootstrap the application runs, so the
+    /// tests exercise the partition key paths and indexing policy production actually gets.
+    /// </summary>
+    private async Task EnsureTranscriptContainerAsync()
+    {
+        var cosmosClient = Factory.Services.GetRequiredService<CosmosClient>();
+        var cosmosOptions = Factory.Services.GetRequiredService<IOptions<CosmosOptions>>().Value;
+
+        await CosmosContainerBootstrap.EnsureTranscriptContainerAsync(
+            cosmosClient,
+            cosmosOptions,
+            NullLogger.Instance);
+    }
+
+    /// <summary>
+    /// Deletes every document in the transcript container, leaving the container itself in place.
+    /// </summary>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    public async Task ResetTranscriptsAsync(CancellationToken cancellationToken = default)
+    {
+        var cosmosClient = Factory.Services.GetRequiredService<CosmosClient>();
+        var cosmosOptions = Factory.Services.GetRequiredService<IOptions<CosmosOptions>>().Value;
+        var container = cosmosClient.GetDatabase(cosmosOptions.DatabaseId).GetContainer(cosmosOptions.TranscriptContainerId);
+
+        // Deleting the container and recreating it would be simpler, but provisioning costs a
+        // round trip per test; reading the identifiers back is cheaper at these volumes.
+        var query = new QueryDefinition("SELECT c.id, c.userId, c.conversationId FROM c");
+        using var iterator = container.GetItemQueryIterator<TranscriptDocumentKey>(query);
+
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            foreach (var key in page)
+            {
+                var partitionKey = new PartitionKeyBuilder()
+                    .Add(key.UserId.ToString())
+                    .Add(key.ConversationId.ToString())
+                    .Build();
+
+                await container.DeleteItemAsync<object>(key.Id, partitionKey, cancellationToken: cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The identity of one transcript document, projected so a reset can address it by its
+    /// complete partition key.
+    /// </summary>
+    private sealed record TranscriptDocumentKey(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("userId")] Guid UserId,
+        [property: JsonPropertyName("conversationId")] Guid ConversationId);
 
     /// <summary>
     /// Restores the model catalog to its post-seed baseline: removes every model except the
@@ -515,7 +586,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
 
         Factory.BlobStorage.Reset();
-        Factory.Cosmos.Reset();
+        await ResetTranscriptsAsync(cancellationToken);
         ClearPermissionCache();
 
     }
