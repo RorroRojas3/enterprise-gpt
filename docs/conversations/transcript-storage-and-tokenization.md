@@ -23,7 +23,7 @@ The transcript is now **one document per message plus a header document**, and e
 | **Tokens** | Every message carries `tokens` and `tokenAccuracy`, counted by a provider-keyed estimator (§6) |
 | **Budget** | Replayed history is trimmed to the model's context window before the turn is sent (§7) |
 | **Rendering** | Every message carries `htmlContent`, rendered by Markdig with raw HTML disabled (§8) |
-| **Export** | `GET api/conversations/{id}/export?format=html|json` (§9) |
+| **Export** | `GET api/conversations/{id}/export?format=html` or `?format=json` (§9) |
 | **Metrics** | Estimator error and what the budget dropped, on the `Enterprise.Gpt.Chat` meter (§10) |
 
 > **This shape cannot read the old container, and the old container's data is not migrated.** Moving a deployment onto it destroys every existing transcript. That is a gated operator action with its own document — [Transcript Cutover Runbook](transcript-cutover-runbook.md) — and the gate is a startup check that **rejects** the retired `CosmosDb:ContainerId` setting (§3.3).
@@ -238,7 +238,7 @@ A batch is described as a list of records ([`CosmosBatchOperation`](../../enterp
 
 Limits are enforced before the request leaves the process: at most **100 operations** per batch and **10 operations** per patch, both of which are Cosmos's own ceilings.
 
-When a batch is rejected, every sibling of the offending operation comes back as `FailedDependency`, so the first status that is *not* that one names the operation that actually broke it. [`CosmosBatchFailedException`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Exceptions/CosmosBatchFailedException.cs) carries that index and status, and states plainly that **nothing in the batch was written**.
+When a batch is rejected, every sibling of the offending operation comes back as `FailedDependency`, so the first status that is *not* that one names the operation that actually broke it. When **none** of them differ, the batch was rejected as a whole — throttled, or over the size limit — and only the batch's own status says why, so that is what is reported; using a sibling's `FailedDependency` there would hide the cause behind an operation that did not fail. [`CosmosBatchFailedException`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Exceptions/CosmosBatchFailedException.cs) carries the index and the status, and states plainly that **nothing in the batch was written**.
 
 ### 4.5 What a failed write leaves behind
 
@@ -288,6 +288,8 @@ Each message now carries `sequence`, `htmlContent`, `tokens` and `tokenAccuracy`
 - **`tokens` on an assistant message is not what the turn was billed.** It counts the transcribed answer only, excluding tool-call arguments the model generated and which are never replayed.
 
 System messages are filtered out **server-side**: the system message is the largest fixed message in a conversation and no client renders it.
+
+**A soft-deleted conversation is a `404` here**, not an empty transcript. The header's `dateDeactivated` is checked alongside its existence, so this route agrees with the export path — which enforces the same rule through its SQL predicate — about what "deleted" means. Two read paths disagreeing on that is worse than either rule on its own.
 
 Paging by `before` re-runs the query rather than following a continuation token, so a page is reproducible and a client can jump backwards without holding an opaque cursor.
 
@@ -433,14 +435,17 @@ Options are injected as `IOptions<T>`, so a change needs a restart.
 
 ### 8.1 What is being rendered is untrusted
 
-Model output is attacker-influenceable — through uploaded documents and through MCP tool results — so what [`MarkdownRenderer`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Rendering/MarkdownRenderer.cs) renders is untrusted input, not the platform's own copy. Two defences apply:
+Model output is attacker-influenceable — through uploaded documents and through MCP tool results — so what [`MarkdownRenderer`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Rendering/MarkdownRenderer.cs) renders is untrusted input, not the platform's own copy. Three defences apply, and the last two exist because the first is not sufficient on its own.
 
 1. **Raw HTML passthrough is disabled** (`DisableHtml()`), so `<script>` in model output is **escaped into text** rather than emitted as an element.
-2. **Link URLs are restricted to `http`, `https` and `mailto`.** Markdig does not filter schemes on its own, so a `javascript:` href would otherwise survive into a stored artifact. The allowlist is applied to the parsed document before rendering, and a rejected URL is emptied rather than the link being removed.
+2. **Markdig extensions are opted into one at a time**, rather than taken wholesale from `UseAdvancedExtensions()`. The pipeline enables pipe tables, grid tables, emphasis extras, task lists, list extras, footnotes, definition lists and autolinks — and deliberately **excludes generic attributes and media links**. Generic attributes are the sharp one: the syntax `**text**{onmouseover="…"}` attaches arbitrary attributes to the preceding element, and **disabling raw HTML does not stop it**, because the renderer emits those attributes itself. Media links emit `iframe` elements for recognized hosts, whose source the scheme sweep below never inspects.
+3. **Link URLs are restricted to `http`, `https` and `mailto`.** Markdig does not filter schemes on its own, so a `javascript:` href would otherwise survive into a stored artifact. The allowlist is applied to the parsed document before rendering, and a rejected URL is emptied rather than the link being removed.
 
-Scheme matching decodes HTML entities first — an entity-encoded scheme still executes once a browser parses the `href` — and treats a colon appearing after a `/`, `?` or `#` as part of a path or query rather than a scheme, so relative links pass.
+The scheme sweep walks **two** node kinds. A `LinkInline` is the `[text](url)` form; an **autolink** (`<javascript:alert(1)>`) is a leaf inline that a walk over links never reaches, and CommonMark autolinks accept any scheme at all — so both are swept. Scheme matching decodes HTML entities first, since an entity-encoded scheme still executes once a browser parses the `href`, and it treats a colon appearing after a `/`, `?` or `#` as part of a path or query rather than a scheme, so relative links pass.
 
-The pipeline is `UseAdvancedExtensions()` plus `DisableHtml()`, built once as a singleton. The per-render `HtmlRenderer` is constructed per call, because it holds per-render state and is not thread-safe.
+The pipeline is built once as a singleton. The per-render `HtmlRenderer` is constructed per call, because it holds per-render state and is not thread-safe.
+
+The practical rule for anyone touching this file: **an extension is a rendering capability granted to untrusted input**, so adding one means deciding what markup it can be made to emit. `UseAdvancedExtensions()` is a convenience method, not a policy.
 
 ### 8.2 Where it is stored, and what it is for
 
@@ -540,7 +545,7 @@ Only `CosmosDb` appears in [`appsettings.json`](../../enterprise-gpt-api/Enterpr
 
 ```bash
 # from enterprise-gpt-api/
-dotnet test --filter "Category!=Integration"   # unit only — 1,016 passing
+dotnet test --filter "Category!=Integration"   # unit only — 1,037 passing
 dotnet test                                    # everything; Docker must be running
 ```
 
@@ -548,13 +553,15 @@ Unit coverage, xUnit v3 with NSubstitute:
 
 | File | Asserted |
 |---|---|
-| [`Tokenization/TokenEstimatorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tokenization/TokenEstimatorTests.cs) | Deployment-to-tokenizer resolution and the fallback encoding; the calibration multiplier and its rounding; per-message and overhead estimation; resolver fallback for an unregistered provider |
+| [`Tokenization/TokenEstimatorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tokenization/TokenEstimatorTests.cs) | `o200k_base` resolving rather than throwing on a missing data file — the one failure a package reference is there to prevent; determinism; the fallback encoding for an unrecognized deployment; a calibration multiplier scaling one provider's count and leaving another's raw; a stored count used rather than recounted, and an absent one counted on the fly; each of the three overhead terms; the resolver returning the default instead of throwing for an unregistered provider |
 | [`Tokenization/ContextBudgetCalculatorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tokenization/ContextBudgetCalculatorTests.cs) | The budget arithmetic; a prompt that already fits; the system message kept first and the prompt kept last; a user message dropped with its assistant reply; what the drop reports; a zero context window treated as unbounded; undroppable messages that overflow reported rather than trimmed away; kept order preserved |
-| [`Rendering/MarkdownRendererTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Rendering/MarkdownRendererTests.cs) | A `<script>` escaped rather than emitted; an image event handler left with no element to hang off; a dangerous link scheme stripped and a safe one kept; a relative link containing a colon not mistaken for a scheme; fenced code, tables and inline formatting |
+| [`Rendering/MarkdownRendererTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Rendering/MarkdownRendererTests.cs) | A `<script>` escaped rather than emitted; an image event handler left with no element to hang off; **generic-attribute syntax emitting no attribute on any element**; a dangerous scheme stripped from both a link and an **autolink**, and a safe one kept; a relative link containing a colon not mistaken for a scheme; fenced code, tables and inline formatting. The two bold cases are regressions — they failed before §8.1's pipeline change and pass after |
 | [`Export/ConversationExportServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Export/ConversationExportServiceTests.cs) | Unsupported format naming the supported ones; another user's conversation as `NotFound`; HTML embedding the stored rendering; a message with no stored HTML escaped instead; an empty conversation as a valid document; JSON using the stored property names; the download file name |
-| [`Services/CosmosBatchOperationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/CosmosBatchOperationTests.cs) | The batch-operation records and their translation shape |
+| [`Services/CosmosBatchOperationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/CosmosBatchOperationTests.cs) | The batch-operation records and the shape a caller submitted |
 | [`Observability/ChatMetricsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Observability/ChatMetricsTests.cs) | Instrument names, units and tags, over a `DummyMeterFactory` |
-| [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs) | Sequence allocation and the turn batch; the paged read, its clamp and its cursor; replay trimming and the pre-stream `400`; estimation and rendering on persisted messages |
+| [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs) | A new conversation persisting its header and system prompt **in one batch**; a completed turn writing both messages and the header in one batch; sequences taken from the header counter; a context cost and rendered HTML on both messages; a missing header writing no transcript and logging both identifiers; the usage row linked to the transcript message |
+| [`Services/ConversationTranscriptReadTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationTranscriptReadTests.cs) | The newest page returned oldest-first; the stored HTML and token fields carried through; `totalMessageCount` and `hasMore` from the header and the continuation token, including a last page reporting no more; `take` outside 1–100 clamped server-side; `before` bound as a query parameter; system messages excluded **in the query**; a header with no messages returning an empty list rather than an error; an unknown **and** a soft-deleted conversation both `NotFound` |
+| [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/ConversationEndpointsTests.cs) | No paging arguments requesting the newest page; explicit `take`/`before` passed through |
 
 Integration coverage runs against a **Linux Cosmos DB emulator in Testcontainers** ([`CosmosEmulatorContainer.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/CosmosEmulatorContainer.cs)), alongside the existing SQL Server 2025 container. `FakeAzureCosmosService` is **deleted**: it could not apply patch operations, so it could not prove any of the behaviour this layer depends on — and hierarchical partition keys, transactional batches and ordered cross-document queries are exactly what an in-memory fake cannot show.
 
@@ -564,7 +571,7 @@ Integration coverage runs against a **Linux Cosmos DB emulator in Testcontainers
 
 ## 13. Known limits
 
-- **Purge is fallback-only, and no route exposes it.** `PurgeConversationAsync` pages ids and deletes them in batches rather than calling `DeleteAllItemsByPartitionKeyStreamAsync`, which is a preview API that needs an account-level capability this deployment does not assume and is unavailable on the emulator the storage tests run against. It is a page of round trips instead of one, which a purge can afford. **`DELETE api/conversations/{id}` remains a soft delete** and does not call it; nothing in the HTTP surface does.
+- **Purge is fallback-only, and no route exposes it.** `PurgeConversationAsync` pages ids and deletes them in batches rather than calling `DeleteAllItemsByPartitionKeyStreamAsync`, which is a preview API that needs an account-level capability this deployment does not assume and is unavailable on the emulator the storage tests run against. It is a page of round trips instead of one, which a purge can afford. It reads with **no continuation token**, because each page's documents are deleted before the next read and resuming from a token would skip past documents that shifted forward — and it stops only on an empty page that *also* carries no token, since Cosmos can return an empty-but-continuable page when the server filters a page's matches out entirely. **`DELETE api/conversations/{id}` remains a soft delete** and does not call it; nothing in the HTTP surface does.
 - **Purging leaves the SQL audit trail behind.** `Core.ConversationUsage` and its tool-call rows are never touched by a purge, deliberately — but now that a transcript can be destroyed in one call, the mismatch is more visible than it was.
 - **Cosmos still authenticates with an account key.** `CosmosDb:ConnectionString` is the one place this application does not follow its `DefaultAzureCredential` preference.
 - **Estimates are estimates.** Every `tokenAccuracy` this application writes today is `Estimated`; nothing produces `Exact`. Calibration multipliers for Amazon Bedrock and Anthropic are unset until §10's metric has enough traffic to tune them from.

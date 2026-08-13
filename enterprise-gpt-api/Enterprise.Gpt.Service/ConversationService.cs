@@ -1345,13 +1345,47 @@ namespace Enterprise.Gpt.Service
         {
             var userId = _tokenService.GetOid();
 
-            // A conversation belonging to another user resolves to a different partition key, so
-            // this read cannot reach it at all and the miss becomes a 404 rather than a 403.
-            // A soft-deleted conversation is gone as far as every other route is concerned, so it
-            // is gone here too — the export path enforces the same rule through its SQL predicate,
-            // and two read paths disagreeing about what "deleted" means is worse than either rule.
+            // Existence and ownership come from SQL, not from the transcript, so the two can be
+            // told apart: a conversation the caller does not own is a 404, but a conversation that
+            // exists with no transcript is an empty conversation. That distinction is what a
+            // cutover leaves behind — every conversation created before it keeps its SQL row and
+            // loses its messages — and reporting those as missing would present a whole history as
+            // broken rather than as emptied. A foreign or deleted id is a 404 rather than a 403,
+            // matching every other conversation route.
+            var conversation = await _ctx.Conversations
+                .AsNoTracking()
+                .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Select(x => new { x.Name, x.DateCreated, x.DateModified })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (conversation is null)
+            {
+                _logger.LogError("Conversation {Id} not found.", id);
+                throw new NotFoundException($"Conversation {id} not found.");
+            }
+
             var header = await _cosmosService.GetItemAsync<CosmosConversationHeader>(id.ToString(), userId, id, cancellationToken);
-            if (header is null || header.DateDeactivated.HasValue)
+            if (header is null)
+            {
+                _logger.LogWarning(
+                    "Conversation {Id} has no transcript; returning it empty. This is expected for a conversation created before the transcript cutover.",
+                    id);
+
+                return new()
+                {
+                    Id = id,
+                    Name = conversation.Name,
+                    DateCreated = conversation.DateCreated,
+                    DateModified = conversation.DateModified,
+                    TotalMessageCount = 0,
+                    HasMore = false,
+                    Messages = []
+                };
+            }
+
+            // A soft delete sets this on the header while the SQL row is updated in the same flow,
+            // so it is belt and braces against the two disagreeing mid-operation.
+            if (header.DateDeactivated.HasValue)
             {
                 _logger.LogError("Conversation {Id} not found.", id);
                 throw new NotFoundException($"Conversation {id} not found.");

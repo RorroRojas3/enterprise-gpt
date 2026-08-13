@@ -68,6 +68,29 @@ public sealed class ConversationTranscriptReadTests : IDisposable
         _fixture.Dispose();
     }
 
+    /// <summary>
+    /// Seeds the relational row, which is what says the conversation exists and who owns it.
+    /// </summary>
+    private async Task<Guid> AddConversationAsync(DateTimeOffset? dateDeactivated = null, Guid? userId = null)
+    {
+        var date = DateTimeOffset.UtcNow;
+        var conversation = new Conversation
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId ?? KnownIds.SeedUserId,
+            Name = "Planning",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = dateDeactivated
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.Conversations.Add(conversation);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return conversation.Id;
+    }
+
     private static CosmosConversationHeader BuildHeader(Guid conversationId, long messageCount = 5, DateTimeOffset? dateDeactivated = null)
     {
         var date = DateTimeOffset.UtcNow;
@@ -122,7 +145,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_NewestFirstPage_ReturnsItOldestFirst()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId));
         SetUpNewestFirstPage(conversationId, null,
             (3, ChatRoles.Assistant, "Third"),
@@ -138,7 +161,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_WhenRead_CarriesTheStoredHtmlAndTokenFields()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId));
         SetUpNewestFirstPage(conversationId, null, (1, ChatRoles.User, "Hello"));
 
@@ -158,7 +181,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_WhenRead_ReportsTheHeadersTotalAndWhetherMoreRemain()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId, messageCount: 42));
         SetUpNewestFirstPage(conversationId, "next-page", (1, ChatRoles.User, "Hello"));
 
@@ -171,7 +194,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_LastPage_ReportsNoMoreRemaining()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId));
         SetUpNewestFirstPage(conversationId, null, (1, ChatRoles.User, "Hello"));
 
@@ -187,7 +210,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [InlineData(50, 50)]
     public async Task GetConversationMessagesAsync_TakeOutsideTheAllowedRange_IsClampedServerSide(int requested, int expected)
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId));
         SetUpNewestFirstPage(conversationId, null, (1, ChatRoles.User, "Hello"));
 
@@ -200,7 +223,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_BeforeCursor_BindsItAsAQueryParameter()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId));
         SetUpNewestFirstPage(conversationId, null, (1, ChatRoles.User, "Hello"));
 
@@ -218,7 +241,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_WhenRead_ExcludesSystemMessagesInTheQuery()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId));
         SetUpNewestFirstPage(conversationId, null, (1, ChatRoles.User, "Hello"));
 
@@ -232,7 +255,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_HeaderExistsWithNoMessages_ReturnsAnEmptyList()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, BuildHeader(conversationId, messageCount: 1));
         SetUpNewestFirstPage(conversationId, null);
 
@@ -244,8 +267,36 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_UnknownConversation_ThrowsNotFound()
     {
-        var conversationId = Guid.NewGuid();
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationMessagesAsync(Guid.NewGuid(), 100, null, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// A conversation created before the cutover keeps its relational row and loses its messages.
+    /// Reporting that as missing would present a user's whole history as broken rather than as
+    /// emptied, so it reads as an empty conversation instead.
+    /// </summary>
+    [Fact]
+    public async Task GetConversationMessagesAsync_ConversationWithNoTranscript_ReturnsItEmptyRatherThanNotFound()
+    {
+        var conversationId = await AddConversationAsync();
         SetUpHeader(conversationId, null);
+
+        var result = await _service.GetConversationMessagesAsync(conversationId, 100, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(conversationId, result.Id);
+        Assert.Equal("Planning", result.Name);
+        Assert.Empty(result.Messages);
+        Assert.Equal(0, result.TotalMessageCount);
+        Assert.False(result.HasMore);
+    }
+
+    [Fact]
+    public async Task GetConversationMessagesAsync_AnotherUsersConversation_ThrowsNotFound()
+    {
+        var conversationId = await AddConversationAsync(userId: KnownIds.SeedUserId);
+        _tokenService.GetOid().Returns(Guid.NewGuid());
+        SetUpHeader(conversationId, BuildHeader(conversationId));
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.GetConversationMessagesAsync(conversationId, 100, null, TestContext.Current.CancellationToken));
@@ -258,7 +309,7 @@ public sealed class ConversationTranscriptReadTests : IDisposable
     [Fact]
     public async Task GetConversationMessagesAsync_SoftDeletedConversation_ThrowsNotFound()
     {
-        var conversationId = Guid.NewGuid();
+        var conversationId = await AddConversationAsync(dateDeactivated: DateTimeOffset.UtcNow);
         SetUpHeader(conversationId, BuildHeader(conversationId, dateDeactivated: DateTimeOffset.UtcNow));
 
         await Assert.ThrowsAsync<NotFoundException>(
