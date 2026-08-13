@@ -52,12 +52,15 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            // Precision matches the decimal(18, 6) column. Without it EF hands SqlClient the
+            // model's scale and an over-precise price is silently rounded on the way in, while the
+            // response echoes the unrounded value off the in-memory entity.
             RuleFor(x => x.InputPricePerMillionTokens)
                 .GreaterThanOrEqualTo(0)
-                .When(x => x.InputPricePerMillionTokens.HasValue);
+                .PrecisionScale(18, 6, ignoreTrailingZeros: true);
             RuleFor(x => x.OutputPricePerMillionTokens)
                 .GreaterThanOrEqualTo(0)
-                .When(x => x.OutputPricePerMillionTokens.HasValue);
+                .PrecisionScale(18, 6, ignoreTrailingZeros: true);
         }
     }
 
@@ -114,10 +117,10 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.InputPricePerMillionTokens)
                 .GreaterThanOrEqualTo(0)
-                .When(x => x.InputPricePerMillionTokens.HasValue);
+                .PrecisionScale(18, 6, ignoreTrailingZeros: true);
             RuleFor(x => x.OutputPricePerMillionTokens)
                 .GreaterThanOrEqualTo(0)
-                .When(x => x.OutputPricePerMillionTokens.HasValue);
+                .PrecisionScale(18, 6, ignoreTrailingZeros: true);
         }
     }
 }

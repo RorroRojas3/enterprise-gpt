@@ -177,7 +177,7 @@ public sealed class ConversationServiceTests : IDisposable
     /// Substitutes the model on <c>IModelService</c> and seeds the matching catalog row, which the
     /// usage audit row's foreign key requires.
     /// </summary>
-    private ModelDto SetUpModel(bool isToolEnabled)
+    private ModelDto SetUpModel(bool isToolEnabled, decimal? inputPrice = null, decimal? outputPrice = null)
     {
         var model = new ModelDto
         {
@@ -188,6 +188,8 @@ public sealed class ConversationServiceTests : IDisposable
             Description = "A test model.",
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
+            InputPricePerMillionTokens = inputPrice,
+            OutputPricePerMillionTokens = outputPrice,
             IsToolEnabled = isToolEnabled
         };
         _modelService.GetModelAsync(model.Id, Arg.Any<CancellationToken>()).Returns(model);
@@ -203,6 +205,8 @@ public sealed class ConversationServiceTests : IDisposable
             Description = model.Description,
             ContextWindowSize = model.ContextWindowSize,
             MaxOutputTokens = model.MaxOutputTokens,
+            InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+            OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
             IsToolEnabled = model.IsToolEnabled,
             DateCreated = date,
             DateModified = date,
@@ -1606,6 +1610,110 @@ public sealed class ConversationServiceTests : IDisposable
         using var ctx = _fixture.CreateContext();
         var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
         Assert.Equal(24, stored.TotalTokens);
+    }
+
+    /// <summary>
+    /// The price is copied onto the row rather than joined from the catalog at read time, so
+    /// repricing a model afterwards cannot rewrite what a past call cost.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheModelIsPriced_SnapshotsThePricesOntoTheUsageRow()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: false, inputPrice: 2.5m, outputPrice: 10m);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(2.5m, usage.InputPricePerMillionTokens);
+        Assert.Equal(10m, usage.OutputPricePerMillionTokens);
+    }
+
+    /// <summary>
+    /// An unpriced model records nulls, not zeros: a call nobody has priced is not a free call.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheModelIsUnpriced_LeavesTheUsageRowsPricesNull()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: false);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Null(usage.InputPricePerMillionTokens);
+        Assert.Null(usage.OutputPricePerMillionTokens);
+        Assert.Null(usage.Cost);
+    }
+
+    /// <summary>
+    /// The naming call resolves its model straight from the database rather than through
+    /// <c>IModelService</c>, so its price snapshot travels a different path than a chat turn's and
+    /// needs its own assertion.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_OnTheFirstTurn_SnapshotsPricesOntoTheNamingRow()
+    {
+        var conversation = await AddConversationAsync();
+        var date = DateTimeOffset.UtcNow;
+        _cosmosService.GetItemAsync<CosmosConversation>(
+                conversation.Id.ToString(), KnownIds.SeedUserId.ToString(), Arg.Any<CancellationToken>())
+            .Returns(new CosmosConversation
+            {
+                Id = conversation.Id,
+                UserId = KnownIds.SeedUserId,
+                Name = "Test Conversation",
+                DateCreated = date,
+                DateModified = date,
+                Messages = [new() { Id = Guid.NewGuid(), Role = ChatRoles.System, Content = "System prompt.", DateCreated = date }]
+            });
+        _chatClient.NamingResponse = "Named Conversation";
+        _chatClient.NamingUsage = new UsageDetails { InputTokenCount = 4, OutputTokenCount = 2 };
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+        _modelService.GetModelAsync(KnownIds.SeedModelId, Arg.Any<CancellationToken>())
+            .Returns(new ModelDto
+            {
+                Id = KnownIds.SeedModelId,
+                ProviderId = KnownIds.SeedProviderId,
+                Name = "RR GPT 5.6 Luna",
+                DeploymentName = "rr-gpt-5.6-luna",
+                Description = "OpenAI's GPT-5.6 Luna model.",
+                InputPricePerMillionTokens = 1.25m,
+                OutputPricePerMillionTokens = 5m,
+                IsToolEnabled = true
+            });
+
+        using (var seed = _fixture.CreateContext())
+        {
+            var seededModel = await seed.Models.SingleAsync(x => x.Id == KnownIds.SeedModelId, TestContext.Current.CancellationToken);
+            seededModel.InputPricePerMillionTokens = 1.25m;
+            seededModel.OutputPricePerMillionTokens = 5m;
+            await seed.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = KnownIds.SeedModelId,
+            McpServers = []
+        });
+
+        var usage = await ReadUsageAsync(conversation.Id);
+        var naming = Assert.Single(usage, x => x.Kind == ConversationUsageKinds.Naming);
+        Assert.Equal(1.25m, naming.InputPricePerMillionTokens);
+        Assert.Equal(5m, naming.OutputPricePerMillionTokens);
     }
 
     [Fact]

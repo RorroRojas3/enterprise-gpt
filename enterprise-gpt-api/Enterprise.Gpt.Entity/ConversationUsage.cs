@@ -145,6 +145,11 @@ public class ConversationUsage : BaseEntity
     /// Null when either price is missing rather than treating the missing side as zero, which
     /// would report a partial figure as a whole one.
     /// </para>
+    /// <para>
+    /// Client-side only. Being unmapped, this cannot appear in a LINQ query — a
+    /// <c>Sum(x =&gt; x.Cost)</c> fails to translate at run time rather than at compile time. A
+    /// report aggregates the expression in SQL instead; see <c>usage-and-favorites.md</c> §7.
+    /// </para>
     /// </remarks>
     public decimal? Cost => InputPricePerMillionTokens is not decimal inputPrice
         || OutputPricePerMillionTokens is not decimal outputPrice
