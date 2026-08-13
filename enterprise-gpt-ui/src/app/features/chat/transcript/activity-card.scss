@@ -1,0 +1,100 @@
+:host {
+  display: block;
+}
+
+// Frame 1f's root card. Depth styling (surface alternation, tighter radii)
+// arrives with US-502, which nests children instead of flattening them.
+.activity-card {
+  padding: 11px 13px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.activity-card__header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+// The running state: a 14px ring in --accent with a transparent quarter,
+// spinning on the kit's `spin` keyframes.
+.activity-card__ring {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+
+  // The global kill switch in _motion.scss already floors the duration; this
+  // keeps the frozen frame a recognisable three-quarter ring, as the
+  // ridgeline keeps one bright segment.
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+.activity-card__state {
+  flex: 0 0 auto;
+  font-size: 14px;
+
+  &--ok {
+    color: var(--ok);
+  }
+
+  &--warn {
+    color: var(--warn);
+  }
+}
+
+.activity-card__name {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // Frame 1f writes runtime-function names in mono, e.g. `format_status_table`.
+  &--mono {
+    font-family: var(--bs-font-monospace);
+    font-size: 13px;
+  }
+}
+
+.activity-card__duration {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+// Indented past the 14px state icon + 9px gap, per the frame's 23px rail.
+.activity-card__source {
+  margin: 3px 0 0 23px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.activity-card__substatuses {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0 0 23px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  list-style: none;
+}
+
+.activity-card__substatus {
+  display: flex;
+  gap: 7px;
+
+  &::before {
+    content: '·';
+    opacity: 0.55;
+  }
+}

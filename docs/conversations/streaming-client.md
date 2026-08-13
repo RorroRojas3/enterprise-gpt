@@ -1,6 +1,6 @@
 # Conversation Streaming Client
 
-The frontend half of the [Conversation Streaming Contract](streaming-contract.md): what `enterprise-gpt-ui/` does with the bytes that document specifies, from the `fetch` that carries a turn to the selection state that decides what the request says. Audience: whoever builds the stories on top — sending (US-401), the live timeline (US-406), Stop (US-407), resuming a conversation's settings (US-410) — or debugs a turn that ended strangely. The wire format is deliberately not restated here; wherever a behaviour exists because the wire demands it, the contract section is linked instead.
+The frontend half of the [Conversation Streaming Contract](streaming-contract.md): what `enterprise-gpt-ui/` does with the bytes that document specifies, from the `fetch` that carries a turn to the selection state that decides what the request says. Audience: whoever builds on this pipeline or debugs a turn that ended strangely. The layer above it — sending, the live turn, Stop, the chronological timeline (US-401, US-406, US-407, US-501) — has since shipped and is documented in the [Conversation Turn Lifecycle](turn-lifecycle.md); resuming a conversation's settings (US-410) is still to come. The wire format is deliberately not restated here; wherever a behaviour exists because the wire demands it, the contract section is linked instead.
 
 ## 1. Overview
 
@@ -12,11 +12,11 @@ Three layers, shipped by four stories (US-402–US-405), with dependencies runni
 | Transport | The request, auth, error typing, abort, batching | `core/stream/` — `ConversationStreamClient` | US-405 |
 | Turn settings | Which model and which MCP servers the next turn will use | `core/chat/` — `TurnSettingsStore`, rendered by the composer (`features/chat/composer/`) | US-402, US-403 |
 
-Nothing sends yet. The composer's send button carries its real disable conditions but no click handler — US-401 wires the send, spreads `streamSelection` into the transport request, and is the first consumer of everything below. The pipeline is built and tested from the bottom so that story is assembly, not invention.
+US-401 has since wired the send: [`TurnStore`](../../enterprise-gpt-ui/src/app/features/chat/turn-store.ts) spreads `streamSelection` into the transport request and is the consumer everything below was built for — the pipeline was built and tested from the bottom so that story was assembly, not invention. What the store does with the batches is the [Conversation Turn Lifecycle](turn-lifecycle.md)'s subject; this document stays on the layers beneath it.
 
 ## 2. Quick start
 
-What US-401's send will do, and what any consumer of the transport looks like:
+What any consumer of the transport looks like — the real one is `TurnStore`'s send pipeline ([turn lifecycle §3](turn-lifecycle.md#3-sending-and-creating-the-conversation-around-the-first-prompt)):
 
 ```typescript
 import { createInitialSnapshot, foldAssistantEvents } from '@domain/stream/andes/assistant-ui.contract';
@@ -86,6 +86,8 @@ How a turn can end, and what the observable does:
 
 The server sets its `text/event-stream` headers lazily on the first frame, so every pre-stream failure carries ordinary `application/problem+json` ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)). The transport honours that: on `!response.ok` the problem body is parsed through `toAppErrorFromResponse` **before a single body byte is read as stream**, and the observable errors with the result. Every value the observable ever errors with is an `AppError` — that is documented as the class's contract, so no consumer needs a second normalization layer.
 
+The set of failures that can arrive this way shrank when the server began opening every turn with two synthetic frames ([contract §4.3](streaming-contract.md#43-a-turn-frame-by-frame)): the first frame now precedes the model's first token, so a provider that faults on that token — a bad deployment, an expired key, exhausted quota — no longer lands here as a problem body. It lands in §4.3's path instead, as a body that stops. Everything ahead of those frames — the conversation lock, the reads, first-turn naming, model resolution, and MCP validation, consent and tool acquisition — still arrives as problem JSON.
+
 A bare 401 is replayed exactly once with a force-refreshed token, gated by `authErrorDecision` — the same single source of truth the `HttpClient` interceptor consults. Without the replay, a token the API had just rejected would kill a turn that every ordinary request would have survived; routing the decision through the shared table structurally keeps the 403 `mcp-authorization-required` out of the refresh path, since no refresh can fix a consent requirement. The replay is safe because authentication is rejected before the conversation lock is taken, so it cannot double-start a turn.
 
 ### 4.2 Aborting — Stop, sign-out, unsubscribe
@@ -94,7 +96,7 @@ Three cancellation sources compose into one signal: `AbortSignal.any([teardown, 
 
 ### 4.3 Faults after the body began complete gracefully
 
-Once the body has started there is no error surface left on the wire — a mid-stream fault reaches the client as a body that simply stops, indistinguishable from a network drop ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)). The transport does not manufacture a distinction the wire cannot support: a read that throws after the first byte flushes the codec's buffered tail — so the two "body just stops" endings deliver the same text — and **completes** the observable rather than erroring it. Both endings take the single path US-406 already owns: a body that ended without `Finished`.
+Once the body has started there is no error surface left on the wire — a mid-stream fault reaches the client as a body that simply stops, indistinguishable from a network drop ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)). The transport does not manufacture a distinction the wire cannot support: a read that throws after the first byte flushes the codec's buffered tail — so the two "body just stops" endings deliver the same text — and **completes** the observable rather than erroring it. Both endings take the single path US-406 already owns: a body that ended without `Finished`. One debugging signature worth knowing: a body that carries only the two synthetic opening frames and then stops is what a provider faulting on its very first token looks like from here.
 
 ### 4.4 Batching
 
@@ -130,16 +132,18 @@ The composer (frames `2b`–`2j`) is the textarea, the warning line, and the con
 Two deliberate deviations from the design, agreed 2026-08-12 and recorded in the PRD:
 
 - **The tools rows carry the server name only.** `McpDto` is `{ id, name, description }` — no key field exists to fill frame `2c`'s mono column, so it is omitted rather than fabricated from the name. A backend enabler can add a real key later.
-- **The tool-server-unavailable panel (US-403 criterion 4) is deferred to US-406/407.** Its non-visual half — the `mcp-server-unavailable` error arm, server-name extraction, retry policy — shipped tested in US-103; the card itself is one of six sibling turn-edge-state cards that should be designed with the transcript that hosts them, and would have no reachable render path before US-401 anyway.
+- **The tool-server-unavailable panel (US-403 criterion 4) was deferred to US-406/407 — and shipped there, retiring the deferral.** Its non-visual half — the `mcp-server-unavailable` error arm, server-name extraction, retry policy — shipped tested in US-103; the card itself is one of the sibling turn-edge-state cards that belonged with the transcript that hosts them, and `TurnNoticeCard` now renders it ([turn lifecycle §8](turn-lifecycle.md#8-rendering-the-turn)).
 
-## 6. What the next stories consume
+## 6. What the stories above consume
+
+US-401, US-406 and US-407 have shipped; the table records what each took from this layer, and the [Conversation Turn Lifecycle](turn-lifecycle.md) documents what they built with it. US-410 is still open.
 
 | Story | Consumes |
 |---|---|
-| US-401 — send a first prompt | `streamSelection` spread into `StreamTurnRequest`; the send button's existing disable conditions; `ConversationStreamClient.stream` |
-| US-406 — watch the answer arrive | The batch observable, folded with the vendored `foldAssistantEvents`; owns the "completed without `Finished`" detection (§4.3) |
-| US-407 — Stop | `request.signal`; the `aborted` arm as the discriminator; delivered-batch semantics that keep partial output (§4.2) |
-| US-410 — resume settings | `applyConversationSettings`; the twice-enforced gating invariant absorbing stale ids (§5.3) |
+| US-401 — send a first prompt (shipped) | `streamSelection` spread into `StreamTurnRequest`; the send button's disable conditions; `ConversationStreamClient.stream` |
+| US-406 — watch the answer arrive (shipped) | The batch observable, folded with the vendored `foldAssistantEvents`; owns the "completed without `Finished`" detection (§4.3) |
+| US-407 — Stop (shipped) | `request.signal`; the `aborted` arm as the discriminator; delivered-batch semantics that keep partial output (§4.2) |
+| US-410 — resume settings | `applyConversationSettings`; the twice-enforced gating invariant absorbing stale ids (§5.3) — the stopped card's Retry already exercises the same seam |
 
 ## 7. Testing
 
@@ -157,4 +161,4 @@ The codec layer is framework-free and tests in Node with no `TestBed`; its chunk
 | Turn settings | [`core/chat/turn-settings-store.ts`](../../enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts) |
 | Provider presentation | [`domain/api/provider.ts`](../../enterprise-gpt-ui/src/app/domain/api/provider.ts) |
 | Composer and pickers | [`features/chat/composer/`](../../enterprise-gpt-ui/src/app/features/chat/composer/composer.ts) |
-| Related reference | [Conversation Streaming Contract](streaming-contract.md), [Frontend Foundation](../ui/frontend-foundation.md) (the `AppError` taxonomy, `authErrorDecision`), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |
+| Related reference | [Conversation Streaming Contract](streaming-contract.md), [Conversation Turn Lifecycle](turn-lifecycle.md) (the layer above: `TurnStore`, settles, the timeline), [Frontend Foundation](../ui/frontend-foundation.md) (the `AppError` taxonomy, `authErrorDecision`), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |

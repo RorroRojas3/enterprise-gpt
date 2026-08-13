@@ -27,6 +27,43 @@
   font-weight: 600;
 }
 
+// Frame 1a: four pills, wrapping and centred under the prompt.
+.chat-empty__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  max-width: 680px;
+}
+
+.chat-empty__chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--bs-body-color);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+
+  app-icon {
+    color: var(--accent);
+    font-size: 14px;
+  }
+
+  &:hover {
+    border-color: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+}
+
 // Frame 3g: the same screen at 768–1023px drops to a smaller lockup and heading.
 @media (max-width: 1023.98px) {
   .chat-empty {

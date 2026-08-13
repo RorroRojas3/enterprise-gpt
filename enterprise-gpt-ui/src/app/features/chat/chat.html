@@ -72,8 +72,15 @@
       heading="This conversation couldn’t be opened"
       (retried)="conversation.retry()"
     />
+  } @else if (turn.hasContent()) {
+    <div class="chat__transcript">
+      <app-transcript />
+    </div>
   } @else {
-    <app-chat-empty-state [asPageHeading]="!conversation.isOpen()" />
+    <app-chat-empty-state
+      [asPageHeading]="!conversation.isOpen()"
+      (suggested)="turn.seedComposer($event)"
+    />
   }
 </div>
 

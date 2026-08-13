@@ -59,7 +59,8 @@ describe('KindBadge', () => {
     ['McpTool', 'MCP tool'],
     ['Agent', 'Agent'],
     ['Function', 'Function'],
-    ['Unknown', 'Tool'],
+    // US-501: exactly four badge values; Unknown is the reasoning arm.
+    ['Unknown', 'Reasoning'],
   ])('renders %s as %s', async (kind, label) => {
     expect(await render(kind)).toBe(label);
   });

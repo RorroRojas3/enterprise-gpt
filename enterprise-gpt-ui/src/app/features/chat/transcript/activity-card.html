@@ -1,0 +1,44 @@
+<div class="activity-card">
+  <div class="activity-card__header">
+    @switch (activity().state) {
+      @case ('Running') {
+        <!-- The visible state is decorative; the sr-only text below announces it. -->
+        <span class="activity-card__ring" aria-hidden="true"></span>
+      }
+      @case ('Completed') {
+        <app-icon
+          class="activity-card__state activity-card__state--ok"
+          name="bi-check-circle-fill"
+        />
+      }
+      @case ('Failed') {
+        <app-icon
+          class="activity-card__state activity-card__state--warn"
+          name="bi-exclamation-triangle-fill"
+        />
+      }
+    }
+    <span class="visually-hidden">{{ stateLabel() }}</span>
+    <span
+      class="activity-card__name"
+      [class.activity-card__name--mono]="activity().kind === 'Function'"
+      >{{ activity().displayName }}</span
+    >
+    <app-kind-badge [kind]="activity().kind" />
+    @if (duration(); as duration) {
+      <span class="activity-card__duration font-mono">{{ duration }}</span>
+    }
+  </div>
+
+  @if (activity().source; as source) {
+    <div class="activity-card__source">{{ source }}</div>
+  }
+
+  @if (activity().subStatuses.length > 0) {
+    <ul class="activity-card__substatuses">
+      @for (status of activity().subStatuses; track $index) {
+        <li class="activity-card__substatus">{{ status.message }}</li>
+      }
+    </ul>
+  }
+</div>

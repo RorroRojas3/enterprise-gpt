@@ -1306,6 +1306,37 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
     }
 
+    // Every turn opens with a synthetic status line and reasoning line, ahead of the first model
+    // event. They sit after the lock, the reads, naming, model resolution, and tool acquisition —
+    // those failures still answer with problem JSON — but ahead of the model's first token, whose
+    // faults are the deliberate trade-off the service comment records.
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamOpens_EmitsStartingStatusThenReasoningFirst()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        var events = await StreamEventsToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        Assert.True(events.Count >= 2);
+        Assert.Equal(AssistantUiEventKind.Status, events[0].Kind);
+        Assert.Equal("Starting", events[0].Message);
+        Assert.NotEqual(default, events[0].Timestamp);
+        Assert.Equal(AssistantUiEventKind.ReasoningDelta, events[1].Kind);
+        // The trailing blank line is load-bearing: the reducer accumulates reasoning deltas
+        // verbatim, so without it a model's own reasoning would concatenate run-on.
+        Assert.Equal("Reviewing the request and preparing a response.\n\n", events[1].Text);
+        // Deltas carry no meaningful timestamp, per the contract.
+        Assert.Equal(default, events[1].Timestamp);
+        Assert.Contains(events.Skip(2), e => e.Kind == AssistantUiEventKind.TextDelta);
+    }
+
     // Only the answer belongs in the transcript: the activity is live status, and replaying it to
     // the model on the next turn would be neither useful nor what providers expect back.
     [Fact]

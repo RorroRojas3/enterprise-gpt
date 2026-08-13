@@ -1,0 +1,62 @@
+@for (entry of turn.entries(); track entry.id) {
+  @switch (entry.kind) {
+    @case ('user') {
+      <div class="transcript__user-row">
+        <div class="transcript__bubble">{{ entry.text }}</div>
+      </div>
+    }
+    @case ('assistant') {
+      <app-assistant-turn [snapshot]="entry.snapshot" [timeline]="entry.timeline" />
+    }
+    @case ('cutOff') {
+      <!-- The warning precedes the partial answer: "the answer below may be incomplete". -->
+      <app-turn-notice-card
+        [notice]="cutOffNotice"
+        [retryable]="true"
+        (retried)="turn.retryTurn(entry.retry)"
+      />
+      <app-assistant-turn [snapshot]="entry.snapshot" [timeline]="entry.timeline" />
+    }
+  }
+}
+
+@if (turn.pendingUserText(); as pending) {
+  <div class="transcript__user-row">
+    <div class="transcript__bubble">{{ pending }}</div>
+  </div>
+}
+
+@if (turn.showThinking()) {
+  <!-- Frame 1e: the gap before the first activity or text is an animated
+       ridgeline — never a fabricated status line. -->
+  <div class="transcript__thinking">
+    <div class="transcript__avatar">
+      <app-brand-logo variant="mark" />
+    </div>
+    <app-ridgeline class="transcript__ridgeline" variant="thinking" />
+  </div>
+}
+
+@if (turn.showLiveTurn()) {
+  <app-assistant-turn
+    [snapshot]="turn.snapshot()"
+    [timeline]="turn.timeline()"
+    [streaming]="true"
+  />
+}
+
+@if (errorNotice(); as notice) {
+  <app-turn-notice-card
+    [notice]="notice"
+    [retryable]="errorRetryable()"
+    (retried)="retryNotice()"
+  />
+}
+
+@if (turn.stoppedTurn(); as stopped) {
+  <app-stopped-card [text]="stopped.text" (retried)="turn.restoreStoppedToComposer()" />
+}
+
+<!-- Exists from first render; only its content changes when a turn ends
+     abnormally, so the announcement is reliable. -->
+<p class="visually-hidden" role="status">{{ announcement() }}</p>
