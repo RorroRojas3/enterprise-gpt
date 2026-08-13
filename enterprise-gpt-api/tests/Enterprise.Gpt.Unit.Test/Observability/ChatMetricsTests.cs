@@ -37,7 +37,6 @@ public sealed class ChatMetricsTests : IDisposable
     public void Dispose()
     {
         _listener.Dispose();
-        _metrics.Dispose();
         _meterFactory.Dispose();
     }
 

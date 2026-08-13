@@ -45,8 +45,23 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
     /// </remarks>
     private static readonly string[] _allowedSchemes = ["http", "https", "mailto"];
 
+    /// <remarks>
+    /// Extensions are opted into one by one rather than taken from <c>UseAdvancedExtensions()</c>,
+    /// which bundles two that are unsafe for untrusted input. Generic attributes let the source
+    /// attach arbitrary attributes to the preceding element — <c>**text**{onmouseover="…"}</c> —
+    /// which disabling raw HTML does not prevent, because the renderer emits those attributes
+    /// itself. Media links emit <c>iframe</c> elements for recognized hosts, whose source the link
+    /// sweep below never inspects.
+    /// </remarks>
     private readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
+        .UsePipeTables()
+        .UseGridTables()
+        .UseEmphasisExtras()
+        .UseTaskLists()
+        .UseListExtras()
+        .UseFootnotes()
+        .UseDefinitionLists()
+        .UseAutoLinks()
         .DisableHtml()
         .Build();
 
@@ -65,6 +80,16 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
             if (!IsAllowedUrl(link.Url))
             {
                 link.Url = string.Empty;
+            }
+        }
+
+        // Swept separately because an autolink is a leaf inline, not a LinkInline, so the walk
+        // above does not reach it — and CommonMark autolinks accept any scheme at all.
+        foreach (var autolink in document.Descendants<AutolinkInline>())
+        {
+            if (!IsAllowedUrl(autolink.Url))
+            {
+                autolink.Url = string.Empty;
             }
         }
 

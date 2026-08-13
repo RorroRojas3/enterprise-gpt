@@ -59,6 +59,11 @@ public sealed partial class ConversationExportService(
     /// </summary>
     private const int ExportPageSize = 200;
 
+    /// <summary>
+    /// Reused across exports: each instance builds its own serializer metadata cache.
+    /// </summary>
+    private static readonly JsonSerializerOptions _exportSerializerOptions = new() { WriteIndented = true };
+
     private readonly ILogger<ConversationExportService> _logger = logger;
     private readonly ITokenService _tokenService = tokenService;
     private readonly IAzureCosmosService _cosmosService = cosmosService;
@@ -213,7 +218,7 @@ public sealed partial class ConversationExportService(
             ]
         };
 
-        return JsonSerializer.SerializeToUtf8Bytes(export, new JsonSerializerOptions { WriteIndented = true });
+        return JsonSerializer.SerializeToUtf8Bytes(export, _exportSerializerOptions);
     }
 
     /// <summary>

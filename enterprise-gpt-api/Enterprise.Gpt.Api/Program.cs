@@ -110,6 +110,12 @@ static void ConfigureFunctionInvocation(FunctionInvokingChatClient client)
 // anonymous function; they stack, with agents short-circuiting and everything else falling through
 // to the MCP classifier. Nothing turns tool arguments on: the middleware's default is to keep
 // prompt content, arguments and results out of progress events, and that stands.
+static void ConfigureToolTracking(ToolTrackingOptions options)
+{
+    options.UseMcpToolClassification();
+    options.UseAgentToolClassification();
+}
+
 /// <summary>
 /// Rejects a calibration multiplier that is not positive or exceeds the configured ceiling, so a
 /// mistyped value fails at boot rather than silently distorting every stored count and budget.
@@ -118,12 +124,6 @@ static bool ValidateCalibrationMultipliers(TokenEstimationOptions options)
 {
     return options.CalibrationMultipliers.Values.All(multiplier =>
         multiplier > 0 && multiplier <= options.MaxCalibrationMultiplier);
-}
-
-static void ConfigureToolTracking(ToolTrackingOptions options)
-{
-    options.UseMcpToolClassification();
-    options.UseAgentToolClassification();
 }
 
 // 1) Azure AI Foundry under key "azureaifoundry"
@@ -314,8 +314,7 @@ builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 // Context-window budgeting. Enabled is the back-out: turning it off restores unbounded replay
 // without a deployment, which is what keeps a mis-tuned estimator a configuration change.
 builder.Services.AddOptions<ContextBudgetOptions>()
-    .Bind(builder.Configuration.GetSection(ContextBudgetOptions.SectionName))
-    .ValidateOnStart();
+    .Bind(builder.Configuration.GetSection(ContextBudgetOptions.SectionName));
 builder.Services.AddSingleton<IContextBudgetCalculator, ContextBudgetCalculator>();
 
 // The application's own chat instruments. Published on the meter TelemetryRegistration already

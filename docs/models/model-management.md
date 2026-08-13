@@ -69,6 +69,8 @@ Response DTO — [`ModelDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelD
   "description": "OpenAI's GPT-5.6 Luna model.",
   "contextWindowSize": 200000,
   "maxOutputTokens": 16384,
+  "inputPricePerMillionTokens": 1.250000,
+  "outputPricePerMillionTokens": 10.000000,
   "isToolEnabled": true,
   "isDefault": false,
   "dateDeactivated": null
@@ -77,7 +79,17 @@ Response DTO — [`ModelDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelD
 
 `dateDeactivated` is always `null` on user-facing endpoints (they filter to active rows); the admin listing uses it to distinguish toggled-off models.
 
-Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs). `CreateModelActionDto` and `UpdateModelActionDto` share the same shape (`providerId`, `name`, `deploymentName`, `description`, `contextWindowSize`, `maxOutputTokens`, `isToolEnabled`, `isDefault`). The update DTO carries **no id** — it comes from the route.
+Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs). `CreateModelActionDto` and `UpdateModelActionDto` share the same shape (`providerId`, `name`, `deploymentName`, `description`, `contextWindowSize`, `maxOutputTokens`, `inputPricePerMillionTokens`, `outputPricePerMillionTokens`, `isToolEnabled`, `isDefault`). The update DTO carries **no id** — it comes from the route.
+
+### 2.3 Prices
+
+`inputPricePerMillionTokens` and `outputPricePerMillionTokens` are USD per **1,000,000** tokens, because that is how provider price sheets are quoted, and `decimal(18, 6)` because per-million prices run to fractions of a cent.
+
+Both are **nullable, and a null is not a zero.** Omitting a price leaves the model *unpriced*, which suppresses a cost figure entirely; pricing it at `0` asserts that calls to it are free. Since `PUT` is a full-representation replace, **omitting a price on update clears it** — the same trap `projectId` carries on conversations.
+
+`ContextWindowSize` and `MaxOutputTokens` are no longer only documentation, either: together they set the budget that trims a turn's replayed history, and a model left at the seeded `0` window is treated as unbounded rather than as having no room ([transcript storage §7](../conversations/transcript-storage-and-tokenization.md#7-the-context-budget)).
+
+What a price is *for* is the audit trail, not the picker: every model call snapshots the prices onto its `Core.ConversationUsage` row as they stood at the time, so repricing a model cannot rewrite what past calls cost ([usage §3.2](../conversations/usage-and-favorites.md#32-snapshots-not-joins)). Changing a price here therefore affects future calls only, which is the intended behaviour and not something the API warns about.
 
 ### 2.2 `name` and `deploymentName`
 
@@ -143,8 +155,11 @@ Rules (lengths mirror the [`Model`](../../enterprise-gpt-api/Enterprise.Gpt.Enti
 | `deploymentName` | `NotEmpty`, `MaximumLength(512)` |
 | `description` | `NotEmpty`, `MaximumLength(1024)` |
 | `contextWindowSize`, `maxOutputTokens` | greater than 0 |
+| `inputPricePerMillionTokens`, `outputPricePerMillionTokens` | optional; when supplied, `GreaterThanOrEqualTo(0)` and `PrecisionScale(18, 6)` |
 
 `deploymentName` being `NotEmpty` is load-bearing beyond the form: the streaming path reads it straight out of SQL and sends it as `ChatOptions.ModelId` without re-checking, so an empty value would reach the provider.
+
+The `PrecisionScale` rules on the prices are load-bearing too, and for a subtler reason. EF passes the model's scale to `SqlClient`, so **without** them an over-precise price is silently rounded on the way into the column while the response echoes the unrounded value back off the in-memory entity — the client is told a price the database does not hold — and a value beyond the column's range surfaces as an opaque 500 rather than a 400 naming the field. FluentValidation's comparison validators skip nulls on their own, so neither rule needs a `.When(HasValue)` guard.
 
 Provider existence is checked in the service (active providers only) and yields a 404 `"Provider not found."` — deliberately a service-level check rather than a validator rule (validators in `Enterprise.Gpt.Dto` have no database access) and rather than an FK failure (which would surface as an opaque 500). The check confirms the provider *row* exists, **not** that this deployment can serve it: creating a Bedrock model while Bedrock is switched off succeeds and fails later with a 503 ([Amazon Bedrock Provider §9](amazon-bedrock.md#9-when-the-provider-is-not-configured--the-503-contract)).
 
@@ -177,7 +192,7 @@ At most one model has `IsDefault = 1`. When create/update sets `isDefault: true`
 - **Reactivation endpoint:** `PUT` targets active rows only, so a deactivated model currently has no "toggle back on" path; add e.g. `POST /api/models/{id}/activate` (admin) that clears `DateDeactivated`.
 - **Concurrent default races (two distinct gaps):** (a) racing updates that demote the same row hit the rowversion check and surface as `DbUpdateConcurrencyException` → 500; a 409 `IExceptionHandler` arm would make that honest. (b) Two concurrent *creates* with `isDefault: true` can each miss the other's uncommitted row and both succeed, leaving **two defaults with no error** — only a filtered unique index (`WHERE IsDefault = 1`) closes this at the DB level (add when regenerating migrations; note EF must order the demotion before the insert within the transaction).
 - **Seed data:** the seed in [`ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) now sets both name columns — `Name = "RR GPT 5.6 Luna"`, `DeploymentName = "rr-gpt-5.6-luna"` — but still leaves `ContextWindowSize`/`MaxOutputTokens` at `0`, which the validators reject, so the seeded model cannot round-trip through `PUT` until real values are seeded.
-- **No schema management:** `Repository/Migrations/` is declared as an empty `<Folder Include>` in [`Enterprise.Gpt.Repository.csproj`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Enterprise.Gpt.Repository.csproj) and **does not exist on disk**, yet `Database.Migrate()` runs at startup (skipped in the `Testing` environment) — so it applies nothing, and `HasData` seeds reach only databases built by `EnsureCreated()`, which in practice means the test databases. Every schema and seed change is therefore an out-of-band operation today, including this release's `DisplayName` → `DeploymentName` swap and the new Bedrock provider row ([Amazon Bedrock Provider §10](amazon-bedrock.md#10-operational-notes--the-schema-is-not-migrated)). Adding the first real migration changes startup behavior — flag it before doing so.
+- **Schema management moved, and this bullet used to say the opposite.** `Repository/Migrations/` is **no longer empty**: `20260811024339_InitialCreate` baselines the whole schema and `20260813040917_AddTokenPrices` adds the four price columns, and `Database.Migrate()` at startup now applies them (still skipped in the `Testing` environment). Two consequences. A database built **out of band**, before migrations existed, has the objects and no `__EFMigrationsHistory` table, so `Migrate()` will try to apply the baseline and fail the deployment until it is baselined by hand — the procedure is in [usage §6.5](../conversations/usage-and-favorites.md#65-applying-the-schema--read-this-before-deploying). And `HasData` seeds still only reach databases the migrations or `EnsureCreated()` actually build, so earlier out-of-band seed gaps — the `DisplayName` → `DeploymentName` swap, the Bedrock and Anthropic provider rows ([Amazon Bedrock Provider §10](amazon-bedrock.md#10-operational-notes--the-schema-is-not-migrated)) — are not retroactively closed by migrations existing.
 - **Missing-OID tokens:** a principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500; a 401 arm in `GlobalExceptionHandler` would make that honest (pre-existing behavior, also reachable via `PermissionEndpointFilter`).
 - **Admin UI:** the frontend only consumes `GET /api/models`; the admin CRUD surface has no UI yet. Reuse `PermissionEndpointFilter.Require(PermissionIds.Administrator)` for any future admin-only endpoints (provider CRUD, user permission management).
 - **Frontend field drift:** `enterprise-ui`'s [`ModelDto`](../../enterprise-ui/src/app/dtos/ModelDto.ts) still declares a stale `aiServiceId`; the backend returns `providerId`. Because that field never binds, `prompt-box.component.ts`'s `getServiceIcon` falls through to its default for every model — including the new Bedrock ones, which have no icon case of their own. The frontend does not consume `deploymentName` at all, so the rename cost it nothing; the model picker now shows the human label because `name` is one. Align the field and add a Bedrock icon when building the admin UI.

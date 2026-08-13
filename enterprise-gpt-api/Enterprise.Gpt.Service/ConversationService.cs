@@ -698,19 +698,25 @@ namespace Enterprise.Gpt.Service
             var chatClient = _chatClientResolver.Resolve(model.ProviderId);
             var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
 
-            // Trimmed after the options exist, because the overhead term depends on how many tools
-            // they attach and on the instructions they carry — both of which cost prompt tokens
-            // that belong to no message.
-            var (conversations, estimatedPromptTokens) = BuildReplay(model, transcript, request.Prompt, chatOptions);
-
             StringBuilder sb = new();
             var completed = false;
 
             // The lease set (null when no MCPs are selected) must stay alive for the whole
             // stream: the attached tools invoke through the leased clients. await using
             // releases the leases on completion, fault, or client disconnect alike.
+            //
+            // Nothing that can throw may sit between acquiring the leases and entering this block.
+            // A leaked lease is not merely untidy: releasing one is what decrements the cached MCP
+            // client's lease count, so an unreleased lease pins that client and its transport for
+            // the life of the process — and an over-budget prompt would make that user-triggerable.
             await using (toolLeases)
             {
+                // Trimmed here rather than before the block, because the overhead term depends on
+                // how many tools the options attach and on the instructions they carry — both of
+                // which cost prompt tokens that belong to no message — and because this throws for
+                // a prompt that cannot fit.
+                var (conversations, estimatedPromptTokens) = BuildReplay(model, transcript, request.Prompt, chatOptions);
+
                 // Collects the tracking middleware's report. Reading the token counts off the
                 // stream instead would lose everything for a turn that never reaches its final
                 // update, which is every cancelled turn.
@@ -1341,8 +1347,11 @@ namespace Enterprise.Gpt.Service
 
             // A conversation belonging to another user resolves to a different partition key, so
             // this read cannot reach it at all and the miss becomes a 404 rather than a 403.
+            // A soft-deleted conversation is gone as far as every other route is concerned, so it
+            // is gone here too — the export path enforces the same rule through its SQL predicate,
+            // and two read paths disagreeing about what "deleted" means is worse than either rule.
             var header = await _cosmosService.GetItemAsync<CosmosConversationHeader>(id.ToString(), userId, id, cancellationToken);
-            if (header is null)
+            if (header is null || header.DateDeactivated.HasValue)
             {
                 _logger.LogError("Conversation {Id} not found.", id);
                 throw new NotFoundException($"Conversation {id} not found.");

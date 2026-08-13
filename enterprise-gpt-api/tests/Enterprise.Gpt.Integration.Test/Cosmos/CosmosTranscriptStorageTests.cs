@@ -139,7 +139,10 @@ public sealed class CosmosTranscriptStorageTests(IntegrationTestFixture fixture)
         }
         while (continuationToken is not null);
 
-        Assert.Equal(3, requests);
+        // Not an exact request count: MaxItemCount is a maximum, and a continuation token is null
+        // only once the backend knows the set is exhausted, so the same 250 items can legitimately
+        // drain in a different number of round trips.
+        Assert.True(requests > 1, $"Expected the page size to force more than one request; got {requests}.");
         Assert.Equal(250, sequences.Count);
         Assert.Equal(Enumerable.Range(0, 250).Select(value => (long)value), sequences);
     }

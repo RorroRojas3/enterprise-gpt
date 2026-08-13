@@ -82,6 +82,38 @@ public class MarkdownRendererTests
         Assert.Contains("/a/b:c", html);
     }
 
+    /// <summary>
+    /// Markdig's generic-attribute syntax attaches arbitrary attributes to the preceding element,
+    /// which disabling raw HTML does not touch — the renderer emits them itself.
+    /// </summary>
+    [Theory]
+    [InlineData("Some **text**{onmouseover=\"alert(1)\"} here.")]
+    [InlineData("Some **text**{onclick=\"alert(1)\"} here.")]
+    [InlineData("# Heading {#id onload=\"alert(1)\"}")]
+    [InlineData("Some **text**{.cls #id} here.")]
+    public void Render_GenericAttributeSyntax_EmitsNoAttributeOnAnyElement(string markdown)
+    {
+        var html = _renderer.Render(markdown);
+
+        // The syntax survives as escaped text, which is inert; what must not happen is it becoming
+        // an attribute on the element in front of it.
+        Assert.DoesNotMatch(@"<[a-zA-Z][^>]*\s[a-zA-Z-]+\s*=", html);
+    }
+
+    /// <summary>
+    /// An autolink is not a link inline, so a scheme sweep that only walks links misses it.
+    /// </summary>
+    [Theory]
+    [InlineData("<javascript:alert(1)>")]
+    [InlineData("<vbscript:msgbox(1)>")]
+    public void Render_DangerousAutolinkScheme_StripsItFromTheHref(string markdown)
+    {
+        var html = _renderer.Render(markdown);
+
+        Assert.DoesNotContain("href=\"javascript:", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("href=\"vbscript:", html, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Render_PipeTable_RendersAsATable()
     {

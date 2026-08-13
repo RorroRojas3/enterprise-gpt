@@ -25,8 +25,7 @@ public sealed class CosmosEmulatorContainer : IAsyncDisposable
     private const int GatewayPort = 8081;
     private const int HealthPort = 8080;
 
-    private readonly IContainer _container = new ContainerBuilder()
-        .WithImage(Image)
+    private readonly IContainer _container = new ContainerBuilder(Image)
         // The .NET SDK refuses plain HTTP against the emulator, and the vNext image serves HTTP by
         // default, so the protocol has to be switched explicitly.
         .WithCommand("--protocol", "https")

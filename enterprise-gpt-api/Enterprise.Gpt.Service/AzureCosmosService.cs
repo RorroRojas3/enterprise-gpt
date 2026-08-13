@@ -213,18 +213,23 @@ namespace Enterprise.Gpt.Service
             }
 
             // Every sibling of the offending operation comes back as FailedDependency, so the first
-            // status that is not that one names the operation that actually broke the batch.
+            // status that is not that one names the operation that actually broke the batch. When
+            // none of them differ the batch was rejected as a whole — throttled, or over the size
+            // limit — and the batch's own status is the only one that says why; reporting
+            // FailedDependency there would hide the cause behind an operation that did not fail.
             var failedIndex = 0;
+            var failedStatus = response.StatusCode;
+
             for (var index = 0; index < response.Count; index++)
             {
                 if (response[index].StatusCode != HttpStatusCode.FailedDependency)
                 {
                     failedIndex = index;
+                    failedStatus = response[index].StatusCode;
                     break;
                 }
             }
 
-            var failedStatus = response.Count > failedIndex ? response[failedIndex].StatusCode : response.StatusCode;
             throw new CosmosBatchFailedException(
                 failedIndex,
                 failedStatus,
@@ -252,7 +257,16 @@ namespace Enterprise.Gpt.Service
                 var page = await QueryPageAsync<string>(query, userId, conversationId, PurgePageSize, null, cancellationToken);
                 if (page.Items.Count == 0)
                 {
-                    return deleted;
+                    // An empty page can still carry a token — the server can filter a page's
+                    // matches out entirely — so only an empty page with no token means the
+                    // partition is drained. Returning on emptiness alone would leave documents
+                    // behind and under-report what was deleted.
+                    if (page.ContinuationToken is null)
+                    {
+                        return deleted;
+                    }
+
+                    continue;
                 }
 
                 await ExecuteBatchAsync(userId, conversationId, [.. page.Items.Select(CosmosBatchOperation.DeleteItem)], cancellationToken);

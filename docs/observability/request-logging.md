@@ -312,7 +312,8 @@ Note that `UseAzureMonitor()` may be called only once per `IServiceCollection`; 
 | Incoming HTTP requests | `requests` | the distro's ASP.NET Core instrumentation |
 | Outgoing HTTP and SQL calls | `dependencies` | the distro's HttpClient and SqlClient instrumentation |
 | LLM turns | `dependencies` | `Enterprise.Gpt.Chat` (§7.3) |
-| `gen_ai.client.token.usage` and the rest | `customMetrics` | `Enterprise.Gpt.Chat` |
+| `gen_ai.client.token.usage` and the rest | `customMetrics` | `Enterprise.Gpt.Chat` — the library's instrumentation |
+| `enterprisegpt.chat.*` | `customMetrics` | `Enterprise.Gpt.Chat` — this application's own instruments (§7.3) |
 
 Everything for one request shares an `operation_Id`, and that is **the same 32-hex W3C trace id the API returns as `traceId` on every problem response**. A user reporting an error can quote the `traceId` from the response body, and this query finds the whole request:
 
@@ -335,6 +336,25 @@ Both chat clients now name their telemetry source explicitly:
 Named at the producer and the consumer rather than relying on the library's default, because the two must agree for the spans to be exported — and a default that changes with a package bump would take the LLM traces off the map with no build error.
 
 `Enterprise.Gpt.Chat` is registered as **both a source and a meter**, because `Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` builds an `ActivitySource` and a `Meter` from the same name. Registering only the source would have exported the spans and dropped `gen_ai.client.token.usage` — the metric that turns LLM spend into something observable.
+
+#### The application's own instruments
+
+The same meter now carries three instruments this application publishes itself, from [`ChatMetrics`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs). They are the first custom metrics in the codebase.
+
+| Instrument | Kind | Unit | Tags | Records |
+|---|---|---|---|---|
+| `enterprisegpt.chat.token_estimate.relative_error` | histogram (`double`) | `1` | `provider.id`, `deployment.name` | `(estimate − reported) / reported` for a turn's prompt — how far the local token estimate was from what the provider billed |
+| `enterprisegpt.chat.context_budget.dropped_messages` | counter (`long`) | `{message}` | `deployment.name` | Messages trimmed out of a turn's replayed history to fit the model's context window |
+| `enterprisegpt.chat.context_budget.dropped_tokens` | counter (`long`) | `{token}` | `deployment.name` | What those messages held |
+
+Four properties of these are deliberate and worth knowing before building an alert on them.
+
+- **`ChatMetrics` shares `MeterName` with `ChatTelemetrySourceName`** rather than repeating the string. `TelemetryRegistration` already registers that meter (§7.1), so these instruments export with **no second registration** — and the alias means two literals that must agree cannot stop agreeing with no build error to say so. It lives in `Enterprise.Gpt.Service` because the code that records is there and cannot reference the API assembly.
+- **No dimension carries a conversation, a user, or message content.** A metric is retained and queried far more widely than a log, so per-conversation cardinality would make these both expensive and disclosing. `provider.id` is a GUID string and `deployment.name` is the catalog's snapshotted deployment name — both bounded by the model catalog's size.
+- **They record whether or not Application Insights is configured.** `IMeterFactory` is part of the host, not of the exporter, so with no connection string the instruments are created and written to and nothing collects them (§7.1). Nothing has to be conditionally registered, and nothing throws.
+- **The error is signed, and recorded only on turns where no tool ran.** Signed because a systematic undercount and noise around zero are the same number once you take the absolute value, and only the first is worth acting on — so alert on a shifting median, not on `abs()`. Zero-tool because once a tool runs, the provider's reported input tokens also cover the follow-up prompts carrying tool results, which the estimator never counted and never should; comparing them would measure a difference that is correct by design.
+
+Two operational notes. **Metrics are never sampled** (§7.4), so these are a census where the `requests` table is a sample. And turning `ContextBudget:Enabled` off stops the histogram recording entirely, because no prompt estimate is produced — the back-out switch also disables the signal you would use to decide whether to flip it back. See [Transcript Storage and Tokenization §10](../conversations/transcript-storage-and-tokenization.md#10-metrics) for what moves each number.
 
 ### 7.4 Sampling — check this before relying on the access log
 
@@ -426,6 +446,7 @@ The middleware uses `ILogger<T>` and nothing else. Application Insights, Serilog
 | Redaction | [`Api/Middleware/JsonPropertyRedactor.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/JsonPropertyRedactor.cs) |
 | DI and pipeline registration | [`Api/Middleware/RequestLoggingRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/RequestLoggingRegistration.cs) |
 | Application Insights | [`Api/Observability/TelemetryRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs) |
+| The application's own chat instruments | [`Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs) — see [Transcript Storage and Tokenization](../conversations/transcript-storage-and-tokenization.md) |
 | Wiring and pipeline order | [`Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
 | Defaults shipped | [`Api/appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) |
 | `traceId` on problem responses | [`Api/Problems/ProblemDetailsRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemDetailsRegistration.cs) |

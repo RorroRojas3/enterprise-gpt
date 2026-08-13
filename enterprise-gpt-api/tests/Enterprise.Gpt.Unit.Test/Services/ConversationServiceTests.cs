@@ -629,6 +629,57 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
+    /// Every persisted message carries what it costs to keep, counted by the real estimator rather
+    /// than left at the literal zero the old write path stored.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_RecordsAContextCostOnBothMessages()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello there, this is a prompt with several tokens in it.",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var batch = CapturedBatch(conversation.Id);
+        var user = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[0]).Item;
+        var assistant = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[1]).Item;
+
+        Assert.True(user.Tokens > 0, "The user message should carry a non-zero context cost.");
+        Assert.Equal(TokenAccuracies.Estimated, user.TokenAccuracy);
+        Assert.True(assistant.Tokens > 0, "The assistant message should carry a non-zero context cost.");
+        Assert.Equal(TokenAccuracies.Estimated, assistant.TokenAccuracy);
+    }
+
+    /// <summary>
+    /// Rendered HTML is stored beside the text so an export is a read rather than a re-render.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_StoresRenderedHtmlOnBothMessages()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "A **bold** prompt.",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var batch = CapturedBatch(conversation.Id);
+        var user = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[0]).Item;
+
+        Assert.Contains("<strong>bold</strong>", user.HtmlContent);
+    }
+
+    /// <summary>
     /// Positions come from the header's counter, incremented server-side, so two replicas racing
     /// on the same conversation cannot claim the same one — the conversation lock is process-local
     /// and gives no mutual exclusion across them.

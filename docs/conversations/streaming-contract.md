@@ -133,7 +133,7 @@ data: {"kind":"TextDelta","depth":0,"toolKind":"Unknown","text":"Hello"}\n\n
 ```
 
 - **No event name.** Every frame goes on the default channel, and a client switches on the payload's own `kind` discriminator instead. A named channel would put the same information in two places, and `EventSource` cannot send the `POST` body this endpoint requires anyway.
-- **No `id:`, no `retry:`.** The stream is not resumable — a turn is a single database transaction and a single Cosmos append, not a cursor a client can seek into. Reconnecting starts a new turn.
+- **No `id:`, no `retry:`.** The stream is not resumable — a turn is a single database transaction and a single Cosmos transactional batch, not a cursor a client can seek into. Reconnecting starts a new turn.
 - **Exactly one `data:` line per frame.** Serialized JSON never contains a raw newline, so no continuation handling is needed on either side.
 - **Frames are separated by a blank line** and flushed individually. A client must buffer across `read()` boundaries: a chunk can end mid-frame.
 
@@ -146,6 +146,7 @@ The JSON comes from `AssistantUiJsonContext.Default.AssistantUiEvent`, the packa
 | Status | `type` | When |
 |---|---|---|
 | `400` | `/problems/validation-error` | The request body failed validation; `errors` is keyed by property name |
+| `400` | `/problems/validation-error` | **The prompt does not fit the model's context window**, even after every droppable message is trimmed away — `errors` is keyed on `Prompt` and the message names the window. See [transcript storage §7.4](transcript-storage-and-tokenization.md#74-when-even-the-undroppable-messages-overflow) |
 | `403` | `/problems/mcp-authorization-required` | A selected MCP server needs consent. Deliberately not `401`, which would send clients into a token-refresh loop that cannot fix a consent requirement |
 | `403` | `/problems/forbidden` | The caller may not use something the turn needs |
 | `404` | `/problems/resource-not-found` | The conversation is unknown, deactivated, or another user's |
@@ -153,7 +154,7 @@ The JSON comes from `AssistantUiJsonContext.Default.AssistantUiEvent`, the packa
 | `502` | `/problems/mcp-server-unavailable` | A selected MCP server could not be reached |
 | `503` | `/problems/provider-not-configured` | The model exists but this deployment has no chat client for its provider — an operator fixes it, not the caller |
 
-The line between "before" and "after" is the **synthetic opening pair** (§4.3). Everything in the table runs ahead of the first yield — the conversation lock, the conversation reads, first-turn naming, model resolution, and MCP validation, consent and tool acquisition — so those failures still arrive as ordinary problem JSON. The model's first token does not: the two synthetic frames commit the response to `text/event-stream` *before* the provider is called, so a provider that faults on its very first token — a bad deployment, an expired key, exhausted quota — now surfaces as the mid-stream truncation below instead of a problem response. That is the deliberate price of the opening pair: the client hears something during model latency, and first-token faults lose their problem body.
+The line between "before" and "after" is the **synthetic opening pair** (§4.3). Everything in the table runs ahead of the first yield — the conversation lock, the conversation reads, first-turn naming, model resolution, MCP validation, consent and tool acquisition, and the context-budget trim — so those failures still arrive as ordinary problem JSON. The model's first token does not: the two synthetic frames commit the response to `text/event-stream` *before* the provider is called, so a provider that faults on its very first token — a bad deployment, an expired key, exhausted quota — now surfaces as the mid-stream truncation below instead of a problem response. That is the deliberate price of the opening pair: the client hears something during model latency, and first-token faults lose their problem body.
 
 **After** — there is no error surface left. The exception handlers short-circuit on `Response.HasStarted` rather than corrupting a stream that is already `200 OK` with half an answer in it, so a mid-stream failure reaches the client as **a body that simply stops**. A client cannot distinguish that from a network drop and should not try to; treat an ended body with no `Finished` event as an incomplete turn and say so in the UI.
 
@@ -280,9 +281,17 @@ That is a property of the events, not of the transport, so it holds for the out-
 
 ### 6.2 Only the answer is transcribed
 
-`TextDelta` text is accumulated and appended to the Cosmos transcript when the turn completes. Everything else — status lines, activity cards, reasoning, progress — is live-only and is gone when the page is closed. Reopening a conversation replays the answer, not the work that produced it.
+`TextDelta` text is accumulated and written to the Cosmos transcript when the turn completes. Everything else — status lines, activity cards, reasoning, progress — is live-only and is gone when the page is closed. Reopening a conversation replays the answer, not the work that produced it.
 
-The consequence for a client: the activity tree is **not** available on `GET api/conversations/{id}/messages`. If a UI wants to show what a past turn did, that history is in SQL ([usage §7](usage-and-favorites.md#7-reporting)), and there is no endpoint over it yet.
+**How it is written changed.** A turn used to append two entries to an embedded `messages[]` array inside one document per conversation. It now writes **one document per message**, and the turn's user message, assistant message and the header's counter updates go out as **one transactional batch** against the conversation's partition key — so a header whose totals moved always has the messages that moved them. Positions come from a server-side counter increment on the header rather than from array order, and the role is stored as a lowercase string (`"user"`, `"assistant"`) rather than the enum's number. [Transcript Storage and Tokenization §4](transcript-storage-and-tokenization.md#4-the-documents) is the reference.
+
+Nothing about the wire contract changed with it. What did change is what a *read* of that transcript returns, which matters to any client that renders history:
+
+> **Breaking — `GET api/conversations/{id}/messages` no longer returns every message.** It returns **the newest 100** by default, with `?take=` (clamped 1–100) and `?before={sequence}` to walk backwards. A client that rendered the whole array now silently shows only the tail of a long conversation. The envelope gains `totalMessageCount` and `hasMore`; each message gains `sequence` (the cursor for the previous page), `htmlContent` (the server-rendered form, `null` for messages stored before rendering existed), `tokens` and `tokenAccuracy`. Full field semantics: [transcript storage §5.1](transcript-storage-and-tokenization.md#51-get-apiconversationsidmessages). This document and the `enterprise-gpt-ui/` transcript history story are the two named consumers of the change; the client's history story does not exist yet, so it is being written against the paged shape rather than migrated to it.
+
+The consequence for a client is unchanged in one respect: the activity tree is **not** available on that route. If a UI wants to show what a past turn did, that history is in SQL ([usage §7](usage-and-favorites.md#7-reporting)), and there is no endpoint over it yet. What *is* newly available beside each message is its rendered HTML and its context cost.
+
+There is also now a way to take a whole conversation out of the platform — `GET api/conversations/{id}/export?format=html|json`, assembled from the stored HTML rather than re-rendered ([transcript storage §9](transcript-storage-and-tokenization.md#9-export)). It carries no activity tree either, for the same reason.
 
 ### 6.3 It is not resumable and not multiplexed
 
@@ -330,4 +339,4 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 | Client codec | [`enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts) |
 | Client transport | [`enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts) |
 | TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.5.0, `typescript/andes-assistant-ui.ts`, vendored at [`enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) |
-| Related reference | [Conversation Streaming Client](streaming-client.md), [Conversation Usage and Favourites](usage-and-favorites.md), [Model Management](../models/model-management.md) |
+| Related reference | [Conversation Streaming Client](streaming-client.md), [Conversation Usage and Favourites](usage-and-favorites.md), [Transcript Storage and Tokenization](transcript-storage-and-tokenization.md), [Model Management](../models/model-management.md) |
