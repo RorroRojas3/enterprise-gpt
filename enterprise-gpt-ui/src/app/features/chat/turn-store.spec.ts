@@ -2,10 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { Dispatcher } from '@ngrx/signals/events';
+import { Dispatcher, Events } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
+import { CHAT_ROLE, ConversationMessageDto } from '@domain/api/conversation';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   StreamingResponseHandle,
@@ -18,6 +19,7 @@ import {
 import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { sessionEvents } from '@core/events/session-events';
+import { TurnCompleted, turnEvents } from '@core/events/turn-events';
 import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
@@ -34,6 +36,7 @@ describe('TurnStore', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let applyConversationSettings: ReturnType<typeof vi.fn>;
+  let getToken: ReturnType<typeof vi.fn>;
   let selection: TurnSelection | null;
 
   beforeEach(() => {
@@ -50,6 +53,7 @@ describe('TurnStore', () => {
     fetchMock = vi.fn();
     navigateByUrl = vi.fn().mockResolvedValue(true);
     applyConversationSettings = vi.fn();
+    getToken = vi.fn().mockResolvedValue('token-1');
 
     TestBed.configureTestingModule({
       providers: [
@@ -57,7 +61,7 @@ describe('TurnStore', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: fetchMock },
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        { provide: TokenService, useValue: { getToken } },
         { provide: Router, useValue: { navigateByUrl } },
         {
           provide: TurnSettingsStore,
@@ -87,9 +91,23 @@ describe('TurnStore', () => {
     await vi.advanceTimersByTimeAsync(ms);
   }
 
+  function messagesUrl(id: string): string {
+    return `${TEST_API_BASE_URL}/api/conversations/${id}/messages`;
+  }
+
+  /**
+   * Answers the stored-transcript read that opening a conversation issues
+   * (US-410). Every test that binds a conversation has to, because the read is
+   * part of opening one — an empty body is the "nothing said yet" case.
+   */
+  function flushHistory(id: string, messages: readonly ConversationMessageDto[] = []): void {
+    backend.expectOne(messagesUrl(id)).flush({ id, name: 'Conversation', messages });
+  }
+
   /** Binds an existing conversation and opens a live stream for it. */
   async function startBoundTurn(handle = streamingResponse()): Promise<StreamingResponseHandle> {
     store.bindRoute(CONVERSATION_ID);
+    flushHistory(CONVERSATION_ID);
     respondWithStream(handle);
     store.send('What is the weather?');
     await settle();
@@ -178,6 +196,7 @@ describe('TurnStore', () => {
 
       // The user opened another conversation from the sidebar mid-create.
       store.bindRoute(other.id);
+      flushHistory(other.id);
       await settle();
 
       expect(create.cancelled).toBe(true);
@@ -251,6 +270,7 @@ describe('TurnStore', () => {
     it('refuses to send with no resolvable model or an empty prompt', async () => {
       setup({ selection: null });
       store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
 
       store.send('A prompt');
       await settle();
@@ -446,7 +466,9 @@ describe('TurnStore', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
       expect(store.stoppedTurn()).not.toBeNull();
 
-      store.bindRoute(conversationFixture().id);
+      const other = conversationFixture();
+      store.bindRoute(other.id);
+      flushHistory(other.id);
 
       expect(store.stoppedTurn()).toBeNull();
       expect(store.entries()).toEqual([]);
@@ -456,6 +478,7 @@ describe('TurnStore', () => {
   describe('pre-stream failures', () => {
     async function failWith(problem: object, status: number): Promise<void> {
       store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
       fetchMock.mockResolvedValue(problemResponse(problem, status).response);
       store.send('What is the weather?');
       await settle();
@@ -475,12 +498,42 @@ describe('TurnStore', () => {
       expect(store.phase()).toBe('idle');
     });
 
-    it('surfaces a 409 as the conversation-busy notice', async () => {
+    it('surfaces a 409 as the conversation-busy notice (US-408)', async () => {
       setup();
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
       expect(store.turnError()?.error.kind).toBe('conversation-busy');
       expect(store.entries()).toEqual([]);
+      // The notice offers Retry, so the retry has to be the user's: the other
+      // tab holds the lock for an unknown time and a schedule would either
+      // fire uselessly or send a turn the user has moved on from.
+      expect(store.turnError()?.retry).not.toBeNull();
+    });
+
+    it('schedules no automatic retry of a 409 at any interval (US-408)', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
+
+      await settle(60_000);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(store.phase()).toBe('idle');
+    });
+
+    it('surfaces a 403 consent requirement without a token refresh (US-412)', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403);
+
+      const notice = store.turnError();
+      expect(notice?.error.kind).toBe('mcp-authorization-required');
+      expect(notice?.error.kind === 'mcp-authorization-required' && notice.error.serverName).toBe(
+        'Weather',
+      );
+      // One acquisition — the request's own. A 403 consent problem must never
+      // take the replay path a bare 401 takes: no refresh can satisfy a consent
+      // requirement, so a loop is all it would produce.
+      expect(getToken).toHaveBeenCalledExactlyOnceWith(undefined);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('clears the notice when the user retries and the turn starts normally', async () => {
@@ -496,6 +549,280 @@ describe('TurnStore', () => {
       expect(store.turnError()).toBeNull();
       expect(store.phase()).toBe('awaitingFirst');
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('announcing a completed turn (US-409)', () => {
+    function completions(): TurnCompleted[] {
+      const seen: TurnCompleted[] = [];
+      TestBed.inject(Events)
+        .on(turnEvents.completed)
+        .subscribe(({ payload }) => seen.push(payload));
+      return seen;
+    }
+
+    async function finishTurn(handle: StreamingResponseHandle): Promise<void> {
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Sunny.' })));
+      handle.enqueue(frame(assistantEvent('Finished', {})));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+    }
+
+    it('reports the first completed turn of a conversation as the first', async () => {
+      setup();
+      const seen = completions();
+
+      await finishTurn(await startBoundTurn());
+
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: true }]);
+    });
+
+    it('reports a later turn as not the first, so nothing refetches a settled name', async () => {
+      setup();
+      await finishTurn(await startBoundTurn());
+      const seen = completions();
+
+      const second = streamingResponse();
+      respondWithStream(second);
+      store.send('And tomorrow?');
+      await settle();
+      await finishTurn(second);
+
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: false }]);
+    });
+
+    it('reports a conversation that already holds stored messages as not the first', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        { text: 'What is the weather?', role: CHAT_ROLE.user },
+        { text: 'It was sunny.', role: CHAT_ROLE.assistant },
+      ]);
+      const seen = completions();
+
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      await finishTurn(handle);
+
+      expect(seen[0]?.wasFirstTurn).toBe(false);
+    });
+
+    it('claims nothing about being first when the stored transcript could not be read', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(messagesUrl(CONVERSATION_ID))
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+      const seen = completions();
+
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      await finishTurn(handle);
+
+      // An empty transcript here means unread, not new — a conversation named
+      // long ago would otherwise be refetched on every turn.
+      expect(seen[0]?.wasFirstTurn).toBe(false);
+    });
+
+    it('stays silent for a turn that was stopped or cut off', async () => {
+      setup();
+      const seen = completions();
+
+      const cutOff = await startBoundTurn();
+      cutOff.enqueue(frame(assistantEvent('TextDelta', { text: 'Half an ans' })));
+      cutOff.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.entries().at(-1)?.kind).toBe('cutOff');
+
+      const stopped = streamingResponse();
+      respondWithStream(stopped);
+      store.send('Again');
+      await settle();
+      store.stop();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // Neither turn left the server anything to name the conversation after.
+      expect(seen).toEqual([]);
+    });
+
+    it('announces the retry that completes, not the attempt that was abandoned', async () => {
+      setup();
+      const seen = completions();
+
+      const cutOff = await startBoundTurn();
+      cutOff.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(seen).toEqual([]);
+
+      const retried = streamingResponse();
+      respondWithStream(retried);
+      store.retryTurn({ prompt: 'What is the weather?', selection: SELECTION });
+      await settle();
+      await finishTurn(retried);
+
+      // The abandoned attempt left a `cutOff` entry, never an `assistant` one,
+      // so the turn that actually completed is still the conversation's first.
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: true }]);
+    });
+  });
+
+  describe('replaying the stored transcript (US-410)', () => {
+    const HISTORY: readonly ConversationMessageDto[] = [
+      { text: 'What is the weather?', role: CHAT_ROLE.user },
+      { text: 'It is sunny.', role: CHAT_ROLE.assistant },
+    ];
+
+    it('renders the stored messages as transcript entries when a conversation is opened', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      expect(store.historyPending()).toBe(true);
+      expect(store.hasContent()).toBe(true);
+
+      flushHistory(CONVERSATION_ID, HISTORY);
+
+      expect(store.historyPending()).toBe(false);
+      const entries = store.entries();
+      expect(entries).toHaveLength(2);
+      expect(entries[0]).toMatchObject({ kind: 'user', text: 'What is the weather?' });
+      expect(entries[1]?.kind).toBe('assistant');
+      // Replayed through the same fold a live turn uses, so the answer text is
+      // where the transcript already looks for it.
+      expect(entries[1]?.kind === 'assistant' && entries[1].snapshot.text).toBe('It is sunny.');
+    });
+
+    it('skips roles the transcript does not render', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        { text: 'You are a helpful assistant.', role: CHAT_ROLE.system },
+        { text: 'Ask the weather tool.', role: CHAT_ROLE.tool },
+        { text: 'It is sunny.', role: CHAT_ROLE.assistant },
+      ]);
+
+      expect(store.entries()).toHaveLength(1);
+      expect(store.entries()[0]?.kind).toBe('assistant');
+    });
+
+    it('replaces a longer local history with a shorter refetch rather than merging', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, HISTORY);
+      expect(store.entries()).toHaveLength(2);
+
+      // What an aborted turn leaves behind: the server transcribed neither
+      // half of it, so the read back is shorter than what is on screen.
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, HISTORY.slice(0, 1));
+
+      expect(store.entries()).toHaveLength(1);
+      expect(store.entries()[0]).toMatchObject({ kind: 'user' });
+    });
+
+    it('keeps a turn taken during the read, and orders it after the replayed history', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      const pending = backend.expectOne(messagesUrl(CONVERSATION_ID));
+
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Rain.' })));
+      handle.enqueue(frame(assistantEvent('Finished', {})));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.entries()).toHaveLength(2);
+
+      pending.flush({ id: CONVERSATION_ID, name: 'Conversation', messages: HISTORY });
+
+      const kinds = store.entries().map((entry) => entry.kind);
+      expect(kinds).toEqual(['user', 'assistant', 'user', 'assistant']);
+      expect(store.entries()[2]).toMatchObject({ text: 'And tomorrow?' });
+      // Two id ranges, so the replayed block can be swapped without ever
+      // colliding with a live turn's `@for` key.
+      expect(
+        store.entries().every((entry, index) => (index < 2 ? entry.id < 0 : entry.id > 0)),
+      ).toBe(true);
+    });
+
+    it('cancels the read for a conversation the user leaves before it answers', () => {
+      setup();
+      const other = conversationFixture();
+      store.bindRoute(CONVERSATION_ID);
+      const stale = backend.expectOne(messagesUrl(CONVERSATION_ID));
+
+      store.bindRoute(other.id);
+
+      // Cancelled, not merely ignored on arrival: the entries it carries
+      // belong to a screen the user has left, and nothing may install them.
+      expect(stale.cancelled).toBe(true);
+      flushHistory(other.id, HISTORY.slice(0, 1));
+      expect(store.entries()).toHaveLength(1);
+    });
+
+    it('surfaces a failed read without disabling the turn surface', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(messagesUrl(CONVERSATION_ID))
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+
+      expect(store.historyPending()).toBe(false);
+      expect(store.historyError()?.status).toBe(500);
+
+      respondWithStream(streamingResponse());
+      store.send('And tomorrow?');
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, HISTORY);
+      expect(store.historyError()).toBeNull();
+    });
+
+    it('does not render a turn twice when a retry brings back the turn itself', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(messagesUrl(CONVERSATION_ID))
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+
+      // The panel keeps the composer live, so a turn can be taken and settle
+      // while the stored transcript is unreadable.
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Rain.' })));
+      handle.enqueue(frame(assistantEvent('Finished', {})));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.entries()).toHaveLength(2);
+
+      // The server now holds that exchange too, so a retry that kept the live
+      // entries would show the prompt and the answer twice.
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, [
+        ...HISTORY,
+        { text: 'And tomorrow?', role: CHAT_ROLE.user },
+        { text: 'Rain.', role: CHAT_ROLE.assistant },
+      ]);
+
+      expect(store.entries()).toHaveLength(4);
+      expect(store.entries().map((entry) => entry.id > 0)).toEqual([false, false, false, false]);
+    });
+
+    it('reads nothing back on the empty chat route', () => {
+      setup();
+      store.bindRoute(undefined);
+
+      backend.expectNone(messagesUrl(CONVERSATION_ID));
+      expect(store.historyPending()).toBe(false);
+      expect(store.hasContent()).toBe(false);
     });
   });
 

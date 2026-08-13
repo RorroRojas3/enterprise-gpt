@@ -1,7 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DOCUMENT,
+  computed,
+  effect,
+  inject,
+  viewChild,
+} from '@angular/core';
 import { canRetry, userMessage } from '@core/errors/error-message';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
+import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { Ridgeline } from '@shared/ridgeline/ridgeline';
+import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { TurnErrorNotice, TurnStore } from '../turn-store';
 import { AssistantTurn } from './assistant-turn';
 import { StoppedCard } from './stopped-card';
@@ -20,15 +30,23 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
 @Component({
   selector: 'app-transcript',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AssistantTurn, BrandLogo, Ridgeline, StoppedCard, TurnNoticeCard],
+  imports: [AssistantTurn, BrandLogo, ErrorPanel, Ridgeline, Skeleton, StoppedCard, TurnNoticeCard],
   templateUrl: './transcript.html',
   styleUrl: './transcript.scss',
-  host: { '[attr.aria-busy]': "turn.inFlight() ? 'true' : null" },
+  // Reading the stored messages counts as busy too (US-410): the skeleton is
+  // aria-hidden, so without this the region is silently empty and then
+  // silently full.
+  host: { '[attr.aria-busy]': "turn.inFlight() || turn.historyPending() ? 'true' : null" },
 })
 export class Transcript {
   protected readonly turn = inject(TurnStore);
 
+  private readonly errorCard = viewChild<TurnNoticeCard>('errorCard');
+
   protected readonly cutOffNotice: TurnNotice = { kind: 'cut-off' };
+
+  /** A 403 or a 404 on the stored messages answers the same however often it is asked. */
+  protected readonly canRetry = canRetry;
 
   protected readonly errorNotice = computed<TurnNotice | null>(() => {
     const notice = this.turn.turnError();
@@ -48,6 +66,31 @@ export class Transcript {
     if (notice?.retry != null) {
       this.turn.retryTurn(notice.retry);
     }
+  }
+
+  constructor() {
+    const document = inject(DOCUMENT);
+
+    // Retrying destroys the button that was pressed — the send clears the
+    // notice — so focus falls to <body> for the length of the turn. When the
+    // turn fails again, which is US-408's whole loop while the other tab holds
+    // the conversation, the replacement Retry takes the focus back rather than
+    // making a keyboard user re-traverse the page on every attempt.
+    //
+    // The condition is "focus is nowhere", not "the user retried": a notice
+    // raised while the user is somewhere real never steals from them, and the
+    // composer stands down for the same reason (see its own fixup).
+    effect(() => {
+      const card = this.errorCard();
+      if (card === undefined || !this.errorRetryable()) {
+        return;
+      }
+
+      const active = document.activeElement;
+      if (active === null || active === document.body || !active.isConnected) {
+        card.focusRetry();
+      }
+    });
   }
 
   /**

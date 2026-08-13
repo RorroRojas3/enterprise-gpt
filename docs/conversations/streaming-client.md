@@ -1,6 +1,6 @@
 # Conversation Streaming Client
 
-The frontend half of the [Conversation Streaming Contract](streaming-contract.md): what `enterprise-gpt-ui/` does with the bytes that document specifies, from the `fetch` that carries a turn to the selection state that decides what the request says. Audience: whoever builds on this pipeline or debugs a turn that ended strangely. The layer above it — sending, the live turn, Stop, the chronological timeline (US-401, US-406, US-407, US-501) — has since shipped and is documented in the [Conversation Turn Lifecycle](turn-lifecycle.md); resuming a conversation's settings (US-410) is still to come. The wire format is deliberately not restated here; wherever a behaviour exists because the wire demands it, the contract section is linked instead.
+The frontend half of the [Conversation Streaming Contract](streaming-contract.md): what `enterprise-gpt-ui/` does with the bytes that document specifies, from the `fetch` that carries a turn to the selection state that decides what the request says. Audience: whoever builds on this pipeline or debugs a turn that ended strangely. The layer above it — sending, the live turn, Stop, the chronological timeline, reopening a conversation, dictation — has since shipped and is documented in the [Conversation Turn Lifecycle](turn-lifecycle.md), which closed EP-4. The wire format is deliberately not restated here; wherever a behaviour exists because the wire demands it, the contract section is linked instead.
 
 ## 1. Overview
 
@@ -63,7 +63,7 @@ Both codecs implement one interface ([`stream-codec.ts`](../../enterprise-gpt-ui
 
 ### 3.3 The raw-text fallback — `features.rawStreamCodec`
 
-[`createRawTextCodec()`](../../enterprise-gpt-ui/src/app/domain/stream/raw-text-codec.ts) exists for a deployment still running a server that predates the framed contract: the body is unframed answer text, and each chunk becomes one synthesized `TextDelta`. The transport selects between the two codecs with a single expression on the `features.rawStreamCodec` flag in `config.json` — everything downstream of the transport (the fold, the turn state, the transcript) is identical for both codecs; only the byte-level decoding differs. Synthesized events carry `DEFAULT_EVENT_TIMESTAMP`, the .NET default `DateTimeOffset` — recognizably "unset", and deterministic under test where a clock read would not be. The contract forbids ordering by timestamp, so no consumer may attach meaning to it.
+[`createRawTextCodec()`](../../enterprise-gpt-ui/src/app/domain/stream/raw-text-codec.ts) exists for a deployment still running a server that predates the framed contract: the body is unframed answer text, and each chunk becomes one synthesized `TextDelta` — built by `textDeltaEvent` in [`stream-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/stream-codec.ts), which US-410's history replay shares so both synthesized paths produce a byte-identical event ([turn lifecycle §7.2](turn-lifecycle.md#72-a-replayed-answer-goes-through-the-same-reducers-as-a-live-one)). The transport selects between the two codecs with a single expression on the `features.rawStreamCodec` flag in `config.json` — everything downstream of the transport (the fold, the turn state, the transcript) is identical for both codecs; only the byte-level decoding differs. Synthesized events carry `DEFAULT_EVENT_TIMESTAMP`, the .NET default `DateTimeOffset` — recognizably "unset", and deterministic under test where a clock read would not be. The contract forbids ordering by timestamp, so no consumer may attach meaning to it.
 
 ### 3.4 The fold is vendored, pinned, and never reimplemented
 
@@ -119,7 +119,9 @@ A model whose `isToolEnabled` is false must never reach the wire with MCP server
 1. **`selectModel` performs the visible clear.** Selecting a non-tool model while servers are selected empties the selection and records which model did it, so the composer can render frame `2d`'s warning — "*{model}* can't call tools — your previous selection was cleared" — sticky until the model changes again. Masking instead of clearing would resurrect the selection on the next tool-capable model, contradicting "was cleared".
 2. **`effectiveMcpServerIds` re-derives emptiness.** The wire-facing set is computed: empty whenever the selected model cannot call tools, and always intersected with the permitted catalog. So even a path that bypasses `selectModel` — US-410 seeding a conversation's stale settings, a catalog reload dropping a server mid-session — cannot produce the server's 400.
 
-The Tools pill label ("Tools", "1 Tool", "N Tools") reads off the effective set, so it never advertises servers that will not be sent, and `applyConversationSettings` — deliberately unvalidated, because the computed joins absorb ids the catalogs no longer carry — is the seeding surface US-410 will call when reopening a conversation restores the model and servers it last used.
+The Tools pill label ("Tools", "1 Tool", "N Tools") reads off the effective set, so it never advertises servers that will not be sent, and `applyConversationSettings` — deliberately unvalidated, because the computed joins absorb ids the catalogs no longer carry — is the seam US-410 seeds a reopened conversation through ([turn lifecycle §7.6](turn-lifecycle.md#76-restoring-the-model-and-mcp-selection)).
+
+That silent absorption is right for a model the catalog has merely not loaded yet and wrong for one that has been deactivated, so US-410 added `restoredModelId` beside the selection: it remembers what a conversation *asked* for, and `restoredModelUnavailable` reports the difference once the catalog has resolved. Selecting a model clears it — the user has answered the question the note asks.
 
 ### 5.4 Provider presentation
 
@@ -136,14 +138,14 @@ Two deliberate deviations from the design, agreed 2026-08-12 and recorded in the
 
 ## 6. What the stories above consume
 
-US-401, US-406 and US-407 have shipped; the table records what each took from this layer, and the [Conversation Turn Lifecycle](turn-lifecycle.md) documents what they built with it. US-410 is still open.
+All four have shipped; the table records what each took from this layer, and the [Conversation Turn Lifecycle](turn-lifecycle.md) documents what they built with it.
 
 | Story | Consumes |
 |---|---|
-| US-401 — send a first prompt (shipped) | `streamSelection` spread into `StreamTurnRequest`; the send button's disable conditions; `ConversationStreamClient.stream` |
-| US-406 — watch the answer arrive (shipped) | The batch observable, folded with the vendored `foldAssistantEvents`; owns the "completed without `Finished`" detection (§4.3) |
-| US-407 — Stop (shipped) | `request.signal`; the `aborted` arm as the discriminator; delivered-batch semantics that keep partial output (§4.2) |
-| US-410 — resume settings | `applyConversationSettings`; the twice-enforced gating invariant absorbing stale ids (§5.3) — the stopped card's Retry already exercises the same seam |
+| US-401 — send a first prompt | `streamSelection` spread into `StreamTurnRequest`; the send button's disable conditions; `ConversationStreamClient.stream` |
+| US-406 — watch the answer arrive | The batch observable, folded with the vendored `foldAssistantEvents`; owns the "completed without `Finished`" detection (§4.3) |
+| US-407 — Stop | `request.signal`; the `aborted` arm as the discriminator; delivered-batch semantics that keep partial output (§4.2) |
+| US-410 — resume a conversation | `applyConversationSettings` and the twice-enforced gating invariant absorbing stale ids (§5.3) — the same seam the stopped card's Retry uses — plus `textDeltaEvent` (§3.3) for replaying stored answers through the vendored fold |
 
 ## 7. Testing
 

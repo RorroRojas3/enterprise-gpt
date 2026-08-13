@@ -83,8 +83,10 @@ export class Chat {
     // injector, where it would outlive the screen.
     this.conversation.open(this.conversationId);
     // The turn store follows the same input: a conversation change aborts and
-    // clears the session turn state (US-407), while the id US-401's own create
-    // already bound passes through as a no-op.
+    // clears the session turn state (US-407) and replays the stored messages
+    // (US-410), while the id US-401's own create already bound passes through
+    // as a no-op — which is what keeps it from reading back a conversation
+    // whose first turn is still streaming.
     this.turn.bindRoute(this.conversationId);
 
     const router = inject(Router);

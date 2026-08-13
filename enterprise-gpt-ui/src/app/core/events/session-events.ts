@@ -14,8 +14,8 @@ import { Observable } from 'rxjs';
  * registered with it, which inverts the dependency the wrong way — a root service
  * would have to reach into route-scoped stores.
  *
- * `turnEvents` (US-409) and `adminEvents` (US-1207, US-1208) follow this shape.
- * Everything else stays on plain store methods.
+ * `turnEvents` (US-409) follows this shape, and `adminEvents` (US-1207,
+ * US-1208) will. Everything else stays on plain store methods.
  *
  * **Dispatch `signedOut` globally.** `Dispatcher` and `Events` are `platform`-
  * scoped by default, but a component or route calling `provideDispatcher()`

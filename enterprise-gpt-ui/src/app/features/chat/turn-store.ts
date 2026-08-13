@@ -10,6 +10,7 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
+import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
 import {
@@ -20,23 +21,31 @@ import {
   map,
   merge,
   of,
+  pipe,
   switchMap,
   takeUntil,
   tap,
 } from 'rxjs';
-import { ConversationDto } from '@domain/api/conversation';
+import {
+  CHAT_ROLE,
+  ChatConversationDto,
+  ConversationDto,
+  ConversationMessageDto,
+} from '@domain/api/conversation';
 import {
   AssistantStatusSnapshot,
   AssistantUiEvent,
   createInitialSnapshot,
   foldAssistantEvents,
 } from '@domain/stream/andes/assistant-ui.contract';
+import { replayAssistantText } from '@domain/stream/replayed-turn';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { AppError } from '@core/errors/app-error';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
+import { turnEvents } from '@core/events/turn-events';
 import { ApiUrl } from '@core/http/api-url';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { ConversationStreamClient } from '@core/stream/conversation-stream-client';
@@ -55,6 +64,11 @@ export interface TurnRetry {
  * ordering index, because the activity timeline is live-only (streaming
  * contract §6.2): it survives for the session precisely because it is held
  * here, and is gone on reload by the same fact.
+ *
+ * Ids are the `@for` track key and split into two ranges: replayed history
+ * (US-410) counts down from -1 and live turns count up from 1, so a refetch
+ * can rebuild the whole history block without renumbering — or colliding
+ * with — turns taken since.
  */
 export type TranscriptEntry =
   | { readonly kind: 'user'; readonly id: number; readonly text: string }
@@ -118,6 +132,10 @@ interface TurnState {
   readonly timeline: TurnTimeline;
   readonly stoppedTurn: StoppedTurn | null;
   readonly turnError: TurnErrorNotice | null;
+  /** The stored transcript is being read back (US-410). */
+  readonly historyPending: boolean;
+  /** The stored transcript could not be read. The turn surface stays usable. */
+  readonly historyError: AppError | null;
   /**
    * A one-shot text for the composer: a prompt chip, or Retry restoring a
    * prompt. A fresh object per seed, so seeding the same text twice still
@@ -136,8 +154,39 @@ const initialState: TurnState = {
   timeline: createInitialTimeline(),
   stoppedTurn: null,
   turnError: null,
+  historyPending: false,
+  historyError: null,
   composerSeed: null,
 };
+
+/**
+ * Rebuilds the replayed-history block (US-410's "replaced, not merged").
+ *
+ * A whole-block replace rather than a merge is the point: after an aborted
+ * turn the server holds *fewer* messages than the screen does, and a merge
+ * would leave the abandoned pair on screen forever, claiming the model saw
+ * them. History occupies the negative id range, so live entries can survive
+ * untouched with their `@for` identity stable across the swap.
+ *
+ * `keepLive` is what the two callers disagree on. A read that was already in
+ * flight predates any turn taken during it, so those entries are still to
+ * come and are kept. A **retry** is issued after everything on screen — the
+ * panel keeps the composer live, so the user may well have taken a turn while
+ * history was broken — and the response now contains that turn too, so
+ * keeping it would render the exchange twice.
+ */
+function replaceHistory(
+  replayed: readonly TranscriptEntry[],
+  keepLive: boolean,
+): PartialStateUpdater<TurnState> {
+  return (state) => ({
+    entries: keepLive
+      ? [...replayed, ...state.entries.filter((entry) => entry.id > 0)]
+      : [...replayed],
+    historyPending: false,
+    historyError: null,
+  });
+}
 
 function beginTurn(
   command: TurnRetry,
@@ -251,6 +300,30 @@ function seedComposer(text: string): PartialStateUpdater<TurnState> {
   return () => ({ composerSeed: { text } });
 }
 
+/**
+ * Maps the stored messages onto transcript entries (US-410).
+ *
+ * Only the two roles the user wrote or read are rendered: the server already
+ * drops `System`, and a `Tool` message is a model-to-model artefact that the
+ * activity timeline — which this response cannot reconstruct anyway — is the
+ * proper surface for. An unknown role from a future server is skipped rather
+ * than guessed at.
+ */
+function toHistoryEntries(messages: readonly ConversationMessageDto[]): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
+
+  for (const message of messages) {
+    const id = -(entries.length + 1);
+    if (message.role === CHAT_ROLE.user) {
+      entries.push({ kind: 'user', id, text: message.text });
+    } else if (message.role === CHAT_ROLE.assistant) {
+      entries.push({ kind: 'assistant', id, ...replayAssistantText(message.text) });
+    }
+  }
+
+  return entries;
+}
+
 /** A pre-stream failure: the turn never produced anything, so only a notice remains. */
 function settlePreStream(command: TurnRetry, error: AppError): PartialStateUpdater<TurnState> {
   return () => ({
@@ -337,7 +410,10 @@ function settleFromComplete(command: TurnRetry): PartialStateUpdater<TurnState> 
  * Provided by `Chat` beside `ConversationStore`, so its lifetime is the chat
  * screen's: leaving `/chat` tears the store down, which unsubscribes the
  * stream and aborts the fetch — there is no stop endpoint to call (US-405).
- * The transcript is session-local by design; history replay is US-410.
+ *
+ * Opening a conversation replays its stored messages (US-410); the activity
+ * timeline around them stays session-local, because the stream that produces
+ * it is never persisted (streaming contract §6.2).
  */
 export const TurnStore = signalStore(
   withState(initialState),
@@ -346,6 +422,7 @@ export const TurnStore = signalStore(
     _api: inject(ApiUrl),
     _router: inject(Router),
     _stream: inject(ConversationStreamClient),
+    _dispatcher: inject(Dispatcher),
     _settings: inject(TurnSettingsStore),
     _list: inject(ConversationListStore),
     _signedOut$: injectSignedOut(),
@@ -370,18 +447,67 @@ export const TurnStore = signalStore(
       ),
       /** The live assistant turn region — still rendered while `stopping`, until the settle lands. */
       showLiveTurn: computed(() => store.phase() === 'streaming' || store.phase() === 'stopping'),
-      /** Whether the transcript replaces the empty state. */
+      /**
+       * Whether the transcript replaces the empty state. The history states
+       * count: a conversation being read back must not show the landing
+       * screen's prompt chips for the length of a round trip and then swap
+       * them for its own transcript.
+       */
       hasContent: computed(
         () =>
           store.entries().length > 0 ||
           store.pendingUserText() !== null ||
           store.stoppedTurn() !== null ||
           store.turnError() !== null ||
+          store.historyPending() ||
+          store.historyError() !== null ||
           inFlight(),
       ),
     };
   }),
   withMethods((store) => {
+    /**
+     * Reads back the stored transcript for a conversation (US-410).
+     *
+     * `switchMap` is the whole race guard: every call site — a route change,
+     * the panel's Retry — goes through here, so a read for a conversation the
+     * user has left is cancelled before it can install entries that belong to
+     * a screen they are no longer on.
+     */
+    const loadHistory = rxMethod<{ id: string | null; keepLive: boolean }>(
+      pipe(
+        tap(({ id }) =>
+          patchState(store, {
+            historyPending: id !== null,
+            historyError: null,
+          }),
+        ),
+        switchMap(({ id, keepLive }) => {
+          if (id === null) {
+            return EMPTY;
+          }
+
+          const url = store._api.build(`conversations/${ApiUrl.segment(id)}/messages`);
+
+          return store._http.get<ChatConversationDto>(url).pipe(
+            takeUntil(store._signedOut$),
+            tapResponse({
+              next: (conversation) =>
+                patchState(
+                  store,
+                  replaceHistory(toHistoryEntries(conversation.messages), keepLive),
+                ),
+              error: (cause: unknown) =>
+                patchState(store, {
+                  historyPending: false,
+                  historyError: toAppError(cause, { url }),
+                }),
+            }),
+          );
+        }),
+      ),
+    );
+
     const run = rxMethod<TurnRetry>(
       // exhaustMap is the double-send guard: a send while a turn is in flight
       // is ignored rather than queued — a queued one would only meet the
@@ -446,7 +572,28 @@ export const TurnStore = signalStore(
                   next: (batch) => patchState(store, applyBatch(batch)),
                   // The client's contract: every error it emits is an AppError.
                   error: (error: AppError) => patchState(store, settleFromError(command, error)),
-                  complete: () => patchState(store, settleFromComplete(command)),
+                  complete: () => {
+                    // Read before the settle, which appends the entry that
+                    // would make this turn look like it had a predecessor.
+                    // An unread history is not an empty one: claiming first
+                    // there would refetch a name the server settled long ago.
+                    const completed = store.snapshot().phase === 'Completed';
+                    const wasFirstTurn =
+                      store.historyError() === null &&
+                      !store.entries().some((entry) => entry.kind === 'assistant');
+
+                    patchState(store, settleFromComplete(command));
+
+                    // Only a `Finished` frame counts: a stopped or cut-off turn
+                    // left the server with nothing to name the conversation
+                    // after, so announcing it would send observers to read back
+                    // the placeholder they already hold (US-409).
+                    if (completed) {
+                      store._dispatcher.dispatch(
+                        turnEvents.completed({ conversationId, wasFirstTurn }),
+                      );
+                    }
+                  },
                 }),
               ),
           ),
@@ -528,6 +675,15 @@ export const TurnStore = signalStore(
       },
 
       /**
+       * Re-reads the stored transcript for whatever is open. The history
+       * panel's Retry — which discards the live entries, because a turn taken
+       * while history was broken is in the response this is about to install.
+       */
+      retryHistory(): void {
+        loadHistory({ id: store.boundConversationId(), keepLive: false });
+      },
+
+      /**
        * Follows the route's `conversationId` input. A change of conversation —
        * including to none — aborts any live turn and clears the session
        * transcript, the stopped card, and every notice (US-407: "gone on
@@ -563,6 +719,11 @@ export const TurnStore = signalStore(
         store._turnAbort.current?.abort();
         store._turnAbort.current = null;
         patchState(store, () => ({ ...initialState, boundConversationId: id }));
+        // Replay hangs off the reset rather than off the route input directly,
+        // so US-401's own `replaceUrl` — which the guard above returns early
+        // from — cannot trigger a read of a conversation whose first turn is
+        // still streaming and therefore not persisted yet.
+        loadHistory({ id, keepLive: true });
       }),
     };
   }),

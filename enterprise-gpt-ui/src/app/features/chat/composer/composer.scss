@@ -112,9 +112,64 @@
   background: var(--brand);
 }
 
-// US-407: the auxiliary controls dim while a turn runs. Nothing carries this
-// class yet — attach (US-801), mic (US-413), and download (US-1502) adopt it
+// US-407: the auxiliary controls dim while a turn runs. The microphone
+// (US-413) carries the class; attach (US-801) and download (US-1502) adopt it
 // when they land, and inherit the dimming for free.
 .composer--streaming .composer__aux {
   opacity: 0.4;
+}
+
+// Frame 2i, idle: the same 34px square the other auxiliary controls use.
+.composer__mic {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+
+  &:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+}
+
+// Frame 2i, recording: the pill takes the button's place. `ringpulse` is one of
+// the four keyframes the design defines — no fifth is added — and it drives
+// box-shadow, which is free here because the pill has none of its own.
+.composer__mic-pill {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(33, 168, 216, 0.14);
+  color: var(--accent);
+  animation: ringpulse 1.8s ease-out infinite;
+
+  app-icon {
+    font-size: 15px;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+.composer__mic-elapsed {
+  font-size: 11.5px;
 }

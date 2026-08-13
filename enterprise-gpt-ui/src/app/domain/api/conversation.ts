@@ -33,3 +33,44 @@ export interface ConversationDto {
 export interface ConversationDetailDto extends ConversationDto {
   readonly mcpServerIds: readonly string[];
 }
+
+/**
+ * The role a stored message was written under.
+ *
+ * Numeric because the API registers no `JsonStringEnumConverter`, so
+ * `Enterprise.Gpt.Common.Enums.ChatRoles` goes onto the wire as its integer
+ * value. `System` never appears — the server filters it out of the response —
+ * and `Tool` is a model-to-model artefact the transcript does not render.
+ */
+export const CHAT_ROLE = {
+  system: 1,
+  assistant: 2,
+  user: 3,
+  tool: 4,
+} as const;
+
+export type ChatRole = (typeof CHAT_ROLE)[keyof typeof CHAT_ROLE];
+
+/**
+ * One persisted message. `text` and `role` are the whole shape: there is no
+ * id, no timestamp, and no usage until US-1101 adds them.
+ */
+export interface ConversationMessageDto {
+  readonly text: string;
+  readonly role: ChatRole;
+}
+
+/**
+ * The stored transcript from `GET api/conversations/{id}/messages` (US-410).
+ *
+ * It extends `ConversationDto` on the wire, but only {@link messages} may be
+ * read from it: the rest is rebuilt from the Cosmos document, which reports
+ * `projectId`, `modelId` and `isFavorite` as null/null/false whatever the
+ * truth — see the warning on {@link ConversationDetailDto}. Typed as its own
+ * shape rather than an extension so that trap is unreachable through the type.
+ */
+export interface ChatConversationDto {
+  readonly id: string;
+  readonly name: string;
+  readonly messages: readonly ConversationMessageDto[];
+}

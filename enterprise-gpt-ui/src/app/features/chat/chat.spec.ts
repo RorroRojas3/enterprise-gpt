@@ -12,19 +12,23 @@ import {
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Dispatcher } from '@ngrx/signals/events';
+import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { conversationEvents } from '@core/events/conversation-events';
+import { turnEvents } from '@core/events/turn-events';
 import { TokenService } from '@core/auth/token-service';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { modelFixture } from '@testing/catalog';
+import { mcpFixture, modelFixture } from '@testing/catalog';
 import {
   conversationDetailFixture,
   conversationFixture,
   conversationPage,
 } from '@testing/conversations';
+import { CHAT_ROLE, ConversationDetailDto } from '@domain/api/conversation';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,6 +37,7 @@ import { CONVERSATION_ID_PARAM, chatMatcher } from './chat-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
+const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
 
 function segments(...paths: string[]): UrlSegment[] {
@@ -113,6 +118,12 @@ describe('Chat', () => {
   });
 
   afterEach(() => {
+    // Opening a conversation also reads its stored transcript (US-410). These
+    // specs are about the header, the kebab, and the detail request; `match`
+    // takes the replay reads off the pending queue without answering them,
+    // rather than repeating a flush at twenty navigation sites. The replay
+    // itself is covered in `turn-store.spec.ts`.
+    backend.match((request) => request.url.endsWith('/messages'));
     backend.verify();
   });
 
@@ -585,6 +596,199 @@ describe('Chat', () => {
     backend.expectOne(detailUrl(created.id)).flush(conversationDetailFixture(created));
     await harness.fixture.whenStable();
     expect(element().querySelector('.chat__title')?.textContent).toContain('New conversation');
+  });
+
+  describe('picking up the name the server generates (US-409)', () => {
+    async function openAndComplete(wasFirstTurn: boolean): Promise<void> {
+      const list = TestBed.inject(ConversationListStore);
+      list.ensureLoaded();
+      TestBed.tick();
+      backend
+        .expectOne((request) => request.url === SEARCH_URL)
+        .flush(
+          conversationPage([conversationFixture({ ...conversation, name: 'New conversation' })]),
+        );
+      TestBed.tick();
+
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation, name: 'New conversation' }));
+      backend
+        .expectOne(`${detailUrl(conversation.id)}/messages`)
+        .flush({ id: conversation.id, name: 'New conversation', messages: [] });
+      await harness.fixture.whenStable();
+
+      TestBed.inject(Dispatcher).dispatch(
+        turnEvents.completed({ conversationId: conversation.id, wasFirstTurn }),
+      );
+      await harness.fixture.whenStable();
+    }
+
+    it('refetches after the first turn and shows the generated name everywhere', async () => {
+      await openAndComplete(true);
+
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation, name: 'Helios 2.4 release status' }));
+      await harness.fixture.whenStable();
+
+      expect(element().querySelector('.chat__title')?.textContent).toContain(
+        'Helios 2.4 release status',
+      );
+      // The sidebar row moves with it — no manual refresh.
+      expect(TestBed.inject(ConversationListStore).entityMap()[conversation.id]?.name).toBe(
+        'Helios 2.4 release status',
+      );
+    });
+
+    it('leaves the header showing the old name while the refetch is in flight', async () => {
+      await openAndComplete(true);
+
+      // The silent refresh must not blank the header on its way: `open` would
+      // clear the detail and flash the sidebar's copy back.
+      expect(element().querySelector('.chat__title')?.textContent).toContain('New conversation');
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation }));
+    });
+
+    it('issues nothing after a later turn, whose name cannot have changed', async () => {
+      await openAndComplete(false);
+
+      backend.expectNone(detailUrl(conversation.id));
+    });
+  });
+
+  describe('resuming a conversation (US-410)', () => {
+    async function openWith(detail: Partial<ConversationDetailDto>): Promise<void> {
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation, ...detail }));
+      backend
+        .expectOne(`${detailUrl(conversation.id)}/messages`)
+        .flush({ id: conversation.id, name: conversation.name, messages: [] });
+      await harness.fixture.whenStable();
+    }
+
+    it('restores the model and the tool servers the conversation last used', async () => {
+      const previous = modelFixture({ name: 'Claude Sonnet' });
+      const server = mcpFixture({ name: 'Jira Cloud' });
+      const catalogs = TestBed.inject(ModelCatalogStore).ensureLoaded();
+      TestBed.inject(McpCatalogStore).ensureLoaded();
+      backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true }), previous]);
+      backend.expectOne(MCPS_URL).flush([server, mcpFixture()]);
+      await catalogs;
+
+      await openWith({ modelId: previous.id, mcpServerIds: [server.id] });
+
+      const settings = TestBed.inject(TurnSettingsStore);
+      expect(settings.selectedModel()?.id).toBe(previous.id);
+      expect(settings.effectiveMcpServerIds()).toEqual([server.id]);
+      expect(element().querySelector('.model-menu__pill')?.textContent).toContain('Claude Sonnet');
+      expect(element().querySelector('.tools-menu__pill')?.textContent).toContain('1 Tool');
+    });
+
+    it('keeps the selection the user made for a conversation that has run no turn', async () => {
+      const chosen = modelFixture({ name: 'Claude Sonnet' });
+      const server = mcpFixture({ name: 'Jira Cloud' });
+      const catalogs = TestBed.inject(ModelCatalogStore).ensureLoaded();
+      TestBed.inject(McpCatalogStore).ensureLoaded();
+      backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true }), chosen]);
+      backend.expectOne(MCPS_URL).flush([server]);
+      await catalogs;
+
+      const settings = TestBed.inject(TurnSettingsStore);
+      settings.selectModel(chosen.id);
+      settings.toggleMcpServer(server.id);
+
+      // The server writes `modelId` and the MCP set from the newest usage row,
+      // so a conversation whose first turn has not finished reports both empty
+      // — which is what US-401's own `replaceUrl` re-opens this store against.
+      // Seeding from it would undo the picks the running turn was sent with.
+      await openWith({ modelId: null, mcpServerIds: [] });
+
+      expect(settings.selectedModel()?.id).toBe(chosen.id);
+      expect(settings.effectiveMcpServerIds()).toEqual([server.id]);
+    });
+
+    it('falls back to the default model and says so when the last one is gone', async () => {
+      const fallback = modelFixture({ name: 'GPT-5', isDefault: true });
+      const catalog = TestBed.inject(ModelCatalogStore).ensureLoaded();
+      backend.expectOne(MODELS_URL).flush([fallback]);
+      await catalog;
+
+      await openWith({ modelId: '00000000-dead-4bee-8ccc-dddddddddddd', mcpServerIds: [] });
+
+      const settings = TestBed.inject(TurnSettingsStore);
+      expect(settings.selectedModel()?.id).toBe(fallback.id);
+      // Silently substituting a different model would misreport what the next
+      // turn will cost and what it can do.
+      expect(element().querySelector('.composer__note')?.textContent).toContain(
+        'The model this conversation last used is unavailable',
+      );
+    });
+
+    it('says nothing while the catalog is still loading', async () => {
+      // The detail request and the catalog load race on every deep link; an
+      // empty catalog is "not loaded yet", never "your model was deactivated".
+      await openWith({ modelId: '00000000-dead-4bee-8ccc-dddddddddddd', mcpServerIds: [] });
+
+      expect(TestBed.inject(TurnSettingsStore).restoredModelUnavailable()).toBe(false);
+      expect(element().querySelector('.composer__note')?.textContent?.trim()).toBe('');
+    });
+
+    it('replays the stored messages into the transcript', async () => {
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation }));
+
+      // The skeleton stands in for the messages rather than the landing screen,
+      // which would otherwise flash for the length of the round trip.
+      await harness.fixture.whenStable();
+      expect(element().querySelector('.transcript__history-skeleton')).not.toBeNull();
+      expect(element().querySelector('app-chat-empty-state')).toBeNull();
+      // The skeleton is aria-hidden, so the wait is only perceivable to
+      // assistive tech through the region's own busy state.
+      expect(element().querySelector('app-transcript')?.getAttribute('aria-busy')).toBe('true');
+
+      backend.expectOne(`${detailUrl(conversation.id)}/messages`).flush({
+        id: conversation.id,
+        name: conversation.name,
+        messages: [
+          { text: 'What is the weather?', role: CHAT_ROLE.user },
+          { text: 'It is sunny.', role: CHAT_ROLE.assistant },
+        ],
+      });
+      await harness.fixture.whenStable();
+
+      expect(element().querySelector('.transcript__history-skeleton')).toBeNull();
+      expect(element().querySelector('.transcript__bubble')?.textContent).toBe(
+        'What is the weather?',
+      );
+      expect(element().querySelector('.assistant-turn__md')?.textContent?.trim()).toBe(
+        'It is sunny.',
+      );
+    });
+
+    it('keeps the composer usable when the stored messages cannot be read', async () => {
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation }));
+      backend
+        .expectOne(`${detailUrl(conversation.id)}/messages`)
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+      await harness.fixture.whenStable();
+
+      expect(element().querySelector('app-error-panel')?.textContent).toContain(
+        "Earlier messages couldn't load",
+      );
+      // Not being able to read the past is not a reason to block the future.
+      expect(element().querySelector('.composer__prompt')).not.toBeNull();
+    });
   });
 
   it('keeps the sidebar row in step with the name the server reports', async () => {

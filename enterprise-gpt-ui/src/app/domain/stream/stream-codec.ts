@@ -29,3 +29,25 @@ export interface StreamCodec {
  * consumer may attach meaning to it.
  */
 export const DEFAULT_EVENT_TIMESTAMP = '0001-01-01T00:00:00+00:00';
+
+/**
+ * Builds the answer-text event this client synthesizes when text arrives
+ * outside the framed stream — the raw-text codec's chunks, and US-410's
+ * replayed transcript messages.
+ *
+ * Shared so both paths produce a byte-identical event: everything downstream
+ * of the transport folds it with the same vendored reducers, which is what
+ * keeps a replayed answer and a streamed one indistinguishable to the
+ * transcript.
+ *
+ * @param text The answer text the event carries.
+ */
+export function textDeltaEvent(text: string): AssistantUiEvent {
+  return {
+    kind: 'TextDelta',
+    text,
+    depth: 0,
+    toolKind: 'Unknown',
+    timestamp: DEFAULT_EVENT_TIMESTAMP,
+  };
+}

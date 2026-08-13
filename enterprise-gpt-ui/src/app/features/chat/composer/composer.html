@@ -23,6 +23,32 @@
   <div class="composer__controls">
     <app-model-menu />
     <app-tools-menu />
+
+    @if (dictation.supported()) {
+      <!-- Frame 2i draws the recording pill in the microphone's place, and one
+           persistent button morphs into it for the same reason the send control
+           morphs into Stop: swapping elements would destroy the control the user
+           just pressed and drop focus to <body>. The changing aria-label is also
+           what announces the state change on the still-focused button.
+           Stop stays operable while a turn streams — only starting is blocked. -->
+      <button
+        type="button"
+        [class.composer__aux]="!dictation.recording()"
+        [class.composer__mic]="!dictation.recording()"
+        [class.composer__mic-pill]="dictation.recording()"
+        [attr.aria-label]="dictation.recording() ? 'Stop dictating' : 'Dictate'"
+        [disabled]="!dictation.recording() && turn.inFlight()"
+        (click)="dictation.toggle()"
+      >
+        @if (dictation.recording()) {
+          <app-icon name="bi-mic-fill" />
+          <span class="composer__mic-elapsed font-mono">{{ dictation.elapsedLabel() }}</span>
+        } @else {
+          <app-icon name="bi-mic" />
+        }
+      </button>
+    }
+
     <span class="composer__spacer"></span>
     <!-- One persistent button morphs between Send and Stop (frames 1b/2g):
          swapping elements with @if would destroy the control mid-press and

@@ -1,3 +1,25 @@
+@if (turn.historyPending()) {
+  <!-- US-410: the stored messages are on their way. The host's aria-busy
+       covers the wait, which is why the skeleton itself is aria-hidden. -->
+  <div class="transcript__history-skeleton">
+    <app-skeleton [lines]="2" width="60%" />
+    <app-skeleton [lines]="4" />
+  </div>
+}
+
+@if (turn.historyError(); as historyError) {
+  <!-- The composer stays live beneath this: failing to read the past does not
+       stop the user taking a new turn, it only means they cannot see what
+       came before. -->
+  <app-error-panel
+    class="transcript__history-error"
+    [error]="historyError"
+    [canRetry]="canRetry(historyError)"
+    heading="Earlier messages couldn't load"
+    (retried)="turn.retryHistory()"
+  />
+}
+
 @for (entry of turn.entries(); track entry.id) {
   @switch (entry.kind) {
     @case ('user') {
@@ -47,6 +69,7 @@
 
 @if (errorNotice(); as notice) {
   <app-turn-notice-card
+    #errorCard
     [notice]="notice"
     [retryable]="errorRetryable()"
     (retried)="retryNotice()"
