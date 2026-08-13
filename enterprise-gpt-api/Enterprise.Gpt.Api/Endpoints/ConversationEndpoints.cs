@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Export;
 using System.Text.Json;
 
 namespace Enterprise.Gpt.Api.Endpoints;
@@ -39,6 +40,9 @@ public static class ConversationEndpoints
         // 400 comes from parameter binding: a non-numeric take or before fails to bind and is
         // reported as a validation problem naming the parameter, before the handler runs.
         group.MapGet("{id:guid}/messages", GetConversationMessagesAsync)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("{id:guid}/export", ExportConversationAsync)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", CreateConversationAsync)
@@ -100,6 +104,21 @@ public static class ConversationEndpoints
     {
         var response = await conversationService.GetConversationMessagesAsync(id, take, before, cancellationToken);
         return TypedResults.Ok(response);
+    }
+
+    /// <summary>
+    /// Serves one of the caller's conversations as a downloadable file.
+    /// </summary>
+    /// <remarks>
+    /// Returned as an attachment rather than inline: this is a "take my conversation with me"
+    /// affordance, and a browser rendering it in place would defeat that.
+    /// </remarks>
+    internal static async Task<FileContentHttpResult> ExportConversationAsync(
+        Guid id, IConversationExportService exportService, CancellationToken cancellationToken, string? format = null)
+    {
+        var file = await exportService.ExportAsync(id, format, cancellationToken);
+
+        return TypedResults.File(file.Content, file.ContentType, file.FileName);
     }
 
     internal static async Task<Created<ConversationDto>> CreateConversationAsync(

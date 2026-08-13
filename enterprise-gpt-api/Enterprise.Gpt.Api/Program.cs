@@ -30,6 +30,7 @@ using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
+using Enterprise.Gpt.Service.Export;
 using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Rendering;
@@ -480,6 +481,7 @@ builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
 
 // Keep other services as Scoped
 builder.Services.AddScoped<IConversationService, ConversationService>();
+builder.Services.AddScoped<IConversationExportService, ConversationExportService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentRetrievalService, DocumentRetrievalService>();
 builder.Services.AddScoped<IModelService, ModelService>();
