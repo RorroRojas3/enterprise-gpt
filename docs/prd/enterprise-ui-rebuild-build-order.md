@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 28 / 94 done.** Current position: P3, `US-601` — the ⛔ bundle-budget gate below comes due *before* this story starts.
+**Progress: 32 / 94 done.** Current position: P4, `US-408` — P3 is complete, and US-305 was taken early out of P4 alongside it.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -47,9 +47,9 @@ US-109 sits ahead of US-105 and US-106 despite its number: it ships the assets b
 
 US-302 leads the phase on two counts: US-303, US-304, US-306, and US-308 all hang off it, and the PRD's risk table requires it be reviewed as a *pattern decision* before the 15 stores that copy it exist. US-301 needs only US-106, so it can run alongside.
 
-⚠ **US-308 was scheduled ahead of its own criteria, and shipped that way.** §8 places it in P2, but its header star routes through US-305 (P4) and two of its four kebab items through US-307 (P5); the 52px header bar shipped with those controls absent, per this note. Its sub-768px mobile-navbar criterion was additionally deferred to US-1403 on 2026-08-11 — frame `1d`'s hamburger opens frame `3e`'s sidebar overlay, which does not exist until the responsive shell does. All three deferrals are tracked in the interim-behaviors table below.
+⚠ **US-308 was scheduled ahead of its own criteria, and shipped that way.** §8 places it in P2, but its header star routed through US-305 (P4) and two of its four kebab items through US-307 (P5); the 52px header bar shipped with those controls absent, per this note. Its sub-768px mobile-navbar criterion was additionally deferred to US-1403 on 2026-08-11 — frame `1d`'s hamburger opens frame `3e`'s sidebar overlay, which does not exist until the responsive shell does. The star was retired on 2026-08-13 when US-305 was pulled forward; the other two deferrals remain, tracked in the interim-behaviors table below.
 
-## P3 — MVP chat · the minimum viable replacement, and the first phase worth deploying
+## P3 — MVP chat · ✅ complete — the minimum viable replacement, and the first phase worth deploying
 
 | Order | Story | Depends on | Pri | Status |
 | --- | --- | --- | --- | --- |
@@ -61,13 +61,13 @@ US-302 leads the phase on two counts: US-303, US-304, US-306, and US-308 all han
 | 26 | US-406 Watch the answer arrive | US-405, US-104 | P0 | ✅ 2026-08-12 — also retires US-403's tool-server-unavailable panel |
 | 27 | US-407 Stop a turn and keep what it produced | US-406 | P0 | ✅ 2026-08-12 |
 | 28 | US-501 See what the assistant is doing, in the order it happened | US-404, US-406 | P0 | ✅ 2026-08-12 — flat cards; US-502 nests them |
-| 29 | US-601 Render model output as markdown that cannot execute | US-108 | P0 | ⛔ see gate |
-| 30 | US-602 Read a streaming answer without the page slowing down | US-601, US-406 | P0 | |
-| 31 | US-606 Stay with the latest message, or stay where I am reading | US-406 | P0 | |
+| 29 | US-601 Render model output as markdown that cannot execute | US-108 | P0 | ✅ 2026-08-13 — gate resolved, see below |
+| 30 | US-602 Read a streaming answer without the page slowing down | US-601, US-406 | P0 | ✅ 2026-08-13 — split takes a third boundary the criteria omit |
+| 31 | US-606 Stay with the latest message, or stay where I am reading | US-406 | P0 | ✅ 2026-08-13 — following driven by a `ResizeObserver`, not the turn's signals |
 
 Transport first, then the composer controls, then send, then rendering. US-402 precedes US-401 by practical necessity rather than by its `Depends on` field — a turn needs a `modelId`.
 
-⛔ **Gate at US-601.** The PRD's last open question comes due at the *start* of this story, not after it: `ngx-markdown` + marked + Prism are unpaid against the 629.33 kB / 720 kB baseline. Either re-measure and re-state the budget, or move the transcript renderer behind the lazy chat route — the choice changes the shape of the chat route.
+✅ **Gate at US-601, resolved 2026-08-13 — the renderer moved rather than the budget.** `provideChatMarkdown()` is provided at the `Chat` component, so the whole 124.8 kB markdown stack rides the lazy chat chunk (48.60 → 179.47 kB) and none of it is in the initial graph; `check-initial-chunk.mjs` now fails the build on any static path from `main.ts` to `ngx-markdown`, `marked`, `prismjs` or `dompurify`. The baseline was re-measured anyway: **660.24 kB raw / 161.01 kB transfer** initial, with the warn line re-stated 660 → **665 kB** and the ceiling held at 720 kB. The ~11.5 kB of initial growth is Angular's own `DomSanitizerImpl` — `MarkdownService` injects `DomSanitizer` — plus ~1.6 kB of global CSS, not the libraries.
 
 Also fixed here, per the risk table: the coalescing and head/tail split in US-405 and US-602. Both have unit-level criteria that run against fixtures with no backend; getting them wrong is a rewrite of the chat surface.
 
@@ -75,7 +75,7 @@ Also fixed here, per the risk table: the coalescing and head/tail split in US-40
 
 | Order | Story | Depends on | Pri | Status |
 | --- | --- | --- | --- | --- |
-| 32 | US-305 Favorite a conversation | US-302 | P1 | |
+| 32 | US-305 Favorite a conversation | US-302 | P1 | ✅ 2026-08-13 — taken early, with P3's rendering stories; retires US-308's header star |
 | 33 | US-408 Recover when the conversation is already busy | US-405 | P1 | |
 | 34 | US-409 See the name the server gave my conversation | US-406, US-302 | P1 | |
 | 35 | US-410 Resume a conversation with the settings it last used | US-402, US-403 | P1 | |
@@ -90,7 +90,7 @@ Also fixed here, per the risk table: the coalescing and head/tail split in US-40
 | 44 | US-605 Render diagrams and math without paying for them upfront | US-601, US-108 | P2 | |
 | 45 | US-607 Copy a prompt or a response | US-601 | P1 | |
 
-US-305 lands here, which is also what unblocks the header star deferred out of US-308.
+US-305 was pulled forward and landed with P3, which is what unblocked the header star deferred out of US-308; the rest of the phase is untouched.
 
 ## P5 — Library, files, projects
 
@@ -175,7 +175,8 @@ Each of these ships deliberately incomplete and is closed later. Kept here so no
 
 | Interim behavior | Shipped in | Retired by |
 | --- | --- | --- |
-| Header star and two kebab items absent | US-308 (P2) | US-305 (P4), US-307 (P5) |
+| ~~Header star absent~~ | US-308 (P2) | ✅ retired by US-305, 2026-08-13 |
+| Two kebab items (move to / remove from project) absent | US-308 (P2) | US-307 (P5) |
 | Tools rows show the server name without frame `2c`'s mono key — `McpDto` carries no key field | US-403 (P3) | a backend enabler adding a key, if ever prioritized |
 | 409-busy and MCP-consent errors render the generic turn-error notice, not their designed `1h` panels | US-406/407 (P3) | US-408, US-412 (P4) |
 | `composer--streaming` dims `.composer__aux`, which no control carries yet | US-407 (P3) | US-801, US-413, US-1502 adopt the class as they land |

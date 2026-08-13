@@ -308,7 +308,7 @@ The `_started` trio — `ensureLoaded`, the `null` arm of `_runQuery`, and the `
 
 **A layout route rather than markup in `App`**, because the four unguarded routes — `/auth`, `/login-failed`, `/session-error`, `/signed-out` — and the forbidden page are all deliberately chrome-free, and a shell in `App` would put a sidebar around every one of them. `App` is now almost empty: the sign-out interstitial, the router outlet, and the permanently mounted toast region.
 
-**Lazy on purpose.** The signed-in chrome is roughly **24 kB** of sidebar, tooltip, search field, ridgeline and two stores, none of which the four auth routes render. The fetch costs nobody anything: `sessionGuard` has already awaited a network round trip by the time this route resolves. Both the shell and the chat route are lazy, which is also what leaves EP-6 room for the markdown renderer inside the same budget (§9).
+**Lazy on purpose.** The signed-in chrome is roughly **24 kB** of sidebar, tooltip, search field, ridgeline and two stores, none of which the four auth routes render. The fetch costs nobody anything: `sessionGuard` has already awaited a network round trip by the time this route resolves. Both the shell and the chat route are lazy, which is what let EP-6 put the whole markdown renderer inside the chat chunk rather than the initial budget (§9).
 
 This deletes the temporary `.dev-shell-bar` that hosted `<app-user-footer>` through EP-2. Note the consequence recorded in [Authentication and Session §11.5](authentication-and-session.md#115-cross-tab): `AuthService` is constructed eagerly through `provideAppInitializer`, which is what keeps cross-tab sign-out working now that no always-rendered component injects it.
 
@@ -456,15 +456,17 @@ It is backed by the same exhaustive `as const satisfies Record<AppErrorKind, boo
 | | Initial raw | Initial transfer | Budget (warn / error) |
 | --- | --- | --- | --- |
 | End of EP-2 (US-205) | 637.10 kB | 153.38 kB | 650 kB / 720 kB |
-| **End of EP-3 (US-303)** | **643.62 kB** | **158.05 kB** | **660 kB / 720 kB** |
+| End of EP-3 (US-303) | 643.62 kB | 158.05 kB | 660 kB / 720 kB |
+| End of EP-4/EP-5 (US-501) | 648.75 kB | 157.96 kB | 660 kB / 720 kB |
+| **After EP-6's US-601/602/606** | **660.24 kB** | **161.01 kB** | **665 kB / 720 kB** |
 
 EP-3 cost **6.52 kB** of initial graph — the two root stores, the conversation DTOs and `canRetry` — because the chrome itself is behind the lazy shell route and the chat screen behind its own. The warning threshold moved 650 → 660 kB to keep headroom above the new baseline; the **failure** threshold is unchanged at 720 kB, which is the number that matters. The `styles` budget is unchanged at 65 / 80 kB.
 
-The gate that follows is [the build order's gate at US-601](../prd/enterprise-ui-rebuild-build-order.md): `ngx-markdown` + marked + Prism are still unpaid against this baseline. Both routes being lazy is what leaves the transcript renderer somewhere to go that is not the initial chunk.
+**The gate at US-601 is closed, and both routes being lazy is what closed it.** The transcript renderer went behind the lazy chat route rather than into the initial graph: the whole 124.8 kB markdown stack rides the `chat` chunk (48.60 → 179.47 kB) and none of it is initial. The ~11.5 kB the initial graph did grow by is Angular's own `DomSanitizerImpl`, which `ngx-markdown`'s `MarkdownService` drags into a chunk shared with initial code, plus ~1.6 kB of global CSS — which is why the **warning** line moved 660 → 665 kB while the ceiling stayed at 720 kB. Full accounting in [Answer Rendering §6](answer-rendering.md#6-the-bundle-gate-resolved).
 
 ## 10. Testing
 
-The suite is **610 specs** across 55 files, with `npm run lint` and `npm run build` green alongside.
+The suite was **610 specs** across 55 files when EP-3 landed — 894 across 78 today — with `npm run lint` and `npm run build` green alongside.
 
 | Area | Spec | Notable cases |
 | --- | --- | --- |
@@ -477,7 +479,7 @@ The suite is **610 specs** across 55 files, with `npm run lint` and `npm run bui
 
 ```bash
 # from enterprise-gpt-ui/
-npm test        # Vitest, single run — 610 specs
+npm test        # Vitest, single run
 npm run lint    # ESLint + check:icons + check:forbidden + check:tokens
 npm run build   # budgets, then check-initial-chunk.mjs
 ```
@@ -486,15 +488,17 @@ npm run build   # budgets, then check-initial-chunk.mjs
 
 ## 11. What is not here yet
 
+Written at the end of EP-3; the first four rows have since been struck through by the stories that owned them.
+
 | Missing | Owner | Notes |
 | --- | --- | --- |
-| Rename, favourite, delete, move-to-project on a row | US-304, US-305, US-306, US-307 | `ConversationRow` is the element they hang off; compose `withPendingIds` with the first of them (§2.2) |
-| The conversation header's star and kebab | US-308 | The 52 px header exists and shows the name; two of its four kebab items route through US-307, which is scheduled in P5 |
-| The composer, the transcript, and the streamed turn | EP-4 | `ConversationStore` is what US-401, US-408 and US-410 extend |
-| The suggested prompt chips on the empty state | US-401 | Deferred deliberately (§7.3) |
+| ~~Rename, favourite, delete on a row~~ | US-304, US-305, US-306 | Shipped — [Conversation Actions](conversation-actions.md). Move-to-project (US-307) is the one row action still outstanding |
+| ~~The conversation header's star and kebab~~ | US-308, US-305 | Shipped; the star arrived with US-305. Two kebab items still route through US-307 (P5), and the sub-768 px collapse through US-1403 |
+| ~~The composer, the transcript, and the streamed turn~~ | EP-4, EP-5, EP-6 | Shipped — [Turn Lifecycle](../conversations/turn-lifecycle.md) and [Answer Rendering](answer-rendering.md). `ConversationStore` is still what US-408 and US-410 extend |
+| ~~The suggested prompt chips on the empty state~~ | US-401 | Shipped there, as US-303 deferred them (§7.3) |
 | The Conversations, Projects and Documents nav entries | EP-7, EP-9, EP-10 | Each arrives with its epic; `navItems` renders only routes that exist |
 | The **Favorite projects** section between the nav and the list | US-910 | Its pins are device-local until the backend enabler US-909 lands, and a section that has to say so has to exist first |
-| `isFavorite` on the search request | US-305, US-703 | The parameter is already in the API (§3.1) |
+| `isFavorite` on the search request | US-703 | The parameter is already in the API (§3.1), and US-305 now sets the flag it would filter on |
 | Server-side sort on the list | US-706 | Until then the list is regime B: server order, no sort control |
 
 ## 12. Troubleshooting

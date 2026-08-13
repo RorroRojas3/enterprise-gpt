@@ -93,9 +93,28 @@ export const ConversationStore = signalStore(
       return store.conversation() ?? store._list.entityMap()[id] ?? null;
     }),
     /**
-     * This conversation's own rename or delete is in flight; the header kebab's
-     * items disable for the duration. Reads `pendingIds()` directly so the
-     * dependency is explicit to the computed.
+     * Whether the open conversation is favourited, for the header star (US-305).
+     *
+     * The list's copy wins over the detail one — the reverse of {@link current} —
+     * because it is the copy `favoriteRow` patches optimistically, so the star and the
+     * sidebar row flip together on the click rather than a round trip apart, which is
+     * US-308's deferred criterion. A deep link the list never held falls back to the
+     * detail DTO, whose `isFavorite` is trustworthy (unlike the one
+     * `GET api/conversations/{id}/messages` reports) and simply lags a toggle by the
+     * round trip until `conversationEvents.updated` lands.
+     */
+    isFavorite: computed(() => {
+      const id = store.conversationId();
+      if (id === null) {
+        return false;
+      }
+
+      return store._list.entityMap()[id]?.isFavorite ?? store.conversation()?.isFavorite ?? false;
+    }),
+    /**
+     * This conversation's own rename, favourite or delete is in flight; the header
+     * kebab's items and its star disable for the duration. Reads `pendingIds()`
+     * directly so the dependency is explicit to the computed.
      */
     actionPending: computed(() => {
       const id = store.conversationId();

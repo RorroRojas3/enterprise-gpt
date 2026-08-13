@@ -20,7 +20,9 @@
     <!--
       Labelled rather than decorative: the star is the only thing distinguishing a
       favourited row, so a screen reader has to hear it too. It joins the link's
-      accessible name, which reads "<name>, Favourite".
+      accessible name, which reads "<name>, Favourite". Display-only — the toggle is
+      the kebab's Favourite item, because a button here would be an interactive
+      element inside the <a>, for the same reason the kebab is a sibling.
     -->
     @if (conversation().isFavorite) {
       <app-icon class="row__star" name="bi-star-fill" label="Favourite" />
@@ -29,8 +31,8 @@
 
   <!--
     Frame 3a: revealed on hover, focus, and the selected row; always on touch.
-    Delete is the only red item. Favorite (US-305) and the project moves (US-307)
-    join this menu when their stories land.
+    Delete is the only red item. The project moves (US-307) join this menu, between
+    Favourite and the separator, when their story lands.
   -->
   <app-menu class="row__menu" [label]="'Actions for ' + conversation().name">
     <!--
@@ -46,6 +48,15 @@
     >
       <app-icon name="bi-pencil" />
       Rename
+    </button>
+    <button
+      appMenuItem
+      type="button"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="actions.toggleFavorite(conversation())"
+    >
+      <app-icon [name]="conversation().isFavorite ? 'bi-star-fill' : 'bi-star'" />
+      {{ conversation().isFavorite ? 'Unfavourite' : 'Favourite' }}
     </button>
     <hr appMenuSeparator />
     <button

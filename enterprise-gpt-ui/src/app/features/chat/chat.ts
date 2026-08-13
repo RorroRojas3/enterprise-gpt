@@ -22,6 +22,8 @@ import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ChatEmptyState } from './chat-empty-state';
 import { Composer } from './composer/composer';
 import { ConversationStore } from './conversation-store';
+import { provideChatMarkdown } from './markdown/markdown-providers';
+import { TranscriptPinning } from './transcript-pinning';
 import { Transcript } from './transcript/transcript';
 import { TurnStore } from './turn-store';
 
@@ -48,8 +50,12 @@ import { TurnStore } from './turn-store';
     MenuSeparator,
     Skeleton,
     Transcript,
+    TranscriptPinning,
   ],
-  providers: [ConversationStore, TurnStore],
+  // US-601: the markdown renderer is provided here, at the lazy route's own
+  // component, so ngx-markdown/marked/Prism ride the chat chunk instead of the
+  // initial bundle.
+  providers: [ConversationStore, TurnStore, provideChatMarkdown()],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })

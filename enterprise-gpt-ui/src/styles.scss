@@ -34,6 +34,10 @@
 // Token-driven syntax highlighting; no prismjs stylesheet is imported.
 @import 'prism';
 
+// Rendered model output, which is innerHTML and so out of reach of any
+// component stylesheet. After `prism`, whose code-block rules it defers to.
+@import 'markdown';
+
 @import 'bootstrap/scss/utilities/api';
 
 @import 'motion';

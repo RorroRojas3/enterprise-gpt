@@ -21,8 +21,12 @@ export const conversationEvents = eventGroup({
   source: 'Conversations',
   events: {
     /**
-     * The server confirmed an update; the payload is the DTO it returned. Dispatched
-     * on rename (US-304); favorite (US-305) and project moves (US-307) follow.
+     * The server confirmed an update; the payload is the DTO it returned — or, for a
+     * favourite (US-305), whose 204 carries no body, the target DTO with the accepted
+     * flag applied. That synthesis claims nothing the server did not: the favourite
+     * request is an idempotent SET of `isFavorite` and touches no other field.
+     * Dispatched on rename (US-304) and favourite (US-305); project moves (US-307)
+     * follow.
      */
     updated: type<ConversationDto>(),
     /** The server confirmed a deletion (US-306). The payload is the conversation id. */

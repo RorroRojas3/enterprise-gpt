@@ -1,0 +1,115 @@
+// Rendered model output in the transcript. US-601 / US-602.
+//
+// These rules are global rather than scoped to `AssistantTurn` because the markup
+// they style never passes through a template: `ngx-markdown` writes it as
+// innerHTML, so it carries no `_ngcontent` attribute for a component stylesheet to
+// match. The `.assistant-turn__md` class on the host is what keeps the reach
+// narrow — nothing here applies outside a rendered answer.
+//
+// Type comes from the Transcript board: 14.5px/1.55 body, tight paragraph
+// rhythm, and the mono face for code. Code-block chrome — the `--code-head` bar
+// and its copy control — is US-603/604 and deliberately absent; `pre` keeps a
+// neutral margin here so that bar can be layered on without moving anything.
+.assistant-turn__md {
+  display: block;
+  font-size: 14.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+
+  // Every block below carries its spacing as a top margin only, and none is
+  // reset at the edges on purpose: while a turn streams the growing node is two
+  // renderers (US-602), so an edge rule would space the head and the tail
+  // differently from the single render that replaces them at settle.
+  p {
+    margin: 2px 0 0;
+  }
+
+  ul,
+  ol {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 6px 0 0;
+    padding-left: 20px;
+  }
+
+  blockquote {
+    margin: 8px 0 0;
+    padding-left: 12px;
+    border-left: 2px solid var(--bs-border-color);
+    color: var(--muted);
+  }
+
+  // No `overflow` here. `_prism.scss` sets `overflow: auto` at the same
+  // specificity and is imported first, so anything set here would win and clip
+  // every code line wider than the column — unreachable by mouse, keyboard or
+  // touch. A rounded box clips its own scrolling content without help.
+  pre {
+    margin: 10px 0 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 10px;
+  }
+
+  // Inline code only: a fenced block is `pre > code`, and `_prism.scss` owns it.
+  :not(pre) > code {
+    padding: 0.15em 0.4em;
+    border-radius: 6px;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font-family: $font-mono;
+    font-size: 13px;
+  }
+
+  table {
+    margin: 10px 0 0;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 6px 10px;
+    border: 1px solid var(--bs-border-color);
+    text-align: left;
+  }
+
+  hr {
+    margin: 12px 0 0;
+  }
+}
+
+// Frame 1b's streaming caret: an 8×17px --accent bar trailing the last character.
+//
+// It rides the last rendered block as a pseudo-element because the text it
+// follows is innerHTML — there is no element boundary left to place a span at.
+// A list is the one shape where the last *block* and the last *character* differ
+// enough to matter, so the caret moves to the final item instead.
+.assistant-turn__md--caret {
+  > :last-child::after,
+  > ul:last-child > li:last-child::after,
+  > ol:last-child > li:last-child::after {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 17px;
+    margin-left: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+    vertical-align: -3px;
+    animation: blink 1s steps(1) infinite;
+  }
+
+  // The list rules above are more specific than the generic one, which would
+  // otherwise draw a second caret after the list itself.
+  > ul:last-child::after,
+  > ol:last-child::after {
+    content: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    > :last-child::after,
+    > ul:last-child > li:last-child::after,
+    > ol:last-child > li:last-child::after {
+      animation: none;
+    }
+  }
+}

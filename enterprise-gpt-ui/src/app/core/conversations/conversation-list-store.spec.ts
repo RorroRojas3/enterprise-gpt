@@ -347,6 +347,23 @@ describe('ConversationListStore', () => {
     expect(store.entities().some((c) => c.name === 'Nope')).toBe(false);
   });
 
+  it('optimistically favourites a held row and ignores one it does not hold', () => {
+    const [first] = load();
+
+    store.favoriteRow(first!.id, true);
+    expect(store.entities()[0]?.isFavorite).toBe(true);
+    // dateModified stays put: the server does not bump it for a favourite, so there is
+    // no later value to adopt and a local bump would be pure divergence.
+    expect(store.entities()[0]?.dateModified).toBe(first!.dateModified);
+
+    store.favoriteRow(first!.id, false);
+    expect(store.entities()[0]?.isFavorite).toBe(false);
+
+    store.favoriteRow('deadbeef-0000-4000-8000-000000000000', true);
+    expect(store.entities()).toHaveLength(2);
+    expect(store.entities().some((c) => c.isFavorite)).toBe(false);
+  });
+
   it('tracks per-row pending state and clears it on sign-out', () => {
     const [first, second] = load();
 
