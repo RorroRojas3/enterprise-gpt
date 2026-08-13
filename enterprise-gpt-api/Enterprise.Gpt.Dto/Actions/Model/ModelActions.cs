@@ -16,6 +16,18 @@ namespace Enterprise.Gpt.Dto.Actions.Model
 
         public decimal MaxOutputTokens { get; init; }
 
+        /// <summary>
+        /// Gets the price in USD per one million input tokens. Omit it to leave the model
+        /// unpriced, which is not the same as pricing it at zero.
+        /// </summary>
+        public decimal? InputPricePerMillionTokens { get; init; }
+
+        /// <summary>
+        /// Gets the price in USD per one million output tokens, on the same terms as
+        /// <see cref="InputPricePerMillionTokens"/>.
+        /// </summary>
+        public decimal? OutputPricePerMillionTokens { get; init; }
+
         public bool IsToolEnabled { get; init; }
 
         public bool IsDefault { get; init; }
@@ -40,6 +52,12 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            RuleFor(x => x.InputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.InputPricePerMillionTokens.HasValue);
+            RuleFor(x => x.OutputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.OutputPricePerMillionTokens.HasValue);
         }
     }
 
@@ -56,6 +74,19 @@ namespace Enterprise.Gpt.Dto.Actions.Model
         public decimal ContextWindowSize { get; init; }
 
         public decimal MaxOutputTokens { get; init; }
+
+        /// <summary>
+        /// Gets the price in USD per one million input tokens. Omitting it clears the stored
+        /// price, matching the full-representation semantics the rest of this DTO uses; an
+        /// unpriced model is not the same as a free one.
+        /// </summary>
+        public decimal? InputPricePerMillionTokens { get; init; }
+
+        /// <summary>
+        /// Gets the price in USD per one million output tokens, on the same terms as
+        /// <see cref="InputPricePerMillionTokens"/>.
+        /// </summary>
+        public decimal? OutputPricePerMillionTokens { get; init; }
 
         public bool IsToolEnabled { get; init; }
 
@@ -81,6 +112,12 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            RuleFor(x => x.InputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.InputPricePerMillionTokens.HasValue);
+            RuleFor(x => x.OutputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.OutputPricePerMillionTokens.HasValue);
         }
     }
 }

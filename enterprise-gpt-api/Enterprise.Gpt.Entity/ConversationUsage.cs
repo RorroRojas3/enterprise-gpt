@@ -93,6 +93,25 @@ public class ConversationUsage : BaseEntity
     public long ToolOutputTokens { get; set; }
 
     /// <summary>
+    /// The price in USD per one million input tokens that applied when the call was made, or
+    /// <see langword="null"/> when the model had no price on file.
+    /// </summary>
+    /// <remarks>
+    /// Snapshotted rather than joined out to <see cref="Model"/> at report time, for the same
+    /// reason <see cref="DeploymentName"/> is: the catalog is editable, and a report that read
+    /// today's price would silently rewrite what every past call cost.
+    /// </remarks>
+    [Column(TypeName = "decimal(18, 6)")]
+    public decimal? InputPricePerMillionTokens { get; set; }
+
+    /// <summary>
+    /// The price in USD per one million output tokens that applied when the call was made, on the
+    /// same terms as <see cref="InputPricePerMillionTokens"/>.
+    /// </summary>
+    [Column(TypeName = "decimal(18, 6)")]
+    public decimal? OutputPricePerMillionTokens { get; set; }
+
+    /// <summary>
     /// What the main assistant's own turns cost, excluding tools.
     /// </summary>
     public long AssistantTokens => InputTokens + OutputTokens;
@@ -106,6 +125,32 @@ public class ConversationUsage : BaseEntity
     /// operands.
     /// </remarks>
     public long TotalTokens => AssistantTokens + ToolInputTokens + ToolOutputTokens;
+
+    /// <summary>
+    /// What the call cost in USD at the prices snapshotted on it, or <see langword="null"/> when
+    /// either price is absent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unmapped for the same reason as <see cref="TotalTokens"/>: an expression-bodied getter with
+    /// no backing field cannot drift from the operands it is derived from, where a column could.
+    /// </para>
+    /// <para>
+    /// Tool tokens are priced at the <em>driving</em> model's rate, which makes this an
+    /// approximation by construction. Nothing in a tool call names the model behind it —
+    /// <see cref="ConversationUsageToolCall.ModelId"/> is null on every row this application can
+    /// write — so there is no rate to attribute them to other than the model that made the call.
+    /// </para>
+    /// <para>
+    /// Null when either price is missing rather than treating the missing side as zero, which
+    /// would report a partial figure as a whole one.
+    /// </para>
+    /// </remarks>
+    public decimal? Cost => InputPricePerMillionTokens is not decimal inputPrice
+        || OutputPricePerMillionTokens is not decimal outputPrice
+            ? null
+            : (InputTokens + ToolInputTokens) / 1_000_000m * inputPrice
+                + (OutputTokens + ToolOutputTokens) / 1_000_000m * outputPrice;
 
     /// <summary>
     /// The identifier of the assistant message this call appended to the Cosmos transcript, or

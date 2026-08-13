@@ -1,0 +1,3 @@
+# Claude Code creates git worktrees inside the repository at this path, so without
+# this rule every worktree shows up as untracked content in the main checkout.
+.claude/worktrees/

@@ -354,7 +354,7 @@ namespace Enterprise.Gpt.Service
             var model = await _ctx.Models
                         .AsNoTracking()
                         .Where(x => x.Id == request.ModelId && !x.DateDeactivated.HasValue)
-                        .Select(x => new { x.DeploymentName, x.ProviderId })
+                        .Select(x => new { x.DeploymentName, x.ProviderId, x.InputPricePerMillionTokens, x.OutputPricePerMillionTokens })
                         .FirstOrDefaultAsync(cancellationToken);
             // DeploymentName is not checked here: the create and update validators already enforce
             // NotEmpty on it, and guarding only this path — which runs on a conversation's first turn
@@ -423,6 +423,8 @@ namespace Enterprise.Gpt.Service
                 Status = ConversationUsageStatuses.Completed,
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
+                InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
                 DateCreated = date
             });
 
@@ -885,6 +887,8 @@ namespace Enterprise.Gpt.Service
                 OutputTokens = turnUsage.OutputTokens,
                 ToolInputTokens = turnUsage.ToolInputTokens,
                 ToolOutputTokens = turnUsage.ToolOutputTokens,
+                InputPricePerMillionTokens = turn.Model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = turn.Model.OutputPricePerMillionTokens,
                 AssistantMessageId = completed ? assistantMessageId : null,
                 DateCreated = date,
                 McpServers =

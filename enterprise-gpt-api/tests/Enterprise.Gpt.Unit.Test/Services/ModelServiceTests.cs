@@ -217,6 +217,77 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateModelAsync_PricesSupplied_PersistsThem()
+    {
+        var request = CreateRequest() with
+        {
+            InputPricePerMillionTokens = 1.25m,
+            OutputPricePerMillionTokens = 10m
+        };
+
+        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1.25m, result.InputPricePerMillionTokens);
+        Assert.Equal(10m, result.OutputPricePerMillionTokens);
+
+        var persisted = await FindModelAsync(result.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(1.25m, persisted.InputPricePerMillionTokens);
+        Assert.Equal(10m, persisted.OutputPricePerMillionTokens);
+    }
+
+    /// <summary>
+    /// An omitted price stores null rather than zero, so "we have not priced this model" stays
+    /// distinguishable from "this model is free".
+    /// </summary>
+    [Fact]
+    public async Task CreateModelAsync_PricesOmitted_PersistsNullRatherThanZero()
+    {
+        var request = CreateRequest();
+
+        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
+
+        var persisted = await FindModelAsync(result.Id);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.InputPricePerMillionTokens);
+        Assert.Null(persisted.OutputPricePerMillionTokens);
+    }
+
+    [Theory]
+    [InlineData(-1d, null)]
+    [InlineData(null, -0.000001d)]
+    public async Task CreateModelAsync_NegativePrice_ThrowsValidationException(double? inputPrice, double? outputPrice)
+    {
+        var request = CreateRequest() with
+        {
+            InputPricePerMillionTokens = (decimal?)inputPrice,
+            OutputPricePerMillionTokens = (decimal?)outputPrice
+        };
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.CreateModelAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// Zero is a legitimate price — a model the platform is not charged for — so it must pass
+    /// where a negative fails.
+    /// </summary>
+    [Fact]
+    public async Task CreateModelAsync_ZeroPrice_IsAccepted()
+    {
+        var request = CreateRequest() with
+        {
+            InputPricePerMillionTokens = 0m,
+            OutputPricePerMillionTokens = 0m
+        };
+
+        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0m, result.InputPricePerMillionTokens);
+        Assert.Equal(0m, result.OutputPricePerMillionTokens);
+    }
+
+    [Fact]
     public async Task CreateModelAsync_UnknownProvider_ThrowsNotFoundException()
     {
         var request = CreateRequest(providerId: Guid.NewGuid());
@@ -295,6 +366,42 @@ public sealed class ModelServiceTests : IDisposable
         Assert.Equal(model.CreatedById, persisted.CreatedById);
         Assert.Equal(KnownIds.SeedUserId, persisted.ModifiedById);
         Assert.True(persisted.DateModified > model.DateModified);
+    }
+
+    /// <summary>
+    /// PUT carries a full representation, so a price left out of the body clears the stored one
+    /// rather than preserving it — the same semantics the rest of the catalog already uses.
+    /// </summary>
+    [Fact]
+    public async Task UpdateModelAsync_PricesOmitted_ClearsStoredPrices()
+    {
+        var model = await AddModelAsync("aaa-original");
+        var priced = UpdateRequest() with
+        {
+            InputPricePerMillionTokens = 2m,
+            OutputPricePerMillionTokens = 8m
+        };
+        await _service.UpdateModelAsync(model.Id, priced, TestContext.Current.CancellationToken);
+
+        var result = await _service.UpdateModelAsync(model.Id, UpdateRequest(), TestContext.Current.CancellationToken);
+
+        Assert.Null(result.InputPricePerMillionTokens);
+        Assert.Null(result.OutputPricePerMillionTokens);
+
+        var persisted = await FindModelAsync(model.Id);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.InputPricePerMillionTokens);
+        Assert.Null(persisted.OutputPricePerMillionTokens);
+    }
+
+    [Fact]
+    public async Task UpdateModelAsync_NegativePrice_ThrowsValidationException()
+    {
+        var model = await AddModelAsync("aaa-original");
+        var request = UpdateRequest() with { OutputPricePerMillionTokens = -5m };
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.UpdateModelAsync(model.Id, request, TestContext.Current.CancellationToken));
     }
 
     [Fact]

@@ -31,6 +31,26 @@ namespace Enterprise.Gpt.Entity
         [Column(TypeName = "decimal(18, 2)")]
         public decimal MaxOutputTokens { get; set; }
 
+        /// <summary>
+        /// Gets or sets the price in USD charged for one million input tokens, or
+        /// <see langword="null"/> when the model has no price on file.
+        /// </summary>
+        /// <remarks>
+        /// Quoted per 1,000,000 tokens because provider price sheets are. Nullable so "unpriced"
+        /// stays distinguishable from "free": a null suppresses a cost figure entirely, where a
+        /// zero asserts the call cost nothing. Six decimal places because per-million prices run
+        /// to fractions of a cent.
+        /// </remarks>
+        [Column(TypeName = "decimal(18, 6)")]
+        public decimal? InputPricePerMillionTokens { get; set; }
+
+        /// <summary>
+        /// Gets or sets the price in USD charged for one million output tokens, on the same terms
+        /// as <see cref="InputPricePerMillionTokens"/>.
+        /// </summary>
+        [Column(TypeName = "decimal(18, 6)")]
+        public decimal? OutputPricePerMillionTokens { get; set; }
+
         public bool IsToolEnabled { get; set; } = true;
 
         public bool IsDefault { get; set; } = false;

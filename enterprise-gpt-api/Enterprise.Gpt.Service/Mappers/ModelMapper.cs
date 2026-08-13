@@ -23,6 +23,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 Description = model.Description,
                 ContextWindowSize = model.ContextWindowSize,
                 MaxOutputTokens = model.MaxOutputTokens,
+                InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
                 IsToolEnabled = model.IsToolEnabled,
                 IsDefault = model.IsDefault,
                 DateDeactivated = model.DateDeactivated
@@ -43,6 +45,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 Description = model.Description,
                 ContextWindowSize = model.ContextWindowSize,
                 MaxOutputTokens = model.MaxOutputTokens,
+                InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
                 IsToolEnabled = model.IsToolEnabled,
                 IsDefault = model.IsDefault,
                 DateDeactivated = model.DateDeactivated
@@ -65,6 +69,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 Description = dto.Description,
                 ContextWindowSize = dto.ContextWindowSize,
                 MaxOutputTokens = dto.MaxOutputTokens,
+                InputPricePerMillionTokens = dto.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = dto.OutputPricePerMillionTokens,
                 IsToolEnabled = dto.IsToolEnabled,
                 IsDefault = dto.IsDefault
             };
@@ -85,6 +91,8 @@ namespace Enterprise.Gpt.Service.Mappers
             model.Description = dto.Description;
             model.ContextWindowSize = dto.ContextWindowSize;
             model.MaxOutputTokens = dto.MaxOutputTokens;
+            model.InputPricePerMillionTokens = dto.InputPricePerMillionTokens;
+            model.OutputPricePerMillionTokens = dto.OutputPricePerMillionTokens;
             model.IsToolEnabled = dto.IsToolEnabled;
             model.IsDefault = dto.IsDefault;
         }
