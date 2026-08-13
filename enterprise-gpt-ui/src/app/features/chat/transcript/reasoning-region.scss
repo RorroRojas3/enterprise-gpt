@@ -1,0 +1,67 @@
+:host {
+  display: block;
+}
+
+// Frame 1f: a tinted surface and quieter type, visually distinct from the answer
+// beneath it. Collapsed it is a pill sized to its own content, so it reads as a
+// control rather than an empty band across the column; open it squares up into a
+// card and keeps the same tint, which is what says the two are one region.
+.reasoning {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+  background: var(--think-bg);
+
+  &--expanded {
+    width: auto;
+    border-radius: 12px;
+    padding-bottom: 11px;
+  }
+}
+
+.reasoning__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: left;
+
+  .reasoning--expanded > & {
+    padding: 11px 14px 0;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+.reasoning__chevron {
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
+.reasoning__label {
+  font-weight: 600;
+}
+
+.reasoning__duration {
+  font-size: 11px;
+}
+
+// Indented past the chevron, per the frame. `pre-wrap` keeps the model's own
+// paragraph breaks, which are the only structure a reasoning summary has.
+.reasoning__body {
+  margin: 8px 14px 0 32px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -72,14 +72,15 @@ That is the whole API. Because the properties live on `<html>` and re-resolve on
 | Chat | `--bubble`, `--bubble-fg` |
 | Primary button | `--btnP-bg`, `--btnP-fg`, `--btnP-hover` |
 | Theme-swap switches | `--show-light`, `--show-dark` (`inline` / `none`) |
-| App additions | `--focus-ring`, `--tooltip-bg`, `--tooltip-fg`, the six `--code-*` syntax colours |
+| App additions | `--focus-ring`, `--tooltip-bg`, `--tooltip-fg`, the six `--code-*` syntax colours, and `--code-head-fg` / `--code-head-muted` |
 | Motion (in `_motion.scss`) | `--t-fast` (150 ms), `--t-slow` (200 ms) |
 
-Four decisions in that table are worth the paragraph they cost:
+Five decisions in that table are worth the paragraph they cost:
 
 - **The `--bs-*-rgb` companions are not decoration.** Bootstrap 5.3 consumes them as `rgba(var(--bs-body-color-rgb), …)` in its `.text-*`, `.bg-*` and `.link-*` opacity utilities. Overriding only the solid values would leave those utilities painting Bootstrap's default blues over a branded palette — latent in the prototype only because it never used them. Four are generated automatically from the solid values.
 - **`--focus-ring` is its own token rather than `--accent`.** WCAG 2.1 SC 1.4.11 wants 3:1 against adjacent colours, and `#21A8D8` gives 2.74:1 on `--surface`, 2.62:1 on `--bs-body-bg` and 2.48:1 on `--surface-2` — an accent-coloured ring fails on every light surface in the kit. The light theme uses a darker value on the same brand ramp that clears 3:1 on all three; dark theme keeps the accent, which is already 6.09:1 there.
 - **`--tooltip-bg` / `--tooltip-fg` fix a real defect in the boards.** They hard-code the flyout as `#0B1F33` on white, and `#0B1F33` *is* `--bs-body-bg` in dark — so the tooltip would be invisible in the theme it is most used in.
+- **`--code-head-fg` / `--code-head-muted` are transcribed literals, identical in both themes.** The Transcript board writes the code-block header bar's Copy control as `#B9CBDC` and its language label as `#8FA9C0`, as literals rather than tokens (US-603). They sit unchanged in both maps for the same reason the `--code-*` syntax palette does: `--code-head` is dark in *both* themes, so text on it never flips. Both clear 4.5:1 there.
 - **`--show-light` / `--show-dark` are how assets swap without script.** Both variants of an image render; one is `display: none`. §5 explains why that is worth two downloads.
 
 ### 2.3 Two guards you will meet before you meet a bug

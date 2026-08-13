@@ -13,6 +13,7 @@ import {
   problemResponse,
   streamingResponse,
 } from '@testing/stream-frames';
+import { CHAT_ROLE } from '@domain/api/conversation';
 import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
@@ -131,14 +132,16 @@ describe('Transcript', () => {
       // The recorded turn: mcp-1, then its child agent-1, then fn-1, then text.
       expect(cardNames()).toEqual(['Andes Test MCP', 'Forecast Agent', 'Search Documents']);
 
+      // agent-1 is mcp-1's child, so the timeline opens two top-level nodes
+      // for three cards (US-502); the third card is inside the first.
+      // US-504's footer closes the column; everything before it is a timeline
+      // node. No reasoning region: the recorded turn's single `ReasoningDelta`
+      // is the server's seed, which US-503 does not render.
       const content = host.querySelector('.assistant-turn__content');
-      const sequence = [...(content?.children ?? [])].map((child) => child.tagName.toLowerCase());
-      expect(sequence).toEqual([
-        'app-activity-card',
-        'app-activity-card',
-        'app-activity-card',
-        'markdown',
-      ]);
+      const sequence = [...(content?.children ?? [])].map((child) =>
+        child.classList.contains('assistant-turn__footer') ? 'footer' : child.tagName.toLowerCase(),
+      );
+      expect(sequence).toEqual(['app-activity-card', 'app-activity-card', 'markdown', 'footer']);
       expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Hello, world.');
     });
 
@@ -206,6 +209,500 @@ describe('Transcript', () => {
         (duration) => duration.textContent?.trim() ?? '',
       );
       expect(durations).toEqual(['1.4s', '0.6s']);
+    });
+  });
+
+  describe('nested activity work (US-502)', () => {
+    /** Top-level cards only — the ones the timeline opened a node for. */
+    function topLevelCards(): HTMLElement[] {
+      return [
+        ...host.querySelectorAll<HTMLElement>('.assistant-turn__content > app-activity-card'),
+      ];
+    }
+
+    it('renders a child inside its parent card instead of opening a top-level node', async () => {
+      await streamFullTurn();
+
+      const top = topLevelCards();
+      expect(
+        top.map((card) => card.querySelector('.activity-card__name')?.textContent?.trim()),
+      ).toEqual(['Andes Test MCP', 'Search Documents']);
+
+      const nested = top[0]?.querySelectorAll('app-activity-card') ?? [];
+      expect([...nested].map((card) => card.textContent)).toHaveLength(1);
+      expect(top[0]?.textContent).toContain('Forecast Agent');
+    });
+
+    it('keeps a child whose parent scope was never seen at the top level', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        frame(
+          assistantEvent('ActivityStarted', {
+            scopeId: 'orphan-1',
+            parentScopeId: 'a-scope-that-never-arrived',
+            displayName: 'Orphaned Tool',
+            source: undefined,
+          }),
+        ),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // An unattached card is a rendering imperfection; a dropped one is a lost
+      // tool call, so the fold roots it and the timeline still opens its node.
+      expect(topLevelCards()).toHaveLength(1);
+      expect(cardNames()).toEqual(['Orphaned Tool']);
+    });
+
+    it('steps the surface, radius and rail down through three levels', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ActivityStarted', { scopeId: 'l0', displayName: 'Release Analyst' }),
+          assistantEvent('ActivityStarted', {
+            scopeId: 'l1',
+            parentScopeId: 'l0',
+            displayName: 'Doc Retriever',
+            toolKind: 'Agent',
+          }),
+          assistantEvent('ActivityStarted', {
+            scopeId: 'l2',
+            parentScopeId: 'l1',
+            displayName: 'Confluence Search',
+          }),
+          assistantEvent('ActivityStarted', {
+            scopeId: 'l3',
+            parentScopeId: 'l2',
+            displayName: 'Even Deeper',
+          }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(topLevelCards()).toHaveLength(1);
+      const cards = [...host.querySelectorAll<HTMLElement>('.activity-card')];
+      expect(cards.map((card) => card.className.replace('activity-card', '').trim())).toEqual([
+        '',
+        'activity-card--depth-1',
+        'activity-card--depth-2',
+        // The design draws three levels; a fourth reuses the third rather than
+        // shrinking away, because an agent tree can nest arbitrarily.
+        'activity-card--depth-2',
+      ]);
+    });
+  });
+
+  describe('copying a code block (US-603)', () => {
+    async function streamCode(source: string): Promise<void> {
+      const handle = await startTurn();
+      handle.enqueue(
+        [assistantEvent('TextDelta', { text: source }), assistantEvent('Finished')]
+          .map(frame)
+          .join(''),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+    }
+
+    it('puts the exact block source on the clipboard, entities and all', async () => {
+      await streamCode('```ts\nconst a = 1 & 2;\nif (a < 3) {\n  go();\n}\n```');
+
+      host.querySelector<HTMLButtonElement>('.md-code__copy')?.click();
+      await settle();
+
+      // The source marked was given, not the rendered HTML and not the trailing
+      // newline the renderer adds to close the block.
+      expect(writeText).toHaveBeenCalledWith('const a = 1 & 2;\nif (a < 3) {\n  go();\n}');
+    });
+
+    it('confirms for two seconds, then returns to Copy', async () => {
+      await streamCode('```ts\nconst a = 1;\n```');
+
+      const button = host.querySelector<HTMLButtonElement>('.md-code__copy');
+      button?.click();
+      await settle();
+
+      expect(button?.textContent).toBe('Copied');
+
+      await settle(2000);
+
+      expect(button?.textContent).toBe('Copy');
+    });
+
+    it('serves every block from one listener on the transcript', async () => {
+      await streamCode('```ts\nfirst();\n```\n\n```ts\nsecond();\n```');
+
+      const buttons = [...host.querySelectorAll<HTMLButtonElement>('.md-code__copy')];
+      expect(buttons).toHaveLength(2);
+      // Nothing is bound to the buttons themselves — they are innerHTML, with no
+      // template position to bind at — so a click that never reaches the host
+      // would copy nothing.
+      buttons[1]?.click();
+      await settle();
+
+      expect(writeText).toHaveBeenCalledWith('second();');
+      // Confirming one block ends the other's confirmation rather than leaving
+      // two labels claiming the clipboard.
+      buttons[0]?.click();
+      await settle();
+
+      expect(buttons[0]?.textContent).toBe('Copied');
+      expect(buttons[1]?.textContent).toBe('Copy');
+    });
+
+    function copyStatus(): HTMLElement {
+      return host.querySelector<HTMLElement>('.transcript__copy-status')!;
+    }
+
+    it('announces the copy in a live region, since the label alone is not enough', async () => {
+      await streamCode('```ts\nconst a = 1;\n```');
+
+      host.querySelector<HTMLButtonElement>('.md-code__copy')?.click();
+      await settle();
+
+      expect(copyStatus().textContent).toBe('Code block copied.');
+
+      await settle(2000);
+
+      expect(copyStatus().textContent).toBe('');
+    });
+
+    it('announces a second copy taken inside the first one’s window', async () => {
+      await streamCode('```ts\nfirst();\n```\n\n```ts\nsecond();\n```');
+
+      const buttons = [...host.querySelectorAll<HTMLButtonElement>('.md-code__copy')];
+      buttons[0]?.click();
+      await settle();
+
+      // A live region announces a *transition*, not a value, so this watches the
+      // DOM rather than reading it: clearing and re-setting the signal in one
+      // task leaves the binding's previous value in place, nothing is written,
+      // and a screen-reader user hears the first copy and nothing after it.
+      let writes = 0;
+      const observer = new MutationObserver((records) => {
+        writes += records.length;
+      });
+      observer.observe(copyStatus(), { characterData: true, childList: true, subtree: true });
+
+      buttons[1]?.click();
+      await settle();
+      observer.disconnect();
+
+      // Cleared, then set again — without the clear reaching the DOM first this
+      // is zero writes and the same text sitting there from the copy before.
+      expect(writes).toBe(2);
+      expect(copyStatus().textContent).toBe('Code block copied.');
+      expect(buttons[1]?.textContent).toBe('Copied');
+      expect(buttons[0]?.textContent).toBe('Copy');
+    });
+
+    it('keeps the accessible name on the visible label, per SC 2.5.3', async () => {
+      await streamCode('```ts\nconst a = 1;\n```');
+
+      const button = host.querySelector<HTMLButtonElement>('.md-code__copy');
+      expect(button?.getAttribute('aria-label')).toBe('Copy ts code block');
+
+      button?.click();
+      await settle();
+
+      expect(button?.getAttribute('aria-label')).toBe('Copied');
+
+      await settle(2000);
+
+      expect(button?.getAttribute('aria-label')).toBe('Copy ts code block');
+    });
+
+    it('survives the component being destroyed inside the confirmation window', async () => {
+      await streamCode('```ts\nconst a = 1;\n```');
+
+      host.querySelector<HTMLButtonElement>('.md-code__copy')?.click();
+      await settle();
+      fixture.destroy();
+
+      // The timer would otherwise write into a detached button two seconds later.
+      expect(() => vi.advanceTimersByTime(2000)).not.toThrow();
+    });
+
+    it('does nothing where the clipboard API does not exist at all', async () => {
+      await streamCode('```ts\nconst a = 1;\n```');
+      // An insecure context has no `navigator.clipboard`; the member access
+      // throws inside the same `try` that catches a denial.
+      Reflect.deleteProperty(navigator, 'clipboard');
+
+      const button = host.querySelector<HTMLButtonElement>('.md-code__copy');
+      button?.click();
+      await settle();
+
+      expect(button?.textContent).toBe('Copy');
+    });
+
+    it('leaves the control alone when the clipboard refuses', async () => {
+      writeText.mockRejectedValueOnce(new Error('denied'));
+      await streamCode('```ts\nconst a = 1;\n```');
+
+      const button = host.querySelector<HTMLButtonElement>('.md-code__copy');
+      button?.click();
+      await settle();
+
+      expect(button?.textContent).toBe('Copy');
+    });
+
+    it('ignores a click that is not a copy control', async () => {
+      await streamCode('```ts\nconst a = 1;\n```');
+
+      host.querySelector<HTMLElement>('.md-code__head')?.click();
+      await settle();
+
+      expect(writeText).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the reasoning region (US-503)', () => {
+    /** The opening pair every turn carries (streaming contract §4.3). */
+    const SEED = 'Reviewing the request and preparing a response.\n\n';
+
+    it('shows the region while reasoning streams, before any answer text', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ReasoningDelta', { text: SEED }),
+          assistantEvent('ReasoningDelta', { text: 'Weighing the options. ' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // The gap before the answer belongs to the ridgeline only while there is
+      // nothing to read; the model's own reasoning takes it over.
+      expect(host.querySelector('app-reasoning-region')).not.toBeNull();
+      expect(host.querySelector('app-ridgeline')).toBeNull();
+      // Still open, so no duration is claimed yet.
+      expect(host.querySelector('.reasoning__duration')).toBeNull();
+    });
+
+    it('measures from the model’s first delta, not the server’s seed', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('ReasoningDelta', { text: SEED })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      // A second of stream latency that is not thinking time.
+      await vi.advanceTimersByTimeAsync(1_000);
+      handle.enqueue(frame(assistantEvent('ReasoningDelta', { text: 'Weighing the options. ' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      await vi.advanceTimersByTimeAsync(4_200 - STREAM_BATCH_WINDOW_MS);
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'The answer.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const region = host.querySelector('app-reasoning-region');
+      expect(region?.querySelector('.reasoning__duration')?.textContent?.trim()).toBe('4.2s');
+      // Collapsed: the summary is not in the document until it is asked for.
+      expect(region?.querySelector('.reasoning__body')).toBeNull();
+      // Mid-stream the growing block is US-602's head/tail pair, and text this
+      // short has no boundary yet — so it is the tail that carries it.
+      expect(host.querySelector('.assistant-turn__content')?.textContent).toContain('The answer.');
+    });
+
+    it('expands to the model’s words only, and stays open for the rest of the turn', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ReasoningDelta', { text: SEED }),
+          assistantEvent('ReasoningDelta', { text: 'Weighing the options. ' }),
+          assistantEvent('TextDelta', { text: 'The ' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const toggle = host.querySelector<HTMLButtonElement>('.reasoning__toggle');
+      toggle?.click();
+      await settle();
+
+      const body = host.querySelector('.reasoning__body');
+      expect(body?.textContent).toBe('Weighing the options. ');
+      expect(body?.textContent).not.toContain('Reviewing the request');
+      expect(toggle?.getAttribute('aria-controls')).toBe(body?.id);
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'answer.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // Still open: the live turn is one component instance for its duration.
+      expect(host.querySelector('.reasoning__body')?.textContent).toContain('Weighing');
+    });
+
+    it('renders no region for a turn whose only reasoning was the seed', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ReasoningDelta', { text: SEED }),
+          assistantEvent('TextDelta', { text: 'Straight to it.' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // The seed is a server-authored status line, and US-406 already decided
+      // this app renders none of those.
+      expect(host.querySelector('app-reasoning-region')).toBeNull();
+    });
+
+    it('keeps the ridgeline for the gap when no reasoning is streaming', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('ReasoningDelta', { text: SEED })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(host.querySelector('app-ridgeline')).not.toBeNull();
+      expect(host.querySelector('app-reasoning-region')).toBeNull();
+    });
+
+    it('renders no region for replayed history, which never stored one', async () => {
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
+        .flush({
+          id: CONVERSATION_ID,
+          name: 'Conversation',
+          messages: [
+            { text: 'What is the weather?', role: CHAT_ROLE.user },
+            { text: 'Sunny.', role: CHAT_ROLE.assistant },
+          ],
+        });
+      await settle();
+
+      expect(host.querySelector('.assistant-turn__md')?.textContent).toContain('Sunny.');
+      expect(host.querySelector('app-reasoning-region')).toBeNull();
+    });
+  });
+
+  describe('what a turn cost (US-504)', () => {
+    it('shows the turn total in the message footer once Finished arrives', async () => {
+      await streamFullTurn();
+
+      expect(host.querySelector('.assistant-turn__usage')?.textContent?.trim()).toBe(
+        '1,842 in · 512 out · 2,354 total',
+      );
+    });
+
+    it('claims nothing for a turn that ended without Finished', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial answer' })));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // A cut-off turn never folded a Finished, so there is no total to claim —
+      // and inventing one from the partial answer would be a fabricated figure.
+      expect(host.querySelector('app-turn-notice-card')).not.toBeNull();
+      expect(host.querySelector('.assistant-turn__usage')).toBeNull();
+    });
+
+    it('opens an activity onto its cost strip, and closes it again', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ActivityStarted', { scopeId: 'mcp-1' }),
+          assistantEvent('ActivityCompleted', { scopeId: 'mcp-1' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const toggle = host.querySelector<HTMLButtonElement>('.activity-card__toggle');
+      expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+      expect(host.querySelector('.activity-card__usage')).toBeNull();
+
+      toggle?.click();
+      await settle();
+
+      expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+      const strip = host.querySelector('.activity-card__usage');
+      expect(toggle?.getAttribute('aria-controls')).toBe(strip?.id);
+      // No server attributes tokens per activity yet, so the duration is the
+      // whole of the strip — the token columns arrive with the field.
+      expect(strip?.textContent?.trim()).toBe('duration\u00a0\u00a01.4s');
+
+      toggle?.click();
+      await settle();
+
+      expect(host.querySelector('.activity-card__usage')).toBeNull();
+    });
+
+    it('offers no chevron on an activity that is still running', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(host.querySelector('.activity-card__toggle')).toBeNull();
+    });
+  });
+
+  describe('an activity that failed (US-505)', () => {
+    /** The state glyph in a card's *own* header, ignoring any nested card's. */
+    function ownState(card: Element): string | null {
+      const state = card.querySelector(
+        ':scope > .activity-card > .activity-card__header > app-icon',
+      );
+
+      return state?.className.replace('activity-card__state', '').trim() ?? null;
+    }
+
+    it('marks the card failed, with a warning glyph and the duration in text', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ActivityStarted', { scopeId: 'fn-1', toolKind: 'Function' }),
+          assistantEvent('ActivityFailed', { scopeId: 'fn-1', toolKind: 'Function' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(host.querySelector('.activity-card__state--warn')).not.toBeNull();
+      expect(host.querySelector('.activity-card__duration')?.textContent?.trim()).toBe('0.6s');
+      // Colour is never the only channel: the sr-only line carries both.
+      expect(host.querySelector('.activity-card .visually-hidden')?.textContent).toBe(
+        'Failed after 0.6s',
+      );
+    });
+
+    it('leaves the parent of a failed child alone unless the parent failed too', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ActivityStarted', { scopeId: 'agent-1', toolKind: 'Agent' }),
+          assistantEvent('ActivityStarted', {
+            scopeId: 'child-1',
+            parentScopeId: 'agent-1',
+            displayName: 'Confluence Search',
+          }),
+          assistantEvent('ActivityFailed', { scopeId: 'child-1' }),
+          assistantEvent('ActivityCompleted', { scopeId: 'agent-1', toolKind: 'Agent' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const parent = host.querySelector('.assistant-turn__content > app-activity-card');
+      const child = parent?.querySelector('app-activity-card');
+      expect(ownState(parent!)).toBe('activity-card__state--ok');
+      expect(ownState(child!)).toBe('activity-card__state--warn');
+    });
+
+    it('lets the answer complete normally, keeping the failed card in place', async () => {
+      // The recorded turn fails fn-1 and then finishes: a failed tool call is
+      // not a failed turn, and the card stays where it arrived.
+      await streamFullTurn();
+
+      expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Hello, world.');
+      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(host.querySelector('app-turn-notice-card')).toBeNull();
+      expect(cardNames()).toEqual(['Andes Test MCP', 'Forecast Agent', 'Search Documents']);
+      expect(host.querySelector('.activity-card__state--warn')).not.toBeNull();
     });
   });
 

@@ -40,6 +40,14 @@ import {
 } from '@domain/stream/andes/assistant-ui.contract';
 import { replayAssistantText } from '@domain/stream/replayed-turn';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
+import {
+  ReasoningTiming,
+  createInitialReasoningTiming,
+  foldReasoningTiming,
+  hasModelReasoning,
+  modelReasoningText,
+  reasoningSeconds,
+} from '@domain/stream/reasoning-timing';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { AppError } from '@core/errors/app-error';
@@ -77,12 +85,18 @@ export type TranscriptEntry =
       readonly id: number;
       readonly snapshot: AssistantStatusSnapshot;
       readonly timeline: TurnTimeline;
+      /** The model's own reasoning, without the server's seeded delta (US-503). */
+      readonly reasoningText: string;
+      /** How long the model reasoned, measured while it streamed (US-503). */
+      readonly reasoningSeconds: number | null;
     }
   | {
       readonly kind: 'cutOff';
       readonly id: number;
       readonly snapshot: AssistantStatusSnapshot;
       readonly timeline: TurnTimeline;
+      readonly reasoningText: string;
+      readonly reasoningSeconds: number | null;
       readonly retry: TurnRetry;
     };
 
@@ -130,6 +144,8 @@ interface TurnState {
   readonly snapshot: AssistantStatusSnapshot;
   /** The live turn's arrival-order index (US-501). */
   readonly timeline: TurnTimeline;
+  /** The live turn's reasoning window, measured from arrival times (US-503). */
+  readonly reasoning: ReasoningTiming;
   readonly stoppedTurn: StoppedTurn | null;
   readonly turnError: TurnErrorNotice | null;
   /** The stored transcript is being read back (US-410). */
@@ -152,6 +168,7 @@ const initialState: TurnState = {
   pendingUserText: null,
   snapshot: createInitialSnapshot(),
   timeline: createInitialTimeline(),
+  reasoning: createInitialReasoningTiming(),
   stoppedTurn: null,
   turnError: null,
   historyPending: false,
@@ -197,6 +214,7 @@ function beginTurn(
     pendingUserText: command.prompt,
     snapshot: createInitialSnapshot(),
     timeline: createInitialTimeline(),
+    reasoning: createInitialReasoningTiming(),
     stoppedTurn: null,
     turnError: null,
   });
@@ -208,7 +226,10 @@ function beginTurn(
  * resurrect a cleared turn; batches landing while `stopping` still fold,
  * because they are the partial output the stopped card keeps.
  */
-function applyBatch(batch: readonly AssistantUiEvent[]): PartialStateUpdater<TurnState> {
+function applyBatch(
+  batch: readonly AssistantUiEvent[],
+  nowMs: number,
+): PartialStateUpdater<TurnState> {
   return (state) => {
     if (
       state.phase !== 'awaitingFirst' &&
@@ -228,18 +249,30 @@ function applyBatch(batch: readonly AssistantUiEvent[]): PartialStateUpdater<Tur
     return {
       snapshot: batch.reduce(foldAssistantEvents, state.snapshot),
       timeline: batch.reduce(foldTimeline, state.timeline),
+      // The clock is the caller's, so this stays a pure function of its
+      // arguments — the same reason the other two reducers take no clock.
+      // One reading per flush is enough: a ~16ms batch is finer than a
+      // duration written to a tenth of a second.
+      reasoning: batch.reduce(
+        (timing, event) => foldReasoningTiming(timing, event, nowMs),
+        state.reasoning,
+      ),
       phase: state.phase === 'awaitingFirst' && hasContent ? 'streaming' : state.phase,
     };
   };
 }
 
 /** Clears the live turn without touching the transcript, ready for the next send. */
-function clearLiveTurn(): Pick<TurnState, 'phase' | 'pendingUserText' | 'snapshot' | 'timeline'> {
+function clearLiveTurn(): Pick<
+  TurnState,
+  'phase' | 'pendingUserText' | 'snapshot' | 'timeline' | 'reasoning'
+> {
   return {
     phase: 'idle',
     pendingUserText: null,
     snapshot: createInitialSnapshot(),
     timeline: createInitialTimeline(),
+    reasoning: createInitialReasoningTiming(),
   };
 }
 
@@ -255,6 +288,8 @@ function settleFinished(): PartialStateUpdater<TurnState> {
         id: state.nextEntryId + 1,
         snapshot: state.snapshot,
         timeline: state.timeline,
+        reasoningText: modelReasoningText(state.reasoning, state.snapshot.reasoningText ?? ''),
+        reasoningSeconds: reasoningSeconds(state.reasoning),
       },
     ],
     nextEntryId: state.nextEntryId + 2,
@@ -273,6 +308,8 @@ function settleCutOff(command: TurnRetry): PartialStateUpdater<TurnState> {
         id: state.nextEntryId + 1,
         snapshot: state.snapshot,
         timeline: state.timeline,
+        reasoningText: modelReasoningText(state.reasoning, state.snapshot.reasoningText ?? ''),
+        reasoningSeconds: reasoningSeconds(state.reasoning),
         retry: command,
       },
     ],
@@ -317,7 +354,15 @@ function toHistoryEntries(messages: readonly ConversationMessageDto[]): Transcri
     if (message.role === CHAT_ROLE.user) {
       entries.push({ kind: 'user', id, text: message.text });
     } else if (message.role === CHAT_ROLE.assistant) {
-      entries.push({ kind: 'assistant', id, ...replayAssistantText(message.text) });
+      // Reasoning is never transcribed (streaming contract §6.2), so a replayed
+      // turn has no window to report — as it has no activities and no usage.
+      entries.push({
+        kind: 'assistant',
+        id,
+        reasoningText: '',
+        reasoningSeconds: null,
+        ...replayAssistantText(message.text),
+      });
     }
   }
 
@@ -438,15 +483,40 @@ export const TurnStore = signalStore(
   })),
   withComputed((store) => {
     const inFlight = computed(() => store.phase() !== 'idle');
+    /**
+     * Whether the model is reasoning in its own words, past the server's seed
+     * (US-503). It is what hands the pre-answer gap from the ridgeline to the
+     * reasoning region: US-406's rule is that the gap shows a ridgeline and
+     * never a fabricated status line, and the model's own reasoning is neither
+     * fabricated nor a status line — but the seeded delta every turn opens with
+     * *is*, which is why this reads past it.
+     */
+    const modelReasoning = computed(() => hasModelReasoning(store.reasoning()));
 
     return {
       inFlight,
-      /** Frame `1e`: the ridgeline between request-accepted and the first renderable content. */
+      /** Frame `1e`: the ridgeline between request-accepted and something to read. */
       showThinking: computed(
-        () => store.phase() === 'creating' || store.phase() === 'awaitingFirst',
+        () =>
+          store.phase() === 'creating' || (store.phase() === 'awaitingFirst' && !modelReasoning()),
       ),
-      /** The live assistant turn region — still rendered while `stopping`, until the settle lands. */
-      showLiveTurn: computed(() => store.phase() === 'streaming' || store.phase() === 'stopping'),
+      /**
+       * The live assistant turn region — from the model's first reasoning delta,
+       * so the summary is readable *as it streams* rather than appearing whole at
+       * the first token; still rendered while `stopping`, until the settle lands.
+       */
+      showLiveTurn: computed(
+        () =>
+          store.phase() === 'streaming' ||
+          store.phase() === 'stopping' ||
+          (store.phase() === 'awaitingFirst' && modelReasoning()),
+      ),
+      /** The live turn's reasoning, seed removed, for frame `1f`'s region (US-503). */
+      liveReasoningText: computed(() =>
+        modelReasoningText(store.reasoning(), store.snapshot().reasoningText ?? ''),
+      ),
+      /** The live turn's reasoning duration for frame `1f`'s pill (US-503). */
+      liveReasoningSeconds: computed(() => reasoningSeconds(store.reasoning())),
       /**
        * Whether the transcript replaces the empty state. The history states
        * count: a conversation being read back must not show the landing
@@ -569,7 +639,10 @@ export const TurnStore = signalStore(
               })
               .pipe(
                 tapResponse({
-                  next: (batch) => patchState(store, applyBatch(batch)),
+                  // `performance.now()`, not `Date.now()`: this reading is one
+                  // end of an elapsed measurement, and a clock step between the
+                  // two ends would render a negative duration.
+                  next: (batch) => patchState(store, applyBatch(batch, performance.now())),
                   // The client's contract: every error it emits is an AppError.
                   error: (error: AppError) => patchState(store, settleFromError(command, error)),
                   complete: () => {

@@ -1,4 +1,4 @@
-// Rendered model output in the transcript. US-601 / US-602.
+// Rendered model output in the transcript. US-601 / US-602 / US-603.
 //
 // These rules are global rather than scoped to `AssistantTurn` because the markup
 // they style never passes through a template: `ngx-markdown` writes it as
@@ -6,10 +6,13 @@
 // match. The `.assistant-turn__md` class on the host is what keeps the reach
 // narrow — nothing here applies outside a rendered answer.
 //
+// The code-block chrome at the foot of the file is the one exception, and
+// deliberately so: `.md-code` is emitted by `renderer.code`, so it exists
+// wherever this renderer does, and a second markdown surface would want the
+// same block styled the same way without inheriting the transcript's body type.
+//
 // Type comes from the Transcript board: 14.5px/1.55 body, tight paragraph
-// rhythm, and the mono face for code. Code-block chrome — the `--code-head` bar
-// and its copy control — is US-603/604 and deliberately absent; `pre` keeps a
-// neutral margin here so that bar can be layered on without moving anything.
+// rhythm, and the mono face for code.
 .assistant-turn__md {
   display: block;
   font-size: 14.5px;
@@ -40,14 +43,16 @@
     color: var(--muted);
   }
 
-  // No `overflow` here. `_prism.scss` sets `overflow: auto` at the same
+  // The border and the radius live on US-603's wrapper now, not here: the head
+  // bar and the body share one rounded outline, which only the element around
+  // both of them can draw.
+  //
+  // No `overflow` here either. `_prism.scss` sets `overflow: auto` at the same
   // specificity and is imported first, so anything set here would win and clip
   // every code line wider than the column — unreachable by mouse, keyboard or
   // touch. A rounded box clips its own scrolling content without help.
   pre {
-    margin: 10px 0 0;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 10px;
+    margin: 0;
   }
 
   // Inline code only: a fenced block is `pre > code`, and `_prism.scss` owns it.
@@ -77,6 +82,79 @@
   }
 }
 
+// Frame 1b's code block: one rounded, clipped box holding a `--code-head` bar
+// and the body beneath it (US-603; US-604 owns the highlighting inside).
+//
+// The wrapper carries the border and the radius so the bar and the body share
+// one outline, and it carries the block's top margin so the rhythm is unchanged
+// from when `pre` carried both.
+//
+// The surface is stated here rather than left to `_prism.scss`, which matches
+// only on `language-*`. The highlighter does eventually mark an unlabelled
+// block `language-none`, but it runs after the write — so a fence with no info
+// string, which is every fence in the streaming tail once `stripFenceInfo` has
+// been past it, would otherwise paint one frame on the page background with the
+// head bar floating above it.
+.md-code {
+  overflow: hidden;
+  margin: 10px 0 0;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+
+  pre {
+    overflow: auto;
+    padding: 12px 14px;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font-family: $font-mono;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+}
+
+.md-code__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--code-head);
+}
+
+// A `<code>` rather than a span: the profile allows it, it is already the mono
+// face, and a language name is code.
+.md-code__lang {
+  overflow: hidden;
+  color: var(--code-head-muted);
+  font-family: $font-mono;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-code__copy {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--code-head-fg);
+  font-size: 11.5px;
+
+  &:hover,
+  &.is-copied {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  // The code surface is dark in both themes, so the page's focus ring would be
+  // the wrong one here — the accent is legible against `--code-head` where it
+  // is not against `--surface`.
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
 // Frame 1b's streaming caret: an 8×17px --accent bar trailing the last character.
 //
 // It rides the last rendered block as a pseudo-element because the text it
@@ -86,7 +164,8 @@
 .assistant-turn__md--caret {
   > :last-child::after,
   > ul:last-child > li:last-child::after,
-  > ol:last-child > li:last-child::after {
+  > ol:last-child > li:last-child::after,
+  > .md-code:last-child pre::after {
     content: '';
     display: inline-block;
     width: 8px;
@@ -98,17 +177,21 @@
     animation: blink 1s steps(1) infinite;
   }
 
-  // The list rules above are more specific than the generic one, which would
-  // otherwise draw a second caret after the list itself.
+  // The list and code rules above are more specific than the generic one, which
+  // would otherwise draw a second caret after the block itself — below the code
+  // and inside the rounded box, on the wrapper's own background, which is where
+  // it landed for the whole of a streaming fence before this rule existed.
   > ul:last-child::after,
-  > ol:last-child::after {
+  > ol:last-child::after,
+  > .md-code:last-child::after {
     content: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
     > :last-child::after,
     > ul:last-child > li:last-child::after,
-    > ol:last-child > li:last-child::after {
+    > ol:last-child > li:last-child::after,
+    > .md-code:last-child pre::after {
       animation: none;
     }
   }

@@ -2,27 +2,71 @@
   display: block;
 }
 
-// Frame 1f's root card. Depth styling (surface alternation, tighter radii)
-// arrives with US-502, which nests children instead of flattening them.
+// Frame 1f's card, and the three levels of nesting it draws (US-502). Each
+// level alternates its surface, tightens its radius and shrinks its glyphs, so
+// depth reads without a label; anything deeper than the third reuses the third,
+// because the design draws three and an agent tree can nest arbitrarily.
+//
+// The per-level values are custom properties rather than descendant selectors:
+// a child card is a separate component instance, so its own declarations
+// override what it inherits, and every rule below reads one name whatever
+// depth it is rendering at.
+//
+// `--activity-rail` is the header's own left inset — the state glyph plus the
+// header gap — so the source line, the sub-statuses and the children rail all
+// hang off one value per level.
 .activity-card {
+  --activity-rail: 23px;
+  --activity-gap: 9px;
+  --activity-glyph: 14px;
+  --activity-name: 13.5px;
+  --activity-duration: 11px;
+  --kind-badge-bg: var(--surface-2);
+
   padding: 11px 13px;
   border: 1px solid var(--bs-border-color);
   border-radius: 12px;
   background: var(--surface);
+
+  &--depth-1 {
+    --activity-rail: 21px;
+    --activity-gap: 8px;
+    --activity-glyph: 13px;
+    --activity-name: 13px;
+    --kind-badge-bg: var(--surface);
+
+    padding: 8px 11px;
+    border-radius: 10px;
+    background: var(--surface-2);
+  }
+
+  &--depth-2 {
+    --activity-rail: 20px;
+    --activity-gap: 8px;
+    --activity-glyph: 12px;
+    --activity-name: 12.5px;
+    --activity-duration: 10.5px;
+    --kind-badge-bg: var(--surface-2);
+
+    padding: 7px 10px;
+    border-radius: 9px;
+    background: var(--surface);
+  }
 }
 
 .activity-card__header {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--activity-gap);
 }
 
-// The running state: a 14px ring in --accent with a transparent quarter,
-// spinning on the kit's `spin` keyframes.
+// The running state: a ring in --accent with a transparent quarter, spinning on
+// the kit's `spin` keyframes. It keeps the level-2 size at level 3, where the
+// frame draws no running ring to copy.
 .activity-card__ring {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: max(var(--activity-glyph), 13px);
+  height: max(var(--activity-glyph), 13px);
   border: 2px solid var(--accent);
   border-top-color: transparent;
   border-radius: 50%;
@@ -38,7 +82,7 @@
 
 .activity-card__state {
   flex: 0 0 auto;
-  font-size: 14px;
+  font-size: var(--activity-glyph);
 
   &--ok {
     color: var(--ok);
@@ -52,28 +96,72 @@
 .activity-card__name {
   overflow: hidden;
   min-width: 0;
-  font-size: 13.5px;
+  font-size: var(--activity-name);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 
-  // Frame 1f writes runtime-function names in mono, e.g. `format_status_table`.
+  // Frame 1f writes runtime-function names in mono, e.g. `format_status_table`,
+  // half a pixel down from the proportional label at every level.
   &--mono {
     font-family: var(--bs-font-monospace);
-    font-size: 13px;
+    font-size: calc(var(--activity-name) - 0.5px);
   }
 }
 
-.activity-card__duration {
+.activity-card__meta {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-  color: var(--muted);
-  font-size: 11px;
 }
 
-// Indented past the 14px state icon + 9px gap, per the frame's 23px rail.
+.activity-card__duration {
+  color: var(--muted);
+  font-size: var(--activity-duration);
+}
+
+.activity-card__toggle {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+}
+
+// Frame 1f's strip: the same rail as the sub-statuses, a quieter surface, and
+// no border — it is a detail of the card, not a card of its own.
+.activity-card__usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 9px 0 0 var(--activity-rail);
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+// On a level-2 card the strip would sit on its own background and vanish, so it
+// borrows the level the card is not using.
+.activity-card--depth-1 > .activity-card__usage {
+  background: var(--surface);
+}
+
+// Indented past the state glyph and the header gap, per the frame's rail.
 .activity-card__source {
-  margin: 3px 0 0 23px;
+  margin: 3px 0 0 var(--activity-rail);
   color: var(--muted);
   font-size: 12px;
 }
@@ -82,7 +170,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin: 8px 0 0 23px;
+  margin: 8px 0 0 var(--activity-rail);
   padding: 0;
   color: var(--muted);
   font-size: 12px;
@@ -96,5 +184,28 @@
   &::before {
     content: '·';
     opacity: 0.55;
+  }
+}
+
+.activity-card__children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 2px var(--activity-rail);
+  padding-left: 12px;
+  border-left: 2px solid var(--bs-border-color);
+}
+
+// Frame 1d: below 768px nested cards stay legible at *one* indent level, so only
+// the outermost rail insets. Deeper rails keep the border — it is what says
+// "inside" — but stop compounding the ~33px each one costs, which on a 390px
+// viewport leaves a third-level card no room for its own label.
+@media (max-width: 767.98px) {
+  .activity-card--depth-1,
+  .activity-card--depth-2 {
+    > .activity-card__children {
+      margin-left: 0;
+      padding-left: 8px;
+    }
   }
 }

@@ -1,10 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   DOCUMENT,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
+  signal,
   viewChild,
 } from '@angular/core';
 import { canRetry, userMessage } from '@core/errors/error-message';
@@ -26,6 +30,13 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
  * `aria-busy` rides the host — the transcript container — for the length of a
  * turn, so assistive tech treats the region as settling rather than
  * announcing every re-render (US-406; the live-region work proper is US-1402).
+ *
+ * The host also carries **one** click listener for every code block's Copy
+ * control (US-603). The controls themselves are part of the rendered markdown,
+ * which is written as `innerHTML` and has no template position to bind to; one
+ * delegated listener here is the alternative to a listener per `<pre>`, and it
+ * survives the tail's re-render on every flush because it is not attached to
+ * anything the renderer replaces.
  */
 @Component({
   selector: 'app-transcript',
@@ -36,12 +47,29 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
   // Reading the stored messages counts as busy too (US-410): the skeleton is
   // aria-hidden, so without this the region is silently empty and then
   // silently full.
-  host: { '[attr.aria-busy]': "turn.inFlight() || turn.historyPending() ? 'true' : null" },
+  host: {
+    '[attr.aria-busy]': "turn.inFlight() || turn.historyPending() ? 'true' : null",
+    '(click)': 'onClick($event)',
+  },
 })
 export class Transcript {
   protected readonly turn = inject(TurnStore);
 
   private readonly errorCard = viewChild<TurnNoticeCard>('errorCard');
+
+  private readonly _injector = inject(Injector);
+
+  private _copiedButton: HTMLButtonElement | null = null;
+  /** The confirming button's own accessible name, to put back afterwards. */
+  private _copiedName: string | null = null;
+  private _copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Its own live region rather than a second string in {@link announcement}:
+   * that one is emptied for the length of a turn so an abnormal ending always
+   * transitions, and a copy can happen mid-turn.
+   */
+  protected readonly copyAnnouncement = signal('');
 
   protected readonly cutOffNotice: TurnNotice = { kind: 'cut-off' };
 
@@ -68,8 +96,102 @@ export class Transcript {
     }
   }
 
+  /**
+   * The delegated half of US-603: one listener for every code block's Copy
+   * control. Anything else clicked in the transcript — including
+   * `StoppedCard`'s own Copy, which is a real component with its own handler —
+   * does not match and falls straight through.
+   */
+  protected onClick(event: MouseEvent): void {
+    const target = event.target;
+    const button = target instanceof Element ? target.closest('.md-code__copy') : null;
+    if (button instanceof HTMLButtonElement) {
+      void this.copyCodeBlock(button);
+    }
+  }
+
+  private async copyCodeBlock(button: HTMLButtonElement): Promise<void> {
+    // The block's own text, read back off the DOM. Prism's highlighting adds
+    // elements but no characters, so `textContent` is the source marked was
+    // given — less the newline marked appends to close the block.
+    const source = button
+      .closest('.md-code')
+      ?.querySelector('pre > code')
+      ?.textContent?.replace(/\n$/, '');
+    if (source === undefined) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(source);
+    } catch {
+      // Denied clipboard permission leaves the button as it was; there is
+      // nothing actionable to tell the user beyond "it did not happen".
+      return;
+    }
+
+    // Two channels, because neither serves both audiences. The visible label
+    // swap is written straight to the DOM, since the button lives inside
+    // rendered `innerHTML` where Angular has nothing to bind — and it is *not*
+    // the accessible name, which the renderer fixes with an `aria-label` so six
+    // code blocks do not offer six identical "Copy" buttons. A name that no
+    // longer changes announces nothing, so the confirmation goes through a live
+    // region instead; that also survives the streaming tail's re-render, which
+    // replaces the button and its label within a flush.
+    //
+    // Copying a second block ends the first one's confirmation rather than
+    // leaving two "Copied" labels claiming the clipboard at once.
+    this.endConfirmation();
+    this._copiedName = button.getAttribute('aria-label');
+    button.textContent = COPIED_LABEL;
+    // The accessible name follows the visible one, or SC 2.5.3 fails for the
+    // two seconds it differs and a speech-input user saying "click Copied" has
+    // nothing to activate. Announcing is the live region's job now, so a name
+    // that also changes is at worst a duplicate rather than the only channel.
+    button.setAttribute('aria-label', COPIED_LABEL);
+    button.classList.add('is-copied');
+    this._copiedButton = button;
+    this._copiedTimer = setTimeout(() => this.endConfirmation(), COPIED_MS);
+
+    // Deferred one render on purpose. `endConfirmation` has just cleared the
+    // region, but change detection is scheduled rather than synchronous, so
+    // setting the message in the same task would leave the binding's previous
+    // value untouched — and a live region that never mutates announces nothing.
+    // Without this, copying a second block inside the first's window is silent.
+    afterNextRender(
+      { write: () => this.copyAnnouncement.set(COPIED_ANNOUNCEMENT) },
+      {
+        injector: this._injector,
+      },
+    );
+  }
+
+  /** Restores the confirming button, if there is one, and cancels its timer. */
+  private endConfirmation(): void {
+    this.copyAnnouncement.set('');
+
+    if (this._copiedTimer !== null) {
+      clearTimeout(this._copiedTimer);
+      this._copiedTimer = null;
+    }
+
+    if (this._copiedButton !== null) {
+      this._copiedButton.textContent = COPY_LABEL;
+      if (this._copiedName !== null) {
+        this._copiedButton.setAttribute('aria-label', this._copiedName);
+      }
+      this._copiedButton.classList.remove('is-copied');
+      this._copiedButton = null;
+      this._copiedName = null;
+    }
+  }
+
   constructor() {
     const document = inject(DOCUMENT);
+
+    // A route change inside the confirmation window must not fire a write into
+    // a detached button.
+    inject(DestroyRef).onDestroy(() => this.endConfirmation());
 
     // Retrying destroys the button that was pressed — the send clears the
     // notice — so focus falls to <body> for the length of the turn. When the
@@ -125,3 +247,9 @@ export class Transcript {
     return '';
   });
 }
+
+const COPY_LABEL = 'Copy';
+const COPIED_LABEL = 'Copied';
+const COPIED_ANNOUNCEMENT = 'Code block copied.';
+/** The kit's confirmation span, as `StoppedCard` uses it. */
+const COPIED_MS = 2000;

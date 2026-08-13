@@ -150,6 +150,18 @@ describe('chat markdown rendering (US-601)', () => {
       expect(CHAT_ALLOWED_TAGS).not.toContain('span');
       expect(sanitizeChatMarkdown('<span class="token">x</span>')).toBe('x');
     });
+
+    it('keeps US-603’s chrome, and still strips what a button could carry', () => {
+      const chrome =
+        '<div class="md-code"><button class="md-code__copy" type="button">Copy</button></div>';
+      expect(sanitizeChatMarkdown(chrome)).toBe(chrome);
+
+      // `div` and `button` are allowed as *elements*; nothing about that lets an
+      // event handler or a style through with them.
+      expect(sanitizeChatMarkdown('<button onclick="alert(1)" style="x">Copy</button>')).toBe(
+        '<button>Copy</button>',
+      );
+    });
   });
 
   describe('the renderer overrides', () => {
@@ -207,6 +219,74 @@ describe('chat markdown rendering (US-601)', () => {
 
       expect(element.querySelector('img')).toBeNull();
       expect(element.textContent).toContain('a wiring diagram');
+    });
+  });
+
+  /**
+   * US-603. The chrome is part of the rendered output, which is what lets a
+   * single delegated listener serve it; these specs pin the markup that listener
+   * reads and the info string it must never turn into an attribute.
+   */
+  describe('the code-block chrome', () => {
+    it('wraps a fenced block in the head bar, naming the language', async () => {
+      const element = await render('```ts\nconst a = 1;\n```');
+
+      const wrapper = element.querySelector('.md-code');
+      expect(wrapper?.querySelector('.md-code__lang')?.textContent).toBe('ts');
+      expect(wrapper?.querySelector('.md-code__copy')?.textContent).toBe('Copy');
+      // Prism's canonical markup: the marker on the `pre` as well as the `code`.
+      expect(wrapper?.querySelector('pre')?.className).toContain('language-ts');
+      expect(wrapper?.querySelector('pre > code')?.textContent).toBe('const a = 1;\n');
+    });
+
+    it('offers the control on an unlabelled block, with no language to name', async () => {
+      const element = await render('```\nplain text\n```');
+
+      expect(element.querySelector('.md-code__lang')).toBeNull();
+      expect(element.querySelector('.md-code__copy')).not.toBeNull();
+    });
+
+    it('escapes the block body rather than parsing it', async () => {
+      const element = await render('```html\n<script>alert(1)</script> & <b>x</b>\n```');
+
+      expect(element.querySelector('script')).toBeNull();
+      expect(element.querySelector('pre > code')?.textContent).toBe(
+        '<script>alert(1)</script> & <b>x</b>\n',
+      );
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    it('names each control, so six code blocks are not six identical buttons', async () => {
+      const element = await render('```ts\nconst a = 1;\n```\n\n```\nplain\n```');
+
+      const names = [...element.querySelectorAll('.md-code__copy')].map((button) =>
+        button.getAttribute('aria-label'),
+      );
+      expect(names).toEqual(['Copy ts code block', 'Copy code block']);
+    });
+
+    it('refuses raw chrome in the source, so the delegated listener cannot be aimed', async () => {
+      // `div` and `button` are in the profile for `renderer.code`'s sake, which
+      // is the one place the two layers stop being independent: if the parser
+      // layer ever let raw HTML past, model text could mint a wrapper the
+      // transcript's copy listener would serve. This is that regression's alarm.
+      const element = await render(
+        '<div class="md-code"><button class="md-code__copy">Copy</button></div>',
+      );
+
+      expect(element.querySelector('.md-code__copy')).toBeNull();
+      expect(element.querySelector('button')).toBeNull();
+    });
+
+    it('refuses an info string that is not a language, rather than escaping it', async () => {
+      const element = await render('```ts"onload=alert(1)\nconst a = 1;\n```');
+
+      const pre = element.querySelector('pre');
+      // The character set stops at the quote, so nothing can break out of the
+      // attribute in the first place — and no stray attribute survives either.
+      expect(pre?.className).toBe('language-ts');
+      expect(pre?.getAttribute('onload')).toBeNull();
+      expect(alertSpy).not.toHaveBeenCalled();
     });
   });
 });

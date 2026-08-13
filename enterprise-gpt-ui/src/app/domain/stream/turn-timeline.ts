@@ -1,4 +1,4 @@
-import { AssistantActivity, AssistantUiEvent } from './andes/assistant-ui.contract';
+import { AssistantUiEvent } from './andes/assistant-ui.contract';
 
 /**
  * One entry in a turn's arrival-order index (US-501).
@@ -6,8 +6,8 @@ import { AssistantActivity, AssistantUiEvent } from './andes/assistant-ui.contra
  * A `text` node is a half-open `[start, end)` slice into the folded snapshot's
  * single `text` string — the timeline never copies answer text, so a delta
  * costs O(1) here regardless of transcript length. An `activity` node is a
- * `scopeId` reference into the folded snapshot's activity tree, resolved at
- * render time with {@link findActivity}.
+ * `scopeId` reference into the folded snapshot's activity tree, matched against
+ * the snapshot's roots at render time (US-502).
  */
 export type TimelineNode =
   | { readonly kind: 'text'; readonly start: number; readonly end: number }
@@ -38,10 +38,10 @@ export function createInitialTimeline(): TurnTimeline {
  * Folds one event into the arrival-order index. Pure; returns the same
  * reference when the event carries no ordering information.
  *
- * Every `ActivityStarted` becomes its own node regardless of depth — US-501
- * renders nested work as separate chronological cards. `parentScopeId` is
- * recorded now so US-502 can drop child nodes and render them inside their
- * parent's card without touching this reducer.
+ * Every `ActivityStarted` becomes its own node regardless of depth, which is
+ * what let US-502 nest children without touching this reducer: the renderer
+ * keeps the nodes whose scope is a root of the folded snapshot and leaves the
+ * rest to the parent cards they already sit inside.
  */
 export function foldTimeline(timeline: TurnTimeline, event: AssistantUiEvent): TurnTimeline {
   switch (event.kind) {
@@ -77,27 +77,4 @@ export function foldTimeline(timeline: TurnTimeline, event: AssistantUiEvent): T
     default:
       return timeline;
   }
-}
-
-/**
- * Resolves a timeline node's `scopeId` against the folded snapshot's activity
- * tree, at any depth. Null when the scope is unknown — a defensive case only,
- * since both structures are fed the same events.
- */
-export function findActivity(
-  activities: readonly AssistantActivity[],
-  scopeId: string,
-): AssistantActivity | null {
-  for (const activity of activities) {
-    if (activity.scopeId === scopeId) {
-      return activity;
-    }
-
-    const nested = findActivity(activity.children, scopeId);
-    if (nested !== null) {
-      return nested;
-    }
-  }
-
-  return null;
 }

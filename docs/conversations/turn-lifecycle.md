@@ -1,8 +1,8 @@
 # Conversation Turn Lifecycle
 
-The layer above the [Conversation Streaming Client](streaming-client.md): what happens between pressing Send and a settled transcript entry, and what happens when a conversation is reopened. Shipped by nine stories: US-401 (send a first prompt; the conversation is created *around* it), US-406 (streamed answer rendering), US-407 (Stop, keeping the partial output) and US-501 (the chronological activity timeline) built the live turn; EP-4's closing five then finished it — **US-408** (the busy warning, §8.1), **US-412** (the MCP consent card, §8.2), **US-410** (reopening a conversation: its stored messages *and* the settings it last used, §7), **US-409** (the name the server generates after a first turn, §7.8) and **US-413** (dictation, §9.2). Four recorded deferrals closed along the way: US-303's suggested prompt chips, US-403's tool-server-unavailable card, the generic notice standing in for the busy and consent frames, and US-407's `composer__aux` dimming rule, which had matched no control until the microphone arrived.
+The layer above the [Conversation Streaming Client](streaming-client.md): what happens between pressing Send and a settled transcript entry, and what happens when a conversation is reopened. Shipped by thirteen stories: US-401 (send a first prompt; the conversation is created *around* it), US-406 (streamed answer rendering), US-407 (Stop, keeping the partial output) and US-501 (the chronological activity timeline) built the live turn; EP-4's closing five then finished it — **US-408** (the busy warning, §8.1), **US-412** (the MCP consent card, §8.2), **US-410** (reopening a conversation: its stored messages *and* the settings it last used, §7), **US-409** (the name the server generates after a first turn, §7.8) and **US-413** (dictation, §9.2). EP-5's closing four then finished the turn's *own* surfaces — **US-502** (nested activity cards, §8.4), **US-505** (a failed activity, §8.4), **US-504** (what a turn cost, §8.5) and **US-503** (the reasoning region, §4.2 and §8.6). Four recorded deferrals closed along the way: US-303's suggested prompt chips, US-403's tool-server-unavailable card, the generic notice standing in for the busy and consent frames, and US-407's `composer__aux` dimming rule, which had matched no control until the microphone arrived.
 
-Audience: whoever builds the stories on top — nested activities (US-502), reasoning (US-503), the consent action (US-411) — or debugs a turn that ended strangely. The wire format lives in the [contract](streaming-contract.md); the codec, transport, and turn settings live in the [streaming client](streaming-client.md); how the answer text becomes HTML, and how the page follows it, lives in [Answer Rendering](../ui/answer-rendering.md) — none of the three is restated here.
+Audience: whoever builds the stories on top — the consent action (US-411), message-level Copy (US-607), the streaming live region (US-1402) — or debugs a turn that ended strangely. The wire format lives in the [contract](streaming-contract.md); the codec, transport, and turn settings live in the [streaming client](streaming-client.md); how the answer text becomes HTML, how a code block is copied, and how the page follows the newest text all live in [Answer Rendering](../ui/answer-rendering.md) — none of the three is restated here.
 
 ## 1. Overview
 
@@ -10,16 +10,18 @@ One route-scoped store owns everything: [`TurnStore`](../../enterprise-gpt-ui/sr
 
 | Concern | What it does | Where |
 |---|---|---|
-| Turn state | Phases, transcript entries, live snapshot + timeline, settle logic, history replay | `features/chat/turn-store.ts` |
+| Turn state | Phases, transcript entries, live snapshot + timeline + reasoning window, settle logic, history replay | `features/chat/turn-store.ts` |
 | Arrival-order index | Which text blocks and activity cards arrived in what order | `domain/stream/turn-timeline.ts` — framework-free, beside the vendored fold |
+| Reasoning window | Where the model's own reasoning starts, and how long it ran | `domain/stream/reasoning-timing.ts` — framework-free (§4.2) |
 | Replaying a stored answer | One persisted message → the same folded shape a live turn produces | `domain/stream/replayed-turn.ts` |
 | Transcript rendering | Settled entries, the live turn, the notices, the stopped card, the history states | `features/chat/transcript/` |
+| Token counts and durations | The one formatter behind the message footer and the activity strip | `features/chat/transcript/turn-usage.ts` (§8.5) |
 | Send / Stop control | The morphing button, composer seeding, focus recovery | `features/chat/composer/` |
 | Dictation | The Web Speech session, the elapsed clock, the phrase handoff | `core/speech/speech-recognition.ts`, `features/chat/composer/dictation-store.ts` |
 | "A turn completed" | The one fact this screen publishes to the rest of the app | `core/events/turn-events.ts` |
 | Landing screen | The wordmark, prompt heading, and four suggested prompt chips | `features/chat/chat-empty-state.ts` |
 
-Two structures describe one live turn, and neither duplicates the other (§4). Reopening a conversation replays its stored messages (§7) — but only the messages: the **activity timeline is session state**, because the stream that produces it is never persisted, and that is permanent rather than pending (§7.5).
+Three structures describe one live turn, and none duplicates the others (§4). Reopening a conversation replays its stored messages (§7) — but only the messages: the **activity timeline, the reasoning summary and the token counts are session state**, because the stream that produces them is never persisted, and that is permanent rather than pending (§7.5).
 
 ## 2. The turn state machine
 
@@ -29,15 +31,24 @@ Two structures describe one live turn, and neither duplicates the other (§4). R
 |---|---|---|
 | `idle` | No turn in flight | The Send control; transcript or empty state |
 | `creating` | `POST api/conversations` is out for a first prompt | The thinking ridgeline (frame `1e`) |
-| `awaitingFirst` | The stream request is out; nothing renderable has arrived | The thinking ridgeline |
+| `awaitingFirst` | The stream request is out; nothing renderable has arrived | The thinking ridgeline — or the reasoning region, once the model reasons (below) |
 | `streaming` | Content is arriving | The live turn, with the blinking caret |
 | `stopping` | The user pressed Stop; the abort's error is on its way | The live turn, until the settle lands |
 
-Three computed signals read it: `showThinking` (`creating` or `awaitingFirst`), `showLiveTurn` (`streaming` or `stopping`), and `inFlight` (anything but `idle`) — which is also what morphs the composer's button into Stop (§9).
+Three computed signals read it, and the first two no longer split on the phase alone. `inFlight` is anything but `idle` — which is also what morphs the composer's button into Stop (§9). `showThinking` and `showLiveTurn` split on **"is the model reasoning"**, so that during `awaitingFirst` exactly one of them is true:
+
+| | `creating` | `awaitingFirst`, no model reasoning | `awaitingFirst`, model reasoning | `streaming` / `stopping` |
+|---|---|---|---|---|
+| `showThinking` | ✅ | ✅ | — | — |
+| `showLiveTurn` | — | — | ✅ | ✅ |
+
+That split is US-503's (§8.6). The pre-answer gap belongs to the ridgeline on every turn where the model reasons silently, which is most of them, and is handed to the reasoning region the moment the model reasons in its own words — so the summary is readable *as it streams* rather than appearing whole at the first token, in one component instance for the length of the turn.
 
 Reading a conversation's stored messages is deliberately **not** a phase (`historyPending` / `historyError` are their own state, §7.1): no turn is in flight while history loads, the composer stays usable throughout, and folding it into `TurnPhase` would have put both facts at risk.
 
-`awaitingFirst` advances to `streaming` only when a batch carries **renderable** content — an `ActivityStarted` or a `TextDelta`. A batch of `Status` or `ReasoningDelta` events deliberately does not clear the thinking indicator. US-406 wrote that rule when this app emitted no request-level statuses at all; that rationale is now historical — the server opens every turn with a synthetic `Status` (`"Starting"`) and a server-authored `ReasoningDelta` ([contract §4.3](streaming-contract.md#43-a-turn-frame-by-frame)) — but the rule now does real work: without it, those two frames would dismiss the ridgeline with nothing renderable to replace it. The client does not yet render `assistantStatus` or reasoning text (reasoning rendering is US-503, P4), so the opening pair is on the wire but invisible here today — by design, not omission.
+`awaitingFirst` advances to `streaming` only when a batch carries **renderable** content — an `ActivityStarted` or a `TextDelta`. A batch of `Status` or `ReasoningDelta` events deliberately does not move the phase. US-406 wrote that rule when this app emitted no request-level statuses at all; that rationale is now historical — the server opens every turn with a synthetic `Status` (`"Starting"`) and a server-authored `ReasoningDelta` ([contract §4.3](streaming-contract.md#43-a-turn-frame-by-frame)) — but the rule now does real work: without it, those two frames would advance the phase with nothing renderable to show for it.
+
+The client still renders neither `assistantStatus` nor the server's seeded reasoning delta, and both refusals are the same one: US-406 decided this app shows no request-level status line it did not get from the model. What US-503 added is the *model's* reasoning, which is neither fabricated nor a status line — and reaching it means measuring the seed out first (§4.2).
 
 ## 3. Sending, and creating the conversation around the first prompt
 
@@ -61,20 +72,51 @@ The ordering in step 2 is load-bearing. `bindRoute` follows the route's `convers
 - **The user presses Stop, or navigates away, mid-create** — the POST is cancelled (it accepts no `AbortSignal`, so a `takeUntil` subject cancels it) and the prompt is reseeded. A route event during `creating` is always foreign — the store's own navigation cannot fire before the 201 has moved the phase on — so `bindRoute` cancels the create before resetting; without that, the 201 would land after the reset, clobber the new binding, and navigate the user off the conversation they just opened.
 - **Sign-out mid-create** — the same `takeUntil` races `injectSignedOut()`, and `withResetOnSignOut` (composed last, per the repo rule) clears the state.
 
-## 4. Folding a live turn: the snapshot and the timeline index
+## 4. Folding a live turn: the snapshot, the timeline index, and the reasoning window
 
-Each delivered batch — at most one per ~16 ms flush, at any token rate ([streaming client §4.4](streaming-client.md#44-batching)) — folds through **two** reducers in **one** `patchState`: the vendored `foldAssistantEvents` into the snapshot, and [`foldTimeline`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts) into the arrival-order index. The apply is guarded to in-flight phases, so a batch racing a reset cannot resurrect a cleared turn; batches landing while `stopping` still fold, because they are the partial output the stopped card keeps (§6).
+Each delivered batch — at most one per ~16 ms flush, at any token rate ([streaming client §4.4](streaming-client.md#44-batching)) — folds through **three** reducers in **one** `patchState`:
+
+| Reducer | Produces | Owns |
+|---|---|---|
+| `foldAssistantEvents` (vendored) | `AssistantStatusSnapshot` | Activity state and hierarchy, answer text, reasoning text, usage, phase |
+| [`foldTimeline`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts) | `TurnTimeline` | Arrival order, and nothing else (§4.1) |
+| [`foldReasoningTiming`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.ts) | `ReasoningTiming` | Where the model's reasoning starts in that text, and how long it ran (§4.2) |
+
+All three are pure and framework-free, and all three test in Node. The apply is guarded to in-flight phases, so a batch racing a reset cannot resurrect a cleared turn; batches landing while `stopping` still fold, because they are the partial output the stopped card keeps (§6).
 
 ### 4.1 Why an index beside the fold
 
 `foldAssistantEvents` owns every piece of activity *state* — labels, kinds, progress, completion — but its snapshot is hierarchical and unordered across text: it can say a tool ran and finished, but not whether its card arrived before or after a paragraph. US-501 needs exactly that interleaving, so `TurnTimeline` records **only** the ordering:
 
 - A `text` node is a half-open `[start, end)` slice into the folded snapshot's single `text` string. The timeline never copies answer text, so a delta costs O(1) here regardless of transcript length; consecutive deltas extend the last text node rather than opening a new one.
-- An `activity` node is a `scopeId` reference into the snapshot's activity tree, resolved at render time with `findActivity` (recursive, any depth). `parentScopeId` is recorded now so US-502 can drop child nodes and render them inside their parent's card without touching the reducer.
+- An `activity` node is a `scopeId` reference into the snapshot's activity tree. Every `ActivityStarted` becomes its own node **regardless of depth** — which is exactly what let US-502 nest children without touching this reducer (§8.4): the renderer keeps the nodes whose scope is a root of the folded snapshot and leaves the rest to the parent cards they already sit inside.
 
-Neither structure duplicates the other — the timeline holds no text and no activity state, the snapshot holds no ordering. Both reducers apply the same `?? ''` fallbacks as the vendored fold, so offsets always index `snapshot.text` and the render-time join cannot miss on an event the fold accepted. Every `ActivityStarted` becomes its own node regardless of depth, because US-501 renders nested work as separate chronological cards; nesting is US-502's.
+No structure duplicates another — the timeline holds no text and no activity state, the snapshot holds no ordering, and the reasoning window holds no text at all, only two clock readings and a length. The timeline applies the same `?? ''` fallbacks as the vendored fold, so offsets always index `snapshot.text` and the render-time join cannot miss on an event the fold accepted.
 
-The join happens once per flush in `AssistantTurn`'s `renderedNodes` computed — slices of `snapshot.text` for text nodes, `findActivity` lookups for activity nodes — not per node in the template. An activity node whose scope the snapshot cannot resolve is dropped, defensively only, since both structures are fed the same events.
+The join happens once per flush in `AssistantTurn`'s `renderedNodes` computed — not per node in the template — as slices of `snapshot.text` for text nodes and root matches for activity nodes. `findActivity` is **gone**: it walked the tree to any depth, which is the wrong question now that a nested activity is drawn by its parent rather than by the timeline.
+
+### 4.2 The reasoning window, and the seed that is not the model's
+
+Two facts about the contract shape US-503, and the first is easy to miss.
+
+**Every turn's first `ReasoningDelta` is server-authored.** The service seeds `"Reviewing the request and preparing a response.\n\n"` ahead of the model's first event ([contract §4.1](streaming-contract.md#41-event-kinds), [§4.3](streaming-contract.md#43-a-turn-frame-by-frame)), and the vendored fold accumulates it into `reasoningText` like any other delta. Rendering it would put a request-level status line on screen — the thing US-406 decided this app does not do — and *measuring* from it would report queue and network latency as thinking time.
+
+So the seed is identified **by position, not by its text**: `foldReasoningTiming` records the length of the first `ReasoningDelta` it sees and nothing about its content, and `modelReasoningText` slices that many characters off the front of `snapshot.reasoningText`. Hard-coding the server's copy in the client would be the brittle way to reach the same place — a wording change on the server would resurrect the status line.
+
+**The second fact is that no reasoning duration is on the wire.** `ReasoningDelta` leaves `timestamp` at its default ([contract §4.2](streaming-contract.md#42-fields)) and the `durationSeconds` on `Finished` is the whole turn's, which the fold discards. The window is therefore measured from arrival times — which is what a reader is watching anyway:
+
+| | Event |
+|---|---|
+| Opens the window | The **model's** first `ReasoningDelta` — the second one of the turn |
+| Closes it | The first `TextDelta` or `ActivityStarted` after that, or `Finished` |
+
+Three consequences fall out of that shape:
+
+- **A turn whose only reasoning is the seed reports nothing and renders no region at all** — the same rule as an unreported token count (§8.5), and what makes US-503's third criterion true in practice rather than only for replayed history.
+- **Reasoning that resumes mid-answer neither restarts nor extends the window.** What the pill reports is how long the model thought *before* it started answering, and a model reasoning again has already answered.
+- **`Finished` closes an open window**, so a turn that reasoned and then produced nothing still reports its seconds rather than losing its only figure.
+
+The clock is a **parameter**, not something the reducer reads, which is what keeps it pure and lets a spec pin a turn's seconds without owning a fake clock. `TurnStore` passes `performance.now()` — deliberately not `Date.now()`, because this reading is one end of an elapsed measurement and a clock step between the two ends would render a negative duration. One reading per flush is enough: a ~16 ms batch is finer than a duration written to a tenth of a second.
 
 ## 5. Settling: how a turn ends
 
@@ -184,7 +226,7 @@ A message carries no id, no timestamp and no usage; US-1101 is the story that wo
 
 ### 7.5 Replayed history carries no activity timeline — permanently
 
-The stream carries tool, MCP, agent and reasoning activity live and transcribes **only the answer text** ([contract §6.2](streaming-contract.md#62-only-the-answer-is-transcribed)). So a replayed turn is answer text and nothing else: no activity cards, no durations, no usage. A turn taken in the current session keeps its full timeline until the screen is left, and loses it on reload by the same fact.
+The stream carries tool, MCP, agent and reasoning activity live and transcribes **only the answer text** ([contract §6.2](streaming-contract.md#62-only-the-answer-is-transcribed)). So a replayed turn is answer text and nothing else: no activity cards, no durations, no reasoning region (§8.6), no token footer (§8.5). A turn taken in the current session keeps all four until the screen is left, and loses them on reload by the same fact. Each is a structural absence rather than a check — `toHistoryEntries` writes an empty `reasoningText` and a null `reasoningSeconds` because there is nothing to write, and the replayed snapshot never folded a `Finished` to carry usage.
 
 This is recorded as an interim-behaviour row in the [build order](../prd/enterprise-ui-rebuild-build-order.md) with **nothing planned against it** — closing it would need a server-side turn record, which is a new backend enabler, not a client story. Anything a user must keep from a stopped or cut-off turn still goes through the stopped card's Copy (§6); nothing else preserves it.
 
@@ -228,10 +270,15 @@ Three details decide when it fires and what it says:
 
 - `aria-busy` rides the container for the length of a turn **and while the stored messages load**, so assistive tech treats the region as settling rather than announcing every re-render. The full streaming live-region treatment is US-1402's.
 - A **persistent** visually-hidden `role="status"` region announces abnormal endings only — stopped, failed, cut off. It exists from the first render because a live region created together with its content is not reliably announced, and it empties during every turn so a retry that cuts off *again* transitions the content and is announced a second time.
+- A **second** `role="status"` region carries US-603's copy confirmation, and is separate from the first on purpose: that one is emptied for the length of a turn, while a code block can be copied mid-turn. `Transcript` also carries the single delegated click listener behind every code block's Copy control; both belong to [Answer Rendering §3.5](../ui/answer-rendering.md#35-the-code-block-chrome-and-its-copy-control-us-603) and are not restated here.
 
-[`AssistantTurn`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts) renders the avatar column and, in arrival order, the turn's text blocks and activity cards — the render-time join of §4. The blinking caret belongs to the last node, and only when it is a text block. Text renders as **sanitized markdown** as of US-601, and the node still growing renders as two `<markdown>` instances — a stable head and a volatile tail (US-602). Neither the pipeline nor the split is restated here: see [Answer Rendering](../ui/answer-rendering.md). Two facts from it change how this screen behaves, though — the renderer writes its output a microtask *after* change detection returns, which is why US-606's scroll pinning is driven by a `ResizeObserver` rather than by these signals; and the caret is now a CSS pseudo-element on the rendered block, because `innerHTML` leaves no template position inside it for a span.
+An assistant turn renders top to bottom as: the reasoning region (§8.6), then the text blocks and activity cards in arrival order, then the message footer (§8.5).
 
-[`ActivityCard`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts) is frame `1f`: the activity's `displayName` as the label, the kind as a **separate** badge — the contract keeps them apart so no card ever reads "Calling Jira Cloud MCP" — the `source` subtitle verbatim (the "Atlassian · host" composition is the server's, arriving as one string), sub-status bullets, and a running ring / completed check / failed triangle with durations in mono (`3.1s`, absent until completion). No chevron and no expansion yet — that affordance arrives with US-504's usage strip. [`KindBadge`](../../enterprise-gpt-ui/src/app/shared/badge/kind-badge/kind-badge.ts) is pinned to exactly four labels, one per `ToolKind` arm — Function, MCP tool, Agent, and **Reasoning** for `Unknown`, the kind reasoning phases stream under (previously mislabelled "Tool"; US-501 completed the set).
+[`AssistantTurn`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts) renders the avatar beside all of that, and the middle of it is the render-time join of §4. The blinking caret belongs to the last node, and only when it is a text block. Text renders as **sanitized markdown** as of US-601, and the node still growing renders as two `<markdown>` instances — a stable head and a volatile tail (US-602). Neither the pipeline nor the split is restated here: see [Answer Rendering](../ui/answer-rendering.md). Two facts from it change how this screen behaves, though — the renderer writes its output a microtask *after* change detection returns, which is why US-606's scroll pinning is driven by a `ResizeObserver` rather than by these signals; and the caret is now a CSS pseudo-element on the rendered block, because `innerHTML` leaves no template position inside it for a span.
+
+Reasoning takes **no timeline node**: it is not a block of the answer and never interleaves with one, so it opens the turn rather than being placed by arrival order.
+
+[`ActivityCard`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts) is frame `1f`: the activity's `displayName` as the label, the kind as a **separate** badge — the contract keeps them apart so no card ever reads "Calling Jira Cloud MCP" — the `source` subtitle verbatim (the "Atlassian · host" composition is the server's, arriving as one string), sub-status bullets, and a running ring / completed check / failed triangle with durations in mono (`3.1s`, absent until completion). It now also nests the work it invoked (§8.4) and reveals what it cost behind a chevron (§8.5). [`KindBadge`](../../enterprise-gpt-ui/src/app/shared/badge/kind-badge/kind-badge.ts) is pinned to exactly four labels, one per `ToolKind` arm — Function, MCP tool, Agent, and **Reasoning** for `Unknown`, the kind reasoning phases stream under (previously mislabelled "Tool"; US-501 completed the set); its only US-502 change is that it reads its background from a `--kind-badge-bg` custom property, so a nested card can invert it against its own surface without a new input.
 
 [`TurnNoticeCard`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-notice-card.ts) carries every turn-edge notice, and now has four designed arms plus a fallback:
 
@@ -276,6 +323,52 @@ Three layers, each answering a different question, and they must not be collapse
 | May the interceptor replay this automatically? | `isTransientRetriable` — never for a 409, never for a problem-typed 503 |
 
 The card itself decides none of them, which is why the consent arm shows no action even though the store kept a retry snapshot.
+
+### 8.4 Nested activities, and one that failed (US-502, US-505)
+
+Both stories are **render-side only**. The vendored fold already hangs a child off the parent named by its `parentScopeId`, and already isolates a failure to the scope the `ActivityFailed` names — so `ActivityCard` walks `children` and recurses into itself (a standalone component is in scope of its own template and needs no entry in its own `imports`), and a failed child structurally cannot mark its parent. What US-502 changed is that this is now *observable*: the child is drawn inside its parent rather than beside it.
+
+**The filter is root membership, not `parentScopeId`.** `AssistantTurn` opens a top-level card only for a timeline node whose scope is a **root** of `snapshot.activities`. The obvious test — `node.parentScopeId !== undefined` — is wrong in both directions:
+
+- The fold **promotes** a child whose parent scope it has never seen to a root. That card carries a `parentScopeId` and has to stay visible; dropping it loses a whole tool call, where keeping it is at worst an unattached card.
+- It does the same for a child whose parent arrives *late*, for the same reason.
+
+Roots are **consumed from a per-`scopeId` FIFO** rather than looked up. The fold defaults a missing scope id to `''` rather than dropping the event, so two scope-less roots share a key and a plain lookup would render one of them twice. A single pointer walking `activities` in order would also fix that, but it rests on an ordering invariant that lives in the vendored contract: one mismatch stalls the pointer and drops every card after it, where the same mismatch costs a per-id queue exactly one card.
+
+Depth styling is **per-level CSS custom properties** (`--activity-rail`, `--activity-gap`, `--activity-glyph`, `--activity-name`, `--kind-badge-bg`), not descendant selectors. A nested card is a separate component instance, so its own declarations override anything it inherits, and every rule reads one name whatever depth it renders at. Three levels alternate surface, radius and glyph size; a fourth reuses the third's, because the design draws three and an agent tree nests arbitrarily. **The rail is 12 px at every level**, per US-502's literal criterion — the board draws the second at 10 px, and that 2 px is deliberately one rule rather than two. Below 768 px only the **outermost** rail insets (frame `1d`'s "one indent level"): the deeper ones keep their border, which is what says "inside", but stop compounding the ~33 px each costs, which on a 390 px viewport leaves a third-level card no room for its label.
+
+US-505 shipped one thing beyond what was already structural: the card's `visually-hidden` state line now carries the duration — **"Failed after 0.6s"**, not bare "Failed". Colour and glyph were the only channels for it, and "Failed" alone says nothing about whether the call timed out or refused immediately.
+
+> **Frame `1f`'s `--warn` failure-reason line is deliberately not built.** `ActivityFailed` carries `scopeId` and `durationSeconds` and nothing else, so there is no failure text on the wire and writing one would be the fabricated status line US-406 refuses. Recorded as an interim behaviour in the [build order](../prd/enterprise-ui-rebuild-build-order.md); closing it needs a backend enabler putting failure text on the event.
+
+### 8.5 What a turn cost (US-504)
+
+Two surfaces, one formatter — [`turn-usage.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-usage.ts), pinned to **`en-US`** rather than the ambient locale. The app ships one language, the design fixes the grouping separator, and a formatter that followed the host would render `1.842` on a German machine and make every spec depend on where it ran.
+
+| Surface | Renders | Where |
+|---|---|---|
+| The message footer (frames `1f`, `1g`) | `1,842 in · 512 out · 2,354 total`, JetBrains Mono | Below the answer, `AssistantTurn` |
+| The per-activity strip (frame `1f`) | `duration  3.1s`, behind the card's chevron | Inside `ActivityCard` |
+
+**Absence is the rule that matters.** A count the provider did not report is **omitted**; a reported `0` is a measurement and renders. Three "claims nothing" cases fall out structurally rather than from a check, and all three are pinned by specs: a stopped turn keeps only its text, a cut-off turn never folded `Finished`, and a replayed turn never had a stream (§7.5).
+
+Two honest gaps, both recorded as interim behaviours in the build order:
+
+- **The footer is always visible**, where frame `1g` annotates it as revealed on hover. A hover-only footer is unreachable by keyboard and touch until it holds something focusable, and that is **US-607**'s Copy control — which is also what the criterion means by "beside". The reveal arrives with it.
+- **The activity strip shows `duration` only.** No server populates `AssistantActivity.usage`: the contract carries `usage` on `Finished` alone and the vendored fold never writes the field. Rendering the duration there rather than gating the whole strip on tokens is what keeps the chevron a live affordance instead of dead markup, and it is what the frame draws — the expanded card shows the duration in the header *and* in the strip. The token columns arrive the moment something attributes them; the field is already in the type.
+
+A **running** activity has no chevron at all, because nothing has settled to show. Children are *not* behind the chevron — the frame draws them open, and hiding an agent's work behind a control is the opposite of what the timeline is for; the chevron reveals the cost strip alone.
+
+### 8.6 The reasoning region (US-503)
+
+[`ReasoningRegion`](../../enterprise-gpt-ui/src/app/features/chat/transcript/reasoning-region.ts) is frame `1f`'s pill: collapsed, a `--think-bg` pill carrying a right chevron, the label "Reasoning" and the measured duration in JetBrains Mono; expanded, the same tint as a card, a down chevron, and the summary in `--muted`.
+
+Four decisions are worth knowing before changing it:
+
+- **The seeded sentence is never rendered.** A turn whose only reasoning was the server's seed shows **no region at all** (§4.2). The store hands the component `modelReasoningText`, never `snapshot.reasoningText` — only the store knows how long the seed was.
+- **The ridgeline hands the gap over.** `showThinking` / `showLiveTurn` split on "is the model reasoning" (§2), so the region streams inside the live turn from the model's first delta rather than appearing whole at the first token — one component instance for the length of the turn.
+- **The text renders as plain text, not markdown.** It is a summary written for a reader, and a third `<markdown>` instance per turn would spend the streaming budget US-602 exists to protect. `pre-wrap` keeps the model's paragraph breaks, which are the only structure a reasoning summary has.
+- **Expansion is component-local state**, which is exactly "persists for the duration of the turn": the live turn's instance is stable while it streams, and the settled turn is a different instance whose default is collapsed again.
 
 ## 9. The composer and the empty state
 
@@ -327,7 +420,12 @@ EP-4's closing five added four seams to that:
 - **The `RETRYABLE_KINDS` table** is pinned in both directions, which is what keeps the consent card actionless and the busy card actionable.
 - **Dictation** substitutes `SPEECH_RECOGNITION` by provider override with the fake in [`@testing/speech`](../../enterprise-gpt-ui/src/testing/speech.ts) — the real interface exists in no test environment, so there is nothing else to drive it with.
 
-The epic closed with the suite at **961 specs**, all green, and `npm run lint`, `npm run format` and `npm run build` clean. The initial bundle is **unchanged** at 660.25 kB raw / 160.99 kB transfer (665 kB warn / 720 kB fail): everything here rides the lazy `chat` chunk, which grew 179.47 → 187.59 kB.
+EP-5's four added two more:
+
+- **The reasoning window** is framework-free, so [`reasoning-timing.spec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.spec.ts) runs in Node and drives the clock as an argument: the seed excluded from both the text and the measurement, an activity closing the window as well as a `TextDelta`, reasoning resuming mid-answer neither restarting nor extending it, `Finished` closing an open window, and a seed-only turn claiming nothing.
+- **The render side** is pinned in `transcript.spec.ts` — a child drawn inside its parent, a parent-less child kept at the top level, the three levels stepping their surface and rail, a failed child leaving its parent alone, the footer appearing only for a turn that folded `Finished`, the chevron absent while an activity runs, and the region present while reasoning streams but absent for a seed-only turn and for replayed history.
+
+The epic closed with the suite at **1010 specs across 83 files**, all green, and `npm run lint`, `npm run format` and `npm run build` clean. The initial bundle moves ~1 kB to **661.36 kB raw / 161.19 kB transfer** (665 kB warn / 720 kB fail), with `styles` at 63.19 kB — and that kilobyte is global CSS for US-603's code-block chrome, not this screen: every component and reducer these four stories added rides the lazy `chat` chunk, which grew 187.59 → **198.51 kB**.
 
 ## 11. Key files
 
@@ -335,13 +433,16 @@ The epic closed with the suite at **961 specs**, all green, and `npm run lint`, 
 |---|---|
 | Turn store — phases, transcript, settles, history replay | [`features/chat/turn-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/turn-store.ts) |
 | Arrival-order index | [`domain/stream/turn-timeline.ts`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts) |
+| Reasoning window — the seed's length and the elapsed clock | [`domain/stream/reasoning-timing.ts`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.ts) |
 | Replaying a stored answer, and the shared synthetic event | [`domain/stream/replayed-turn.ts`](../../enterprise-gpt-ui/src/app/domain/stream/replayed-turn.ts), [`domain/stream/stream-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/stream-codec.ts) |
 | Stored-message shape and roles | [`domain/api/conversation.ts`](../../enterprise-gpt-ui/src/app/domain/api/conversation.ts) |
 | Turn completion event | [`core/events/turn-events.ts`](../../enterprise-gpt-ui/src/app/core/events/turn-events.ts) |
 | Conversation detail, settings seed, silent name refresh | [`features/chat/conversation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/conversation-store.ts) |
 | Transcript container, live announcements | [`features/chat/transcript/transcript.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/transcript.ts) |
 | Assistant turn — the render-time join | [`features/chat/transcript/assistant-turn.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts) |
-| Activity card, kind badge | [`features/chat/transcript/activity-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts), [`shared/badge/kind-badge/kind-badge.ts`](../../enterprise-gpt-ui/src/app/shared/badge/kind-badge/kind-badge.ts) |
+| Activity card — nesting, depth styling, the cost chevron; kind badge | [`features/chat/transcript/activity-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts), [`shared/badge/kind-badge/kind-badge.ts`](../../enterprise-gpt-ui/src/app/shared/badge/kind-badge/kind-badge.ts) |
+| Reasoning region — frame `1f`'s pill and its expanded card | [`features/chat/transcript/reasoning-region.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/reasoning-region.ts) |
+| Token counts and durations — the one formatter for both surfaces | [`features/chat/transcript/turn-usage.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-usage.ts) |
 | Turn-edge notices | [`features/chat/transcript/turn-notice-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-notice-card.ts) |
 | Stopped card | [`features/chat/transcript/stopped-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/stopped-card.ts) |
 | Composer — morphing button, seeding, the amber note | [`features/chat/composer/composer.ts`](../../enterprise-gpt-ui/src/app/features/chat/composer/composer.ts) |
