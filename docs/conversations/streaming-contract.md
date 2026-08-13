@@ -120,7 +120,7 @@ for (;;) {
 
 `Connection` is deliberately absent: it is a hop-by-hop header Kestrel owns, and it is invalid under HTTP/2.
 
-All three are written **on the first frame, not up front**. Everything that can fail a turn — acquiring the conversation lock, reading the transcript, resolving the model, leasing the MCP servers — happens on the first move of the sequence, so setting the headers eagerly would put streaming headers on a `409` or a `404` and its JSON body. This is also why `TypedResults.ServerSentEvents`, the obvious .NET 10 answer, is not usable here: it commits the response before enumerating, so a client would receive `200 OK` and then discover the turn never started.
+All three are written **on the first frame, not up front**. Everything that can fail a turn — acquiring the conversation lock, reading the transcript, resolving the model, leasing the MCP servers — happens on the first move of the sequence, so setting the headers eagerly would put streaming headers on a `409` or a `404` and its JSON body. This is also why `TypedResults.ServerSentEvents`, the obvious .NET 10 answer, is not usable here: it commits the response before enumerating, so a client would receive `200 OK` and then discover the turn never started. The first frame is now the synthetic `Status` of §4.3, which the service yields after all of those checks and before the model's first token — the trade-off §3.3 records.
 
 A turn that produces nothing still gets the headers, so a reader always sees a well-formed empty stream rather than a bare `200` it cannot interpret.
 
@@ -153,9 +153,11 @@ The JSON comes from `AssistantUiJsonContext.Default.AssistantUiEvent`, the packa
 | `502` | `/problems/mcp-server-unavailable` | A selected MCP server could not be reached |
 | `503` | `/problems/provider-not-configured` | The model exists but this deployment has no chat client for its provider — an operator fixes it, not the caller |
 
+The line between "before" and "after" is the **synthetic opening pair** (§4.3). Everything in the table runs ahead of the first yield — the conversation lock, the conversation reads, first-turn naming, model resolution, and MCP validation, consent and tool acquisition — so those failures still arrive as ordinary problem JSON. The model's first token does not: the two synthetic frames commit the response to `text/event-stream` *before* the provider is called, so a provider that faults on its very first token — a bad deployment, an expired key, exhausted quota — now surfaces as the mid-stream truncation below instead of a problem response. That is the deliberate price of the opening pair: the client hears something during model latency, and first-token faults lose their problem body.
+
 **After** — there is no error surface left. The exception handlers short-circuit on `Response.HasStarted` rather than corrupting a stream that is already `200 OK` with half an answer in it, so a mid-stream failure reaches the client as **a body that simply stops**. A client cannot distinguish that from a network drop and should not try to; treat an ended body with no `Finished` event as an incomplete turn and say so in the UI.
 
-The turn is still recorded when this happens — see [usage §4](usage-and-favorites.md#4-what-happens-on-a-chat-turn).
+The turn is still recorded when this happens — see [usage §4](usage-and-favorites.md#4-what-happens-on-a-chat-turn). It is also recorded when a client disconnects on the opening pair itself: the synthetic yields sit inside the same `try`/`finally` that persists the turn's outcome, so a caller that heard only the first frames still counts as a turn.
 
 ## 4. The event contract
 
@@ -165,18 +167,20 @@ The turn is still recorded when this happens — see [usage §4](usage-and-favor
 
 | `kind` | Meaning | Carries |
 |---|---|---|
-| `Status` | A request-level status line, such as `"Reasoning…"` | `message` |
+| `Status` | A request-level status line, such as `"Reasoning…"`; the turn's first, `"Starting"`, is the server's own (§4.3) | `message` |
 | `ActivityStarted` | A tool, MCP call or agent began | `scopeId`, `parentScopeId`, `displayName`, `source`, `toolKind`, `depth` |
 | `ActivityProgress` | A sub-status reported from inside a running activity | `scopeId`, `message`, `progress`, `progressTotal` |
 | `ActivityCompleted` | That activity returned | `scopeId`, `durationSeconds` |
 | `ActivityFailed` | That activity threw | `scopeId`, `durationSeconds` |
 | `TextDelta` | A chunk of the assistant's answer | `text` |
-| `ReasoningDelta` | A chunk of the model's reasoning summary | `text` |
+| `ReasoningDelta` | A chunk of reasoning text — the turn's first is server-authored, the rest are the model's reasoning summary | `text` |
 | `Finished` | The turn ran to completion | `usage`, `durationSeconds` |
 
-Two of these deserve their own note.
+Three of these deserve their own note.
 
 **`ReasoningDelta` is display-only.** It is streamed so the user can see the model thinking, and it is never written to the Cosmos transcript: replaying a model's own reasoning back to it on the next turn is neither useful nor what providers expect. Only `TextDelta` is transcribed.
+
+**The first `ReasoningDelta` of every turn is server-authored.** The service seeds `"Reviewing the request and preparing a response.\n\n"` ahead of the model's first event (§4.3) — a deliberate contract deviation, requested by the product: the package documents `ReasoningDelta` as model-sourced text, and this one is not. Every turn therefore carries non-null reasoning text whatever model serves it, so a client can no longer infer "this model streams reasoning" from the field's presence alone. The trailing blank line is load-bearing — the reducer accumulates reasoning deltas verbatim, so it is what separates this sentence from a reasoning-capable model's own first delta.
 
 **`Finished` is not a terminator.** It arrives only when the turn ran to completion; a cancelled or faulted turn ends the body without it. End-of-body is the terminator, and `Finished` is the signal that the turn ended *well* — plus the only place a client gets the turn's total token usage.
 
@@ -207,6 +211,8 @@ Every field except `kind`, `depth` and `timestamp` is optional and **omitted ent
 A turn that calls one MCP tool and then answers, with the frames' blank-line separators elided:
 
 ```json
+{"kind":"Status","depth":0,"toolKind":"Unknown","message":"Starting","timestamp":"2026-08-08T10:14:01.874+00:00"}
+{"kind":"ReasoningDelta","depth":0,"toolKind":"Unknown","text":"Reviewing the request and preparing a response.\n\n"}
 {"kind":"ActivityStarted","scopeId":"s1","depth":1,"toolKind":"McpTool","displayName":"Weather","source":"Weather","timestamp":"2026-08-08T10:14:02.117+00:00"}
 {"kind":"ActivityProgress","scopeId":"s1","depth":2,"toolKind":"McpTool","message":"Fetching forecasts","progress":3,"progressTotal":7,"timestamp":"2026-08-08T10:14:03.402+00:00"}
 {"kind":"ActivityCompleted","scopeId":"s1","depth":1,"toolKind":"McpTool","durationSeconds":2.41,"timestamp":"2026-08-08T10:14:04.531+00:00"}
@@ -214,6 +220,8 @@ A turn that calls one MCP tool and then answers, with the frames' blank-line sep
 {"kind":"TextDelta","depth":0,"toolKind":"Unknown","text":"sunny."}
 {"kind":"Finished","depth":0,"toolKind":"Unknown","durationSeconds":5.02,"usage":{"inputTokens":812,"outputTokens":146,"totalTokens":958}}
 ```
+
+The first two frames are the server's own, and **every** turn opens with them — synthesized in `ConversationService.StreamConversationCoreAsync` as plain `AssistantUiEvent` yields, not through the middleware's `ChatProgressUpdate.CreateCustom(...)`. They sit after every failure point that can still answer with problem JSON and ahead of the model's first token (§3.3), so the client hears something during model latency. The `Status` carries a real timestamp; the `ReasoningDelta` leaves it at its default, per §4.2's rule for deltas, and its trailing blank line separates it from a model's own first reasoning delta (§4.1).
 
 Note what is *not* there: no prompt, no tool arguments, no tool results (§6.1).
 
@@ -255,11 +263,11 @@ The snapshot it produces is what a component binds to:
 
 | Property | Contents |
 |---|---|
-| `assistantStatus` | The current request-level status line |
+| `assistantStatus` | The current request-level status line — `"Starting"` from every turn's first frame (§4.3) |
 | `phase` | `Running`, `Completed` or `Failed` |
 | `activities` | Root activity cards, each with `subStatuses`, `children` and `usage` |
 | `text` | The answer so far |
-| `reasoningText` | The reasoning summary so far, when the model streams one |
+| `reasoningText` | The reasoning summary so far — never empty once a turn starts, since the server seeds it (§4.1, §4.3) |
 | `usage` | The turn's totals, once `Finished` arrives |
 
 ## 6. What the stream deliberately is not
@@ -300,14 +308,15 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 | Serialization | camelCase property names and string enum values (`"kind":"TextDelta"`), so the wire format matches the shipped TypeScript interface |
 | Activity events | an event carrying no text is still a well-formed frame — the payload's `kind` is what makes it renderable, not the presence of `text` |
 | Empty turns | a turn that yields nothing still sets the streaming headers |
+| Opening pair | every turn's first two events are the `Status` `"Starting"` (real timestamp) then the server-authored `ReasoningDelta` (default timestamp, trailing blank line), ahead of the first model event |
 | Activity production | a real tool run through a real `UseToolTracking()` → `UseFunctionInvocation()` pipeline emits `ActivityStarted` with the tool's name and kind, an `ActivityCompleted`, and `TextDelta`s alongside them |
 | Transcription | only the `TextDelta` text reaches the Cosmos transcript |
 
 ## 9. Known limits
 
 - **No resumption, no `Last-Event-ID`.** A dropped connection loses the turn (§6.3).
-- **No mid-stream error signal.** A turn that faults after the first frame ends the body with no explanation (§3.3). A terminal `error` event kind would be a contract addition, not a fix, and would still not help a connection that dies.
-- **`Status` events are the middleware's own.** This application emits no request-level statuses of its own, so a client sees nothing between accepting the request and the first activity or text. `ChatProgressUpdate.CreateCustom(...)` is how that would change.
+- **No mid-stream error signal.** A turn that faults after the first frame ends the body with no explanation (§3.3) — and since the synthetic opening pair, that includes a provider faulting on its very first token. A terminal `error` event kind would be a contract addition, not a fix, and would still not help a connection that dies.
+- **Beyond the opening pair, `Status` events are the middleware's own.** The two frames every turn opens with (§4.3) are the only events this application authors itself — yielded directly as `AssistantUiEvent`s in the service, not through the middleware. A mid-turn request-level status would still come from `ChatProgressUpdate.CreateCustom(...)`.
 - **The activity tree is not persisted for replay.** It is reconstructible from SQL but not exposed over HTTP (§6.2).
 - **`AssistantUiEvent` is a package type, not ours.** Its JSON shape is pinned by `Andes.Extensions.AI.UI` 0.5.0; a major upgrade of that package is an API change for every client of this endpoint, and should be treated as one.
 

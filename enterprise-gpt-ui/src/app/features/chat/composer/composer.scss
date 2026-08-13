@@ -67,7 +67,9 @@
   flex: 1;
 }
 
-.composer__send {
+// The one action button; `composer__send` / `composer__stop` are its states,
+// toggled on a persistent element so keyboard focus survives the morph.
+.composer__action {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -81,4 +83,38 @@
     font-size: 14px;
     transform: translate(-1px, 1px);
   }
+}
+
+// Frames 1b/2g: send's in-flight state — a transparent 38px circle with a 2px
+// --brand ring around a drawn 11px square, not an icon glyph. The doubled
+// selectors outweigh `.btn`'s own hover/active styling.
+.composer__action.composer__stop {
+  border: 2px solid var(--brand);
+  background: transparent;
+
+  &:hover,
+  &:active {
+    border-color: var(--brand);
+    background: transparent;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+}
+
+.composer__stop-glyph {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2.5px;
+  background: var(--brand);
+}
+
+// US-407: the auxiliary controls dim while a turn runs. Nothing carries this
+// class yet — attach (US-801), mic (US-413), and download (US-1502) adopt it
+// when they land, and inherit the dimming for free.
+.composer--streaming .composer__aux {
+  opacity: 0.4;
 }

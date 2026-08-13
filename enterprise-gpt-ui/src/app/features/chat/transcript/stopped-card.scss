@@ -1,0 +1,55 @@
+:host {
+  display: block;
+}
+
+// Frame 1h: dashed and inset — visually detached from the transcript proper.
+.stopped {
+  margin-left: 18px;
+  padding: 12px 14px;
+  border: 1.5px dashed var(--bs-border-color);
+  border-radius: 12px;
+}
+
+.stopped__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stopped__icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.stopped__title {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stopped__text {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 13.5px;
+  white-space: pre-wrap;
+}
+
+.stopped__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stopped__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 12.5px;
+
+  app-icon {
+    font-size: 12px;
+  }
+}

@@ -22,22 +22,34 @@ import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ChatEmptyState } from './chat-empty-state';
 import { Composer } from './composer/composer';
 import { ConversationStore } from './conversation-store';
+import { Transcript } from './transcript/transcript';
+import { TurnStore } from './turn-store';
 
 /**
  * The chat screen, served for both `/chat` and `/chat/{conversationId}` by the single
  * `chatMatcher` route — so moving between them changes a parameter rather than
- * remounting the page.
+ * remounting the page, which is what lets US-401 create a conversation mid-turn
+ * without losing the stream.
  *
- * The transcript and the composer arrive with EP-4 and EP-6. Until then an open
- * conversation shows its 52px header (frame `1b`) over the empty state; the header is
- * **absent** rather than empty when no conversation is open, which is frame `1a`.
- * Its favourite star and kebab belong to US-308.
+ * An open conversation shows its 52px header (frame `1b`); the header is **absent**
+ * rather than empty when no conversation is open, which is frame `1a`. The body is the
+ * transcript once any turn state exists, and the empty state otherwise.
  */
 @Component({
   selector: 'app-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ChatEmptyState, Composer, ErrorPanel, Icon, Menu, MenuItem, MenuSeparator, Skeleton],
-  providers: [ConversationStore],
+  imports: [
+    ChatEmptyState,
+    Composer,
+    ErrorPanel,
+    Icon,
+    Menu,
+    MenuItem,
+    MenuSeparator,
+    Skeleton,
+    Transcript,
+  ],
+  providers: [ConversationStore, TurnStore],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
@@ -51,6 +63,7 @@ export class Chat {
 
   protected readonly conversation = inject(ConversationStore);
   protected readonly actions = inject(ConversationActionsStore);
+  protected readonly turn = inject(TurnStore);
 
   /**
    * A 404 here means the conversation does not exist *or* belongs to someone else, and
@@ -63,6 +76,10 @@ export class Chat {
     // requires: it binds the subscription to this component rather than to the root
     // injector, where it would outlive the screen.
     this.conversation.open(this.conversationId);
+    // The turn store follows the same input: a conversation change aborts and
+    // clears the session turn state (US-407), while the id US-401's own create
+    // already bound passes through as a no-op.
+    this.turn.bindRoute(this.conversationId);
 
     const router = inject(Router);
     const document = inject(DOCUMENT);

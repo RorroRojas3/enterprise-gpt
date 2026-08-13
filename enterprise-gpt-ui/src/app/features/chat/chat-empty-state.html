@@ -3,6 +3,15 @@
 
   @if (asPageHeading()) {
     <h1 class="chat-empty__prompt font-display">How can I help you today?</h1>
+
+    <div class="chat-empty__chips">
+      @for (chip of chips; track chip.label) {
+        <button type="button" class="chat-empty__chip" (click)="suggested.emit(chip.label)">
+          <app-icon [name]="chip.icon" />
+          {{ chip.label }}
+        </button>
+      }
+    </div>
   } @else {
     <p class="chat-empty__prompt font-display">How can I help you today?</p>
   }

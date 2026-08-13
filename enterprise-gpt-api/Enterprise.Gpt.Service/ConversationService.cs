@@ -114,6 +114,13 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
+        // The synthetic pair every turn's stream opens with, ahead of the first model event.
+        // The reasoning text ends with a blank line because the package reducer accumulates
+        // reasoning deltas verbatim: without the separator, a reasoning-capable model's first
+        // real delta would concatenate run-on with this sentence.
+        private const string StartingStatusMessage = "Starting";
+        private const string PreparingReasoningText = "Reviewing the request and preparing a response.\n\n";
+
         /// <inheritdoc />
         public async Task<ConversationDetailDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default)
         {
@@ -669,6 +676,32 @@ namespace Enterprise.Gpt.Service
                 // cannot enclose a yield return, so the outcome is classified from a flag.
                 try
                 {
+                    // Synthesized ahead of the model call, after every failure point that can
+                    // still answer with problem JSON — the lock, the conversation reads, naming,
+                    // model resolution, and tool acquisition; the enumerator above is lazy, so a
+                    // synchronous construction failure also stays pre-stream. The first yield
+                    // commits the response to text/event-stream, which is a deliberate trade-off:
+                    // a provider that faults on its very first token now surfaces as a truncated
+                    // stream rather than a problem response, in exchange for the client hearing
+                    // something before model latency. Inside the try, so a client that
+                    // disconnects on these frames still reaches the finally that records the turn.
+                    yield return new AssistantUiEvent
+                    {
+                        Kind = AssistantUiEventKind.Status,
+                        Message = StartingStatusMessage,
+                        Timestamp = DateTimeOffset.UtcNow
+                    };
+
+                    // A deliberate contract deviation, requested by the product: the package
+                    // documents ReasoningDelta as model-sourced text, and this seeds it
+                    // server-side, so every turn reports reasoning whatever the model streams.
+                    // Timestamp stays at its default, as the contract prescribes for deltas.
+                    yield return new AssistantUiEvent
+                    {
+                        Kind = AssistantUiEventKind.ReasoningDelta,
+                        Text = PreparingReasoningText
+                    };
+
                     while (true)
                     {
                         bool moved;

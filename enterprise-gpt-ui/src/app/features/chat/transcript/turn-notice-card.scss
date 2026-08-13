@@ -1,0 +1,79 @@
+:host {
+  display: block;
+}
+
+// Frame 1h: the plain-surface card; `--warn` swaps in the warning panel skin.
+.notice {
+  padding: 12px 14px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  background: var(--surface);
+
+  &--warn {
+    border-color: var(--warn-border);
+    background: var(--warn-bg);
+  }
+}
+
+.notice__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notice__icon {
+  flex: 0 0 auto;
+  color: var(--warn);
+  font-size: 14px;
+
+  &--fail {
+    color: var(--fail);
+  }
+}
+
+.notice__title {
+  font-size: 13px;
+  font-weight: 600;
+
+  &--warn {
+    color: var(--warn);
+  }
+
+  &--fail {
+    color: var(--fail);
+  }
+
+  &--body {
+    color: var(--bs-body-color);
+    font-weight: 400;
+  }
+}
+
+.notice__body {
+  margin: 6px 0 0 24px;
+  color: var(--bs-body-color);
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.notice__trace {
+  margin: 4px 0 0 24px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.notice__actions {
+  margin: 10px 0 0 24px;
+}
+
+.notice__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 12.5px;
+
+  app-icon {
+    font-size: 12px;
+  }
+}
