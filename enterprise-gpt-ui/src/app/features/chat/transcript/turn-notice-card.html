@@ -1,0 +1,38 @@
+<!-- Not a live region: the Transcript's persistent status region announces
+     abnormal endings, because a region created with its content is unreliable. -->
+<div class="notice" [class.notice--warn]="view().tone === 'warn'">
+  <div class="notice__header">
+    <app-icon
+      class="notice__icon"
+      [class.notice__icon--fail]="view().titleTone === 'fail'"
+      [name]="view().icon"
+    />
+    <span
+      class="notice__title"
+      [class.notice__title--warn]="view().titleTone === 'warn'"
+      [class.notice__title--fail]="view().titleTone === 'fail'"
+      [class.notice__title--body]="view().titleTone === 'body'"
+      >{{ view().title }}</span
+    >
+  </div>
+
+  @if (view().body; as body) {
+    <p class="notice__body">{{ body }}</p>
+  }
+  @if (view().trace; as trace) {
+    <p class="notice__trace font-mono">{{ trace }}</p>
+  }
+
+  @if (retryable()) {
+    <div class="notice__actions">
+      <button
+        type="button"
+        class="btn btn-outline-secondary btn-sm notice__retry"
+        (click)="retried.emit()"
+      >
+        <app-icon name="bi-arrow-clockwise" />
+        Retry
+      </button>
+    </div>
+  }
+</div>

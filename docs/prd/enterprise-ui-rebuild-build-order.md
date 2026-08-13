@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 24 / 94 done.** Current position: P3, `US-401`.
+**Progress: 28 / 94 done.** Current position: P3, `US-601` — the ⛔ bundle-budget gate below comes due *before* this story starts.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -57,10 +57,10 @@ US-302 leads the phase on two counts: US-303, US-304, US-306, and US-308 all han
 | 22 | US-405 `[enabler]` Stream over an abortable fetch that reads errors first | US-103, US-404 | P0 | ✅ 2026-08-12 |
 | 23 | US-402 Choose the model for a turn | US-202 | P0 | ✅ 2026-08-12 — send ships inert until US-401 |
 | 24 | US-403 Select MCP servers, and be stopped from selecting them where they cannot work | US-402 | P0 | ✅ 2026-08-12 — ⚠ two deviations, see below |
-| 25 | US-401 Send a first prompt and have the conversation created around it | US-303, US-405 | P0 | |
-| 26 | US-406 Watch the answer arrive | US-405, US-104 | P0 | |
-| 27 | US-407 Stop a turn and keep what it produced | US-406 | P0 | |
-| 28 | US-501 See what the assistant is doing, in the order it happened | US-404, US-406 | P0 | |
+| 25 | US-401 Send a first prompt and have the conversation created around it | US-303, US-405 | P0 | ✅ 2026-08-12 — ⚠ URL via `router.navigateByUrl` + `replaceUrl`, a documented deviation; chips from US-303 ship here |
+| 26 | US-406 Watch the answer arrive | US-405, US-104 | P0 | ✅ 2026-08-12 — also retires US-403's tool-server-unavailable panel |
+| 27 | US-407 Stop a turn and keep what it produced | US-406 | P0 | ✅ 2026-08-12 |
+| 28 | US-501 See what the assistant is doing, in the order it happened | US-404, US-406 | P0 | ✅ 2026-08-12 — flat cards; US-502 nests them |
 | 29 | US-601 Render model output as markdown that cannot execute | US-108 | P0 | ⛔ see gate |
 | 30 | US-602 Read a streaming answer without the page slowing down | US-601, US-406 | P0 | |
 | 31 | US-606 Stay with the latest message, or stay where I am reading | US-406 | P0 | |
@@ -177,8 +177,8 @@ Each of these ships deliberately incomplete and is closed later. Kept here so no
 | --- | --- | --- |
 | Header star and two kebab items absent | US-308 (P2) | US-305 (P4), US-307 (P5) |
 | Tools rows show the server name without frame `2c`'s mono key — `McpDto` carries no key field | US-403 (P3) | a backend enabler adding a key, if ever prioritized |
-| Tool-server-unavailable panel (US-403 criterion 4) absent — the stream it reacts to cannot be sent yet | US-403 (P3) | US-406/US-407, with the turn-edge-state card family |
-| Composer send button disabled-but-unwired | US-402 (P3) | US-401 (P3, next) |
+| 409-busy and MCP-consent errors render the generic turn-error notice, not their designed `1h` panels | US-406/407 (P3) | US-408, US-412 (P4) |
+| `composer--streaming` dims `.composer__aux`, which no control carries yet | US-407 (P3) | US-801, US-413, US-1502 adopt the class as they land |
 | Chat header does not collapse into frame `1d`'s 54px mobile navbar below 768px | US-308 (P2) | US-1403 (P7) |
 | Upload gating verified against a test host, not the composer | US-204 (P2) | US-801 (P5) |
 | MCP consent message without the server's consent scope | US-412 (P4) | US-411 (P8) |

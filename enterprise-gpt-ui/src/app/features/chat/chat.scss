@@ -46,6 +46,17 @@
   padding: 24px;
 }
 
+// The transcript mirrors the composer's gutters below, so the answer column
+// and the box it was typed into share the same 820px edge.
+.chat__transcript {
+  padding: 0 22px;
+
+  app-transcript {
+    max-width: 820px;
+    margin-inline: auto;
+  }
+}
+
 // The conversation column's width cap. US-406's transcript aligns to the same
 // 820px, so the answer and the box it was typed into share an edge.
 .chat__composer {
