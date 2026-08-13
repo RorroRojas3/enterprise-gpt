@@ -309,6 +309,13 @@ builder.Services.AddSingleton<IPromptEstimator, PromptEstimator>();
 // inside is what stays per call.
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 
+// Context-window budgeting. Enabled is the back-out: turning it off restores unbounded replay
+// without a deployment, which is what keeps a mis-tuned estimator a configuration change.
+builder.Services.AddOptions<ContextBudgetOptions>()
+    .Bind(builder.Configuration.GetSection(ContextBudgetOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IContextBudgetCalculator, ContextBudgetCalculator>();
+
 // AI Embedding Generators
 var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;
 IEmbeddingGenerator<string, Embedding<float>> ollamaGenerator =

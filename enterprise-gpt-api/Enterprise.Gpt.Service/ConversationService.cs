@@ -4,6 +4,7 @@ using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
@@ -19,6 +20,7 @@ using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
+using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 
@@ -116,6 +118,9 @@ namespace Enterprise.Gpt.Service
         IAzureCosmosService cosmosService,
         ITokenEstimatorResolver tokenEstimatorResolver,
         IMarkdownRenderer markdownRenderer,
+        IPromptEstimator promptEstimator,
+        IContextBudgetCalculator contextBudgetCalculator,
+        IOptions<ContextBudgetOptions> contextBudgetOptions,
         IValidator<CreateConversationActionDto> createChatValidator,
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
@@ -130,6 +135,9 @@ namespace Enterprise.Gpt.Service
         private readonly IConversationLockService _conversationLockService = conversationLockService;
         private readonly ITokenEstimatorResolver _tokenEstimatorResolver = tokenEstimatorResolver;
         private readonly IMarkdownRenderer _markdownRenderer = markdownRenderer;
+        private readonly IPromptEstimator _promptEstimator = promptEstimator;
+        private readonly IContextBudgetCalculator _contextBudgetCalculator = contextBudgetCalculator;
+        private readonly IOptions<ContextBudgetOptions> _contextBudgetOptions = contextBudgetOptions;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
         private readonly IValidator<CreateConversationActionDto> _createChatValidator = createChatValidator;
@@ -676,11 +684,6 @@ namespace Enterprise.Gpt.Service
 
             var transcript = await ReadTranscriptAsync(id, userId, cancellationToken);
 
-            var conversations = new List<ChatMessage>(transcript.Select(x => new ChatMessage(MappingService.MapToChatRole(MappingService.MapToChatRoles(x.Role)), x.Content)))
-            {
-                new(ChatRole.User, request.Prompt)
-            };
-
             // Read per turn rather than snapshotted into the transcript at creation time: editing a
             // project's instructions has to affect the conversations already in it, and moving a
             // conversation between projects has to swap which instructions apply. Carried on the
@@ -691,6 +694,12 @@ namespace Enterprise.Gpt.Service
             var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
             var chatClient = _chatClientResolver.Resolve(model.ProviderId);
             var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
+
+            // Trimmed after the options exist, because the overhead term depends on how many tools
+            // they attach and on the instructions they carry — both of which cost prompt tokens
+            // that belong to no message.
+            var (conversations, estimatedPromptTokens) = BuildReplay(model, transcript, request.Prompt, chatOptions);
+
             StringBuilder sb = new();
             var completed = false;
 
@@ -1112,6 +1121,78 @@ namespace Enterprise.Gpt.Service
 
                 return WebUtility.HtmlEncode(content);
             }
+        }
+
+        /// <summary>
+        /// Builds the message list sent to the model, trimmed to fit its context window.
+        /// </summary>
+        /// <param name="model">The model that will answer the turn.</param>
+        /// <param name="transcript">Every stored message, oldest first.</param>
+        /// <param name="prompt">The question being asked.</param>
+        /// <param name="chatOptions">The turn's options, whose tools and instructions cost prompt tokens.</param>
+        /// <returns>The messages to send and what they were estimated to cost.</returns>
+        /// <exception cref="ValidationException">
+        /// Thrown when the standing instructions and the current prompt alone exceed the model's
+        /// window, since no amount of trimming can make that turn sendable.
+        /// </exception>
+        /// <remarks>
+        /// Decides what is sent, never what is stored: the transcript keeps every message whatever
+        /// this drops.
+        /// </remarks>
+        private (List<ChatMessage> Messages, long? EstimatedPromptTokens) BuildReplay(
+            ModelDto model,
+            List<CosmosConversationMessage> transcript,
+            string prompt,
+            ChatOptions chatOptions)
+        {
+            var roles = transcript.Select(x => MappingService.MapToChatRoles(x.Role)).ToList();
+            var contents = transcript.Select(x => x.Content).ToList();
+            roles.Add(ChatRoles.User);
+            contents.Add(prompt);
+
+            List<ChatMessage> ToChatMessages(IEnumerable<int> positions) =>
+                [.. positions.Select(position => new ChatMessage(MappingService.MapToChatRole(roles[position]), contents[position]))];
+
+            if (!_contextBudgetOptions.Value.Enabled)
+            {
+                // The back-out: unbounded replay, exactly as it behaved before budgeting existed.
+                return (ToChatMessages(Enumerable.Range(0, contents.Count)), null);
+            }
+
+            var candidates = transcript
+                .Select(x => ((string? Content, long StoredTokens))(x.Content, x.Tokens))
+                .Append((prompt, 0L))
+                .ToList();
+
+            var perMessage = _promptEstimator.EstimateMessages(model, candidates);
+            var overhead = _promptEstimator.EstimateOverhead(model, chatOptions.Tools?.Count ?? 0, chatOptions.Instructions, candidates.Count);
+
+            List<BudgetMessage> budgetMessages = [.. perMessage.Select((tokens, position) => new BudgetMessage(position, roles[position], tokens))];
+            var result = _contextBudgetCalculator.Apply(model, budgetMessages, overhead);
+
+            if (result.ExceedsBudget)
+            {
+                throw new ValidationException(
+                [
+                    new ValidationFailure(
+                        nameof(CreateConversationStreamActionDto.Prompt),
+                        $"This prompt does not fit the selected model's context window of {model.ContextWindowSize:F0} tokens. Shorten it or choose a model with a larger window.")
+                ]);
+            }
+
+            if (result.DroppedCount > 0)
+            {
+                _logger.LogInformation(
+                    "Trimmed {DroppedCount} messages holding {DroppedTokens} tokens from the replay for model {DeploymentName} to fit a budget of {Budget}.",
+                    result.DroppedCount,
+                    result.DroppedTokens,
+                    model.DeploymentName,
+                    result.Budget);
+            }
+
+            var keptTokens = result.Kept.Sum(message => message.Tokens);
+
+            return (ToChatMessages(result.Kept.Select(message => message.Index)), keptTokens + overhead);
         }
 
         /// <summary>
