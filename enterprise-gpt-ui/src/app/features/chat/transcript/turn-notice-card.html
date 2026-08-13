@@ -1,6 +1,10 @@
 <!-- Not a live region: the Transcript's persistent status region announces
      abnormal endings, because a region created with its content is unreliable. -->
-<div class="notice" [class.notice--warn]="view().tone === 'warn'">
+<div
+  class="notice"
+  [class.notice--warn]="view().tone === 'warn'"
+  [class.notice--row]="view().layout === 'row'"
+>
   <div class="notice__header">
     <app-icon
       class="notice__icon"
@@ -26,11 +30,14 @@
   @if (retryable()) {
     <div class="notice__actions">
       <button
+        #retry
         type="button"
         class="btn btn-outline-secondary btn-sm notice__retry"
         (click)="retried.emit()"
       >
-        <app-icon name="bi-arrow-clockwise" />
+        @if (view().layout === 'stack') {
+          <app-icon name="bi-arrow-clockwise" />
+        }
         Retry
       </button>
     </div>

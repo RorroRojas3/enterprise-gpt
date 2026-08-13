@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { describe, expect, it } from 'vitest';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES, TRACE_ID } from '@testing/problem-fixtures';
-import { shouldNotify, traceLine, userMessage } from './error-message';
+import { canRetry, shouldNotify, traceLine, userMessage } from './error-message';
 import { toAppError } from './to-app-error';
 
 function errorFrom(body: unknown, status: number) {
@@ -29,10 +29,14 @@ describe('traceLine', () => {
 });
 
 describe('userMessage', () => {
-  it('names the MCP server that needs authorization', () => {
-    expect(userMessage(errorFrom(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403))).toContain(
-      'Weather',
-    );
+  it('names the MCP server that needs authorization, and who can grant it', () => {
+    const message = userMessage(errorFrom(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403));
+
+    expect(message).toContain('Weather');
+    // US-412: this is what the transcript's status region announces, and it
+    // must not offer the user an action they have no way to take.
+    expect(message).toContain('administrator');
+    expect(message).not.toContain('your authorization');
   });
 
   it('names the MCP server that could not be reached', () => {
@@ -95,4 +99,31 @@ describe('shouldNotify', () => {
   it('notifies for a transport failure', () => {
     expect(shouldNotify(toAppError(new TypeError('Failed to fetch')))).toBe(true);
   });
+});
+
+describe('canRetry', () => {
+  it.each([
+    // The whole point of the 409, and what US-408's panel offers.
+    ['conversation-busy', PROBLEM_FIXTURES.conversationBusy, 409],
+    ['mcp-server-unavailable', PROBLEM_FIXTURES.mcpServerUnavailable, 502],
+    ['a server error', FRAMEWORK_PROBLEM_FIXTURES.serverError, 500],
+  ])('offers Retry for %s, which a second attempt could get past', (_label, body, status) => {
+    expect(canRetry(errorFrom(body, status))).toBe(true);
+  });
+
+  it.each([
+    // US-412: consent happens elsewhere, so the same call cannot supply it —
+    // this is what keeps the consent card from growing a dead button.
+    ['mcp-authorization-required', PROBLEM_FIXTURES.mcpAuthorizationRequired, 403],
+    ['forbidden', PROBLEM_FIXTURES.forbidden, 403],
+    ['permission-required', PROBLEM_FIXTURES.permissionRequired, 403],
+    ['resource-not-found', PROBLEM_FIXTURES.resourceNotFound, 404],
+    ['validation-error', PROBLEM_FIXTURES.validationError, 400],
+    ['provider-not-configured', PROBLEM_FIXTURES.providerNotConfigured, 503],
+  ])(
+    'withholds Retry for %s, which answers the same however often it is asked',
+    (_label, body, status) => {
+      expect(canRetry(errorFrom(body, status))).toBe(false);
+    },
+  );
 });

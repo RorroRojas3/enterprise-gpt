@@ -36,12 +36,21 @@ interface TurnSettingsState {
   readonly selectedMcpServerIds: readonly string[];
   /** The model whose selection cleared a non-empty MCP set (frame `2d`); null = no warning. */
   readonly mcpClearedByModelId: string | null;
+  /**
+   * The model id a reopened conversation asked for (US-410), remembered
+   * separately from {@link selectedModelId} so a deactivated one can be
+   * reported rather than silently absorbed by the fallback to the default.
+   * Null once the user picks a model themselves — from then on the selection
+   * is theirs and there is nothing to explain.
+   */
+  readonly restoredModelId: string | null;
 }
 
 const initialState: TurnSettingsState = {
   selectedModelId: null,
   selectedMcpServerIds: [],
   mcpClearedByModelId: null,
+  restoredModelId: null,
 };
 
 /**
@@ -127,6 +136,25 @@ export const TurnSettingsStore = signalStore(
       selectedIdSet: computed(() => new Set(store.selectedMcpServerIds())),
 
       /**
+       * The conversation asked for a model this deployment no longer offers,
+       * so the composer is on the default instead (US-410).
+       *
+       * Gated on the catalog having actually resolved: while it is pending —
+       * which is every deep link, since the detail request and the catalog
+       * load race — an empty `models()` would make every restored model look
+       * deactivated and flash a warning that then withdraws itself.
+       */
+      restoredModelUnavailable: computed(() => {
+        const id = store.restoredModelId();
+
+        return (
+          id !== null &&
+          store._models.isFulfilled() &&
+          !store._models.models().some((model) => model.id === id)
+        );
+      }),
+
+      /**
        * Null while no model resolves (catalog pending, failed, or empty) —
        * the send control disables on null rather than sending without a
        * `modelId` (frame `2j`: the app never sends blind).
@@ -154,6 +182,9 @@ export const TurnSettingsStore = signalStore(
         selectedModelId: modelId,
         selectedMcpServerIds: clears ? [] : store.selectedMcpServerIds(),
         mcpClearedByModelId: clears ? modelId : null,
+        // The user has answered the "your model is gone" warning by choosing
+        // one; keeping it would leave a notice about a decision already made.
+        restoredModelId: null,
       });
     },
 
@@ -177,6 +208,12 @@ export const TurnSettingsStore = signalStore(
      * and servers it last used. `modelId: null` means follow the default.
      * Deliberately unvalidated — the joins absorb ids the catalogs no longer
      * carry, which is exactly the deep-link-before-catalog-loads case.
+     *
+     * `restoredModelId` is what turns that silent absorption into a statement
+     * when the id is gone for good rather than merely not loaded yet. The
+     * stopped card's Retry (US-407) passes a model the user just used, so its
+     * seeding sets the same field harmlessly: a live model never reports as
+     * unavailable.
      */
     applyConversationSettings(settings: {
       modelId: string | null;
@@ -186,7 +223,19 @@ export const TurnSettingsStore = signalStore(
         selectedModelId: settings.modelId,
         selectedMcpServerIds: [...settings.mcpServerIds],
         mcpClearedByModelId: null,
+        restoredModelId: settings.modelId,
       });
+    },
+
+    /**
+     * Forgets which conversation's model was restored, without touching the
+     * selection itself — that persists across conversations for the session
+     * (US-402). Called when the chat screen closes its conversation: the
+     * warning explains a *resumed* selection, and there is nothing resumed on
+     * the empty screen.
+     */
+    clearRestoredModel(): void {
+      patchState(store, { restoredModelId: null });
     },
   })),
   withResetOnSignOut(),

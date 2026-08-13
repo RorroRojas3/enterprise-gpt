@@ -154,6 +154,11 @@ describe('transcript pinning (US-606)', () => {
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
       .flush(conversationDetailFixture({ ...conversation }));
+    // A conversation with nothing said in it yet (US-410): the empty state is
+    // what a reader sees, which is the swap this spec is about.
+    backend
+      .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
+      .flush({ id: conversation.id, name: conversation.name, messages: [] });
     await settle();
 
     await loadModels();
@@ -268,6 +273,11 @@ describe('transcript pinning (US-606)', () => {
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
       .flush(conversationDetailFixture({ ...conversation }));
+    // A conversation with nothing said in it yet (US-410): the empty state is
+    // what a reader sees, which is the swap this spec is about.
+    backend
+      .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
+      .flush({ id: conversation.id, name: conversation.name, messages: [] });
     await settle();
 
     const before = sentinel();

@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 32 / 94 done.** Current position: P4, `US-408` — P3 is complete, and US-305 was taken early out of P4 alongside it.
+**Progress: 37 / 94 done.** Current position: P4, `US-502` — EP-4 is complete; EP-5's nesting and EP-6's code-block stories are what remain of the phase.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -76,11 +76,11 @@ Also fixed here, per the risk table: the coalescing and head/tail split in US-40
 | Order | Story | Depends on | Pri | Status |
 | --- | --- | --- | --- | --- |
 | 32 | US-305 Favorite a conversation | US-302 | P1 | ✅ 2026-08-13 — taken early, with P3's rendering stories; retires US-308's header star |
-| 33 | US-408 Recover when the conversation is already busy | US-405 | P1 | |
-| 34 | US-409 See the name the server gave my conversation | US-406, US-302 | P1 | |
-| 35 | US-410 Resume a conversation with the settings it last used | US-402, US-403 | P1 | |
-| 36 | US-412 Understand an MCP consent requirement | US-403, US-103 | P1 | interim until US-411 |
-| 37 | US-413 Dictate a prompt | US-401 | P2 | |
+| 33 | US-408 Recover when the conversation is already busy | US-405 | P1 | ✅ 2026-08-13 — frame `1h`'s row variant; a focus defect on repeated Retry fixed with it |
+| 34 | US-409 See the name the server gave my conversation | US-406, US-302 | P1 | ✅ 2026-08-13 — taken after US-410, see below |
+| 35 | US-410 Resume a conversation with the settings it last used | US-402, US-403 | P1 | ✅ 2026-08-13 — ⚠ re-sized S → M: history replay shipped here |
+| 36 | US-412 Understand an MCP consent requirement | US-403, US-103 | P1 | ✅ 2026-08-13 — interim variant; consent action still waits on US-411 |
+| 37 | US-413 Dictate a prompt | US-401 | P2 | ✅ 2026-08-13 |
 | 38 | US-502 See nested work inside the activity that caused it | US-501 | P1 | |
 | 39 | US-503 Read the model's reasoning as it streams | US-501 | P1 | |
 | 40 | US-504 See what a turn cost | US-501 | P1 | |
@@ -91,6 +91,10 @@ Also fixed here, per the risk table: the coalescing and head/tail split in US-40
 | 45 | US-607 Copy a prompt or a response | US-601 | P1 | |
 
 US-305 was pulled forward and landed with P3, which is what unblocked the header star deferred out of US-308; the rest of the phase is untouched.
+
+**EP-4 completed 2026-08-13, in two lanes rather than the numbered order.** US-408 and US-412 are two variants of one component and were taken together; US-410 preceded US-409 because both extend `TurnStore` and `ConversationStore`, and US-409's "was this the conversation's first turn" reads cleanest once replayed history exists to answer it. US-413 touches only the composer and was independent of all four.
+
+⚠ **US-410 was an S that turned out to be an M.** Its third criterion is about a *refetched* transcript, and nothing in the client had ever fetched one — reopening a conversation showed a blank screen. History replay shipped inside the story rather than becoming a new one, agreed with the product owner before implementation.
 
 ## P5 — Library, files, projects
 
@@ -178,11 +182,12 @@ Each of these ships deliberately incomplete and is closed later. Kept here so no
 | ~~Header star absent~~ | US-308 (P2) | ✅ retired by US-305, 2026-08-13 |
 | Two kebab items (move to / remove from project) absent | US-308 (P2) | US-307 (P5) |
 | Tools rows show the server name without frame `2c`'s mono key — `McpDto` carries no key field | US-403 (P3) | a backend enabler adding a key, if ever prioritized |
-| 409-busy and MCP-consent errors render the generic turn-error notice, not their designed `1h` panels | US-406/407 (P3) | US-408, US-412 (P4) |
-| `composer--streaming` dims `.composer__aux`, which no control carries yet | US-407 (P3) | US-801, US-413, US-1502 adopt the class as they land |
+| ~~409-busy and MCP-consent errors render the generic turn-error notice~~ | US-406/407 (P3) | ✅ retired by US-408 and US-412, 2026-08-13 |
+| `composer--streaming` dims `.composer__aux` — the microphone carries it; attach and download do not exist yet | US-407 (P3) | US-801, US-1502 adopt the class as they land (US-413 did, 2026-08-13) |
 | Chat header does not collapse into frame `1d`'s 54px mobile navbar below 768px | US-308 (P2) | US-1403 (P7) |
 | Upload gating verified against a test host, not the composer | US-204 (P2) | US-801 (P5) |
-| MCP consent message without the server's consent scope | US-412 (P4) | US-411 (P8) |
+| MCP consent card with no action, because the scope to request one is not on the wire | US-412 (P4) | US-411 (P8) |
+| Replayed history carries no activity timeline, since the stream is never persisted | US-410 (P4) | nothing planned — a server-side turn record would be a new enabler |
 | Conversation and project sort disabled with a stated reason | US-705 (P5) | US-706 (P8) |
 | 500-item drain ceiling with a visible notice | US-908 (P5) | US-907, started in P3 |
 | Device-local project pins that do not sync | US-910's predecessor | US-909 (P8) |

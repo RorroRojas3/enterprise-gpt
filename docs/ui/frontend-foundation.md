@@ -430,7 +430,7 @@ export const sessionEvents = eventGroup({
 });
 ```
 
-`turnEvents` (US-409) and `adminEvents` (US-1207, US-1208) will follow this shape. Everything else stays on plain store methods.
+`turnEvents` (US-409) follows this shape — one `completed` event carrying `{ conversationId, wasFirstTurn }`, dispatched by the route-scoped `TurnStore` and handled by `ConversationStore` and, through it, the root-scoped sidebar list ([Turn Lifecycle §7.8](../conversations/turn-lifecycle.md#78-the-name-the-server-generates-us-409)) — and `adminEvents` (US-1207, US-1208) will. Everything else stays on plain store methods.
 
 **It has exactly one producer, and only one is wanted.** Since US-205 that is `AuthService.signOut()`, which dispatches it with `{ scope: 'global' }` — plus the `SessionChannel` listener, which does the same when *another tab* signs out. Every store — `SessionStore`, `ModelCatalogStore`, `McpCatalogStore` — resets on it and cancels its in-flight request with `takeUntil`; `AuthService` also clears its own handshake memo and the two `sessionStorage` keys it owns. Do not dispatch it from a component to "reset things": the event means the session has ended, and the guards, the interstitial and MSAL's cache are all keyed to that meaning ([Authentication and Session §11](authentication-and-session.md#11-sign-out-us-205)).
 

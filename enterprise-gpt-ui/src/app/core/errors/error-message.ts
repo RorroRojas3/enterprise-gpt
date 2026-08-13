@@ -106,10 +106,14 @@ export function userMessage(error: AppError): string {
         : 'You do not have permission to do that.';
     case 'conversation-busy':
       return 'This conversation already has a response in progress. Try again once it finishes.';
+    // "your authorization" would be false: consent is an administrative act
+    // here, and there is no flow to send the user to (US-412). This string is
+    // the only channel a screen-reader user gets — the notice card is not a
+    // live region — so it has to agree with what the card says.
     case 'mcp-authorization-required':
       return error.serverName
-        ? `The tool server "${error.serverName}" needs your authorization before it can be used.`
-        : 'A tool server needs your authorization before it can be used.';
+        ? `The tool server "${error.serverName}" requires authorization. Contact your administrator.`
+        : 'That tool server requires authorization. Contact your administrator.';
     case 'mcp-server-unavailable':
       return error.serverName
         ? `The tool server "${error.serverName}" could not be reached.`

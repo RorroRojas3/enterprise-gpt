@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import { conversationFixture } from '@testing/conversations';
+import { FakeRecognition } from '@testing/speech';
 import { assistantEvent, frame, streamingResponse } from '@testing/stream-frames';
 import { ModelDto } from '@domain/api/model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { TokenService } from '@core/auth/token-service';
+import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { TurnStore } from '../turn-store';
 import { Composer } from './composer';
@@ -24,9 +26,13 @@ describe('Composer', () => {
   let backend: HttpTestingController;
   let streamFetch: ReturnType<typeof vi.fn>;
   let hosts: HTMLElement[];
+  // Read when the Composer is created, so a test can decide what this browser
+  // can do after the module is configured. Null is jsdom's own answer.
+  let speech: (() => SpeechRecognitionLike) | null;
 
   beforeEach(() => {
     hosts = [];
+    speech = null;
     // Pending by default: composer specs assert the composer's side of a turn,
     // not the stream's, and an unresolved fetch keeps the turn in flight.
     streamFetch = vi.fn(() => new Promise<Response>(() => {}));
@@ -40,6 +46,7 @@ describe('Composer', () => {
         { provide: STREAM_FETCH, useValue: streamFetch },
         { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
         { provide: Router, useValue: { navigateByUrl: vi.fn().mockResolvedValue(true) } },
+        { provide: SPEECH_RECOGNITION, useFactory: () => speech },
         TurnStore,
       ],
     });
@@ -148,14 +155,134 @@ describe('Composer', () => {
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.fixture.whenStable();
 
-    // Attach (US-801), project (US-307), mic (US-413), download (US-1502).
+    // Attach (US-801), project (US-307), download (US-1502). The microphone
+    // shipped with US-413, and is absent here for the other reason the repo
+    // allows: this TestBed provides no speech recognition.
     const buttons = [...composer.host.querySelectorAll('button')];
     const labels = buttons.map(
       (button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '',
     );
-    expect(labels.some((label) => /attach|project|mic|record|download/i.test(label))).toBe(false);
+    expect(labels.some((label) => /attach|project|download/i.test(label))).toBe(false);
     expect(composer.host.querySelector('.model-menu__pill')).not.toBeNull();
     expect(composer.send()).not.toBeNull();
+  });
+
+  describe('dictation (US-413)', () => {
+    let recognition: FakeRecognition;
+
+    beforeEach(() => {
+      recognition = new FakeRecognition();
+      speech = () => recognition;
+    });
+
+    function mic(host: HTMLElement): HTMLButtonElement | null {
+      return host.querySelector('.composer__mic');
+    }
+
+    function pill(host: HTMLElement): HTMLElement | null {
+      return host.querySelector('.composer__mic-pill');
+    }
+
+    it('swaps the microphone for the recording pill and its clock (frame 2i)', async () => {
+      const composer = await render();
+
+      expect(mic(composer.host)).not.toBeNull();
+      expect(pill(composer.host)).toBeNull();
+
+      mic(composer.host)?.click();
+      await composer.fixture.whenStable();
+
+      // The pill takes the microphone's place, so nothing in the control row
+      // moves when a session starts.
+      expect(mic(composer.host)).toBeNull();
+      const recording = pill(composer.host);
+      expect(recording?.textContent).toContain('0:00');
+      expect(recording?.querySelector('use')?.getAttribute('href')).toBe('#bi-mic-fill');
+    });
+
+    it('morphs one button rather than swapping two, so focus and state survive', async () => {
+      const composer = await render();
+      const button = mic(composer.host);
+      button?.focus();
+
+      button?.click();
+      await composer.fixture.whenStable();
+
+      // The same element: swapping would destroy the control the user just
+      // pressed and drop focus to <body>, which is why the send control morphs
+      // too. The changing label is what announces the state on a focused button.
+      expect(pill(composer.host)).toBe(button);
+      expect(document.activeElement).toBe(button);
+      expect(button?.getAttribute('aria-label')).toBe('Stop dictating');
+
+      button?.click();
+      await composer.fixture.whenStable();
+      expect(document.activeElement).toBe(button);
+      expect(button?.getAttribute('aria-label')).toBe('Dictate');
+    });
+
+    it('appends a dictated phrase to what is already typed', async () => {
+      const composer = await render();
+      await composer.type('Summarize');
+      mic(composer.host)?.click();
+      await composer.fixture.whenStable();
+
+      recognition.say({ text: 'the release notes', isFinal: true });
+      await composer.fixture.whenStable();
+
+      expect(composer.prompt().value).toBe('Summarize the release notes');
+    });
+
+    it('stops the session from the pill', async () => {
+      const composer = await render();
+      mic(composer.host)?.click();
+      await composer.fixture.whenStable();
+
+      pill(composer.host)?.click();
+      await composer.fixture.whenStable();
+
+      expect(recognition.stops).toBe(1);
+      expect(mic(composer.host)).not.toBeNull();
+    });
+
+    it('disables the microphone while a turn is streaming', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await composer.type('Hello there');
+      composer.send()?.click();
+      await composer.fixture.whenStable();
+      backend.expectOne(CREATE_URL).flush(conversationFixture());
+      await composer.fixture.whenStable();
+
+      expect(composer.stop()).not.toBeNull();
+      expect(mic(composer.host)?.disabled).toBe(true);
+      // US-407's dimming applies through the shared class rather than a rule
+      // of the microphone's own.
+      expect(mic(composer.host)?.classList.contains('composer__aux')).toBe(true);
+    });
+
+    it('explains a blocked microphone and leaves the composer usable', async () => {
+      const composer = await render();
+      mic(composer.host)?.click();
+      await composer.fixture.whenStable();
+
+      recognition.fail('not-allowed');
+      await composer.fixture.whenStable();
+
+      expect(composer.note().textContent).toContain('Microphone access was blocked');
+      expect(composer.prompt().disabled).toBe(false);
+      expect(mic(composer.host)).not.toBeNull();
+    });
+
+    it('renders no microphone at all where the browser has no engine', async () => {
+      speech = null;
+      const composer = await render();
+
+      // Absent, never present-and-disabled: a control that can never work is
+      // not a control.
+      expect(mic(composer.host)).toBeNull();
+      expect(pill(composer.host)).toBeNull();
+    });
   });
 
   it('sends the trimmed prompt through the turn store and clears the box (US-401)', async () => {

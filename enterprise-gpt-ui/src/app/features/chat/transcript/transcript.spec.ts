@@ -1,14 +1,16 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { provideTestAppConfig } from '@testing/app-config';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   StreamingResponseHandle,
   assistantEvent,
   frame,
   fullTurnEvents,
+  problemResponse,
   streamingResponse,
 } from '@testing/stream-frames';
 import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
@@ -26,6 +28,7 @@ describe('Transcript', () => {
   let fixture: ComponentFixture<Transcript>;
   let host: HTMLElement;
   let store: InstanceType<typeof TurnStore>;
+  let backend: HttpTestingController;
   let fetchMock: ReturnType<typeof vi.fn>;
   let applyConversationSettings: ReturnType<typeof vi.fn>;
   let writeText: ReturnType<typeof vi.fn>;
@@ -63,6 +66,7 @@ describe('Transcript', () => {
     });
 
     store = TestBed.inject(TurnStore);
+    backend = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(Transcript);
     document.body.append(fixture.nativeElement as HTMLElement);
     host = fixture.nativeElement as HTMLElement;
@@ -96,6 +100,12 @@ describe('Transcript', () => {
       return Promise.resolve(handle.response);
     });
     store.bindRoute(CONVERSATION_ID);
+    // Opening a conversation reads its stored messages (US-410); an empty
+    // transcript is what these specs are about, and the read has to be
+    // answered or the region stays aria-busy for the rest of the test.
+    backend
+      .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
+      .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });
     store.send('What is the weather?');
     await settle();
     return handle;
@@ -241,6 +251,55 @@ describe('Transcript', () => {
       // a live region, because it appears together with its content.
       expect(notice?.getAttribute('role')).toBeNull();
       expect(host.querySelector('[role="status"]')?.textContent).toContain('cut off');
+    });
+  });
+
+  describe('pre-stream failure notices', () => {
+    async function failWith(problem: object, status: number): Promise<void> {
+      fetchMock.mockResolvedValue(problemResponse(problem, status).response);
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
+        .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });
+      store.send('What is the weather?');
+      await settle();
+    }
+
+    it('renders the 409 as the busy row with a Retry (US-408)', async () => {
+      await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
+
+      const notice = host.querySelector('app-turn-notice-card .notice');
+      expect(notice?.classList.contains('notice--warn')).toBe(true);
+      expect(notice?.classList.contains('notice--row')).toBe(true);
+      expect(notice?.textContent).toContain('Another response is still running in this');
+      expect(notice?.querySelector('.notice__retry')).not.toBeNull();
+    });
+
+    it('re-sends on Retry and hands the control back when it fails again (US-408)', async () => {
+      await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
+
+      host.querySelector<HTMLButtonElement>('.notice__retry')?.click();
+      await settle();
+
+      // The other tab is still holding the conversation, so the same 409 comes
+      // back — and the replacement Retry takes the focus its destroyed
+      // predecessor left on <body>, so the loop stays operable by keyboard.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(document.activeElement).toBe(host.querySelector('.notice__retry'));
+    });
+
+    it('renders the 403 as the consent card with no action (US-412)', async () => {
+      await failWith(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403);
+
+      const notice = host.querySelector('app-turn-notice-card .notice');
+      expect(notice?.classList.contains('notice--warn')).toBe(false);
+      expect(notice?.textContent).toContain('Weather requires authorization');
+      expect(notice?.textContent).toContain('contact your administrator');
+      // Retry is withheld by `canRetry`, not by the card: consent cannot be
+      // supplied by repeating the call.
+      expect(notice?.querySelector('button')).toBeNull();
+      // What a screen reader is told has to agree with what the card says.
+      expect(host.querySelector('[role="status"]')?.textContent).toContain('administrator');
     });
   });
 

@@ -1,15 +1,5 @@
 import { AssistantUiEvent } from './andes/assistant-ui.contract';
-import { DEFAULT_EVENT_TIMESTAMP, StreamCodec } from './stream-codec';
-
-function textDelta(text: string): AssistantUiEvent {
-  return {
-    kind: 'TextDelta',
-    text,
-    depth: 0,
-    toolKind: 'Unknown',
-    timestamp: DEFAULT_EVENT_TIMESTAMP,
-  };
-}
+import { StreamCodec, textDeltaEvent } from './stream-codec';
 
 /**
  * The `features.rawStreamCodec` fallback for a deployment still running a
@@ -24,12 +14,12 @@ export function createRawTextCodec(): StreamCodec {
   return {
     decode(chunk: Uint8Array): AssistantUiEvent[] {
       const text = decoder.decode(chunk, { stream: true });
-      return text === '' ? [] : [textDelta(text)];
+      return text === '' ? [] : [textDeltaEvent(text)];
     },
 
     flush(): AssistantUiEvent[] {
       const tail = decoder.decode();
-      return tail === '' ? [] : [textDelta(tail)];
+      return tail === '' ? [] : [textDeltaEvent(tail)];
     },
   };
 }

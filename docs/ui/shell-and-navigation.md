@@ -134,9 +134,11 @@ That ordering is also the *only* reason `prependNewest` is correct (§4.5). If s
 
 ### 3.2 `GET api/conversations/{id}` versus `…/{id}/messages`
 
-`ConversationDetailDto` — from `GET api/conversations/{id}` — is the only source of `mcpServerIds`, which US-410 restores into the MCP picker.
+`ConversationDetailDto` — from `GET api/conversations/{id}` — is the only source of `mcpServerIds`, which US-410 restores into the MCP picker. It reports `modelId: null` and an empty `mcpServerIds` for a conversation whose first turn has not completed, because the server writes both from the newest usage row; the client therefore **skips** the settings seed on an empty payload rather than treating it as a selection of nothing ([Turn Lifecycle §7.6](../conversations/turn-lifecycle.md#76-restoring-the-model-and-mcp-selection)).
 
 > **`GET api/conversations/{id}/messages` reports `projectId`, `modelId` and `isFavorite` as `null` / `null` / `false` regardless of the truth.** It returns a `ConversationDto`-shaped object built from the Cosmos transcript document, which does not carry those three fields. It must never be used to hydrate a project picker, a model picker or a favourite star — only `GET api/conversations/{id}` may. This is the kind of defect that looks like a state bug in the client for a day.
+
+US-410 gave that route its first consumer — `TurnStore`, replaying the stored messages into the transcript. The trap above is closed by the type rather than by discipline: the client models the response as its own three-field `ChatConversationDto` (`id`, `name`, `messages`), so the misleading fields are not reachable through it. Message `role` arrives as a **number**, not a string ([Turn Lifecycle §7.4](../conversations/turn-lifecycle.md#74-the-message-shape-has-two-sharp-edges)).
 
 `listFields()` in the store exists for the mirror-image reason: `ConversationStore` legitimately hands the list a `ConversationDetailDto`, and spreading one straight into an entity would leave `mcpServerIds` on some rows and not others, so `entities()` would stop being uniformly `ConversationDto`-shaped.
 
@@ -424,7 +426,7 @@ Four things in it are worth carrying forward:
 - **`name` falls back to the sidebar's copy** while the detail request is in flight (`_list.entityMap()[id]?.name`), so opening a conversation from the list shows its title immediately instead of flashing a placeholder for a round trip. It is empty only for a deep link to a row the list has not loaded — where the skeleton sits *inside* the `<h1>` rather than replacing it, so the document is never without a level-1 heading.
 - **On success it calls `_list.refreshRow(conversation)`**, keeping the sidebar in step with a name the server changed out of band. That is the seam US-409 uses.
 
-US-401 (send), US-408 (busy) and US-410 (restore model and MCP selection) all extend this store rather than adding another.
+US-401 (send), US-409 (the generated name) and US-410 (restore model and MCP selection) all extended this store rather than adding another. Two things came with them: a **silent** `refreshDetail` that updates the header and the sidebar row without going pending — `open` would blank the header and flash the stale name back — and the seed into `TurnSettingsStore` on the detail response ([Turn Lifecycle §7.6, §7.8](../conversations/turn-lifecycle.md#76-restoring-the-model-and-mcp-selection)).
 
 ### 7.3 The empty state (US-303), and what was deferred
 
@@ -494,7 +496,7 @@ Written at the end of EP-3; the first four rows have since been struck through b
 | --- | --- | --- |
 | ~~Rename, favourite, delete on a row~~ | US-304, US-305, US-306 | Shipped — [Conversation Actions](conversation-actions.md). Move-to-project (US-307) is the one row action still outstanding |
 | ~~The conversation header's star and kebab~~ | US-308, US-305 | Shipped; the star arrived with US-305. Two kebab items still route through US-307 (P5), and the sub-768 px collapse through US-1403 |
-| ~~The composer, the transcript, and the streamed turn~~ | EP-4, EP-5, EP-6 | Shipped — [Turn Lifecycle](../conversations/turn-lifecycle.md) and [Answer Rendering](answer-rendering.md). `ConversationStore` is still what US-408 and US-410 extend |
+| ~~The composer, the transcript, and the streamed turn~~ | EP-4, EP-5, EP-6 | Shipped — [Turn Lifecycle](../conversations/turn-lifecycle.md) and [Answer Rendering](answer-rendering.md). EP-4 closed with US-408–US-413; EP-5 and EP-6 have stories left |
 | ~~The suggested prompt chips on the empty state~~ | US-401 | Shipped there, as US-303 deferred them (§7.3) |
 | The Conversations, Projects and Documents nav entries | EP-7, EP-9, EP-10 | Each arrives with its epic; `navItems` renders only routes that exist |
 | The **Favorite projects** section between the nav and the list | US-910 | Its pins are device-local until the backend enabler US-909 lands, and a section that has to say so has to exist first |

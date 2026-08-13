@@ -167,6 +167,8 @@ Offsets are byte-for-byte, so the source must use `\n` line endings. The SSE cod
 
 When the turn settles, the caret index goes to `-1`, the pair collapses, and the whole node renders once from the **untouched** source — fences, languages, highlighting and all. A spec asserts that this settled render is character-identical to a single full render of the same source, which is what makes the split an optimisation rather than a second rendering mode.
 
+An answer replayed from a reopened conversation (US-410) takes this same settled path and no other: replay folds the stored text through the vendored reducers into the shape a settled live turn holds, so it arrives here as one already-complete text node ([turn lifecycle §7.2](../conversations/turn-lifecycle.md#72-a-replayed-answer-goes-through-the-same-reducers-as-a-live-one)). What it lacks is activity cards, not markdown.
+
 ### 4.4 The caret, and why the pair is wrapped
 
 Frame `1b`'s 8×17 px `--accent` caret rides whichever renderer ends the text — the tail normally, the head on the rare flush where the split leaves nothing over — and is drawn as a CSS pseudo-element, because the output is `innerHTML` and there is no template position left inside it for a span.
