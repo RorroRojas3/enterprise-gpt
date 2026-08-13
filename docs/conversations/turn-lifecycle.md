@@ -30,7 +30,7 @@ Two structures describe one live turn, and neither duplicates the other (§4). T
 
 Three computed signals read it: `showThinking` (`creating` or `awaitingFirst`), `showLiveTurn` (`streaming` or `stopping`), and `inFlight` (anything but `idle`) — which is also what morphs the composer's button into Stop (§9).
 
-`awaitingFirst` advances to `streaming` only when a batch carries **renderable** content — an `ActivityStarted` or a `TextDelta`. A batch of `Status` or `ReasoningDelta` events deliberately does not clear the thinking indicator: this app emits no request-level status line and fabricates none (US-406).
+`awaitingFirst` advances to `streaming` only when a batch carries **renderable** content — an `ActivityStarted` or a `TextDelta`. A batch of `Status` or `ReasoningDelta` events deliberately does not clear the thinking indicator. US-406 wrote that rule when this app emitted no request-level statuses at all; that rationale is now historical — the server opens every turn with a synthetic `Status` (`"Starting"`) and a server-authored `ReasoningDelta` ([contract §4.3](streaming-contract.md#43-a-turn-frame-by-frame)) — but the rule now does real work: without it, those two frames would dismiss the ridgeline with nothing renderable to replace it. The client does not yet render `assistantStatus` or reasoning text (reasoning rendering is US-503, P4), so the opening pair is on the wire but invisible here today — by design, not omission.
 
 ## 3. Sending, and creating the conversation around the first prompt
 

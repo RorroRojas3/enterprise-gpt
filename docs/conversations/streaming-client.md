@@ -86,6 +86,8 @@ How a turn can end, and what the observable does:
 
 The server sets its `text/event-stream` headers lazily on the first frame, so every pre-stream failure carries ordinary `application/problem+json` ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)). The transport honours that: on `!response.ok` the problem body is parsed through `toAppErrorFromResponse` **before a single body byte is read as stream**, and the observable errors with the result. Every value the observable ever errors with is an `AppError` — that is documented as the class's contract, so no consumer needs a second normalization layer.
 
+The set of failures that can arrive this way shrank when the server began opening every turn with two synthetic frames ([contract §4.3](streaming-contract.md#43-a-turn-frame-by-frame)): the first frame now precedes the model's first token, so a provider that faults on that token — a bad deployment, an expired key, exhausted quota — no longer lands here as a problem body. It lands in §4.3's path instead, as a body that stops. Everything ahead of those frames — the conversation lock, the reads, first-turn naming, model resolution, and MCP validation, consent and tool acquisition — still arrives as problem JSON.
+
 A bare 401 is replayed exactly once with a force-refreshed token, gated by `authErrorDecision` — the same single source of truth the `HttpClient` interceptor consults. Without the replay, a token the API had just rejected would kill a turn that every ordinary request would have survived; routing the decision through the shared table structurally keeps the 403 `mcp-authorization-required` out of the refresh path, since no refresh can fix a consent requirement. The replay is safe because authentication is rejected before the conversation lock is taken, so it cannot double-start a turn.
 
 ### 4.2 Aborting — Stop, sign-out, unsubscribe
@@ -94,7 +96,7 @@ Three cancellation sources compose into one signal: `AbortSignal.any([teardown, 
 
 ### 4.3 Faults after the body began complete gracefully
 
-Once the body has started there is no error surface left on the wire — a mid-stream fault reaches the client as a body that simply stops, indistinguishable from a network drop ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)). The transport does not manufacture a distinction the wire cannot support: a read that throws after the first byte flushes the codec's buffered tail — so the two "body just stops" endings deliver the same text — and **completes** the observable rather than erroring it. Both endings take the single path US-406 already owns: a body that ended without `Finished`.
+Once the body has started there is no error surface left on the wire — a mid-stream fault reaches the client as a body that simply stops, indistinguishable from a network drop ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)). The transport does not manufacture a distinction the wire cannot support: a read that throws after the first byte flushes the codec's buffered tail — so the two "body just stops" endings deliver the same text — and **completes** the observable rather than erroring it. Both endings take the single path US-406 already owns: a body that ended without `Finished`. One debugging signature worth knowing: a body that carries only the two synthetic opening frames and then stops is what a provider faulting on its very first token looks like from here.
 
 ### 4.4 Batching
 
