@@ -36,7 +36,10 @@ public static class ConversationEndpoints
         group.MapGet("search", SearchConversationsAsync);
         group.MapGet("{id:guid}", GetConversationAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
+        // 400 comes from parameter binding: a non-numeric take or before fails to bind and is
+        // reported as a validation problem naming the parameter, before the handler runs.
         group.MapGet("{id:guid}/messages", GetConversationMessagesAsync)
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", CreateConversationAsync)
             .ProducesValidationProblem()
@@ -93,9 +96,9 @@ public static class ConversationEndpoints
     }
 
     internal static async Task<Ok<ChatConversationDto>> GetConversationMessagesAsync(
-        Guid id, IConversationService conversationService, CancellationToken cancellationToken)
+        Guid id, IConversationService conversationService, CancellationToken cancellationToken, int take = 100, long? before = null)
     {
-        var response = await conversationService.GetConversationMessagesAsync(id, cancellationToken);
+        var response = await conversationService.GetConversationMessagesAsync(id, take, before, cancellationToken);
         return TypedResults.Ok(response);
     }
 

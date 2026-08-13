@@ -149,28 +149,94 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Seeds the Cosmos-side conversation with two messages so the conversation-naming path
-    /// (taken only when a single system message exists) is skipped.
+    /// Stubs the Cosmos-side conversation with a header reporting two allocated positions and the
+    /// two messages behind it, so the conversation-naming path — taken only when the seeded system
+    /// message is alone — is skipped.
     /// </summary>
-    private void SetUpCosmosConversation(Guid conversationId)
+    private void SetUpCosmosConversation(Guid conversationId, long messageCount = 2)
     {
         var date = DateTimeOffset.UtcNow;
-        var cosmosConversation = new CosmosConversation
+        SetUpHeader(conversationId, messageCount, date);
+
+        var messages = new List<CosmosConversationMessage>
+        {
+            BuildStoredMessage(conversationId, ChatRoles.System, "System prompt.", 0, date),
+            BuildStoredMessage(conversationId, ChatRoles.User, "Earlier prompt.", 1, date)
+        };
+
+        _cosmosService.QueryPageAsync<CosmosConversationMessage>(
+                Arg.Any<QueryDefinition>(), KnownIds.SeedUserId, conversationId, Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new CosmosPage<CosmosConversationMessage>(messages, null));
+    }
+
+    /// <summary>
+    /// Stubs the header point read, and the allocation patch that hands a turn its sequences.
+    /// </summary>
+    private CosmosConversationHeader SetUpHeader(Guid conversationId, long messageCount, DateTimeOffset? date = null)
+    {
+        var stamp = date ?? DateTimeOffset.UtcNow;
+        var header = new CosmosConversationHeader
         {
             Id = conversationId,
             UserId = KnownIds.SeedUserId,
+            ConversationId = conversationId,
             Name = "Test Conversation",
-            DateCreated = date,
-            DateModified = date,
-            Messages =
-            [
-                new() { Id = Guid.NewGuid(), Role = ChatRoles.System, Content = "System prompt.", DateCreated = date },
-                new() { Id = Guid.NewGuid(), Role = ChatRoles.User, Content = "Earlier prompt.", DateCreated = date }
-            ]
+            MessageCount = messageCount,
+            DateCreated = stamp,
+            DateModified = stamp
         };
-        _cosmosService.GetItemAsync<CosmosConversation>(
-                conversationId.ToString(), KnownIds.SeedUserId.ToString(), Arg.Any<CancellationToken>())
-            .Returns(cosmosConversation);
+
+        _cosmosService.GetItemAsync<CosmosConversationHeader>(
+                conversationId.ToString(), KnownIds.SeedUserId, conversationId, Arg.Any<CancellationToken>())
+            .Returns(header);
+
+        // The real service increments the counter and reads the new value back, so the stub has to
+        // return a header whose count has already moved by the two positions a turn claims.
+        _cosmosService.PatchItemAsync<CosmosConversationHeader>(
+                conversationId.ToString(), KnownIds.SeedUserId, conversationId,
+                Arg.Is<IReadOnlyList<PatchOperation>>(operations => operations.Count == 1 && operations[0].Path == "/messageCount"),
+                Arg.Any<CancellationToken>())
+            .Returns(new CosmosConversationHeader
+            {
+                Id = conversationId,
+                UserId = KnownIds.SeedUserId,
+                ConversationId = conversationId,
+                Name = header.Name,
+                MessageCount = messageCount + 2,
+                DateCreated = stamp,
+                DateModified = stamp
+            });
+
+        return header;
+    }
+
+    private static CosmosConversationMessage BuildStoredMessage(
+        Guid conversationId, ChatRoles role, string content, long sequence, DateTimeOffset date)
+    {
+        return new CosmosConversationMessage
+        {
+            Id = Guid.NewGuid(),
+            UserId = KnownIds.SeedUserId,
+            ConversationId = conversationId,
+            Sequence = sequence,
+            Role = MappingService.MapToRoleName(role),
+            Content = content,
+            DateCreated = date
+        };
+    }
+
+    /// <summary>
+    /// The batch operations captured from the transcript write, in submission order.
+    /// </summary>
+    private IReadOnlyList<CosmosBatchOperation> CapturedBatch(Guid conversationId)
+    {
+        var calls = _cosmosService.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IAzureCosmosService.ExecuteBatchAsync))
+            .Select(call => call.GetArguments())
+            .Where(arguments => Equals(arguments[1], conversationId))
+            .ToList();
+
+        return (IReadOnlyList<CosmosBatchOperation>)calls[^1][2]!;
     }
 
     /// <summary>
@@ -344,22 +410,28 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The Cosmos document must be created from the transcript projection, not the relational
-    /// entity: writing the entity left the conversation with no messages array and no system
-    /// prompt, which the model never saw and the first-turn naming path could never detect.
+    /// A conversation is created as a header plus its seeded system message in one batch: a header
+    /// whose counter claims a message exists must never be readable before that message is.
     /// </summary>
     [Fact]
-    public async Task CreateConversationAsync_WhenCalled_PersistsTranscriptWithSystemPrompt()
+    public async Task CreateConversationAsync_WhenCalled_PersistsHeaderAndSystemPromptInOneBatch()
     {
-        await _service.CreateConversationAsync(new CreateConversationActionDto(), TestContext.Current.CancellationToken);
+        var created = await _service.CreateConversationAsync(new CreateConversationActionDto(), TestContext.Current.CancellationToken);
 
-        await _cosmosService.Received(1).CreateItemAsync(
-            Arg.Is<CosmosConversation>(cosmos =>
-                cosmos!.Messages.Count == 1
-                && cosmos.Messages[0].Role == ChatRoles.System
-                && cosmos.Messages[0].Content.Length > 0),
-            KnownIds.SeedUserId.ToString(),
-            Arg.Any<CancellationToken>());
+        var batch = CapturedBatch(created.Id);
+        Assert.Equal(2, batch.Count);
+
+        var header = Assert.IsType<CreateItemOperation<CosmosConversationHeader>>(batch[0]).Item;
+        Assert.Equal(created.Id, header.ConversationId);
+        Assert.Equal(CosmosTranscriptTypes.Conversation, header.Type);
+        Assert.Equal(1, header.MessageCount);
+        Assert.Equal(CosmosConversationHeader.CurrentSchemaVersion, header.SchemaVersion);
+
+        var systemMessage = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[1]).Item;
+        Assert.Equal(CosmosTranscriptTypes.Message, systemMessage.Type);
+        Assert.Equal(MappingService.MapToRoleName(ChatRoles.System), systemMessage.Role);
+        Assert.Equal(0, systemMessage.Sequence);
+        Assert.NotEmpty(systemMessage.Content);
     }
 
     /// <summary>
@@ -383,9 +455,10 @@ public sealed class ConversationServiceTests : IDisposable
 
         await _service.UpdateConversationNameAsync(conversation.Id, request, TestContext.Current.CancellationToken);
 
-        await _cosmosService.Received(1).PatchItemAsync(
+        await _cosmosService.Received(1).PatchItemAsync<CosmosConversationHeader>(
             conversation.Id.ToString(),
-            KnownIds.SeedUserId.ToString(),
+            KnownIds.SeedUserId,
+            conversation.Id,
             Arg.Is<IReadOnlyList<PatchOperation>>(operations =>
                 operations!.Count == 2
                 && operations[0].OperationType == PatchOperationType.Set && operations[0].Path == "/name"
@@ -486,11 +559,11 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The turn is appended with a patch rather than a read-modify-replace, so a write that lands
-    /// between loading the history and persisting the answer is not reverted.
+    /// A completed turn writes both messages and the header's counters as one transaction, so a
+    /// header whose totals moved always has the messages that moved them.
     /// </summary>
     [Fact]
-    public async Task StreamConversationAsync_WhenStreamCompletes_AppendsMessagesWithoutReplacingDocument()
+    public async Task StreamConversationAsync_WhenStreamCompletes_WritesBothMessagesAndTheHeaderInOneBatch()
     {
         var conversation = await AddConversationAsync();
         SetUpCosmosConversation(conversation.Id);
@@ -504,58 +577,87 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamToEndAsync(conversation.Id, request);
 
-        await _cosmosService.Received(1).PatchItemAsync(
-            conversation.Id.ToString(),
-            KnownIds.SeedUserId.ToString(),
-            Arg.Is<IReadOnlyList<PatchOperation>>(operations =>
-                operations!.Count == 5
-                && operations[0].OperationType == PatchOperationType.Add && operations[0].Path == "/messages/-"
-                && operations[1].OperationType == PatchOperationType.Add && operations[1].Path == "/messages/-"
-                && operations[2].OperationType == PatchOperationType.Increment && operations[2].Path == "/messageCount"
-                && operations[3].OperationType == PatchOperationType.Increment && operations[3].Path == "/totalTokens"
-                && operations[4].OperationType == PatchOperationType.Set && operations[4].Path == "/dateModified"),
-            Arg.Any<CancellationToken>());
+        var batch = CapturedBatch(conversation.Id);
+        Assert.Equal(3, batch.Count);
+
+        var user = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[0]).Item;
+        Assert.Equal(MappingService.MapToRoleName(ChatRoles.User), user.Role);
+        Assert.Equal("Hello", user.Content);
+
+        var assistant = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[1]).Item;
+        Assert.Equal(MappingService.MapToRoleName(ChatRoles.Assistant), assistant.Role);
+        Assert.Equal(model.DeploymentName, assistant.Model);
+        Assert.NotNull(assistant.Usage);
+
+        var patch = Assert.IsType<PatchItemOperation>(batch[2]);
+        Assert.Equal(conversation.Id.ToString(), patch.Id);
+        Assert.Collection(patch.Operations,
+            operation =>
+            {
+                Assert.Equal(PatchOperationType.Increment, operation.OperationType);
+                Assert.Equal("/totalTokens", operation.Path);
+            },
+            operation =>
+            {
+                Assert.Equal(PatchOperationType.Set, operation.OperationType);
+                Assert.Equal("/dateModified", operation.Path);
+            });
     }
 
     /// <summary>
-    /// Conversations written before the transcript was persisted correctly have no messages array,
-    /// and Cosmos rejects an append whose parent path is absent, so the first turn on such a
-    /// document has to seed the array instead.
+    /// Positions come from the header's counter, incremented server-side, so two replicas racing
+    /// on the same conversation cannot claim the same one — the conversation lock is process-local
+    /// and gives no mutual exclusion across them.
     /// </summary>
     [Fact]
-    public async Task StreamConversationAsync_WhenTranscriptArrayAbsent_SeedsMessagesInsteadOfAppending()
+    public async Task StreamConversationAsync_WhenStreamCompletes_TakesItsSequencesFromTheHeaderCounter()
     {
         var conversation = await AddConversationAsync();
-        var date = DateTimeOffset.UtcNow;
-        _cosmosService.GetItemAsync<CosmosConversation>(
-                conversation.Id.ToString(), KnownIds.SeedUserId.ToString(), Arg.Any<CancellationToken>())
-            .Returns(new CosmosConversation
-            {
-                Id = conversation.Id,
-                UserId = KnownIds.SeedUserId,
-                Name = "Legacy Conversation",
-                DateCreated = date,
-                DateModified = date,
-                Messages = []
-            });
+        SetUpCosmosConversation(conversation.Id, messageCount: 7);
         var model = SetUpModel(isToolEnabled: true);
-        var request = new CreateConversationStreamActionDto
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
         {
             Prompt = "Hello",
             ModelId = model.Id,
             McpServers = []
-        };
+        });
 
-        await StreamToEndAsync(conversation.Id, request);
+        var batch = CapturedBatch(conversation.Id);
+        var user = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[0]).Item;
+        var assistant = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(batch[1]).Item;
 
-        await _cosmosService.Received(1).PatchItemAsync(
-            conversation.Id.ToString(),
-            KnownIds.SeedUserId.ToString(),
-            Arg.Is<IReadOnlyList<PatchOperation>>(operations =>
-                operations!.Count == 5
-                && operations[0].OperationType == PatchOperationType.Set && operations[0].Path == "/messages"
-                && operations[1].OperationType == PatchOperationType.Add && operations[1].Path == "/messages/-"),
-            Arg.Any<CancellationToken>());
+        Assert.Equal(7, user.Sequence);
+        Assert.Equal(8, assistant.Sequence);
+    }
+
+    /// <summary>
+    /// The allocation happens before the batch, so a missing header stops the write rather than
+    /// producing message documents no header accounts for.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheHeaderIsMissing_WritesNoTranscriptAndLogsBothIdentifiers()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        _cosmosService.PatchItemAsync<CosmosConversationHeader>(
+                conversation.Id.ToString(), KnownIds.SeedUserId, conversation.Id,
+                Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>())
+            .Returns((CosmosConversationHeader?)null);
+        var model = SetUpModel(isToolEnabled: true);
+
+        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        await _cosmosService.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default, default!, TestContext.Current.CancellationToken);
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Equal(ConversationUsageStatuses.Completed, usage.Status);
     }
 
     [Fact]
@@ -655,8 +757,8 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(model.ProviderId, exception.ProviderId);
         await _mcpToolProvider.DidNotReceiveWithAnyArgs()
             .AcquireToolsAsync(default!, TestContext.Current.CancellationToken);
-        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
-            default!, default!, default!, TestContext.Current.CancellationToken);
+        await _cosmosService.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default, default!, TestContext.Current.CancellationToken);
         releaser.Received(1).Dispose();
     }
 
@@ -923,8 +1025,8 @@ public sealed class ConversationServiceTests : IDisposable
 
         using var ctx = _fixture.CreateContext();
         Assert.False(await ctx.Conversations.AnyAsync(TestContext.Current.CancellationToken));
-        await _cosmosService.DidNotReceiveWithAnyArgs().CreateItemAsync(
-            default(CosmosConversation)!, default!, TestContext.Current.CancellationToken);
+        await _cosmosService.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default, default!, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -1146,14 +1248,8 @@ public sealed class ConversationServiceTests : IDisposable
             McpServers = []
         });
 
-        await _cosmosService.Received(1).PatchItemAsync(
-            conversation.Id.ToString(),
-            KnownIds.SeedUserId.ToString(),
-            Arg.Is<IReadOnlyList<PatchOperation>>(operations =>
-                operations!.Count == 5
-                && operations[0].Path == "/messages/-"
-                && operations[1].Path == "/messages/-"),
-            Arg.Any<CancellationToken>());
+        var batch = CapturedBatch(conversation.Id);
+        Assert.Equal(2, batch.OfType<CreateItemOperation<CosmosConversationMessage>>().Count());
     }
     #endregion
 
@@ -1344,11 +1440,8 @@ public sealed class ConversationServiceTests : IDisposable
     {
         var conversation = await RunToolTurnAsync();
 
-        await _cosmosService.Received(1).PatchItemAsync(
-            conversation.Id.ToString(),
-            KnownIds.SeedUserId.ToString(),
-            Arg.Is<IReadOnlyList<PatchOperation>>(ops => ops.Count > 0),
-            Arg.Any<CancellationToken>());
+        var assistant = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(CapturedBatch(conversation.Id)[1]).Item;
+        Assert.DoesNotContain("GetWeather", assistant.Content);
 
         var toolCall = Assert.Single(await ReadToolCallsAsync(conversation.Id));
         Assert.Equal("GetWeather", toolCall.ToolName);
@@ -1408,10 +1501,6 @@ public sealed class ConversationServiceTests : IDisposable
         var conversation = await AddConversationAsync();
         SetUpCosmosConversation(conversation.Id);
         var model = SetUpModel(isToolEnabled: true);
-        List<PatchOperation>? captured = null;
-        _cosmosService.PatchItemAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Do<IReadOnlyList<PatchOperation>>(ops => captured = [.. ops]), Arg.Any<CancellationToken>())
-            .Returns(true);
 
         await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
         {
@@ -1421,10 +1510,9 @@ public sealed class ConversationServiceTests : IDisposable
         });
 
         var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
-        Assert.NotNull(captured);
-        var assistantMessage = Assert.IsAssignableFrom<PatchOperation<CosmosConversationMessage>>(captured[1]);
-        Assert.Equal(ChatRoles.Assistant, assistantMessage.Value.Role);
-        Assert.Equal(assistantMessage.Value.Id, usage.AssistantMessageId);
+        var assistantMessage = Assert.IsType<CreateItemOperation<CosmosConversationMessage>>(CapturedBatch(conversation.Id)[1]).Item;
+        Assert.Equal(MappingService.MapToRoleName(ChatRoles.Assistant), assistantMessage.Role);
+        Assert.Equal(assistantMessage.Id, usage.AssistantMessageId);
     }
 
     [Fact]
@@ -1472,8 +1560,8 @@ public sealed class ConversationServiceTests : IDisposable
         var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
         Assert.Equal(ConversationUsageStatuses.Cancelled, usage.Status);
         Assert.Null(usage.AssistantMessageId);
-        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
-            default!, default!, default!, TestContext.Current.CancellationToken);
+        await _cosmosService.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default, default!, TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -1518,8 +1606,8 @@ public sealed class ConversationServiceTests : IDisposable
         var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
         Assert.Equal(ConversationUsageStatuses.Failed, usage.Status);
         Assert.Null(usage.AssistantMessageId);
-        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
-            default!, default!, default!, TestContext.Current.CancellationToken);
+        await _cosmosService.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default, default!, TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -1563,18 +1651,8 @@ public sealed class ConversationServiceTests : IDisposable
     public async Task StreamConversationAsync_OnTheFirstTurn_RecordsTheNamingCallSeparately()
     {
         var conversation = await AddConversationAsync();
-        var date = DateTimeOffset.UtcNow;
-        _cosmosService.GetItemAsync<CosmosConversation>(
-                conversation.Id.ToString(), KnownIds.SeedUserId.ToString(), Arg.Any<CancellationToken>())
-            .Returns(new CosmosConversation
-            {
-                Id = conversation.Id,
-                UserId = KnownIds.SeedUserId,
-                Name = "Test Conversation",
-                DateCreated = date,
-                DateModified = date,
-                Messages = [new() { Id = Guid.NewGuid(), Role = ChatRoles.System, Content = "System prompt.", DateCreated = date }]
-            });
+        // Only the seeded system message has a position, which is what marks a first turn.
+        SetUpCosmosConversation(conversation.Id, messageCount: 1);
         _chatClient.NamingResponse = "Named Conversation";
         _chatClient.NamingUsage = new UsageDetails { InputTokenCount = 4, OutputTokenCount = 2 };
         _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
@@ -1667,18 +1745,8 @@ public sealed class ConversationServiceTests : IDisposable
     public async Task StreamConversationAsync_OnTheFirstTurn_SnapshotsPricesOntoTheNamingRow()
     {
         var conversation = await AddConversationAsync();
-        var date = DateTimeOffset.UtcNow;
-        _cosmosService.GetItemAsync<CosmosConversation>(
-                conversation.Id.ToString(), KnownIds.SeedUserId.ToString(), Arg.Any<CancellationToken>())
-            .Returns(new CosmosConversation
-            {
-                Id = conversation.Id,
-                UserId = KnownIds.SeedUserId,
-                Name = "Test Conversation",
-                DateCreated = date,
-                DateModified = date,
-                Messages = [new() { Id = Guid.NewGuid(), Role = ChatRoles.System, Content = "System prompt.", DateCreated = date }]
-            });
+        // Only the seeded system message has a position, which is what marks a first turn.
+        SetUpCosmosConversation(conversation.Id, messageCount: 1);
         _chatClient.NamingResponse = "Named Conversation";
         _chatClient.NamingUsage = new UsageDetails { InputTokenCount = 4, OutputTokenCount = 2 };
         _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
@@ -1800,8 +1868,8 @@ public sealed class ConversationServiceTests : IDisposable
         using var ctx = _fixture.CreateContext();
         var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
         Assert.True(stored.IsFavorite);
-        await _cosmosService.DidNotReceiveWithAnyArgs().PatchItemAsync(
-            default!, default!, default!, TestContext.Current.CancellationToken);
+        await _cosmosService.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default, default!, TestContext.Current.CancellationToken);
     }
 
     [Fact]

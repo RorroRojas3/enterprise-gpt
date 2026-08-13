@@ -96,50 +96,6 @@ namespace Enterprise.Gpt.Service
         /// </remarks>
         Task<int> PurgeConversationAsync(Guid userId, Guid conversationId, CancellationToken cancellationToken);
 
-        /// <summary>
-        /// Reads a single document from a container partitioned on <c>/userId</c> alone.
-        /// </summary>
-        /// <typeparam name="T">The document type.</typeparam>
-        /// <param name="id">The document identifier.</param>
-        /// <param name="partitionKey">The single-level partition key value.</param>
-        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>The document, or <see langword="null"/> when it does not exist.</returns>
-        /// <remarks>
-        /// Serves the one-document-per-conversation transcript that the per-message shape replaces.
-        /// Removed once the write and read paths move onto the new container.
-        /// </remarks>
-        [Obsolete("Single-level partition key. Use the (userId, conversationId) overload; removed when the per-message transcript lands.")]
-        Task<T?> GetItemAsync<T>(string id, string partitionKey, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Creates a document in a container partitioned on <c>/userId</c> alone.
-        /// </summary>
-        /// <typeparam name="T">The document type.</typeparam>
-        /// <param name="item">The document to create.</param>
-        /// <param name="partitionKey">The single-level partition key value.</param>
-        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns>The created document.</returns>
-        /// <remarks>
-        /// Serves the retired transcript shape. Replaced by <see cref="ExecuteBatchAsync"/>, which
-        /// creates the header and its seeded message atomically.
-        /// </remarks>
-        [Obsolete("Single-level partition key. Use ExecuteBatchAsync; removed when the per-message transcript lands.")]
-        Task<T> CreateItemAsync<T>(T item, string partitionKey, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Patches a document in a container partitioned on <c>/userId</c> alone.
-        /// </summary>
-        /// <param name="id">The document identifier.</param>
-        /// <param name="partitionKey">The single-level partition key value.</param>
-        /// <param name="operations">The patch operations to apply, at most ten.</param>
-        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-        /// <returns><see langword="true"/> when the document was patched; <see langword="false"/> when it does not exist.</returns>
-        /// <remarks>
-        /// Serves the retired transcript shape. Replaced by the generic overload, which also
-        /// returns the patched document.
-        /// </remarks>
-        [Obsolete("Single-level partition key. Use the generic (userId, conversationId) overload; removed when the per-message transcript lands.")]
-        Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken);
     }
 
     /// <summary>
@@ -301,49 +257,6 @@ namespace Enterprise.Gpt.Service
 
                 await ExecuteBatchAsync(userId, conversationId, [.. page.Items.Select(CosmosBatchOperation.DeleteItem)], cancellationToken);
                 deleted += page.Items.Count;
-            }
-        }
-
-        /// <inheritdoc/>
-        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs (except for NotFound, which returns <see langword="null"/>).</exception>
-        [Obsolete("Single-level partition key. Use the (userId, conversationId) overload; removed when the per-message transcript lands.")]
-        public async Task<T?> GetItemAsync<T>(string id, string partitionKey, CancellationToken cancellationToken)
-        {
-            try
-            {
-                return await _container.ReadItemAsync<T>(id, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
-            }
-            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                return default;
-            }
-        }
-
-        /// <inheritdoc/>
-        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during item creation.</exception>
-        [Obsolete("Single-level partition key. Use ExecuteBatchAsync; removed when the per-message transcript lands.")]
-        public async Task<T> CreateItemAsync<T>(T item, string partitionKey, CancellationToken cancellationToken)
-        {
-            return await _container.CreateItemAsync(item, new PartitionKey(partitionKey), cancellationToken: cancellationToken);
-        }
-
-        /// <inheritdoc/>
-        /// <exception cref="CosmosException">Thrown when a Cosmos DB error occurs during the patch.</exception>
-        [Obsolete("Single-level partition key. Use the generic (userId, conversationId) overload; removed when the per-message transcript lands.")]
-        public async Task<bool> PatchItemAsync(string id, string partitionKey, IReadOnlyList<PatchOperation> operations, CancellationToken cancellationToken)
-        {
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxPatchOperations);
-
-            var options = new PatchItemRequestOptions { EnableContentResponseOnWrite = false };
-
-            try
-            {
-                await _container.PatchItemAsync<dynamic>(id, new PartitionKey(partitionKey), [.. operations], options, cancellationToken);
-                return true;
-            }
-            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                return false;
             }
         }
 

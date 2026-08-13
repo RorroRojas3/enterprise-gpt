@@ -156,12 +156,41 @@ public class ConversationEndpointsTests
     {
         var id = Guid.NewGuid();
         var expected = new ChatConversationDto { Id = id, Name = "Planning" };
-        _conversationService.GetConversationMessagesAsync(id, Arg.Any<CancellationToken>()).Returns(expected);
+        _conversationService.GetConversationMessagesAsync(id, Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await ConversationEndpoints.GetConversationMessagesAsync(
             id, _conversationService, TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
+    }
+
+    /// <summary>
+    /// The paging arguments are optional on the wire, so a client that sends neither still gets
+    /// the newest page.
+    /// </summary>
+    [Fact]
+    public async Task GetConversationMessagesAsync_NoPagingArguments_RequestsTheNewestPage()
+    {
+        var id = Guid.NewGuid();
+        _conversationService.GetConversationMessagesAsync(id, Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatConversationDto { Id = id });
+
+        await ConversationEndpoints.GetConversationMessagesAsync(id, _conversationService, TestContext.Current.CancellationToken);
+
+        await _conversationService.Received(1).GetConversationMessagesAsync(id, 100, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetConversationMessagesAsync_PagingArguments_PassesThemThrough()
+    {
+        var id = Guid.NewGuid();
+        _conversationService.GetConversationMessagesAsync(id, Arg.Any<int>(), Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatConversationDto { Id = id });
+
+        await ConversationEndpoints.GetConversationMessagesAsync(
+            id, _conversationService, TestContext.Current.CancellationToken, take: 25, before: 400);
+
+        await _conversationService.Received(1).GetConversationMessagesAsync(id, 25, 400, Arg.Any<CancellationToken>());
     }
 
     [Fact]

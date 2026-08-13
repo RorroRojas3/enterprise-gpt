@@ -43,6 +43,23 @@
 
     public class ChatConversationDto : ConversationDto
     {
+        /// <summary>
+        /// Gets or sets one page of the conversation's messages, oldest first.
+        /// </summary>
         public List<ConversationMessageDto> Messages { get; set; } = [];
+
+        /// <summary>
+        /// Gets or sets how many message positions the conversation has allocated in total.
+        /// </summary>
+        /// <remarks>
+        /// Counts every message ever written, including the system message this response never
+        /// returns, so it is a progress indicator rather than the length of a filtered list.
+        /// </remarks>
+        public long TotalMessageCount { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether older messages remain beyond this page.
+        /// </summary>
+        public bool HasMore { get; set; }
     }
 }

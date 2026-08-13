@@ -83,7 +83,24 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
         IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
 
-        Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, CancellationToken cancellationToken);
+        /// <summary>
+        /// Reads a page of a conversation's transcript, newest messages last.
+        /// </summary>
+        /// <param name="id">The conversation to read.</param>
+        /// <param name="take">How many messages to return, clamped server-side to 1–100.</param>
+        /// <param name="before">
+        /// Return the page immediately preceding this sequence, or <see langword="null"/> for the
+        /// newest page.
+        /// </param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>The conversation, its total message count, and one page of messages in ascending sequence order.</returns>
+        /// <exception cref="NotFoundException">The conversation is not a conversation of the caller.</exception>
+        /// <remarks>
+        /// System messages are never returned. The page is taken from the newest end because that
+        /// is what a client opening a conversation shows first; older pages are walked backwards
+        /// with <paramref name="before"/>.
+        /// </remarks>
+        Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, int take, long? before, CancellationToken cancellationToken);
     }
 
     public class ConversationService(ILogger<ConversationService> logger,
@@ -118,6 +135,25 @@ namespace Enterprise.Gpt.Service
         // The reasoning text ends with a blank line because the package reducer accumulates
         // reasoning deltas verbatim: without the separator, a reasoning-capable model's first
         // real delta would concatenate run-on with this sentence.
+        /// <summary>
+        /// How many message documents a transcript read fetches per round trip.
+        /// </summary>
+        /// <remarks>
+        /// Sized so an ordinary conversation is read in one request while a very long one still
+        /// pages rather than materializing unboundedly in a single response.
+        /// </remarks>
+        private const int TranscriptPageSize = 200;
+
+        /// <summary>
+        /// The smallest page the transcript route will serve.
+        /// </summary>
+        private const int MinTranscriptPageTake = 1;
+
+        /// <summary>
+        /// The largest page the transcript route will serve, and its default.
+        /// </summary>
+        private const int MaxTranscriptPageTake = 100;
+
         private const string StartingStatusMessage = "Starting";
         private const string PreparingReasoningText = "Reviewing the request and preparing a response.\n\n";
 
@@ -204,25 +240,28 @@ namespace Enterprise.Gpt.Service
             await _ctx.SaveChangesAsync(cancellationToken);
 
             var prompt = ConversationPrompts.BuildDefaultSystemPrompt();
-            var newCosmosChat = new CosmosConversation()
+            var header = new CosmosConversationHeader
             {
                 Id = newChat.Id,
                 UserId = userId,
+                ConversationId = newChat.Id,
                 Name = newChat.Name,
                 TotalTokens = 0,
+                // The seeded system message occupies position 0, so the next turn allocates from 1.
+                MessageCount = 1,
                 DateCreated = date,
-                DateModified = date,
-                Documents = [],
-                Messages = [new()
-                {
-                    Id = Guid.NewGuid(),
-                    Role = ChatRoles.System,
-                    Content = prompt,
-                    DateCreated = date,
-                }]
+                DateModified = date
             };
 
-            await _cosmosService.CreateItemAsync(newCosmosChat, userId.ToString(), cancellationToken);
+            var systemMessage = BuildMessage(newChat.Id, userId, ChatRoles.System, prompt, sequence: 0, date);
+
+            // Header and seeded message in one batch: a header whose counter says a message exists
+            // must not be readable before the message it counts.
+            await _cosmosService.ExecuteBatchAsync(userId, newChat.Id,
+            [
+                CosmosBatchOperation.CreateItem(header),
+                CosmosBatchOperation.CreateItem(systemMessage)
+            ], cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -244,10 +283,12 @@ namespace Enterprise.Gpt.Service
                 return;
             }
 
-            // Patched rather than read-modify-replaced so a turn streaming concurrently cannot
-            // have its appended messages reverted by this write. Returns false when the document
-            // is absent, which is tolerated for the same reason the previous null check was.
-            await _cosmosService.PatchItemAsync(id.ToString(), userId.ToString(),
+            // The header alone: soft-deleting a conversation hides it, and leaving the message
+            // documents in place is what keeps that reversible. Patched rather than
+            // read-modify-replaced so a turn streaming concurrently cannot have its counter
+            // updates reverted. A null return means the header is absent, which is tolerated for
+            // the same reason the previous null check was.
+            await _cosmosService.PatchItemAsync<CosmosConversationHeader>(id.ToString(), userId, id,
             [
                 PatchOperation.Set("/dateDeactivated", date),
             ], cancellationToken);
@@ -298,7 +339,7 @@ namespace Enterprise.Gpt.Service
             // and so never selected anything. SQL has already narrowed the ids to this user's.
             foreach (var conversationId in conversationIds)
             {
-                await _cosmosService.PatchItemAsync(conversationId.ToString(), userId.ToString(),
+                await _cosmosService.PatchItemAsync<CosmosConversationHeader>(conversationId.ToString(), userId, conversationId,
                 [
                     PatchOperation.Set("/dateDeactivated", date),
                 ], cancellationToken);
@@ -344,8 +385,8 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation with id {id} not found");
             }
 
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), conversation.UserId.ToString(), cancellationToken);
-            if (cosmosConversation == null)
+            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversationHeader>(id.ToString(), conversation.UserId, id, cancellationToken);
+            if (cosmosConversation is null)
             {
                 _logger.LogError("Conversation for id {Id} not found in Cosmos DB", id);
                 throw new NotFoundException($"Conversation for id {id} not found");
@@ -431,10 +472,11 @@ namespace Enterprise.Gpt.Service
             await _ctx.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            // Patch the two fields that changed. Passing the SQL entity to a full-document replace
-            // here overwrote the Cosmos document with the relational shape and destroyed the
-            // transcript — and this runs from inside a live stream, on the conversation's first turn.
-            await _cosmosService.PatchItemAsync(conversation.Id.ToString(), conversation.UserId.ToString(),
+            // Patch the two fields that changed on the header, touching no message document.
+            // Passing the SQL entity to a full-document replace here once overwrote the Cosmos
+            // document with the relational shape and destroyed the transcript — and this runs from
+            // inside a live stream, on the conversation's first turn.
+            await _cosmosService.PatchItemAsync<CosmosConversationHeader>(conversation.Id.ToString(), conversation.UserId, conversation.Id,
             [
                 PatchOperation.Set("/name", name),
                 PatchOperation.Set("/dateModified", date),
@@ -518,7 +560,7 @@ namespace Enterprise.Gpt.Service
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
-            await _cosmosService.PatchItemAsync(request.Id.ToString(), userId.ToString(),
+            await _cosmosService.PatchItemAsync<CosmosConversationHeader>(request.Id.ToString(), userId, request.Id,
             [
                 PatchOperation.Set("/name", request.Name),
                 PatchOperation.Set("/dateModified", date),
@@ -611,28 +653,23 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation with id {id} not found.");
             }
 
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-            if (cosmosConversation == null)
+            var header = await _cosmosService.GetItemAsync<CosmosConversationHeader>(id.ToString(), userId, id, cancellationToken);
+            if (header is null)
             {
                 _logger.LogError("Conversation {Id} not found.", id);
                 throw new NotFoundException($"Conversation {id} not found.");
             }
 
-            // Only the seeded system prompt so far, i.e. this is the conversation's first turn:
-            // name it from the opening prompt before answering it.
-            if (cosmosConversation.Messages.Count == 1)
+            // Only the seeded system prompt has been allocated a position, i.e. this is the
+            // conversation's first turn: name it from the opening prompt before answering it.
+            if (header.MessageCount == 1)
             {
                 await UpdateConversationNameAsync(id, request, cancellationToken);
             }
 
-            // Conversations created before the transcript was persisted correctly were written
-            // from the relational entity, which has no messages array at all. Every correctly
-            // created conversation carries at least the system prompt, so an empty transcript here
-            // means the property is absent rather than empty — and Cosmos rejects an append whose
-            // parent path does not exist, so such a document has to be seeded instead.
-            var transcriptExists = cosmosConversation.Messages.Count > 0;
+            var transcript = await ReadTranscriptAsync(id, userId, cancellationToken);
 
-            var conversations = new List<ChatMessage>(cosmosConversation.Messages.Select(x => new ChatMessage(MappingService.MapToChatRole(x.Role), x.Content)))
+            var conversations = new List<ChatMessage>(transcript.Select(x => new ChatMessage(MappingService.MapToChatRole(MappingService.MapToChatRoles(x.Role)), x.Content)))
             {
                 new(ChatRole.User, request.Prompt)
             };
@@ -769,7 +806,6 @@ namespace Enterprise.Gpt.Service
                                 : ConversationUsageStatuses.Failed,
                         Prompt: request.Prompt,
                         Answer: sb.ToString(),
-                        TranscriptExists: transcriptExists,
                         Report: usageScope.Report);
 
                     // The token that ended the stream is the one that would abort the write
@@ -801,7 +837,6 @@ namespace Enterprise.Gpt.Service
         /// <param name="Status">How the turn ended.</param>
         /// <param name="Prompt">The user's prompt.</param>
         /// <param name="Answer">The text the model produced, possibly truncated when the turn was abandoned.</param>
-        /// <param name="TranscriptExists">Whether the Cosmos document already has a messages array to append to.</param>
         /// <param name="Report">
         /// What the turn consumed, as the tool-tracking middleware accounted for it, or
         /// <see langword="null"/> when it produced no report at all.
@@ -814,7 +849,6 @@ namespace Enterprise.Gpt.Service
             ConversationUsageStatuses Status,
             string Prompt,
             string Answer,
-            bool TranscriptExists,
             ChatUsageReport? Report);
 
         /// <summary>
@@ -915,49 +949,15 @@ namespace Enterprise.Gpt.Service
                 return;
             }
 
-            // The deployment name, not the display label: the transcript is append-only, so the value
-            // recorded here has to stay meaningful after a model is renamed in the catalog, and it is
-            // the deployment that identifies which model actually served and billed the turn.
-            var userMessage = new CosmosConversationMessage
-            {
-                Id = Guid.NewGuid(),
-                Content = turn.Prompt,
-                DateCreated = date,
-                Model = turn.Model.DeploymentName,
-                Role = ChatRoles.User,
-                Tokens = 0,
-            };
-            var assistantMessage = new CosmosConversationMessage
-            {
-                Id = assistantMessageId,
-                Content = turn.Answer,
-                DateCreated = date,
-                Model = turn.Model.DeploymentName,
-                Role = ChatRoles.Assistant,
-                Usage = new CosmosConversationUsage
-                {
-                    InputTokens = inputTokens,
-                    OutputTokens = outputTokens
-                }
-            };
+            // Two positions claimed in one server-side increment, which is what makes ordering
+            // independent of the conversation lock: that lock is process-local, so two replicas
+            // answering the same conversation would otherwise be free to claim the same position.
+            // The patched header comes back, so the value read here is the one this turn owns.
+            var header = await _cosmosService.PatchItemAsync<CosmosConversationHeader>(
+                turn.ConversationId.ToString(), turn.UserId, turn.ConversationId,
+                [PatchOperation.Increment("/messageCount", 2)], cancellationToken);
 
-            // Appended server-side rather than re-read, mutated and replaced. A full-document
-            // replace would silently revert anything written since the read at the top of this
-            // method — a rename or a soft delete landing mid-stream — and would rewrite the entire
-            // transcript on every turn, which grows the request toward the 2 MB item ceiling.
-            // Operations apply in order, so seeding the array first leaves the second append valid.
-            var persisted = await _cosmosService.PatchItemAsync(turn.ConversationId.ToString(), turn.UserId.ToString(),
-            [
-                turn.TranscriptExists
-                    ? PatchOperation.Add("/messages/-", userMessage)
-                    : PatchOperation.Set<List<CosmosConversationMessage>>("/messages", [userMessage]),
-                PatchOperation.Add("/messages/-", assistantMessage),
-                PatchOperation.Increment("/messageCount", 2),
-                PatchOperation.Increment("/totalTokens", inputTokens + outputTokens),
-                PatchOperation.Set("/dateModified", date),
-            ], cancellationToken);
-
-            if (!persisted)
+            if (header is null)
             {
                 // The token counters and the usage row have already been committed to SQL, so failing
                 // silently here would bill the turn and lose it. Nothing can be returned to the
@@ -965,9 +965,121 @@ namespace Enterprise.Gpt.Service
                 // the logs. Both identifiers are logged because the usage row now asserts an
                 // AssistantMessageId that no transcript contains; reconciling needs the pair.
                 _logger.LogError(
-                    "Conversation {Id} document is missing; the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
+                    "Conversation {Id} header is missing; the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
+                    turn.ConversationId, usage.Id, assistantMessageId);
+
+                return;
+            }
+
+            var assistantSequence = header.MessageCount - 1;
+            var userSequence = header.MessageCount - 2;
+
+            // The deployment name, not the display label: the transcript is append-only, so the value
+            // recorded here has to stay meaningful after a model is renamed in the catalog, and it is
+            // the deployment that identifies which model actually served and billed the turn.
+            var userMessage = BuildMessage(turn.ConversationId, turn.UserId, ChatRoles.User, turn.Prompt, userSequence, date, turn.Model);
+            var assistantMessage = BuildMessage(turn.ConversationId, turn.UserId, ChatRoles.Assistant, turn.Answer, assistantSequence, date, turn.Model);
+            assistantMessage.Id = assistantMessageId;
+            assistantMessage.Usage = new CosmosConversationUsage
+            {
+                InputTokens = inputTokens,
+                OutputTokens = outputTokens
+            };
+
+            try
+            {
+                // One transaction, so a header whose totals moved always has the messages that moved
+                // them. Patching rather than replacing keeps a rename or a soft delete that landed
+                // mid-stream from being reverted.
+                await _cosmosService.ExecuteBatchAsync(turn.UserId, turn.ConversationId,
+                [
+                    CosmosBatchOperation.CreateItem(userMessage),
+                    CosmosBatchOperation.CreateItem(assistantMessage),
+                    CosmosBatchOperation.PatchItem(turn.ConversationId.ToString(),
+                    [
+                        PatchOperation.Increment("/totalTokens", inputTokens + outputTokens),
+                        PatchOperation.Set("/dateModified", date)
+                    ])
+                ], cancellationToken);
+            }
+            catch (Exception ex) when (ex is CosmosBatchFailedException or CosmosException)
+            {
+                // Same reasoning as the missing header above: the answer has already streamed and
+                // SQL has already committed, so the pair of identifiers in the log is the only way
+                // to reconcile a usage row against a transcript that never received its message.
+                _logger.LogError(
+                    ex,
+                    "Writing the transcript for conversation {Id} failed. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
                     turn.ConversationId, usage.Id, assistantMessageId);
             }
+        }
+
+        /// <summary>
+        /// Builds a transcript message document.
+        /// </summary>
+        /// <param name="conversationId">The conversation the message belongs to.</param>
+        /// <param name="userId">The conversation's owner, the first partition key level.</param>
+        /// <param name="role">Who produced the message.</param>
+        /// <param name="content">The message text.</param>
+        /// <param name="sequence">The position allocated to this message.</param>
+        /// <param name="date">The timestamp to stamp on the message.</param>
+        /// <param name="model">The model that served the turn, or <see langword="null"/> for the seeded system message.</param>
+        /// <returns>The document, ready to write.</returns>
+        private static CosmosConversationMessage BuildMessage(
+            Guid conversationId,
+            Guid userId,
+            ChatRoles role,
+            string content,
+            long sequence,
+            DateTimeOffset date,
+            ModelDto? model = null)
+        {
+            return new CosmosConversationMessage
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                ConversationId = conversationId,
+                Sequence = sequence,
+                Role = MappingService.MapToRoleName(role),
+                Content = content,
+                DateCreated = date,
+                Model = model?.DeploymentName,
+                ProviderId = model?.ProviderId
+            };
+        }
+
+        /// <summary>
+        /// Reads a conversation's messages in the order they happened.
+        /// </summary>
+        /// <param name="conversationId">The conversation to read.</param>
+        /// <param name="userId">The conversation's owner, the first partition key level.</param>
+        /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+        /// <returns>Every message of the conversation, ordered by ascending sequence.</returns>
+        /// <remarks>
+        /// Prefix-routed to a single subpartition by the complete partition key, so this never fans
+        /// out across the container however many conversations it holds.
+        /// </remarks>
+        private async Task<List<CosmosConversationMessage>> ReadTranscriptAsync(Guid conversationId, Guid userId, CancellationToken cancellationToken)
+        {
+            var query = new QueryDefinition(
+                    $"SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId ORDER BY c.sequence")
+                .WithParameter("@type", CosmosTranscriptTypes.Message)
+                .WithParameter("@conversationId", conversationId);
+
+            var messages = new List<CosmosConversationMessage>();
+            string? continuationToken = null;
+
+            do
+            {
+                var page = await _cosmosService.QueryPageAsync<CosmosConversationMessage>(
+                    query, userId, conversationId, TranscriptPageSize, continuationToken, cancellationToken);
+
+                messages.AddRange(page.Items);
+                continuationToken = page.ContinuationToken;
+            }
+            while (continuationToken is not null);
+
+            return messages;
         }
 
         /// <summary>
@@ -1033,31 +1145,65 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public async Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, CancellationToken cancellationToken)
+        public async Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, int take, long? before, CancellationToken cancellationToken)
         {
             var userId = _tokenService.GetOid();
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-            if (cosmosConversation == null)
+
+            // A conversation belonging to another user resolves to a different partition key, so
+            // this read cannot reach it at all and the miss becomes a 404 rather than a 403.
+            var header = await _cosmosService.GetItemAsync<CosmosConversationHeader>(id.ToString(), userId, id, cancellationToken);
+            if (header is null)
             {
                 _logger.LogError("Conversation {Id} not found.", id);
                 throw new NotFoundException($"Conversation {id} not found.");
             }
 
-            var messages = cosmosConversation.Messages
-                            .Where(x => x.Role != ChatRoles.System)
-                            .Select(x => new ConversationMessageDto()
-                            {
-                                Text = x.Content ?? string.Empty,
-                                Role = x.Role
-                            })
-                            .ToList() ?? [];
+            // Clamped rather than validated, matching every other paginated list route here: the
+            // paging arguments come off the query string, where an out-of-range value is a client
+            // mistake to absorb rather than a request to reject.
+            take = Math.Clamp(take, MinTranscriptPageTake, MaxTranscriptPageTake);
+
+            // Newest first so a page can be taken off the tail, then reversed for display. The
+            // system message is excluded server-side: it is the largest fixed message in a
+            // conversation and no client renders it.
+            var sql = before.HasValue
+                ? "SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId AND c.role != @systemRole AND c.sequence < @before ORDER BY c.sequence DESC"
+                : "SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId AND c.role != @systemRole ORDER BY c.sequence DESC";
+
+            var query = new QueryDefinition(sql)
+                .WithParameter("@type", CosmosTranscriptTypes.Message)
+                .WithParameter("@conversationId", id)
+                .WithParameter("@systemRole", MappingService.MapToRoleName(ChatRoles.System));
+
+            if (before.HasValue)
+            {
+                query = query.WithParameter("@before", before.Value);
+            }
+
+            var page = await _cosmosService.QueryPageAsync<CosmosConversationMessage>(
+                query, userId, id, take, null, cancellationToken);
+
+            var messages = page.Items
+                .Reverse()
+                .Select(x => new ConversationMessageDto
+                {
+                    Sequence = x.Sequence,
+                    Text = x.Content ?? string.Empty,
+                    Role = MappingService.MapToChatRoles(x.Role),
+                    HtmlContent = x.HtmlContent,
+                    Tokens = x.Tokens,
+                    TokenAccuracy = x.TokenAccuracy
+                })
+                .ToList();
 
             return new()
             {
                 Id = id,
-                Name = cosmosConversation.Name,
-                DateCreated = cosmosConversation.DateCreated,
-                DateModified = cosmosConversation.DateModified,
+                Name = header.Name,
+                DateCreated = header.DateCreated,
+                DateModified = header.DateModified,
+                TotalMessageCount = header.MessageCount,
+                HasMore = page.ContinuationToken is not null,
                 Messages = messages
             };
         }
