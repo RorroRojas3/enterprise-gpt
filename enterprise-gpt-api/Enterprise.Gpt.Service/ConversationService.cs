@@ -1,4 +1,4 @@
-﻿using Andes.Extensions.AI;
+using Andes.Extensions.AI;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +17,7 @@ using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 
 namespace Enterprise.Gpt.Service
@@ -111,6 +112,7 @@ namespace Enterprise.Gpt.Service
         IConversationLockService conversationLockService,
         ITokenService tokenService,
         IAzureCosmosService cosmosService,
+        ITokenEstimatorResolver tokenEstimatorResolver,
         IValidator<CreateConversationActionDto> createChatValidator,
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
@@ -123,6 +125,7 @@ namespace Enterprise.Gpt.Service
         private readonly IMcpToolProvider _mcpToolProvider = mcpToolProvider;
         private readonly IDocumentRetrievalService _documentRetrievalService = documentRetrievalService;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
+        private readonly ITokenEstimatorResolver _tokenEstimatorResolver = tokenEstimatorResolver;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
         private readonly IValidator<CreateConversationActionDto> _createChatValidator = createChatValidator;
@@ -1025,7 +1028,7 @@ namespace Enterprise.Gpt.Service
         /// <param name="date">The timestamp to stamp on the message.</param>
         /// <param name="model">The model that served the turn, or <see langword="null"/> for the seeded system message.</param>
         /// <returns>The document, ready to write.</returns>
-        private static CosmosConversationMessage BuildMessage(
+        private CosmosConversationMessage BuildMessage(
             Guid conversationId,
             Guid userId,
             ChatRoles role,
@@ -1034,6 +1037,8 @@ namespace Enterprise.Gpt.Service
             DateTimeOffset date,
             ModelDto? model = null)
         {
+            var (tokens, accuracy) = EstimateMessageTokens(model, content);
+
             return new CosmosConversationMessage
             {
                 Id = Guid.NewGuid(),
@@ -1042,10 +1047,42 @@ namespace Enterprise.Gpt.Service
                 Sequence = sequence,
                 Role = MappingService.MapToRoleName(role),
                 Content = content,
+                Tokens = tokens,
+                TokenAccuracy = accuracy,
                 DateCreated = date,
                 Model = model?.DeploymentName,
                 ProviderId = model?.ProviderId
             };
+        }
+
+        /// <summary>
+        /// Counts what a message will cost as context on every later turn.
+        /// </summary>
+        /// <param name="model">The model that served the turn, or <see langword="null"/> for the seeded system message.</param>
+        /// <param name="content">The message text.</param>
+        /// <returns>The count and how it was arrived at.</returns>
+        /// <remarks>
+        /// A tokenizer fault returns zero rather than propagating: the answer has already been
+        /// streamed by the time this runs, so losing the turn over a token count would trade
+        /// something valuable for something cosmetic.
+        /// </remarks>
+        private (long Tokens, TokenAccuracies Accuracy) EstimateMessageTokens(ModelDto? model, string content)
+        {
+            try
+            {
+                // A null model means the seeded system message, written before a turn has chosen
+                // one. The text is provider-agnostic English, so the fallback encoding's small
+                // disagreement with the eventual provider's tokenizer is noise.
+                var estimator = _tokenEstimatorResolver.Resolve(model?.ProviderId ?? Guid.Empty);
+
+                return (estimator.CountTokens(model?.DeploymentName, content), estimator.Accuracy);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Estimating the context cost of a message failed; recording it as zero.");
+
+                return (0, TokenAccuracies.Estimated);
+            }
         }
 
         /// <summary>

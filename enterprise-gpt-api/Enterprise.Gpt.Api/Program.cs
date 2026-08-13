@@ -32,6 +32,7 @@ using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
 using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 using Scalar.AspNetCore;
 using System.ClientModel;
@@ -106,6 +107,16 @@ static void ConfigureFunctionInvocation(FunctionInvokingChatClient client)
 // anonymous function; they stack, with agents short-circuiting and everything else falling through
 // to the MCP classifier. Nothing turns tool arguments on: the middleware's default is to keep
 // prompt content, arguments and results out of progress events, and that stands.
+/// <summary>
+/// Rejects a calibration multiplier that is not positive or exceeds the configured ceiling, so a
+/// mistyped value fails at boot rather than silently distorting every stored count and budget.
+/// </summary>
+static bool ValidateCalibrationMultipliers(TokenEstimationOptions options)
+{
+    return options.CalibrationMultipliers.Values.All(multiplier =>
+        multiplier > 0 && multiplier <= options.MaxCalibrationMultiplier);
+}
+
 static void ConfigureToolTracking(ToolTrackingOptions options)
 {
     options.UseMcpToolClassification();
@@ -264,6 +275,34 @@ if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enable
 }
 
 builder.Services.AddSingleton<IChatClientResolver, ChatClientResolver>();
+
+// Per-message context estimation. Registered unconditionally, unlike the chat clients above: an
+// estimator is pure CPU and needs no credentials, so there is nothing for a deployment to enable.
+// Singletons because building a tokenizer loads and indexes a large vocabulary.
+builder.Services.AddOptions<TokenEstimationOptions>()
+    .Bind(builder.Configuration.GetSection(TokenEstimationOptions.SectionName))
+    .Validate(options => !string.IsNullOrWhiteSpace(options.FallbackEncoding),
+        "TokenEstimation:FallbackEncoding must be configured.")
+    .Validate(options => options.PerToolSchemaTokens >= 0,
+        "TokenEstimation:PerToolSchemaTokens must not be negative.")
+    .Validate(options => options.PerMessageFramingTokens >= 0,
+        "TokenEstimation:PerMessageFramingTokens must not be negative.")
+    .Validate(options => options.MaxCalibrationMultiplier > 0,
+        "TokenEstimation:MaxCalibrationMultiplier must be greater than zero.")
+    .Validate(ValidateCalibrationMultipliers)
+    .ValidateOnStart();
+builder.Services.AddSingleton<TiktokenTokenizerCache>();
+builder.Services.AddKeyedSingleton<ITokenEstimator>(ChatClientKeys.AzureAIFoundry, (sp, _) =>
+    new TiktokenTokenEstimator(Providers.AzureOpenAI, sp.GetRequiredService<TiktokenTokenizerCache>(), sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
+builder.Services.AddKeyedSingleton<ITokenEstimator>(ChatClientKeys.AmazonBedrock, (sp, _) =>
+    new TiktokenTokenEstimator(Providers.AmazonBedrock, sp.GetRequiredService<TiktokenTokenizerCache>(), sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
+builder.Services.AddKeyedSingleton<ITokenEstimator>(ChatClientKeys.Anthropic, (sp, _) =>
+    new TiktokenTokenEstimator(Providers.Anthropic, sp.GetRequiredService<TiktokenTokenizerCache>(), sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
+// The unkeyed default the resolver falls back to for a provider with no estimator of its own.
+builder.Services.AddSingleton<ITokenEstimator>(sp =>
+    new TiktokenTokenEstimator(Guid.Empty, sp.GetRequiredService<TiktokenTokenizerCache>(), sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
+builder.Services.AddSingleton<ITokenEstimatorResolver, TokenEstimatorResolver>();
+builder.Services.AddSingleton<IPromptEstimator, PromptEstimator>();
 
 // AI Embedding Generators
 var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;

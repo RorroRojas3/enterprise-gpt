@@ -3,9 +3,13 @@ using FluentValidation;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
@@ -35,6 +39,18 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly IDocumentRetrievalService _documentRetrievalService = Substitute.For<IDocumentRetrievalService>();
     private readonly IConversationLockService _lockService = Substitute.For<IConversationLockService>();
     private readonly IAzureCosmosService _cosmosService = Substitute.For<IAzureCosmosService>();
+
+    // The real estimator, not a substitute: it is a pure function over text, so exercising it here
+    // keeps the recorded token counts meaningful rather than whatever a stub was told to return.
+    private readonly ITokenEstimatorResolver _tokenEstimatorResolver = new TokenEstimatorResolver(
+        new ServiceCollection()
+            .AddSingleton(new TiktokenTokenizerCache(NullLogger<TiktokenTokenizerCache>.Instance))
+            .AddSingleton<ITokenEstimator>(sp => new TiktokenTokenEstimator(
+                Guid.Empty,
+                sp.GetRequiredService<TiktokenTokenizerCache>(),
+                Options.Create(new TokenEstimationOptions())))
+            .BuildServiceProvider(),
+        NullLogger<TokenEstimatorResolver>.Instance);
     private readonly FakeChatClient _chatClient = new();
     private readonly IChatClient _trackedChatClient;
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
@@ -72,6 +88,7 @@ public sealed class ConversationServiceTests : IDisposable
             _lockService,
             _tokenService,
             _cosmosService,
+            _tokenEstimatorResolver,
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
             new DeactivateConversationsBulkActionDtoValidator(),
