@@ -19,6 +19,7 @@ using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
@@ -121,6 +122,7 @@ namespace Enterprise.Gpt.Service
         IPromptEstimator promptEstimator,
         IContextBudgetCalculator contextBudgetCalculator,
         IOptions<ContextBudgetOptions> contextBudgetOptions,
+        ChatMetrics chatMetrics,
         IValidator<CreateConversationActionDto> createChatValidator,
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
@@ -138,6 +140,7 @@ namespace Enterprise.Gpt.Service
         private readonly IPromptEstimator _promptEstimator = promptEstimator;
         private readonly IContextBudgetCalculator _contextBudgetCalculator = contextBudgetCalculator;
         private readonly IOptions<ContextBudgetOptions> _contextBudgetOptions = contextBudgetOptions;
+        private readonly ChatMetrics _chatMetrics = chatMetrics;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
         private readonly IValidator<CreateConversationActionDto> _createChatValidator = createChatValidator;
@@ -822,6 +825,7 @@ namespace Enterprise.Gpt.Service
                                 : ConversationUsageStatuses.Failed,
                         Prompt: request.Prompt,
                         Answer: sb.ToString(),
+                        EstimatedPromptTokens: estimatedPromptTokens,
                         Report: usageScope.Report);
 
                     // The token that ended the stream is the one that would abort the write
@@ -853,6 +857,11 @@ namespace Enterprise.Gpt.Service
         /// <param name="Status">How the turn ended.</param>
         /// <param name="Prompt">The user's prompt.</param>
         /// <param name="Answer">The text the model produced, possibly truncated when the turn was abandoned.</param>
+        /// <param name="EstimatedPromptTokens">
+        /// What the prompt was estimated to cost, or <see langword="null"/> when budgeting was off
+        /// and no estimate was produced. Compared against the provider's own figure where the two
+        /// measure the same thing.
+        /// </param>
         /// <param name="Report">
         /// What the turn consumed, as the tool-tracking middleware accounted for it, or
         /// <see langword="null"/> when it produced no report at all.
@@ -865,6 +874,7 @@ namespace Enterprise.Gpt.Service
             ConversationUsageStatuses Status,
             string Prompt,
             string Answer,
+            long? EstimatedPromptTokens,
             ChatUsageReport? Report);
 
         /// <summary>
@@ -900,6 +910,8 @@ namespace Enterprise.Gpt.Service
             }
 
             var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, date);
+
+            RecordEstimateAccuracy(turn, turnUsage, completed);
 
             // The conversation's running counters move by everything the turn consumed — the
             // assistant's own turns and every tool, MCP call and agent underneath them. Derived
@@ -1070,6 +1082,35 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <summary>
+        /// Compares the estimated prompt against what the provider reported, where the two measure
+        /// the same thing.
+        /// </summary>
+        /// <param name="turn">The finished turn.</param>
+        /// <param name="turnUsage">What the tool-tracking middleware accounted for.</param>
+        /// <param name="completed">Whether the turn ran to completion.</param>
+        /// <remarks>
+        /// Only on turns with no tool calls. The provider's reported input tokens then cover the
+        /// same prompt the estimator saw; once a tool runs, that figure also includes the follow-up
+        /// prompts carrying tool results, which the estimator never counted and never should. Pure
+        /// arithmetic over numbers already in hand, so it adds no round trip to the turn.
+        /// </remarks>
+        private void RecordEstimateAccuracy(TurnOutcome turn, TurnUsage turnUsage, bool completed)
+        {
+            if (!completed
+                || turn.Report is null
+                || turnUsage.ToolCalls.Count > 0
+                || turn.EstimatedPromptTokens is not long estimate
+                || turnUsage.InputTokens <= 0)
+            {
+                return;
+            }
+
+            var relativeError = (estimate - turnUsage.InputTokens) / (double)turnUsage.InputTokens;
+
+            _chatMetrics.RecordEstimateRelativeError(relativeError, turn.Model.ProviderId, turn.Model.DeploymentName);
+        }
+
+        /// <summary>
         /// Counts what a message will cost as context on every later turn.
         /// </summary>
         /// <param name="model">The model that served the turn, or <see langword="null"/> for the seeded system message.</param>
@@ -1182,6 +1223,8 @@ namespace Enterprise.Gpt.Service
 
             if (result.DroppedCount > 0)
             {
+                _chatMetrics.RecordBudgetDrop(result.DroppedCount, result.DroppedTokens, model.DeploymentName);
+
                 _logger.LogInformation(
                     "Trimmed {DroppedCount} messages holding {DroppedTokens} tokens from the replay for model {DeploymentName} to fit a budget of {Budget}.",
                     result.DroppedCount,

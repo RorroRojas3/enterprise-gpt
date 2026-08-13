@@ -1,4 +1,5 @@
 using Azure.Monitor.OpenTelemetry.AspNetCore;
+using Enterprise.Gpt.Service.Observability;
 using OpenTelemetry.Resources;
 
 namespace Enterprise.Gpt.Api.Observability;
@@ -31,9 +32,12 @@ internal static class TelemetryRegistration
     /// </summary>
     /// <remarks>
     /// Named explicitly at both the producer (<c>UseOpenTelemetry(sourceName:)</c>) and the consumer so
-    /// the two cannot drift apart when the library changes its own default.
+    /// the two cannot drift apart when the library changes its own default. Aliases
+    /// <see cref="ChatMetrics.MeterName"/> rather than repeating the string, because the
+    /// application's own instruments publish on the same meter and two literals that must agree
+    /// would eventually stop agreeing with no build error to say so.
     /// </remarks>
-    internal const string ChatTelemetrySourceName = "Enterprise.Gpt.Chat";
+    internal const string ChatTelemetrySourceName = ChatMetrics.MeterName;
 
     /// <summary>The service name reported as the Application Insights cloud role.</summary>
     private const string ServiceName = "enterprise-gpt-api";

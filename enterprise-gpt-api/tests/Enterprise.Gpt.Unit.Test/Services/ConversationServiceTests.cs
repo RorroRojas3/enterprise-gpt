@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
@@ -94,6 +95,7 @@ public sealed class ConversationServiceTests : IDisposable
             new PromptEstimator(_tokenEstimatorResolver, Options.Create(new TokenEstimationOptions())),
             new ContextBudgetCalculator(NullLogger<ContextBudgetCalculator>.Instance),
             Options.Create(new ContextBudgetOptions()),
+            new ChatMetrics(new DummyMeterFactory()),
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
             new DeactivateConversationsBulkActionDtoValidator(),

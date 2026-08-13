@@ -31,6 +31,7 @@ using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
 using Enterprise.Gpt.Service.Extraction;
+using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
@@ -315,6 +316,11 @@ builder.Services.AddOptions<ContextBudgetOptions>()
     .Bind(builder.Configuration.GetSection(ContextBudgetOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<IContextBudgetCalculator, ContextBudgetCalculator>();
+
+// The application's own chat instruments. Published on the meter TelemetryRegistration already
+// registers, so they export without a second registration - and record with no exporter at all
+// when Application Insights is not configured.
+builder.Services.AddSingleton<ChatMetrics>();
 
 // AI Embedding Generators
 var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;
