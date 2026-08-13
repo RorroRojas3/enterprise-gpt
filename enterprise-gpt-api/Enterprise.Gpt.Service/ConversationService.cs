@@ -10,6 +10,7 @@ using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Microsoft.Azure.Cosmos;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
@@ -17,6 +18,7 @@ using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 
@@ -113,6 +115,7 @@ namespace Enterprise.Gpt.Service
         ITokenService tokenService,
         IAzureCosmosService cosmosService,
         ITokenEstimatorResolver tokenEstimatorResolver,
+        IMarkdownRenderer markdownRenderer,
         IValidator<CreateConversationActionDto> createChatValidator,
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
@@ -126,6 +129,7 @@ namespace Enterprise.Gpt.Service
         private readonly IDocumentRetrievalService _documentRetrievalService = documentRetrievalService;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
         private readonly ITokenEstimatorResolver _tokenEstimatorResolver = tokenEstimatorResolver;
+        private readonly IMarkdownRenderer _markdownRenderer = markdownRenderer;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IAzureCosmosService _cosmosService = cosmosService;
         private readonly IValidator<CreateConversationActionDto> _createChatValidator = createChatValidator;
@@ -1047,6 +1051,7 @@ namespace Enterprise.Gpt.Service
                 Sequence = sequence,
                 Role = MappingService.MapToRoleName(role),
                 Content = content,
+                HtmlContent = RenderHtml(content),
                 Tokens = tokens,
                 TokenAccuracy = accuracy,
                 DateCreated = date,
@@ -1082,6 +1087,30 @@ namespace Enterprise.Gpt.Service
                 _logger.LogError(ex, "Estimating the context cost of a message failed; recording it as zero.");
 
                 return (0, TokenAccuracies.Estimated);
+            }
+        }
+
+        /// <summary>
+        /// Renders a message to the HTML stored beside it.
+        /// </summary>
+        /// <param name="content">The message text.</param>
+        /// <returns>The rendered HTML, or the escaped plain text when rendering fails.</returns>
+        /// <remarks>
+        /// A renderer fault falls back to escaped text rather than propagating, for the same reason
+        /// the estimator does: this runs after the answer has streamed, and a stored artifact is
+        /// worth less than the turn that produced it.
+        /// </remarks>
+        private string RenderHtml(string content)
+        {
+            try
+            {
+                return _markdownRenderer.Render(content);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Rendering a message to HTML failed; storing the escaped plain text instead.");
+
+                return WebUtility.HtmlEncode(content);
             }
         }
 

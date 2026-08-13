@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Common.Enums;
@@ -89,6 +90,7 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenService,
             _cosmosService,
             _tokenEstimatorResolver,
+            new MarkdownRenderer(),
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
             new DeactivateConversationsBulkActionDtoValidator(),

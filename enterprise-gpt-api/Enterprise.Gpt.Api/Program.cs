@@ -1,4 +1,4 @@
-﻿using Amazon;
+using Amazon;
 using Amazon.BedrockRuntime;
 using Amazon.Runtime;
 using Andes.Extensions.AI;
@@ -31,6 +31,7 @@ using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
 using Enterprise.Gpt.Service.Extraction;
+using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
@@ -303,6 +304,10 @@ builder.Services.AddSingleton<ITokenEstimator>(sp =>
     new TiktokenTokenEstimator(Guid.Empty, sp.GetRequiredService<TiktokenTokenizerCache>(), sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
 builder.Services.AddSingleton<ITokenEstimatorResolver, TokenEstimatorResolver>();
 builder.Services.AddSingleton<IPromptEstimator, PromptEstimator>();
+
+// Singleton because building the pipeline is per-process configuration; the per-render writer
+// inside is what stays per call.
+builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 
 // AI Embedding Generators
 var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;
