@@ -1,6 +1,13 @@
 import { HttpClient } from '@angular/common/http';
-import { inject } from '@angular/core';
-import { patchState, signalStore, withMethods, withProps, withState } from '@ngrx/signals';
+import { computed, inject } from '@angular/core';
+import {
+  patchState,
+  signalStore,
+  withComputed,
+  withMethods,
+  withProps,
+  withState,
+} from '@ngrx/signals';
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
@@ -84,6 +91,17 @@ export const ConversationActionsStore = signalStore(
     _toasts: inject(ToastStore),
     _dispatcher: inject(Dispatcher),
     _signedOut$: injectSignedOut(),
+  })),
+  withComputed(({ _list }) => ({
+    /**
+     * The rows with one of this store's requests in flight.
+     *
+     * Re-exported rather than having callers reach into `_list`: a surface that only
+     * *invokes* these flows — the conversations library's table, which holds rows the
+     * 50-item sidebar may not — has no other business with the sidebar's list, and
+     * the set is populated by id whether or not that list holds the row.
+     */
+    pendingIds: computed(() => _list.pendingIds()),
   })),
   withMethods((store) => {
     const _rename = rxMethod<{ target: ConversationDto; name: string }>(
@@ -182,6 +200,59 @@ export const ConversationActionsStore = signalStore(
       }),
     );
 
+    const _deleteMany = rxMethod<{ ids: readonly string[]; onRollback: () => void }>(
+      // mergeMap, as with the single delete: two batches are two independent sets of
+      // rows. Overlap on an id cannot happen — the caller's rows are out of its
+      // selection the moment the first batch goes out.
+      mergeMap(({ ids, onRollback }) => {
+        for (const id of ids) {
+          store._list.setRowPending(id, true);
+        }
+
+        // Null for rows the 50-item sidebar does not hold; the DELETE still goes out
+        // and there is nothing to restore there.
+        const removals = ids.map((id) => store._list.removeRow(id)).filter((r) => r !== null);
+        const url = store._api.build('conversations/bulk');
+
+        // `HttpClient.delete` drops a body unless it goes through the options object,
+        // and the endpoint binds `[FromBody]` — without this the server sees an empty
+        // id list and answers 400.
+        return store._http.delete<void>(url, { body: { conversationIds: [...ids] } }).pipe(
+          takeUntil(store._signedOut$),
+          tapResponse({
+            next: () => {
+              store._toasts.success(
+                ids.length === 1 ? 'Conversation deleted' : `${ids.length} conversations deleted`,
+              );
+
+              for (const id of ids) {
+                store._dispatcher.dispatch(conversationEvents.deleted(id));
+              }
+            },
+            error: (cause: unknown) => {
+              // Reversed, because `removeRow` captures each index against the list as
+              // it stands at that moment — so the removals shrink it one at a time and
+              // only a LIFO restore is their inverse. Front-to-back would splice each
+              // row against a list that has already grown, turning [A, B, C] minus
+              // [A, B] back into [B, A, C].
+              for (const removal of [...removals].reverse()) {
+                store._list.restoreRow(removal);
+              }
+              onRollback();
+              // One toast for the batch, not one per row — a failed delete of eight
+              // rows is one thing that went wrong.
+              store._toasts.fromError(toAppError(cause, { url }));
+            },
+            finalize: () => {
+              for (const id of ids) {
+                store._list.setRowPending(id, false);
+              }
+            },
+          }),
+        );
+      }),
+    );
+
     const _favorite = rxMethod<{ target: ConversationDto; isFavorite: boolean }>(
       // mergeMap: favourites of different conversations are independent and may
       // overlap, exactly as with delete. Same-id overlap cannot happen — toggleFavorite
@@ -227,6 +298,11 @@ export const ConversationActionsStore = signalStore(
     );
 
     return {
+      /** Whether one of this store's requests is in flight for a given row. */
+      isRowPending(id: string): boolean {
+        return store._list.isRowPending(id);
+      },
+
       /** Opens the rename dialog for a conversation, unless its own action is in flight. */
       beginRename(conversation: ConversationDto): void {
         if (store._list.isRowPending(conversation.id)) {
@@ -311,6 +387,28 @@ export const ConversationActionsStore = signalStore(
 
         patchState(store, { deleteTarget: null });
         _delete(target);
+      },
+
+      /**
+       * Deletes several conversations in one request (US-704).
+       *
+       * Root-scoped for the same reason the single delete is: the invoking surface is
+       * the conversations library, whose store dies with its route. An `rxMethod`
+       * declared there would have its subscription torn down by that injector, and a
+       * reader who confirmed a delete and then clicked a sidebar row would get no
+       * deletion, no toast and no explanation.
+       *
+       * The sidebar's rows are removed here; `onRollback` is how the *caller's* own
+       * optimistic removal is undone, because a store in `core/` cannot inject a
+       * route-scoped one. The server filters ids that are missing, foreign or already
+       * deleted and answers 204 either way, so there is no partial outcome to model.
+       */
+      deleteMany(ids: readonly string[], onRollback: () => void): void {
+        if (ids.length === 0) {
+          return;
+        }
+
+        _deleteMany({ ids, onRollback });
       },
 
       /**

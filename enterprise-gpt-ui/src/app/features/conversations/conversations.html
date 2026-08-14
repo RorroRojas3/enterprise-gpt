@@ -5,8 +5,7 @@
        same accessible name are on screen together at this width, and a rotor
        listing both would say nothing about which is which.
 
-       Frame 4a also draws a Favorites filter (US-703) and a Select all control
-       (US-704) here, and a "Showing N of M" counter at the right (US-702). -->
+       Frame 4a also draws a Select all control (US-704) here. -->
   <app-search-input
     class="conversations__search"
     label="Search conversations by name"
@@ -15,6 +14,85 @@
     [busy]="library.isPending()"
     (searched)="onSearched($event)"
   />
+
+  <!--
+    aria-pressed rather than a second label: the button's text never changes, so the
+    state has to be carried somewhere a screen reader reads.
+
+    Spelt the way the sidebar kebab and the chat header star already spell it, not the
+    board's US "Favorites". A reader hearing "Favorites" from this button and
+    "Unfavourite Helios" from the row star beside it is the worse of the two
+    inconsistencies, and every other favourite control in the app is British.
+  -->
+  <button
+    class="btn btn-outline-secondary btn-sm conversations__filter"
+    type="button"
+    [class.conversations__filter--on]="favorites()"
+    [attr.aria-pressed]="favorites()"
+    (click)="toggleFavorites()"
+  >
+    <app-icon [name]="favorites() ? 'bi-star-fill' : 'bi-star'" />
+    Favourites
+  </button>
+
+  <!-- Frame 4a puts select-all in the toolbar rather than the table header, so
+       `DataTable` is told not to render its own: two controls bound to one state is
+       a defect, and below the breakpoint there is no header row to hold one. -->
+  <label class="conversations__select-all">
+    <input
+      class="form-check-input"
+      type="checkbox"
+      [disabled]="library.entities().length === 0"
+      [checked]="library.allLoadedSelected()"
+      [indeterminate]="library.someLoadedSelected()"
+      (change)="library.toggleSelectAll()"
+    />
+    Select all
+  </label>
+
+  <!--
+    aria-hidden because the same string is handed to the table's own live region
+    below, which announces it once when it changes. Duplicating it here would have a
+    screen reader read the count twice on every search.
+
+    Withheld before the first response ("Showing 0 of 0") and beside an error panel,
+    where it would keep reporting a result set the panel exists to stop showing. A
+    *narrowing* search keeps it, alongside the rows it still describes.
+  -->
+  @if (!library.isFirstLoad() && !library.error()) {
+    <!--
+      US-705. The list is the server's own `dateCreated` order and no endpoint here
+      accepts a sort parameter, so rather than leaving that to be inferred from an
+      absence, the order is named and the reason is one keystroke away.
+
+      This is the anchor US-706 replaces with a real sort control; until then a
+      control that reordered one loaded page — with a second sorted run appearing
+      under it on the next Load more — would be the dishonest alternative.
+
+      The statement is not aria-hidden — unlike the counter, nothing else carries it,
+      and the criterion is that the order is *stated*. The explanation rides along as
+      visually-hidden text so it does not depend on hovering, and the info control
+      repeats it as a flyout for the reader who is looking rather than listening:
+      `Tooltip` shows on focus as well as hover and Escape dismisses it (WCAG SC
+      1.4.13). Its own short name stops a screen reader announcing the whole sentence
+      as a button label.
+    -->
+    <p class="conversations__order">
+      Newest first
+      <span class="visually-hidden">. {{ ORDER_EXPLANATION }}</span>
+    </p>
+    <button
+      class="conversations__order-info"
+      type="button"
+      aria-label="Why this order"
+      [appTooltip]="ORDER_EXPLANATION"
+      appTooltipPlacement="top"
+    >
+      <app-icon name="bi-info-circle" />
+    </button>
+
+    <p class="conversations__count" aria-hidden="true">{{ library.countSummary() }}</p>
+  }
 </div>
 
 @if (library.error(); as error) {
@@ -35,6 +113,12 @@
     [trackKey]="trackKey"
     [rowLabel]="rowLabel"
     [loading]="library.isFirstLoad()"
+    [summary]="library.countSummary()"
+    [pendingIds]="actions.pendingIds()"
+    [selectable]="true"
+    [headerSelectAll]="false"
+    [selectedIds]="library.selectedIds()"
+    (selectedIdsChange)="library.setSelection($event)"
   >
     <ng-template appTableCell="name" [appTableCellFor]="library.entities()" let-row>
       <a class="conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
@@ -42,6 +126,34 @@
 
     <ng-template appTableCell="model" [appTableCellFor]="library.entities()" let-row>
       <span class="conversations__model">{{ modelName(row) }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="favorite" [appTableCellFor]="library.entities()" let-row>
+      <!--
+        No aria-pressed: the label already carries the direction, and a control that
+        both names its action and reports a pressed state is announced twice over.
+
+        `aria-disabled`, not `disabled`: the native attribute blurs the button the
+        instant it is pressed, so a keyboard reader would land on `<body>` for the
+        whole round trip. `toggleFavorite` already refuses re-entry on the pending id,
+        so the guard is real either way.
+
+        The glyph flips on the server's confirmation rather than optimistically. The
+        library holds its own entities and the actions store cannot patch them, and a
+        row past the sidebar's first 50 is not in the list it *can* patch — so an
+        optimistic flip here would have no rollback behind it. The busy state is what
+        carries the feedback in the meantime.
+      -->
+      <button
+        class="conversations__star"
+        type="button"
+        [class.conversations__star--on]="row.isFavorite"
+        [attr.aria-label]="favoriteLabel(row)"
+        [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+        (click)="onToggleFavorite(row)"
+      >
+        <app-icon [name]="row.isFavorite ? 'bi-star-fill' : 'bi-star'" />
+      </button>
     </ng-template>
 
     <div tableEmpty>
@@ -61,6 +173,23 @@
             Clear search
           </button>
         </app-empty-state>
+      } @else if (library.hasNoFavorites()) {
+        <!-- Frame 4b's treatment for a filter with no term to quote, which is a
+             different situation again and needs its own way out. -->
+        <app-empty-state
+          heading="No favourite conversations"
+          [headingLevel]="2"
+          message="Star a conversation and it will appear here."
+        >
+          <button
+            emptyStateAction
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="clearFavorites()"
+          >
+            Show all conversations
+          </button>
+        </app-empty-state>
       } @else {
         <!-- The same treatment for the reader who has none at all, which is a
              different situation and a different action. -->
@@ -75,5 +204,62 @@
         </app-empty-state>
       }
     </div>
+
+    <!--
+      The `@if` sits *inside* the projected element, never around it: content
+      projection matches static nodes, and `@if` would wrap this in an `ng-template`
+      carrying no `tableFooter` attribute — silently dropping it, since `DataTable`
+      has no catch-all slot.
+
+      Gone rather than disabled once everything is loaded, which is US-702's third
+      criterion and the board's own note: a disabled control still reads as "there is
+      more, but not for you".
+    -->
+    <div tableFooter class="conversations__more">
+      @if (library.hasMore()) {
+        <!--
+          Both halves of `loadMore()`'s own guard, so the control cannot look
+          operable while a press would be a silent no-op — which is what it would be
+          during a narrowing search, where the rows and this button both stay up.
+        -->
+        <button
+          class="btn btn-outline-secondary btn-sm"
+          type="button"
+          [attr.aria-disabled]="library.loadingMore() || library.isPending() ? 'true' : null"
+          (click)="onLoadMore()"
+        >
+          @if (library.loadingMore()) {
+            <span class="kit-spinner" aria-hidden="true"></span>
+            <span>Loading…</span>
+          } @else {
+            <span>Load more</span>
+          }
+        </button>
+      }
+    </div>
   </app-data-table>
 }
+
+<!--
+  Outside the error branch: a failed *page* leaves the rows and the selection intact,
+  and a reader who had rows checked should still be able to act on them.
+
+  `BulkActionBar` supplies frame 4a's pill, the "N selected" copy and the Clear
+  action; only the destructive control is projected.
+-->
+<app-bulk-action-bar
+  [count]="library.selectedCount()"
+  [note]="library.selectAllNote()"
+  (cleared)="library.clearSelection()"
+>
+  <button class="btn btn-danger btn-sm" type="button" (click)="confirmOpen.set(true)">
+    <app-icon name="bi-trash3" />
+    Delete selected
+  </button>
+</app-bulk-action-bar>
+
+<app-delete-conversations-dialog
+  [(open)]="confirmOpen"
+  [count]="library.selectedCount()"
+  (confirmed)="library.deleteSelected()"
+/>

@@ -101,4 +101,12 @@ td {
 
 .table-footer {
   margin-top: 12px;
+
+  // A consumer that conditions its footer has to project a stable wrapper — an `@if`
+  // around it compiles to an `ng-template` carrying no `tableFooter` attribute, and
+  // the content is dropped. That makes the slot itself never `:empty` again, so the
+  // gap has to key on the wrapper collapsing rather than on the slot being empty.
+  &:has(> :empty) {
+    margin-top: 0;
+  }
 }

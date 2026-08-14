@@ -341,11 +341,11 @@ Timer handles live in `withProps`, not in state: a `Map` in `withState` is eithe
 
 | Component | Key inputs | Outputs | Notes |
 | --- | --- | --- | --- |
-| `<app-data-table>` | `rows`, `columns`, `trackKey`, `rowLabel`, `label` — all **required**; `loading`, `skeletonRows`, `pendingIds`, `selectable`, `selectedIds` (model) | — | Slots `[tableNotice]`, `[tableEmpty]`, `[tableFooter]` |
+| `<app-data-table>` | `rows`, `columns`, `trackKey`, `rowLabel`, `label` — all **required**; `loading`, `skeletonRows`, `summary`, `pendingIds`, `selectable`, `selectedIds` (model), `headerSelectAll` | — | Slots `[tableNotice]`, `[tableEmpty]`, `[tableFooter]` |
 | `ng-template appTableCell` | `appTableCell` (column key), `appTableCellFor` (type anchor) | — | Typed cell template |
 | `<app-card-row>` | — | — | Mobile stand-in for a row. Slots `cardRowLead/Title/Subtitle/Meta/Badges/Actions` |
 | `<app-paginator>` | `page`, `totalPages`, `totalCount`, `pageSize`, `itemLabel` — all **required** | `pageChanged` | Numbered pager for server-paged screens |
-| `<app-bulk-action-bar>` | `count` **required**, `note` | `cleared` | Actions project as the default slot |
+| `<app-bulk-action-bar>` | `count` **required**, `note` | `cleared` | Actions project as the default slot. `position: fixed`, so it caps and wraps itself (SC 1.4.10) — see below |
 | `row-selection.ts` | `toggleRow`, `selectRows`, `deselectRows`, `clearRows` | — | Every one returns a **new** `Set` |
 
 `DataTable` imports no store. Everything arrives as inputs, which is what lets it serve `withOffsetPagination` (the footer slot), `withPendingIds` (`pendingIds`) and `withClientQuery` (the notice slot) without knowing any of them exist.
@@ -380,6 +380,16 @@ Timer handles live in `withProps`, not in state: a `Map` in `withState` is eithe
 Three performance constraints are baked in and are easy to undo by accident: row contexts and the mobile slot buckets are memoized in `computed`s rather than built in the template, because binding `[ngTemplateOutletContext]` to a method call allocates a new object on every check, which `provideCheckNoChangesConfig({ exhaustive: true })` fails immediately — correctly, since in a zoneless app it also means the view is dirtied on every pass. And `contentChildren` uses `descendants: true`, because a consumer's cell templates are frequently wrapped in an `@if` for a permission-gated column; without it the template is simply not found and the column silently renders blank.
 
 **Every selection updater returns a new `Set`.** `set.add(id)` followed by writing the same reference back performs no signal write at all: the view never re-renders and the bug looks like a dead checkbox. `core/state/with-pending-ids.ts` documents the same rule for the same reason, and the specs assert `not.toBe`.
+
+Three inputs exist for a caller whose board disagrees with the component's defaults, all added by EP-7 (US-702, US-704) and each closing a specific hole:
+
+- **`summary`** replaces the row count the table announces and describes itself by. A paginated caller knows something the table cannot — how many rows exist beyond the ones it was handed — so it hands over "Showing 25 of 312 conversations" and the default "25 results" stands down. **The caller's own visible copy of that string must then be `aria-hidden`**, or a screen reader hears the count twice, from two derivations that will eventually disagree.
+- **`headerSelectAll="false"`** drops the checkbox from the header row while keeping the 40 px track the body rows are laid out against, for a board that draws select-all in its own toolbar. Two controls bound to one state is a defect, and below 768 px there is no header row to hold one at all.
+- **Selection now exists below the breakpoint**, through `CardRow`'s previously unused `[cardRowLead]` slot. Without it a caller that set `selectable` silently got a table on a laptop and an unselectable list on a phone.
+
+One projection trap belongs to the footer slot rather than to any input: **a conditional footer must put its `@if` _inside_ a stable projected wrapper.** Content projection matches static nodes, so an `@if` around the element compiles to an `ng-template` carrying no `tableFooter` attribute, and — with no catch-all slot here — it is dropped with no error. `.table-footer` therefore keys its gap on `:has(> :empty)`, since the slot itself is never empty again once a wrapper is projected into it.
+
+**`BulkActionBar` caps and wraps itself, rather than leaving it to call sites.** It is `position: fixed`, so nothing downstream can rescue it from overflowing a narrow viewport: it wraps, centres its children and holds `max-width: calc(100vw - 24px)`, and the note — the longest and least urgent child — is the only one allowed to take a second line, ahead of the count or the actions.
 
 ### 7.5 Badges, chips and cards
 

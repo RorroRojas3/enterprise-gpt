@@ -1,11 +1,17 @@
+// Frame 4a draws this as one pill at 1440px. It is `position: fixed`, so nothing
+// downstream can rescue it from overflowing a narrow viewport — hence the cap and the
+// wrap here rather than at each call site (WCAG SC 1.4.10 Reflow).
 .bulk-bar {
   position: fixed;
   inset-inline-start: 50%;
   bottom: max(26px, env(safe-area-inset-bottom));
   z-index: 1060;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 14px;
+  max-width: calc(100vw - 24px);
   padding: 10px 12px 10px 20px;
   transform: translateX(-50%);
   border: 1px solid var(--bs-border-color);
@@ -24,11 +30,12 @@
   white-space: nowrap;
 }
 
+// The one child allowed to wrap: it is the longest and the least urgent, so it takes
+// the second line before the count or the actions do.
 .bulk-bar__note {
   margin: 0;
   color: var(--muted);
   font-size: 11.5px;
-  white-space: nowrap;
 }
 
 .bulk-bar__actions {
