@@ -1,3 +1,4 @@
+import { formatBytes } from '@domain/format/bytes';
 import { AppError, AppErrorKind } from './app-error';
 
 /**
@@ -156,16 +157,6 @@ function httpMessage(status: number): string {
         ? 'The server could not complete the request. Please try again.'
         : 'The request could not be completed.';
   }
-}
-
-function formatBytes(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-
-  return mb >= 1 ? `${round(mb)} MB` : `${round(bytes / 1024)} KB`;
-}
-
-function round(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function formatList(items: readonly string[]): string {

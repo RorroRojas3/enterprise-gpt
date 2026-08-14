@@ -18,11 +18,13 @@ import {
   Subject,
   catchError,
   exhaustMap,
+  finalize,
   map,
   merge,
   of,
   pipe,
   switchMap,
+  take,
   takeUntil,
   tap,
 } from 'rxjs';
@@ -58,6 +60,7 @@ import { ApiUrl } from '@core/http/api-url';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { ConversationStreamClient } from '@core/stream/conversation-stream-client';
 import { Router } from '@angular/router';
+import { UploadStore } from './upload-store';
 
 /** What Retry re-sends: the turn's own prompt and selection, as sent, even if the pickers moved since. */
 export interface TurnRetry {
@@ -470,6 +473,12 @@ export const TurnStore = signalStore(
     _dispatcher: inject(Dispatcher),
     _settings: inject(TurnSettingsStore),
     _list: inject(ConversationListStore),
+    /**
+     * The composer's attachments (EP-8). The dependency runs this way only: the
+     * upload store learns its conversation by being told, so injecting it back
+     * would be a cycle.
+     */
+    _uploads: inject(UploadStore),
     _signedOut$: injectSignedOut(),
     /**
      * The in-flight turn's abort controller. A mutable prop rather than state:
@@ -480,6 +489,12 @@ export const TurnStore = signalStore(
     _turnAbort: { current: null as AbortController | null },
     /** Cancels the create `POST`, which accepts no `AbortSignal` of its own. */
     _stop$: new Subject<void>(),
+    /**
+     * The turn is waiting on EP-8's upload gate: accepted, but with no stream open
+     * yet. A second pre-stream window beside `creating`, and Stop has to settle it
+     * the same way — there is nothing streaming for an abort to reach.
+     */
+    _awaitingUploads: { value: false },
   })),
   withComputed((store) => {
     const inFlight = computed(() => store.phase() !== 'idle');
@@ -604,6 +619,12 @@ export const TurnStore = signalStore(
                   // Before navigating, so the header's list-fallback name
                   // renders the moment the URL updates (US-302's `name` path).
                   store._list.prependNewest(created);
+                  // Synchronously, not via the route: files attached before this
+                  // conversation existed have been waiting for an id, and the
+                  // gate below is about to wait for them. Chat's route effect
+                  // calls the same method with the same id a pass later, where
+                  // it is a no-op.
+                  store._uploads.bindConversation(created.id);
                   // Before navigating too: `bindRoute` treats the incoming
                   // route id as "ours" only because this is already set.
                   patchState(store, { boundConversationId: created.id, phase: 'awaitingFirst' });
@@ -628,6 +649,31 @@ export const TurnStore = signalStore(
               );
 
         return conversationId$.pipe(
+          // EP-8: attachments finish ingesting before the stream opens, so the
+          // answer is grounded in the file the prompt is about — the retrieval
+          // tool is attached from what the conversation *already* holds, and a
+          // document still being embedded is not in it yet. A turn with no
+          // attachments takes the synchronous path and costs nothing.
+          //
+          // Stop, sign-out and a route change all end the wait, and none of them
+          // opens a stream: the inner observable completes without emitting, which
+          // completes the whole turn pipeline and frees `exhaustMap`'s slot for the
+          // next send. `stop()` settles the turn state itself, exactly as it does
+          // for the other pre-stream window; the other two reset the store outright.
+          switchMap((conversationId) => {
+            store._awaitingUploads.value = true;
+
+            return store._uploads.settled$().pipe(
+              // Cancelled, the inner observable completes **without emitting**, so
+              // the whole turn pipeline completes and `exhaustMap` frees its slot
+              // for the next send. Emitting anyway would open a stream nobody wants
+              // and leave the slot held for as long as that read took to fail.
+              takeUntil(merge(store._signedOut$, store._stop$)),
+              take(1),
+              map(() => conversationId),
+              finalize(() => (store._awaitingUploads.value = false)),
+            );
+          }),
           switchMap((conversationId) =>
             store._stream
               .stream({
@@ -704,7 +750,10 @@ export const TurnStore = signalStore(
        */
       stop(): void {
         const phase = store.phase();
-        if (phase === 'creating') {
+        // The two pre-stream windows settle identically, because in both nothing
+        // has streamed: there is no partial output to card, and the prompt goes
+        // straight back to the composer. An abort would have nothing to reach.
+        if (phase === 'creating' || store._awaitingUploads.value) {
           store._stop$.next();
           patchState(store, (state) => ({
             ...clearLiveTurn(),
@@ -790,6 +839,11 @@ export const TurnStore = signalStore(
         }
 
         store._turnAbort.current?.abort();
+        // Also tears down an EP-8 upload gate the abandoned turn may still be sitting
+        // in. Aborting alone would not: the stream has not been opened yet, so there
+        // is no signal for it to reach, and `exhaustMap` would drop every later send
+        // while the orphaned wait held the slot.
+        store._stop$.next();
         store._turnAbort.current = null;
         patchState(store, () => ({ ...initialState, boundConversationId: id }));
         // Replay hangs off the reset rather than off the route input directly,

@@ -89,13 +89,46 @@ describe('ToastStore', () => {
   it('turns an AppError into a toast carrying its user message and trace line', () => {
     const store = TestBed.inject(ToastStore);
 
-    store.fromError(appError(), 'Retry');
+    store.fromError(appError(), () => {});
 
     const toast = store.toasts()[0];
     expect(toast?.tone).toBe('error');
     expect(toast?.title).toBe('That item no longer exists, or you do not have access to it.');
     expect(toast?.traceLine).toBe('Trace ID: 4c19-e8d2-90ab-114f');
     expect(toast?.retryLabel).toBe('Retry');
+  });
+
+  it('renders no Retry affordance without an action behind it', () => {
+    const store = TestBed.inject(ToastStore);
+
+    store.show({ tone: 'error', title: 'Failed', retryLabel: 'Retry' });
+
+    // A label with no handler would render a control that does nothing when pressed.
+    expect(store.toasts()[0]?.retryLabel).toBeNull();
+  });
+
+  it('runs the retry and dismisses the toast that offered it', () => {
+    const store = TestBed.inject(ToastStore);
+    const onRetry = vi.fn();
+
+    const id = store.show({ tone: 'error', title: 'Failed', onRetry });
+    store.retry(id);
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    // Dismissed first, so a handler that raises its own toast does not stack under
+    // the failure it is retrying.
+    expect(store.toasts()).toHaveLength(0);
+  });
+
+  it('forgets a retry handler once its toast is gone', () => {
+    const store = TestBed.inject(ToastStore);
+    const onRetry = vi.fn();
+
+    const id = store.show({ tone: 'error', title: 'Failed', onRetry });
+    store.dismiss(id);
+    store.retry(id);
+
+    expect(onRetry).not.toHaveBeenCalled();
   });
 
   it('says so honestly when the failure carried no trace id', () => {

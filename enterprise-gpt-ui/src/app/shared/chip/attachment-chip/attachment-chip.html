@@ -5,7 +5,7 @@
     <span class="kit-spinner chip__spinner" aria-hidden="true"></span>
   } @else if (state.kind === 'ready') {
     <app-icon class="chip__icon chip__icon--ok" name="bi-check-circle-fill" />
-  } @else if (state.kind === 'unsupported') {
+  } @else if (state.kind === 'failed' || state.kind === 'unsupported') {
     <app-icon class="chip__icon chip__icon--fail" name="bi-x-circle-fill" />
   } @else if (state.kind === 'unknown') {
     <app-icon class="chip__icon chip__icon--muted" name="bi-question-circle" />
@@ -42,8 +42,13 @@
           Ready to use
         </p>
       }
-      @case ('unsupported') {
+      @case ('failed') {
+        <!-- No `role="status"`: a live region created together with its content is
+             not reliably announced, so the surrounding surface owns the summary
+             region instead — see the composer's. -->
         <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+        <!-- Retry belongs to this arm alone: the same file through the same pipeline
+             can succeed on a second attempt, where an unsupported extension cannot. -->
         <button
           class="chip__retry"
           type="button"
@@ -53,6 +58,9 @@
           Retry
         </button>
       }
+      @case ('unsupported') {
+        <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+      }
       @case ('unknown') {
         <!-- Deliberately not the word "failed": nothing failed, the status simply is
              no longer kept. -->
@@ -61,9 +69,26 @@
     }
   </div>
 
+  @if (downloadable()) {
+    <button
+      class="chip__action"
+      type="button"
+      [attr.aria-label]="downloadLabel()"
+      [attr.aria-busy]="downloading() ? 'true' : null"
+      [disabled]="downloading()"
+      (click)="downloaded.emit(attachment().id)"
+    >
+      @if (downloading()) {
+        <span class="kit-spinner" aria-hidden="true"></span>
+      } @else {
+        <app-icon name="bi-download" />
+      }
+    </button>
+  }
+
   @if (removable()) {
     <button
-      class="chip__remove"
+      class="chip__action chip__remove"
       type="button"
       [attr.aria-label]="removeLabel()"
       (click)="removed.emit(attachment().id)"

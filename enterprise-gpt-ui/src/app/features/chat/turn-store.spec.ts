@@ -16,6 +16,7 @@ import {
   problemResponse,
   streamingResponse,
 } from '@testing/stream-frames';
+import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { sessionEvents } from '@core/events/session-events';
@@ -24,6 +25,7 @@ import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { TranscriptEntry, TurnStore } from './turn-store';
+import { UploadStore } from './upload-store';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
@@ -38,9 +40,11 @@ describe('TurnStore', () => {
   let applyConversationSettings: ReturnType<typeof vi.fn>;
   let getToken: ReturnType<typeof vi.fn>;
   let selection: TurnSelection | null;
+  let uploadXhr: FakeUploadXhrQueue;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    uploadXhr = new FakeUploadXhrQueue();
   });
 
   afterEach(() => {
@@ -70,6 +74,12 @@ describe('TurnStore', () => {
             applyConversationSettings,
           },
         },
+        // Provided rather than faked: TurnStore gates the stream on its settle
+        // signal (EP-8), and a fake store would let that gate pass without proving
+        // it. With nothing attached it settles synchronously, which is the path
+        // every test outside "the attachment gate" takes.
+        provideFakeUploadXhr(uploadXhr),
+        UploadStore,
         TurnStore,
       ],
     });
@@ -113,6 +123,106 @@ describe('TurnStore', () => {
     await settle();
     return handle;
   }
+
+  describe('the attachment gate (US-801)', () => {
+    /** A file whose upload never settles, so the gate stays shut. */
+    function attachPending(): void {
+      const uploads = TestBed.inject(UploadStore);
+      uploads.bindConversation(CONVERSATION_ID);
+      uploads.attach([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    }
+
+    it('holds the stream until every attachment has settled', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+
+      // A document still being embedded is not in what the retrieval tool can see,
+      // so opening the stream now would answer the question without the file.
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.inFlight()).toBe(true);
+
+      TestBed.inject(UploadStore).remove(TestBed.inject(UploadStore).attachments()[0]!.id);
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('costs a turn with no attachments nothing', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      respondWithStream(streamingResponse());
+
+      store.send('Plain prompt');
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets Stop out of the wait rather than stranding the turn in it', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      store.stop();
+      await settle();
+
+      // Nothing streamed, so nothing is opened and the prompt goes back to the
+      // composer — the same settle the other pre-stream window takes.
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.inFlight()).toBe(false);
+      expect(store.phase()).toBe('idle');
+      expect(store.composerSeed()?.text).toBe('What does this say?');
+
+      // And the slot is genuinely free: without this the Critical would still be
+      // here, with `exhaustMap` swallowing every later send in silence.
+      TestBed.inject(UploadStore).remove(TestBed.inject(UploadStore).attachments()[0]!.id);
+      store.send('A fresh prompt');
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not swallow the next send after a route change abandons the wait', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // Moving away must tear the gate down with the turn. Left alive, it holds
+      // `exhaustMap`'s slot and every later send is dropped with no error anywhere.
+      // Both bindings move together, as `Chat` drives them from the same input.
+      const other = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
+      store.bindRoute(other);
+      TestBed.inject(UploadStore).bindConversation(other);
+      flushHistory(other);
+      await settle();
+
+      store.send('A fresh prompt');
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${other}/stream`);
+    });
+  });
 
   describe('send on the empty chat screen (US-401)', () => {
     it('creates the conversation, prepends it, replaces the URL, and streams against the new id', async () => {

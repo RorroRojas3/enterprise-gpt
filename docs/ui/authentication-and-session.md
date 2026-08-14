@@ -26,7 +26,7 @@ Five things in this epic are worth knowing *before* you touch it, because each i
 4. **`logoutRedirect` throws in three different ways, and MSAL's cache is in a different state in each** — which is the whole reason sign-out is ordered the way it is (§11.2).
 5. **MSAL costs 248.9 kB of the initial bundle**, not the ~150 kB the PRD estimated, and the budgets moved accordingly (§12).
 
-> **US-204 shipped its enforcement primitives, not a screen.** The composer belongs to US-401/US-801 and does not exist yet, so there is no attach control to hide and no prompt box to make inert. What landed is the pair of mechanisms EP-8 consumes in two lines, plus a test host standing in for the composer. The frame `2h` assertion re-runs against the real one when it arrives.
+> **US-204 shipped its enforcement primitives, not a screen.** The composer belonged to US-401/US-801 and did not exist yet, so there was no attach control to hide and no prompt box to make inert. What landed is the pair of mechanisms EP-8 consumes in two lines, plus a test host standing in for the composer. **US-801 wired both against the real composer on 2026-08-14** — the paperclip is `@if`-gated on `canUploadFiles()` and the prompt box binds `[appFileDropTarget]` to the same signal — and the frame `2h` assertion now re-runs there ([File Attachments §2.2](file-attachments.md#22-turning-a-surface-into-a-drop-zone)).
 
 ### 1.1 Where each piece lives
 
@@ -463,7 +463,7 @@ dispatchDrag(zone, 'drop', fileDrag(textFile('brief.txt')));
 dispatchDrag(zone, 'dragleave', fileDrag(), { relatedTarget: child });
 ```
 
-The specs render a `DropHost` test component that stands in for the composer and carries both halves of the story — the `@if`-gated attach button and the drop zone — bound to the same permission signal, so the two cannot drift apart before US-801 arrives. `/ui-kit` carries the same pair with a checkbox on the grant, for the half of this that only a real pointer can check.
+The specs render a `DropHost` test component that stands in for the composer and carries both halves of the story — the `@if`-gated attach button and the drop zone — bound to the same permission signal, so the two cannot drift apart. It is kept now that US-801 has wired the real composer: `composer.spec.ts` asserts the same pair against the shipped surface, and `DropHost` remains the isolated check on the directive itself. `/ui-kit` carries the same pair with a checkbox on the grant, for the half of this that only a real pointer can check.
 
 ## 11. Sign-out (US-205)
 
@@ -635,7 +635,7 @@ The PRD's §9 open question on the initial-bundle budget is re-stated with these
 
 | Missing | Owner | Notes |
 | --- | --- | --- |
-| The composer that consumes US-204 | US-401 / **US-801** | `[appFileDropTarget]` and `@if (session.canUploadFiles())` are both ready; wiring them is the two-line snippet in §2.4. The frame `2h` acceptance assertion re-runs against the real composer |
+| ~~The composer that consumes US-204~~ | ✅ US-801, 2026-08-14 | Both mechanisms wired in the two-line shape §2.4 prescribed, and the frame `2h` assertion now runs against the real composer ([File Attachments](file-attachments.md)) |
 | The project files panel's drop zone | US-902 | Renders the same `<app-drop-overlay>` |
 | The streaming turn that `injectSignedOutAbort()` exists for | EP-4 | US-205's third criterion is met today for every store that exists, through `takeUntil(injectSignedOut())`; the abort primitive is what the raw-`fetch` path will use (§11.7) |
 | The project load in the bootstrap | EP-9 | Add it to `SessionBootstrap.ensureSession()`, after the awaited session, beside the conversation list EP-3 added there |

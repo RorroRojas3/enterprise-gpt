@@ -1,4 +1,49 @@
-<div class="composer" [class.composer--streaming]="turn.inFlight()">
+<!--
+  The drop target wraps the whole card, not just the textarea: frame `2a` draws the
+  overlay at `inset: 4px` of the prompt box, and a zone the size of the visible box is
+  the one a user aims at. Bound to the permission, so without `Upload File` the card
+  binds no listeners at all and a drop does nothing (US-204, frame `2h`) — and to the
+  same in-flight condition as the paperclip, so a drop cannot do what a click cannot.
+-->
+<div
+  class="composer"
+  [class.composer--streaming]="turn.inFlight()"
+  [appFileDropTarget]="session.canUploadFiles() && !turn.inFlight()"
+  (filesDropped)="onFilesChosen($event)"
+  #drop="appFileDropTarget"
+>
+  @if (drop.isDragOver()) {
+    <app-drop-overlay />
+  }
+
+  <!--
+    A chip appearing is otherwise announced to nobody: each chip's own `role="status"`
+    is inserted together with its content, which is not reliably read out. This region
+    exists from first render and carries a summary rather than per-file progress, so it
+    does not re-read on every percentage.
+  -->
+  <p class="visually-hidden" role="status">{{ uploads.attachmentSummary() }}</p>
+
+  @if (uploads.hasAttachments()) {
+    <!-- `role="list"` because `list-style: none` strips list semantics in Safari,
+         which is exactly what makes the count announceable. -->
+    <ul class="composer__chips" role="list" aria-label="Attached files">
+      @for (attachment of uploads.attachments(); track attachment.id) {
+        <li>
+          <app-attachment-chip
+            [attachment]="attachment"
+            [removeAction]="attachment.removeAction"
+            [downloadable]="attachment.downloadable"
+            [downloading]="attachment.downloading"
+            (removed)="uploads.remove($event)"
+            (retried)="uploads.retry($event)"
+            (downloaded)="uploads.download($event)"
+          />
+        </li>
+      }
+    </ul>
+  }
+
   <textarea
     #promptBox
     class="composer__prompt"
@@ -21,6 +66,37 @@
   </p>
 
   <div class="composer__controls">
+    @if (session.canUploadFiles()) {
+      <!-- Absent rather than disabled without the grant, which is why this is an
+           `@if` and not a `[disabled]` — frame `2h`. -->
+      <button
+        type="button"
+        class="composer__aux composer__icon-button"
+        aria-label="Attach files"
+        [disabled]="turn.inFlight()"
+        (click)="openFilePicker()"
+      >
+        <app-icon name="bi-paperclip" />
+      </button>
+      <!--
+        Off-screen rather than `display: none`: a hidden input is not focusable, and
+        the button above is the accessible control that opens it. `accept` narrows the
+        picker to what this deployment can actually read, and is empty — meaning "any
+        file" — until that list loads, because refusing everything on a failed side
+        request would be worse than the round trip it saves.
+      -->
+      <input
+        #filePicker
+        class="composer__file-input"
+        type="file"
+        multiple
+        tabindex="-1"
+        aria-hidden="true"
+        [attr.accept]="extensions.accept() || null"
+        (change)="onFileInputChange($event)"
+      />
+    }
+
     <app-model-menu />
     <app-tools-menu />
 
@@ -34,7 +110,7 @@
       <button
         type="button"
         [class.composer__aux]="!dictation.recording()"
-        [class.composer__mic]="!dictation.recording()"
+        [class.composer__icon-button]="!dictation.recording()"
         [class.composer__mic-pill]="dictation.recording()"
         [attr.aria-label]="dictation.recording() ? 'Stop dictating' : 'Dictate'"
         [disabled]="!dictation.recording() && turn.inFlight()"

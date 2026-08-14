@@ -6,21 +6,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import { conversationFixture } from '@testing/conversations';
+import { dispatchDrag, fileDrag, textFile } from '@testing/drag';
+import { UPLOAD_FILE_GRANT, userFixture } from '@testing/session';
 import { FakeRecognition } from '@testing/speech';
 import { assistantEvent, frame, streamingResponse } from '@testing/stream-frames';
+import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { ModelDto } from '@domain/api/model';
+import { PermissionDto } from '@domain/api/user';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { TokenService } from '@core/auth/token-service';
+import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
+import { SessionStore } from '@core/session/session-store';
 import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { TurnStore } from '../turn-store';
+import { UploadStore } from '../upload-store';
 import { Composer } from './composer';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
+const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
+const EXTENSIONS_URL = `${TEST_API_BASE_URL}/api/documents/file-extensions`;
+const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
+/** Exactly what the six registered extractors advertise. */
+const SUPPORTED = ['.doc', '.docx', '.md', '.pdf', '.pptx', '.txt'];
 
 describe('Composer', () => {
   let backend: HttpTestingController;
@@ -29,10 +41,12 @@ describe('Composer', () => {
   // Read when the Composer is created, so a test can decide what this browser
   // can do after the module is configured. Null is jsdom's own answer.
   let speech: (() => SpeechRecognitionLike) | null;
+  let uploadXhr: FakeUploadXhrQueue;
 
   beforeEach(() => {
     hosts = [];
     speech = null;
+    uploadXhr = new FakeUploadXhrQueue();
     // Pending by default: composer specs assert the composer's side of a turn,
     // not the stream's, and an unresolved fetch keeps the turn in flight.
     streamFetch = vi.fn(() => new Promise<Response>(() => {}));
@@ -47,6 +61,8 @@ describe('Composer', () => {
         { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
         { provide: Router, useValue: { navigateByUrl: vi.fn().mockResolvedValue(true) } },
         { provide: SPEECH_RECOGNITION, useFactory: () => speech },
+        provideFakeUploadXhr(uploadXhr),
+        UploadStore,
         TurnStore,
       ],
     });
@@ -150,21 +166,144 @@ describe('Composer', () => {
     expect(composer.note().textContent?.trim()).toBe('');
   });
 
-  it('ships the unbuilt affordances as absent, not disabled', async () => {
+  it('ships the still-unbuilt affordances as absent, not disabled', async () => {
     const composer = await render();
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.fixture.whenStable();
 
-    // Attach (US-801), project (US-307), download (US-1502). The microphone
-    // shipped with US-413, and is absent here for the other reason the repo
-    // allows: this TestBed provides no speech recognition.
+    // Project (US-307) and download (US-1502). Attach shipped with US-801 and is
+    // absent here for the other reason the repo allows: this session holds no
+    // `Upload File` grant. The microphone is absent because this TestBed provides
+    // no speech recognition.
     const buttons = [...composer.host.querySelectorAll('button')];
     const labels = buttons.map(
       (button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '',
     );
-    expect(labels.some((label) => /attach|project|download/i.test(label))).toBe(false);
+    expect(labels.some((label) => /project|download/i.test(label))).toBe(false);
     expect(composer.host.querySelector('.model-menu__pill')).not.toBeNull();
     expect(composer.send()).not.toBeNull();
+  });
+
+  describe('attachments (US-801)', () => {
+    /** Resolves the session so `canUploadFiles` has something to answer from. */
+    async function signIn(permissions: PermissionDto[] = [UPLOAD_FILE_GRANT]): Promise<void> {
+      const loaded = TestBed.inject(SessionStore).ensureLoaded();
+      backend.expectOne(ME_URL).flush(userFixture({ permissions }));
+      await loaded;
+    }
+
+    /** The extensions list the composer fetches once the grant is visible. */
+    async function flushExtensions(extensions = SUPPORTED): Promise<void> {
+      backend.expectOne(EXTENSIONS_URL).flush(extensions);
+      // The store memoizes its load, so this is the composer's own promise — awaiting
+      // it is what settles the several microtasks between the flush and the patch.
+      await TestBed.inject(SupportedExtensionsStore).ensureLoaded();
+    }
+
+    const attach = (host: HTMLElement) =>
+      host.querySelector<HTMLButtonElement>('[aria-label="Attach files"]');
+    const picker = (host: HTMLElement) =>
+      host.querySelector<HTMLInputElement>('.composer__file-input');
+    const chips = (host: HTMLElement) => [...host.querySelectorAll('app-attachment-chip')];
+
+    it('renders no attach control and an inert drop zone without the grant (frame 2h)', async () => {
+      const composer = await render();
+      await signIn([]);
+      await composer.fixture.whenStable();
+
+      expect(attach(composer.host)).toBeNull();
+      expect(picker(composer.host)).toBeNull();
+
+      // The card still renders; it simply must not react. Nothing was fetched
+      // either — a user who cannot upload does not pay for the picker's list.
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'dragenter', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+      expect(composer.host.querySelector('app-drop-overlay')).toBeNull();
+    });
+
+    it('constrains the picker to what this deployment can read', async () => {
+      const composer = await render();
+      await signIn();
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      await composer.fixture.whenStable();
+
+      expect(attach(composer.host)).not.toBeNull();
+      expect(picker(composer.host)?.getAttribute('accept')).toBe(SUPPORTED.join(','));
+      expect(picker(composer.host)?.multiple).toBe(true);
+    });
+
+    it('chips a dropped file and uploads it against the open conversation', async () => {
+      const composer = await render();
+      await signIn();
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      TestBed.inject(UploadStore).bindConversation(CONVERSATION_ID);
+      await composer.fixture.whenStable();
+
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+
+      expect(chips(composer.host)).toHaveLength(1);
+      expect(composer.host.textContent).toContain('notes.txt');
+      expect(uploadXhr.opened).toEqual([
+        ['POST', `${TEST_API_BASE_URL}/api/documents/conversations/${CONVERSATION_ID}`],
+      ]);
+    });
+
+    it('refuses an unsupported file before any request, naming what would work', async () => {
+      const composer = await render();
+      await signIn();
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      TestBed.inject(UploadStore).bindConversation(CONVERSATION_ID);
+      await composer.fixture.whenStable();
+
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('demo-capture.mov')));
+      await composer.fixture.whenStable();
+
+      expect(composer.host.textContent).toContain('.mov isn’t supported');
+      expect(composer.host.textContent).toContain('PPTX');
+      expect(uploadXhr.opened).toEqual([]);
+    });
+
+    it('holds Send until the files are ready, and says why', async () => {
+      const composer = await render();
+      await signIn();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      TestBed.inject(UploadStore).bindConversation(CONVERSATION_ID);
+      await composer.type('What does this say?');
+
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+
+      expect(composer.send()?.disabled).toBe(true);
+      expect(composer.note().textContent).toContain('Preparing 1 file');
+    });
+
+    it('warns that a model with no tools cannot read an attachment', async () => {
+      const composer = await render();
+      await signIn();
+      await loadModels([modelFixture({ isDefault: true, isToolEnabled: false })]);
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      TestBed.inject(UploadStore).bindConversation(CONVERSATION_ID);
+      await composer.fixture.whenStable();
+
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+
+      // Retrieval is a tool call, so this model would answer without ever seeing
+      // the file — the one thing worth saying before the ingest progress.
+      expect(composer.note().textContent).toContain('can’t read attachments');
+    });
   });
 
   describe('dictation (US-413)', () => {
@@ -176,7 +315,9 @@ describe('Composer', () => {
     });
 
     function mic(host: HTMLElement): HTMLButtonElement | null {
-      return host.querySelector('.composer__mic');
+      // By label rather than by class: US-801 moved the 34px square styling onto a
+      // shared `composer__icon-button`, which the attach control wears too.
+      return host.querySelector('[aria-label="Dictate"]');
     }
 
     function pill(host: HTMLElement): HTMLElement | null {

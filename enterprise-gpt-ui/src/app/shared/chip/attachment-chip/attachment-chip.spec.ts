@@ -13,6 +13,7 @@ describe('fileGlyph', () => {
     ['sheet.XLSX', 'bi-file-earmark-excel', 'ok'],
     ['notes.md', 'bi-filetype-md', 'accent'],
     ['data.csv', 'bi-filetype-csv', 'accent'],
+    ['deck.pptx', 'bi-file-earmark-ppt', 'warn'],
   ])('maps %s to its glyph', (fileName, icon, tone) => {
     expect(fileGlyph(fileName)).toEqual({ icon, tone });
   });
@@ -60,20 +61,33 @@ describe('AttachmentChip', () => {
     expect(host.querySelector('[role="progressbar"]')).toBeNull();
   });
 
-  it('shows an unsupported type with a reason and a named retry', async () => {
+  it('shows a failed job with its reason and a named retry', async () => {
     const { fixture, host } = await render({
-      kind: 'unsupported',
-      reason: ".mov isn't supported — PDF, DOCX, XLSX, CSV, MD, TXT",
+      kind: 'failed',
+      reason: 'The document could not be read. It may be corrupt or password-protected.',
     });
     const retried = vi.fn();
     fixture.componentInstance.retried.subscribe(retried);
 
     const retry = host.querySelector<HTMLButtonElement>('.chip__retry');
     expect(retry?.getAttribute('aria-label')).toBe('Retry uploading q3-report.pdf');
-    expect(host.textContent).toContain("isn't supported");
+    expect(host.textContent).toContain('could not be read');
 
     retry?.click();
     expect(retried).toHaveBeenCalledWith('a1');
+  });
+
+  it('names the refused extension and the supported set, and offers no retry', async () => {
+    // The same file through the same pipeline will be refused again, so the control
+    // frame 4l draws here would be a button that cannot work — see `canRetry`.
+    const { host } = await render({
+      kind: 'unsupported',
+      reason: '.mov isn’t supported — PDF, DOCX, MD, PPTX, TXT',
+    });
+
+    expect(host.textContent).toContain('isn’t supported');
+    expect(host.textContent).toContain('PPTX');
+    expect(host.querySelector('.chip__retry')).toBeNull();
   });
 
   it('renders expired-or-unknown differently from failed, and offers no retry', async () => {
@@ -90,6 +104,40 @@ describe('AttachmentChip', () => {
     expect(host.querySelector('.chip__remove')?.getAttribute('aria-label')).toBe(
       'Remove q3-report.pdf',
     );
+  });
+
+  it('says "dismiss" once there is nothing left to cancel', async () => {
+    // No API detaches a conversation document, so the control only hides the chip
+    // from here on. Calling it "Remove" would claim an effect it does not have.
+    const fixture = TestBed.createComponent(AttachmentChip);
+    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
+    fixture.componentRef.setInput('removeAction', 'dismiss');
+    await fixture.whenStable();
+
+    expect(
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('.chip__remove')
+        ?.getAttribute('aria-label'),
+    ).toBe('Dismiss q3-report.pdf');
+  });
+
+  it('offers download only where the caller says the file can be fetched back', async () => {
+    const plain = await render({ kind: 'ready' });
+    expect(plain.host.querySelector('[aria-label^="Download"]')).toBeNull();
+
+    const fixture = TestBed.createComponent(AttachmentChip);
+    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
+    fixture.componentRef.setInput('downloadable', true);
+    await fixture.whenStable();
+    const downloaded = vi.fn();
+    fixture.componentInstance.downloaded.subscribe(downloaded);
+
+    const download = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[aria-label="Download q3-report.pdf"]',
+    );
+    download?.click();
+
+    expect(downloaded).toHaveBeenCalledWith('a1');
   });
 
   it('hides the remove control where the caller forbids it', async () => {

@@ -1,6 +1,6 @@
 # Document Download
 
-End-to-end reference for reading the **original file** back out of a document the user uploaded, from either a conversation or a project. Audience: engineers maintaining the document endpoints, the storage layer, or the frontend that will consume the link. Companion to [Document Upload and Ingestion](upload-workflow.md), which covers everything that happens on the way in.
+End-to-end reference for reading the **original file** back out of a document the user uploaded, from either a conversation or a project. Audience: engineers maintaining the document endpoints, the storage layer, or the frontend that consumes the link. Companion to [Document Upload and Ingestion](upload-workflow.md), which covers everything that happens on the way in.
 
 ## 1. Overview
 
@@ -9,7 +9,7 @@ A download is **one request, and the file never passes through the API**:
 1. `GET /api/documents/conversations/{conversationId}/{documentId}` (or the project equivalent) authorizes the caller against the **parent** conversation or project.
 2. The service signs a short-lived Azure Storage **service SAS** over the blob ingestion wrote.
 3. The response is `200 OK` with `Cache-Control: no-store` and a small JSON body: the signed URL, the original file name, and when the URL stops working.
-4. The client navigates to that URL, and **Azure Storage** serves the bytes.
+4. The client hands that URL to the browser — a detached `<a download>` click, not a navigation and not a fetch (§6) — and **Azure Storage** serves the bytes.
 
 **Why not proxy the bytes.** Streaming the file through the API would be simpler to reason about, and it is the wrong trade here. `Documents:MaxFileSizeBytes` defaults to **50 MB**, and unlike the upload path there is nothing bounding read concurrency: ingestion caps queued work at `Documents:MaxQueuedBytes` and in-flight work at `BackgroundJobs:MaxConcurrent`, whereas a download is a plain `GET` that any number of callers can issue at once. Proxying would put all of that traffic — and, if the response were buffered anywhere, all of that memory — on the API process, to add nothing storage does not already do. Signing a link moves the transfer to the service that exists to perform it, and leaves this process allocating nothing per download.
 
@@ -40,7 +40,7 @@ sequenceDiagram
     EP->>EP: Cache-Control no-store
     EP-->>C: 200 downloadUrl, fileName, expiresAt
 
-    C->>AZ: GET downloadUrl, top-level navigation, no Authorization header
+    C->>AZ: GET downloadUrl, detached anchor click, no Authorization header
     AZ-->>C: 200 file bytes, Content-Disposition attachment, Content-Type from the link
 ```
 
@@ -221,20 +221,29 @@ Nothing about the link identifies the caller, so it cannot be replayed as them a
 
 ## 6. Client integration
 
-**Navigate to `downloadUrl`; do not fetch it.**
+**Hand `downloadUrl` to the browser; do not fetch it.**
 
 ```typescript
-// Correct: a top-level navigation. No Authorization header, no CORS preflight.
-window.location.href = download.downloadUrl;
+// Correct: a detached anchor, clicked programmatically. No Authorization header,
+// no CORS preflight, and the URL never enters the address bar or session history.
+const anchor = document.createElement('a');
+anchor.href = download.downloadUrl;
+anchor.download = download.fileName;
+anchor.rel = 'noopener';
+document.body.append(anchor);
+anchor.click();
+anchor.remove();
 ```
 
-A plain top-level navigation is not subject to CORS at all, and carries no `Authorization` header — which is what the SAS host wants, since an unexpected `Authorization` header on a SAS request is an error rather than a bonus. `Content-Disposition: attachment` from the link makes the browser save the file under `fileName` instead of navigating to it.
+Both halves of that matter, and they are separate rules.
 
-Fetching the URL with `HttpClient` instead would require a **CORS rule on the storage account** allowing the SPA's origin, and would buffer the whole file into a `Blob` in the page. The existing `DocumentService.downloadFile(blob, fileName)` helper in the frontend is for the conversation-history export, which really is served by the API; it is the wrong tool for this link. Note also that the `download` attribute on an `<a>` is ignored for cross-origin URLs, so the file name comes from the signed `Content-Disposition` either way.
+**Do not fetch it.** Fetching the URL with `HttpClient` would require a **CORS rule on the storage account** allowing the SPA's origin, would buffer the whole file into a `Blob` in the page, and — worst of the three — would attach the app's `Authorization` header if the client's interceptor matched the host. An unexpected `Authorization` header on a SAS request is an error rather than a bonus. The rebuilt client's `authInterceptor` attaches a token only when `ApiUrl.owns(request.url)`, so a storage host would not match; that is a deliberate check rather than a coincidence, but the reliable protection is simply not putting the link on the HTTP pipeline at all.
 
-The MSAL interceptor's `protectedResourceMap` is keyed on the API URI, so it would not attach a token to a storage host in any case — but that is a coincidence of configuration, not a guarantee to rely on.
+**Do not navigate to it either.** An earlier revision of this section prescribed `window.location.href = download.downloadUrl`, and the shipped client deliberately does not do that. A top-level navigation to a `Content-Disposition: attachment` URL works and is equally free of CORS and of an `Authorization` header — but it also places the **signed URL in the address bar** for the instant before the browser cancels the navigation, and in session history afterwards. §5 calls the link a credential; putting a credential in browsing history undoes the `no-store` on the response that produced it. A programmatic click on a detached anchor initiates the identical request with none of that residue. The reasoning is recorded in the client at [`core/documents/document-download-store.ts`](../../enterprise-gpt-ui/src/app/core/documents/document-download-store.ts).
 
-**There is no frontend consumer yet.** `document.service.ts` has no method for these routes; the API side ships first.
+The `download` attribute is set for completeness and is ignored for cross-origin URLs, which costs nothing: the file name comes from the signed `Content-Disposition` either way (§4.2).
+
+**The frontend consumes these routes as of the rebuild's US-804.** [`DocumentDownloadStore`](../../enterprise-gpt-ui/src/app/core/documents/document-download-store.ts) requests a link **on click and never on render**, so a list of forty documents issues zero requests until one is chosen and forty live credentials are never in flight for a user who wanted one file. The URL is never written to store state, `localStorage`, `sessionStorage`, a router URL, or a log — it exists inside one function and is gone when that returns. A `404` is reported as "no longer available" rather than "deleted", because the same status covers another user's document; a `503` `/problems/storage-not-configured` is reported as a deployment fact rather than a failure of that file. See [docs/ui/file-attachments.md §6](../ui/file-attachments.md#6-download-us-804).
 
 ## 7. Configuration
 

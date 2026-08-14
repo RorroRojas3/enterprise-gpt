@@ -8,6 +8,7 @@
   background: var(--surface);
 }
 
+.chip--failed,
 .chip--unsupported {
   border-color: rgba(192, 57, 43, 0.45);
 }
@@ -37,6 +38,10 @@
 
 .chip__icon--muted {
   color: var(--muted);
+}
+
+.chip__icon--warn {
+  color: var(--warn);
 }
 
 .chip__body {
@@ -93,7 +98,7 @@
   }
 }
 
-.chip__remove {
+.chip__action {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -108,8 +113,12 @@
   font-size: 12px;
   cursor: pointer;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: var(--surface-2);
     color: var(--bs-body-color);
+  }
+
+  &:disabled {
+    cursor: default;
   }
 }

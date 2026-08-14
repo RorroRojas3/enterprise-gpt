@@ -27,6 +27,11 @@ export interface ToastInput {
   readonly detail?: string | null;
   readonly traceLine?: string | null;
   readonly retryLabel?: string | null;
+  /**
+   * What the retry affordance does. Required for {@link retryLabel} to render — a
+   * Retry with nowhere to go is a button that does nothing when pressed.
+   */
+  readonly onRetry?: () => void;
   /** Overrides {@link AUTO_DISMISS_MS} for this toast alone. */
   readonly dismissAfterMs?: number;
 }
@@ -50,6 +55,12 @@ export const ToastStore = signalStore(
      * timer handle deserves.
      */
     _timers: new Map<string, ReturnType<typeof setTimeout>>(),
+    /**
+     * Retry handlers, beside the timers and for the same reason: a function is not
+     * serializable state, `withResetOnSignOut` would clone-compare it pointlessly,
+     * and nothing renders from it.
+     */
+    _retries: new Map<string, () => void>(),
     _sequence: { value: 0 },
   })),
   withComputed(({ toasts }) => ({
@@ -71,6 +82,7 @@ export const ToastStore = signalStore(
         clearTimeout(timer);
         store._timers.delete(id);
       }
+      store._retries.delete(id);
       patchState(store, ({ toasts }) => ({ toasts: toasts.filter((toast) => toast.id !== id) }));
     }
 
@@ -84,9 +96,15 @@ export const ToastStore = signalStore(
         title: input.title,
         detail: input.detail ?? null,
         traceLine: input.traceLine ?? null,
-        retryLabel: input.retryLabel ?? null,
+        // A label with no handler renders nothing: the affordance and the action are
+        // one decision, and letting them come apart is how a dead Retry ships.
+        retryLabel: input.onRetry ? (input.retryLabel ?? 'Retry') : null,
         dismissAfterMs,
       };
+
+      if (input.onRetry) {
+        store._retries.set(id, input.onRetry);
+      }
 
       patchState(store, ({ toasts }) => ({ toasts: [...toasts, toast] }));
 
@@ -103,6 +121,20 @@ export const ToastStore = signalStore(
     return {
       show,
       dismiss,
+
+      /**
+       * Runs a toast's retry, then dismisses it.
+       *
+       * Dismissed first so the handler is free to raise a fresh toast for the second
+       * attempt without the failed one lingering beneath it.
+       *
+       * @param id The toast id, as `ToastRegion` reports it.
+       */
+      retry(id: string): void {
+        const handler = store._retries.get(id);
+        dismiss(id);
+        handler?.();
+      },
 
       success(title: string, detail?: string): string {
         return show({ tone: 'success', title, detail });
@@ -125,7 +157,7 @@ export const ToastStore = signalStore(
        *
        * @returns The toast id, or null when the error is deliberately silent.
        */
-      fromError(error: AppError, retryLabel: string | null = null): string | null {
+      fromError(error: AppError, onRetry?: () => void): string | null {
         if (!shouldNotify(error)) {
           return null;
         }
@@ -133,7 +165,7 @@ export const ToastStore = signalStore(
           tone: 'error',
           title: userMessage(error),
           traceLine: traceLine(error),
-          retryLabel,
+          onRetry,
         });
       },
 
@@ -142,6 +174,7 @@ export const ToastStore = signalStore(
           clearTimeout(timer);
         }
         store._timers.clear();
+        store._retries.clear();
         patchState(store, initialState);
       },
     };
@@ -159,6 +192,9 @@ export const ToastStore = signalStore(
             clearTimeout(timer);
           }
           store._timers.clear();
+          // A retry closure captures the previous user's request; it must not survive
+          // into the next session any more than the toast it belonged to does.
+          store._retries.clear();
         });
     },
     onDestroy(store) {
@@ -166,6 +202,7 @@ export const ToastStore = signalStore(
         clearTimeout(timer);
       }
       store._timers.clear();
+      store._retries.clear();
     },
   }),
   // Last, as the feature requires.
