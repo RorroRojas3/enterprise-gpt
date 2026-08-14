@@ -75,8 +75,10 @@ ai-chat/
 
 - **Ollama** - Local AI models
 - **OpenAI** - GPT models
-- **Azure AI Foundry** - Azure OpenAI Service
-- **Anthropic** - Claude models
+- **Azure OpenAI** - Azure OpenAI deployments over the Responses API (required; also backs embeddings)
+- **Azure AI Foundry** - the same Azure resource over Chat Completions, for Foundry Models (optional)
+- **Amazon Bedrock** - Claude and other models on AWS (optional)
+- **Anthropic** - Claude models (optional)
 
 ## 📋 Prerequisites
 
@@ -91,11 +93,12 @@ ai-chat/
 
 - **Ollama** - [Install here](https://ollama.ai/) for local AI models
 
-### AI Service API Keys (at least one required)
+### AI Service API Keys
 
-- **OpenAI API Key** - For GPT models
-- **Azure AI Foundry** - Endpoint URL and API Key
-- **Anthropic API Key** - For Claude models
+- **Azure OpenAI** - Endpoint URL and API Key. **Required** — it serves the default model and every document embedding
+- **Azure AI Foundry** - Endpoint URL and API Key, optional; the same resource reached over Chat Completions
+- **Amazon Bedrock API Key** - optional
+- **Anthropic API Key** - optional, for Claude models served directly
 
 ## 🚀 Quick Start
 
@@ -127,12 +130,22 @@ dotnet user-secrets init
 Add your AI service configurations:
 
 ```bash
-# For Azure AI Foundry — Url is the resource ROOT, with no /openai/v1 path;
+# For Azure OpenAI (required) — Url is the resource ROOT, with no /openai/v1 path;
 # the chat client appends it, and a URL that already carries it fails at startup.
-dotnet user-secrets set "AzureAIFoundry:Url" "https://your-endpoint.openai.azure.com/"
+# NOTE: these keys were named AzureAIFoundry:* before this release. See the upgrade
+# note below if you are updating an existing environment.
+dotnet user-secrets set "AzureOpenAI:Url" "https://your-endpoint.openai.azure.com/"
+dotnet user-secrets set "AzureOpenAI:ApiKey" "your-azure-api-key"
+dotnet user-secrets set "AzureOpenAI:DefaultModel" "your-chat-deployment-name"
+dotnet user-secrets set "AzureOpenAI:EmbeddingModel" "text-embedding-ada-002"
+
+# For Azure AI Foundry (optional; Chat Completions on the SAME resource, for Foundry
+# Models such as DeepSeek or Llama that do not implement the Responses API).
+# Leave AzureAIFoundry:Enabled false to skip it entirely.
+dotnet user-secrets set "AzureAIFoundry:Enabled" "true"
+dotnet user-secrets set "AzureAIFoundry:Url" "https://your-endpoint.services.ai.azure.com/"
 dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-azure-api-key"
-dotnet user-secrets set "AzureAIFoundry:DefaultModel" "your-chat-deployment-name"
-dotnet user-secrets set "AzureAIFoundry:EmbeddingModel" "text-embedding-ada-002"
+dotnet user-secrets set "AzureAIFoundry:DefaultModel" "DeepSeek-R1"
 
 # For Amazon Bedrock (optional; leave AmazonBedrock:Enabled false to skip it entirely)
 dotnet user-secrets set "AmazonBedrock:Enabled" "true"
@@ -170,7 +183,16 @@ Production is allowed but prints a warning to standard error at startup.
 Enabling Bedrock also needs two database changes that are not applied automatically and fail
 silently if skipped — see [docs/models/amazon-bedrock.md](docs/models/amazon-bedrock.md). Enabling
 Anthropic needs one: its `Core.Ref.Provider` row must be inserted by hand — see
-[docs/models/anthropic.md](docs/models/anthropic.md).
+[docs/models/anthropic.md](docs/models/anthropic.md). Azure AI Foundry needs none: its provider row
+ships as the migration `20260814031023_AddAzureAIFoundryProvider`, applied at startup.
+
+> **⚠️ Upgrading an existing environment: the Azure settings were renamed.** `AzureAIFoundry:Url`,
+> `:ApiKey`, `:DefaultModel` and `:EmbeddingModel` are now `AzureOpenAI:*`, and the `AzureAIFoundry`
+> section has been reassigned to the new, optional Chat Completions provider above. Re-key user
+> secrets and every deployed configuration store before deploying this build — the app refuses to
+> start otherwise, with a message naming `AzureOpenAI:Url` and nothing connecting it to the setting
+> you configured. Steps:
+> [docs/models/azure-openai.md §8](docs/models/azure-openai.md#8-upgrading-from-the-previous-release--the-configuration-rename).
 
 ### 4. Run the API
 
@@ -249,12 +271,16 @@ export const environment = {
 
 | Variable                              | Description                                                   | Required | Default                |
 | ------------------------------------- | ------------------------------------------------------------- | -------- | ---------------------- |
-| `AzureAIFoundry:Url`                  | Foundry resource **root**, without `/openai/v1`               | Yes      | -                      |
-| `AzureAIFoundry:ApiKey`               | Azure OpenAI API key                                          | Yes      | -                      |
-| `AzureAIFoundry:DefaultModel`         | Chat deployment used when a request names none                | Yes      | -                      |
-| `AzureAIFoundry:EmbeddingModel`       | Embedding model name                                          | Yes      | -                      |
-| `AzureAIFoundry:ReasoningSummary`     | `auto`, `concise`, `detailed`, or `none`                      | No       | `auto`                 |
-| `AzureAIFoundry:ReasoningEffort`      | `minimal`, `low`, `medium`, or `high`                         | No       | `medium`               |
+| `AzureOpenAI:Url`                     | Azure resource **root**, without `/openai/v1`                 | Yes      | -                      |
+| `AzureOpenAI:ApiKey`                  | Azure OpenAI API key                                          | Yes      | -                      |
+| `AzureOpenAI:DefaultModel`            | Chat deployment used when a request names none                | Yes      | -                      |
+| `AzureOpenAI:EmbeddingModel`          | Embedding model name                                          | Yes      | -                      |
+| `AzureOpenAI:ReasoningSummary`        | `auto`, `concise`, `detailed`, or `none`                      | No       | `auto`                 |
+| `AzureOpenAI:ReasoningEffort`         | `minimal`, `low`, `medium`, or `high`                         | No       | `medium`               |
+| `AzureAIFoundry:Enabled`              | Registers the Chat Completions client on the same resource    | No       | false                  |
+| `AzureAIFoundry:Url`                  | Azure resource **root**, without `/openai/v1`                 | If enabled | -                    |
+| `AzureAIFoundry:ApiKey`               | Azure resource API key                                        | If enabled | -                    |
+| `AzureAIFoundry:DefaultModel`         | Chat deployment used when a request names none                | If enabled | -                    |
 | `AmazonBedrock:Enabled`               | Registers the Bedrock chat client                             | No       | false                  |
 | `AmazonBedrock:Region`                | AWS region system name, e.g. `us-east-1`                      | If enabled | -                    |
 | `AmazonBedrock:ApiKey`                | Bedrock API key, sent as an HTTP bearer token                 | If enabled | -                    |
@@ -271,20 +297,24 @@ export const environment = {
 | `Tools:Weather:DelayMilliseconds`     | Artificial latency per lookup, 0–10000                        | No       | 600                    |
 | `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
 
-Azure AI Foundry is required — it also backs document-embedding generation. Amazon Bedrock is optional
-and off by default; when `AmazonBedrock:Enabled` is `true` the remaining Bedrock settings are validated
-at startup and the app refuses to boot if any is missing or the region is unknown. Anthropic is optional
-and off by default too; when `Anthropic:Enabled` is `true` every other `Anthropic:*` setting is validated
-at startup, including the rule that `disabled` thinking is not accepted above `high` effort.
+Azure OpenAI is required — it serves the default model over the Responses API and also backs
+document-embedding generation. Azure AI Foundry is the same resource reached over Chat Completions,
+for Foundry Models that do not implement the Responses API; it is optional, off by default, and
+serves **no** reasoning. Amazon Bedrock is optional and off by default; when `AmazonBedrock:Enabled`
+is `true` the remaining Bedrock settings are validated at startup and the app refuses to boot if any
+is missing or the region is unknown. Anthropic is optional and off by default too; when
+`Anthropic:Enabled` is `true` every other `Anthropic:*` setting is validated at startup, including
+the rule that `disabled` thinking is not accepted above `high` effort.
 
 `Anthropic:DefaultMaxOutputTokens` is the ceiling on **every** Anthropic turn, not a fallback — the
 catalog model's `maxOutputTokens` is never sent — and with thinking on it covers reasoning and answer
 text together. Size it generously; see [docs/models/anthropic.md](docs/models/anthropic.md).
 
-The two `AzureAIFoundry:Reasoning*` settings only take effect on a model whose catalog row sets
+The two `AzureOpenAI:Reasoning*` settings only take effect on a model whose catalog row sets
 `isReasoningEnabled`, which is **off by default** — a deployment that does not support reasoning
 rejects the whole request rather than ignoring the option. Turn it on per model through the admin
-model API; see [docs/models/azure-ai-foundry.md](docs/models/azure-ai-foundry.md).
+model API; see [docs/models/azure-openai.md](docs/models/azure-openai.md). The flag has no effect on
+a model served by any other provider, including Azure AI Foundry.
 
 ## 🧪 Database Setup
 
@@ -501,12 +531,12 @@ cd enterprise-gpt-api/Enterprise.Gpt.Api
 dotnet user-secrets set "OpenAI:ApiKey" "sk-proj-xxxxxxxxxxxxx"
 ```
 
-**Setting up Azure AI Foundry**:
+**Setting up Azure OpenAI**:
 
 ```bash
-dotnet user-secrets set "AzureAIFoundry:Url" "https://my-resource.openai.azure.com/"
-dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-azure-key"
-dotnet user-secrets set "AzureAIFoundry:EmbeddingModel" "text-embedding-ada-002"
+dotnet user-secrets set "AzureOpenAI:Url" "https://my-resource.openai.azure.com/"
+dotnet user-secrets set "AzureOpenAI:ApiKey" "your-azure-key"
+dotnet user-secrets set "AzureOpenAI:EmbeddingModel" "text-embedding-ada-002"
 ```
 
 **Setting up Anthropic**:

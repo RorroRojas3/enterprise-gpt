@@ -97,7 +97,10 @@ describe('Chat', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
-        provideTestAppConfig(),
+        // Pinned off rather than inherited from `public/config.json`: this screen
+        // mounts the transcript, and a deployment that switches diagrams or math
+        // on would otherwise have these specs reach for a library jsdom cannot run.
+        provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: streamFetch },

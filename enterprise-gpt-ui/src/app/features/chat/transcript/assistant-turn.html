@@ -51,8 +51,11 @@
             </div>
           } @else {
             <!-- Settled, or closed by a later activity: one canonical render of
-                 the untouched source, highlighting included. -->
-            <markdown class="assistant-turn__md" [data]="node.text" />
+                 the untouched source, highlighting included.
+                 `appMarkdownExtras` (US-605) is here and not on the live pair
+                 above: a half-written diagram is not a diagram, and the tail's
+                 fences have had their info strings stripped anyway. -->
+            <markdown class="assistant-turn__md" appMarkdownExtras [data]="node.text" />
           }
         }
         @case ('activity') {
@@ -61,14 +64,21 @@
       }
     }
 
-    @if (usageLine(); as usage) {
-      <!-- Frames 1f/1g: the completed turn's footer. It carries the token
-           counts today and gains the Copy control beside them in US-607, which
-           is also when the design's hover reveal arrives — a footer revealed
-           only on hover is unreachable by keyboard and touch until there is
-           something in it to focus. -->
+    @if (!streaming()) {
+      <!-- Frames 1f/1g: the completed turn's footer, revealed on hover and on
+           focus (US-607). It exists for every settled turn, because Copy is
+           always offerable; the counts are the conditional part, since a
+           stopped, cut-off or replayed turn never folded a `Finished`. -->
       <div class="assistant-turn__footer">
-        <span class="assistant-turn__usage font-mono">{{ usage }}</span>
+        <!-- A turn can settle with no text at all — a cut-off that died after its
+             first activity — and copying an empty string *succeeds*, so the
+             control would confirm while having wiped the reader's clipboard. -->
+        @if (copySource(); as source) {
+          <app-message-copy [text]="source" subject="response" />
+        }
+        @if (usageLine(); as usage) {
+          <span class="assistant-turn__usage font-mono">{{ usage }}</span>
+        }
       </div>
     }
   </div>

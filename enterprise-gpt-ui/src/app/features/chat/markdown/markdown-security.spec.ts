@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MarkdownComponent, MarkdownService } from 'ngx-markdown';
+import { MarkdownService } from 'ngx-markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MarkdownHost, renderMarkdown } from '@testing/markdown-host';
 import { CHAT_ALLOWED_TAGS, provideChatMarkdown, sanitizeChatMarkdown } from './markdown-providers';
 
 /**
@@ -10,40 +10,8 @@ import { CHAT_ALLOWED_TAGS, provideChatMarkdown, sanitizeChatMarkdown } from './
  * the marked renderer override, then DOMPurify with the app's profile — is what
  * refuses them, so a spec that mocked either layer would prove nothing.
  */
-@Component({
-  selector: 'app-markdown-host',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownComponent],
-  template: `<markdown [data]="source()" (ready)="rendered()" />`,
-})
-class MarkdownHost {
-  readonly source = signal('');
-
-  private _resolve: (() => void) | null = null;
-
-  /**
-   * Resolves when the renderer has actually written its output.
-   *
-   * Counting microtasks by hand would couple these specs to how many times
-   * ngx-markdown happens to await internally — and every assertion here is a
-   * *negative* one, so reading the DOM a beat early would pass for the wrong
-   * reason and quietly stop testing anything.
-   */
-  nextRender(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      this._resolve = resolve;
-    });
-  }
-
-  protected rendered(): void {
-    this._resolve?.();
-    this._resolve = null;
-  }
-}
-
 describe('chat markdown rendering (US-601)', () => {
   let fixture: ComponentFixture<MarkdownHost>;
-  let host: HTMLElement;
   let alertSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -52,22 +20,14 @@ describe('chat markdown rendering (US-601)', () => {
 
     TestBed.configureTestingModule({ providers: [provideChatMarkdown()] });
     fixture = TestBed.createComponent(MarkdownHost);
-    host = fixture.nativeElement as HTMLElement;
-    document.body.append(host);
   });
 
   afterEach(() => {
-    host.remove();
     vi.unstubAllGlobals();
   });
 
   async function render(markdown: string): Promise<HTMLElement> {
-    const rendered = fixture.componentInstance.nextRender();
-    fixture.componentInstance.source.set(markdown);
-    await fixture.whenStable();
-    await rendered;
-
-    return host.querySelector('markdown') as HTMLElement;
+    return renderMarkdown(fixture, markdown);
   }
 
   describe('the payloads the story names', () => {
@@ -287,6 +247,53 @@ describe('chat markdown rendering (US-601)', () => {
       expect(pre?.className).toBe('language-ts');
       expect(pre?.getAttribute('onload')).toBeNull();
       expect(alertSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the diagram branch (US-605)', () => {
+    it('marks a mermaid fence without changing anything else about it', async () => {
+      const element = await render('```mermaid\ngraph TD; A-->B\n```');
+
+      const wrapper = element.querySelector('.md-diagram');
+      // The mark is a class on the ordinary chrome, not different markup. That
+      // is what makes the flag-off path and the parse-failure path the same
+      // path, with no branch to get wrong in either.
+      expect(wrapper?.classList.contains('md-code')).toBe(true);
+      expect(wrapper?.querySelector('.md-code__lang')?.textContent).toBe('mermaid');
+      expect(wrapper?.querySelector('.md-code__copy')).not.toBeNull();
+    });
+
+    it('escapes the diagram source, character for character', async () => {
+      const source = 'graph TD\n  A["x < y & z"] --> B';
+      const element = await render('```mermaid\n' + source + '\n```');
+
+      // `ngx-markdown`'s own mermaid integration interpolates the source into an
+      // HTML string *unescaped*, which both mangles a real diagram and is the
+      // regression this asserts against: the source here is text, and stays text.
+      expect(element.querySelector('.md-diagram pre > code')?.textContent).toBe(source + '\n');
+      expect(element.querySelector('.md-diagram b')).toBeNull();
+    });
+
+    it('renders a hostile diagram body as inert text', async () => {
+      const element = await render('```mermaid\n<img src=x onerror=alert(1)>\n```');
+
+      // Shown, because a code block's job is to show its source — but as text,
+      // which is the difference between displaying the payload and running it.
+      expect(element.querySelector('.md-diagram pre > code')?.textContent).toBe(
+        '<img src=x onerror=alert(1)>\n',
+      );
+      expect(element.querySelector('img')).toBeNull();
+      expect(alertSpy).not.toHaveBeenCalled();
+    });
+
+    it('refuses a hand-written diagram wrapper from model text', async () => {
+      // The class is what the directive looks for, so model text minting one
+      // would aim the diagram renderer at a source the model chose.
+      const element = await render(
+        '<div class="md-code md-diagram"><pre><code>x</code></pre></div>',
+      );
+
+      expect(element.querySelector('.md-diagram')).toBeNull();
     });
   });
 });

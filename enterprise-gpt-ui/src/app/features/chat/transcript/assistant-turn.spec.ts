@@ -8,6 +8,7 @@ import {
   foldAssistantEvents,
 } from '@domain/stream/andes/assistant-ui.contract';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
+import { provideTestAppConfig } from '@testing/app-config';
 import { assistantEvent } from '@testing/stream-frames';
 import { provideChatMarkdown } from '../markdown/markdown-providers';
 import { AssistantTurn } from './assistant-turn';
@@ -28,7 +29,22 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
   let host: HTMLElement;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideChatMarkdown()] });
+    // `provideChatMarkdown()` carries US-605's loader, which reads the feature
+    // flags — so a surface that renders answers cannot be mounted without a
+    // configuration saying whether diagrams and math are switched on.
+    //
+    // Pinned off rather than inherited from `public/config.json`. This file's
+    // subject is the head/tail split, highlighting and the footer; a deployment
+    // that turns diagrams on would otherwise make these specs start a real
+    // `import('mermaid')` that jsdom cannot run, and they would pass or fail on
+    // whether the import resolved before the test ended. Drawing is
+    // `markdown-extras.spec.ts`'s subject, where the module is substituted.
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
+        provideChatMarkdown(),
+      ],
+    });
     fixture = TestBed.createComponent(AssistantTurn);
     host = fixture.nativeElement as HTMLElement;
     document.body.append(host);
@@ -151,6 +167,105 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       const code = host.querySelector('pre > code');
       expect(code?.className).toContain('language-ts');
       expect(host.querySelector('.token')).not.toBeNull();
+    });
+  });
+
+  describe('deferred renderers (US-605)', () => {
+    it('marks a mermaid fence only once the turn settles', async () => {
+      // Mid-stream the fence is in the tail, whose info strings `stripFenceInfo`
+      // has removed — so there is no language left to recognise, and a
+      // half-written diagram is not one.
+      await show('Intro\n\n```mermaid\ngraph TD; A-->B', true);
+      expect(host.querySelector('.md-diagram')).toBeNull();
+
+      await show('Intro\n\n```mermaid\ngraph TD; A-->B\n```', false);
+      expect(host.querySelector('.md-diagram')).not.toBeNull();
+    });
+
+    it('draws nothing in the streaming head, even where the fence has closed', async () => {
+      // The head *does* keep its info string, so the wrapper is marked — but the
+      // live pair carries no `appMarkdownExtras`, because the head's content is
+      // replaced wholesale whenever a block closes and a diagram there would be
+      // torn down and laid out again on every flush.
+      await show('```mermaid\ngraph TD; A-->B\n```\n\nstill writ', true);
+
+      const [head] = renderers();
+      expect(head?.querySelector('.md-diagram')).not.toBeNull();
+      expect(head?.querySelector('.md-diagram--rendered')).toBeNull();
+      expect(head?.querySelector('.md-diagram__figure')).toBeNull();
+    });
+  });
+
+  describe('the message footer (US-607)', () => {
+    let writeText: ReturnType<typeof vi.fn>;
+    let clipboardDescriptor: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      writeText = vi.fn().mockResolvedValue(undefined);
+      clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    });
+
+    afterEach(() => {
+      if (clipboardDescriptor !== undefined) {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      }
+    });
+
+    it('offers Copy on a settled turn that claims no token counts', async () => {
+      await show('All done.', false);
+
+      // US-504 gated the whole footer on the counts, so a stopped, cut-off or
+      // replayed turn had none. Copy is offerable whether or not a `Finished`
+      // ever arrived, so the counts are now the conditional part.
+      expect(host.querySelector('.assistant-turn__footer')).not.toBeNull();
+      expect(host.querySelector('app-message-copy')).not.toBeNull();
+      expect(host.querySelector('.assistant-turn__usage')).toBeNull();
+    });
+
+    it('withholds the footer while the turn is still streaming', async () => {
+      await show('Half an ans', true);
+
+      expect(host.querySelector('.assistant-turn__footer')).toBeNull();
+    });
+
+    it('copies the original markdown, not the rendered text', async () => {
+      const source = ['# Heading', '', '```ts', 'const a = 1;', '```'].join('\n');
+      await show(source, false);
+
+      host.querySelector<HTMLButtonElement>('app-message-copy button')?.click();
+      await fixture.whenStable();
+
+      // The rendered DOM has lost the fences and the hash by this point, and
+      // gained Prism's markup — none of which is what a reader wants to paste.
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(source);
+    });
+
+    it('copies every block of a turn whose text was split by an activity', async () => {
+      // `renderedNodes` slices the text per timeline node; the copy comes off
+      // the snapshot instead, so a turn interrupted by a tool call still yields
+      // its whole answer rather than the last block.
+      const events = [
+        assistantEvent('TextDelta', { text: 'Before. ' }),
+        assistantEvent('ActivityStarted', { scopeId: 'mcp-1' }),
+        assistantEvent('ActivityCompleted', { scopeId: 'mcp-1' }),
+        assistantEvent('TextDelta', { text: 'After.' }),
+      ];
+      const snapshot = events.reduce(foldAssistantEvents, createInitialSnapshot());
+      const timeline = events.reduce(foldTimeline, createInitialTimeline());
+
+      fixture.componentRef.setInput('snapshot', snapshot);
+      fixture.componentRef.setInput('timeline', timeline);
+      fixture.componentRef.setInput('streaming', false);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      host.querySelector<HTMLButtonElement>('app-message-copy button')?.click();
+      await fixture.whenStable();
+
+      expect(writeText).toHaveBeenCalledExactlyOnceWith('Before. After.');
     });
   });
 

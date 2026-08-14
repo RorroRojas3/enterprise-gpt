@@ -1,0 +1,79 @@
+<h1 class="conversations__title font-display">Conversations</h1>
+
+<div class="conversations__toolbar">
+  <!-- Deliberately not the sidebar's "Search conversations": two fields with the
+       same accessible name are on screen together at this width, and a rotor
+       listing both would say nothing about which is which.
+
+       Frame 4a also draws a Favorites filter (US-703) and a Select all control
+       (US-704) here, and a "Showing N of M" counter at the right (US-702). -->
+  <app-search-input
+    class="conversations__search"
+    label="Search conversations by name"
+    placeholder="Search by name"
+    [value]="name()"
+    [busy]="library.isPending()"
+    (searched)="onSearched($event)"
+  />
+</div>
+
+@if (library.error(); as error) {
+  <!-- Instead of the table rather than beside it: the rows on screen belong to a
+       query that failed, so leaving them up would show a stale result set as if it
+       were the answer. -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="Conversations couldn’t load"
+    (retried)="library.retry()"
+  />
+} @else {
+  <app-data-table
+    label="Conversations"
+    [rows]="library.entities()"
+    [columns]="columns"
+    [trackKey]="trackKey"
+    [rowLabel]="rowLabel"
+    [loading]="library.isFirstLoad()"
+  >
+    <ng-template appTableCell="name" [appTableCellFor]="library.entities()" let-row>
+      <a class="conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
+    </ng-template>
+
+    <ng-template appTableCell="model" [appTableCellFor]="library.entities()" let-row>
+      <span class="conversations__model">{{ modelName(row) }}</span>
+    </ng-template>
+
+    <div tableEmpty>
+      @if (library.hasNoMatches()) {
+        <!-- Frame 4b: the ridgeline motif, the term named, and one clear action. -->
+        <app-empty-state
+          [heading]="noMatchHeading()"
+          [headingLevel]="2"
+          message="Search covers conversation names only."
+        >
+          <button
+            emptyStateAction
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="clearSearch()"
+          >
+            Clear search
+          </button>
+        </app-empty-state>
+      } @else {
+        <!-- The same treatment for the reader who has none at all, which is a
+             different situation and a different action. -->
+        <app-empty-state
+          heading="No conversations yet"
+          [headingLevel]="2"
+          message="Ask something and your conversation will appear here."
+        >
+          <a emptyStateAction class="btn btn-primary btn-sm" [routerLink]="chatRoute">
+            New conversation
+          </a>
+        </app-empty-state>
+      }
+    </div>
+  </app-data-table>
+}

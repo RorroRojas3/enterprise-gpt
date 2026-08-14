@@ -5,7 +5,6 @@ using Andes.Extensions.AI;
 using Anthropic;
 using Azure;
 using Azure.AI.DocumentIntelligence;
-using Azure.AI.OpenAI;
 using Azure.Identity;
 using Azure.Storage.Blobs;
 using FluentValidation;
@@ -113,47 +112,51 @@ static void ConfigureToolTracking(ToolTrackingOptions options)
     options.UseAgentToolClassification();
 }
 
-// 1) Azure AI Foundry under key "azureaifoundry". Unlike the other two providers this one has no
-// Enabled flag — it always serves the default model, so missing settings are a broken deployment
-// rather than an opted-out one, and the validators run unconditionally.
-builder.Services.AddOptions<AzureAIFoundryOptions>()
-    .Bind(builder.Configuration.GetSection(AzureAIFoundryOptions.SectionName))
+// 1) Azure OpenAI under key "azure-open-ai". Unlike the other three providers this one has no
+// Enabled flag — it always serves the default model and owns the embedding generator, so missing
+// settings are a broken deployment rather than an opted-out one, and the validators run
+// unconditionally.
+builder.Services.AddOptions<AzureOpenAIOptions>()
+    .Bind(builder.Configuration.GetSection(AzureOpenAIOptions.SectionName))
     .Validate(options => options.IsUrlAbsolute,
-        "AzureAIFoundry:Url must be an absolute http or https URI, for example https://my-resource.services.ai.azure.com/.")
+        "AzureOpenAI:Url must be an absolute http or https URI, for example https://my-resource.services.ai.azure.com/.")
     // The client appends the v1 path itself. Configuring it here would send every request to
     // /openai/v1/openai/v1/…, and the 404 that produces names neither the setting nor the cause.
     .Validate(options => options.IsUrlResourceRoot,
-        "AzureAIFoundry:Url must be the resource root, without /openai/v1 — the client appends it.")
+        "AzureOpenAI:Url must be the resource root, without /openai/v1 — the client appends it.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.ApiKey),
-        "AzureAIFoundry:ApiKey is required.")
+        "AzureOpenAI:ApiKey is required.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.DefaultModel),
-        "AzureAIFoundry:DefaultModel is required.")
+        "AzureOpenAI:DefaultModel is required.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.EmbeddingModel),
-        "AzureAIFoundry:EmbeddingModel is required.")
+        "AzureOpenAI:EmbeddingModel is required.")
     // Null-guarded before the lookup: the sets compare case-insensitively, and that comparer throws
     // on a null rather than reporting a miss, which would surface as a startup crash instead of the
     // message below.
     .Validate(options => !string.IsNullOrWhiteSpace(options.ReasoningSummary)
-        && AzureAIFoundryOptions.ReasoningSummaries.Contains(options.ReasoningSummary),
-        "AzureAIFoundry:ReasoningSummary must be one of auto, concise, detailed, none.")
+        && AzureOpenAIOptions.ReasoningSummaries.Contains(options.ReasoningSummary),
+        "AzureOpenAI:ReasoningSummary must be one of auto, concise, detailed, none.")
     .Validate(options => !string.IsNullOrWhiteSpace(options.ReasoningEffort)
-        && AzureAIFoundryOptions.ReasoningEfforts.Contains(options.ReasoningEffort),
-        "AzureAIFoundry:ReasoningEffort must be one of minimal, low, medium, high.")
+        && AzureOpenAIOptions.ReasoningEfforts.Contains(options.ReasoningEffort),
+        "AzureOpenAI:ReasoningEffort must be one of minimal, low, medium, high.")
     .ValidateOnStart();
 
-// The Responses API rather than Chat Completions, and the plain OpenAI client rather than
-// AzureOpenAIClient, because reasoning summaries exist only on that surface: Azure returns no
-// reasoning content over Chat Completions, so the activity timeline's reasoning region had nothing
-// to render. The v1 endpoint is OpenAI-compatible and takes the deployment name in `model`.
+// The Responses API rather than Chat Completions, because reasoning summaries exist only on that
+// surface: Azure returns no reasoning content over Chat Completions, so the activity timeline's
+// reasoning region had nothing to render. That is the whole difference between this provider and
+// the Foundry one below, which shares the endpoint and the SDK but not the surface. The v1 endpoint
+// is OpenAI-compatible and takes the deployment name in `model`.
 builder.Services.AddKeyedChatClient(
-        ChatClientKeys.AzureAIFoundry,
+        ChatClientKeys.AzureOpenAI,
         sp =>
         {
-            var settings = sp.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value;
+            var settings = sp.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
 
             // MEAI001: the Responses adapter is still marked experimental in
-            // Microsoft.Extensions.AI.OpenAI 10.8.3. Suppressed at the one call site rather than
-            // project-wide, so a second experimental API cannot slip in unnoticed behind it.
+            // Microsoft.Extensions.AI.OpenAI 10.9.0, as OPENAI001 is in OpenAI 2.12.0 — see the
+            // header of AzureOpenAIChatDefaults.cs for why no upgrade retires either. Suppressed at
+            // the one call site rather than project-wide, so a second experimental API cannot slip
+            // in unnoticed behind it.
 #pragma warning disable OPENAI001, MEAI001
             return new OpenAIClient(
                     new ApiKeyCredential(settings.ApiKey),
@@ -177,9 +180,54 @@ builder.Services.AddKeyedChatClient(
     // already read it by the time this runs.
     .Use((innerClient, services) => new ConfigureOptionsChatClient(
         innerClient,
-        AzureFoundryChatDefaults.Create(services.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value)));
+        AzureOpenAIChatDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
 
-// 2) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
+// 2) Azure AI Foundry under key "azure-ai-foundry", off unless AzureAIFoundry:Enabled is set. Same
+// resource and same v1 endpoint as the provider above, reached over Chat Completions instead of
+// Responses — which is what lets it serve Foundry Models (DeepSeek, Llama, Mistral) alongside Azure
+// OpenAI deployments, at the cost of reasoning. Its own section rather than a flag on the one above
+// because the two carry different credentials in every deployment that uses both.
+builder.Services.AddOptions<AzureAIFoundryOptions>()
+    .Bind(builder.Configuration.GetSection(AzureAIFoundryOptions.SectionName))
+    .Validate(options => !options.Enabled || options.IsUrlAbsolute,
+        "AzureAIFoundry:Url must be an absolute http or https URI when AzureAIFoundry:Enabled is true, for example https://my-resource.services.ai.azure.com/.")
+    .Validate(options => !options.Enabled || options.IsUrlResourceRoot,
+        "AzureAIFoundry:Url must be the resource root, without /openai/v1 — the client appends it — when AzureAIFoundry:Enabled is true.")
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.ApiKey),
+        "AzureAIFoundry:ApiKey is required when AzureAIFoundry:Enabled is true.")
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.DefaultModel),
+        "AzureAIFoundry:DefaultModel is required when AzureAIFoundry:Enabled is true.")
+    .ValidateOnStart();
+
+if (builder.Configuration.GetValue<bool>($"{AzureAIFoundryOptions.SectionName}:Enabled"))
+{
+    builder.Services.AddKeyedChatClient(
+            ChatClientKeys.AzureAIFoundry,
+            sp =>
+            {
+                var settings = sp.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value;
+
+                // No suppression here, and that is the point of the split: GetChatClient and its
+                // AsIChatClient overload are both stable, so the experimental surface stays confined
+                // to the Responses registration above.
+                return new OpenAIClient(
+                        new ApiKeyCredential(settings.ApiKey),
+                        new OpenAIClientOptions { Endpoint = settings.V1Endpoint })
+                    .GetChatClient(settings.DefaultModel)
+                    .AsIChatClient();
+            }
+        )
+        .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+        .UseToolTracking(ConfigureToolTracking)
+        .UseFunctionInvocation(null, ConfigureFunctionInvocation)
+        // Last in the chain, which is innermost, so its ChatOptions are the ones the bridge reads —
+        // see the Anthropic registration below.
+        .Use((innerClient, _) => new ConfigureOptionsChatClient(
+            innerClient,
+            AzureAIFoundryChatDefaults.Create()));
+}
+
+// 3) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
 // gated on the same flag, so an environment that does not use Bedrock needs no Bedrock settings and a
 // half-filled section still fails at startup rather than on the first conversation.
 builder.Services.AddOptions<AmazonBedrockOptions>()
@@ -230,7 +278,7 @@ if (builder.Configuration.GetValue<bool>($"{AmazonBedrockOptions.SectionName}:En
         .UseFunctionInvocation(null, ConfigureFunctionInvocation);
 }
 
-// 3) Anthropic under key "anthropic", off unless Anthropic:Enabled is set. Same gating as Bedrock, so
+// 4) Anthropic under key "anthropic", off unless Anthropic:Enabled is set. Same gating as Bedrock, so
 // a deployment that does not use Anthropic needs no Anthropic settings and a half-filled section
 // fails at startup rather than on the first conversation.
 builder.Services.AddOptions<AnthropicOptions>()
@@ -312,19 +360,24 @@ if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enable
 
 builder.Services.AddSingleton<IChatClientResolver, ChatClientResolver>();
 
-// AI Embedding Generators. Still AzureOpenAIClient, and deliberately: embeddings have no Responses
-// equivalent, so the chat client's move to the v1 endpoint has nothing to offer them, and every
-// stored vector in the database depends on this client behaving exactly as it did.
+// AI Embedding Generators. On the same OpenAIClient and v1 endpoint as the chat clients above,
+// which is what let Azure.AI.OpenAI leave the solution entirely — it was this generator's last
+// consumer, and its only stable release is long superseded. `/openai/v1/embeddings` is the
+// OpenAI-compatible route to the same deployment on the same resource that
+// `/openai/deployments/{model}/embeddings` reached before, so stored vectors are unaffected; the
+// deployment named by EmbeddingModel is what determines them, not the route.
 //
 // Built from a factory rather than eagerly, so the validated options are the only source of the URL.
 // Constructing it here would run `new Uri(...)` during service configuration — before Build(), and
-// so before ValidateOnStart — and a blank AzureAIFoundry:Url would surface as a bare
+// so before ValidateOnStart — and a blank AzureOpenAI:Url would surface as a bare
 // UriFormatException from this line instead of the validator's message.
 builder.Services.AddEmbeddingGenerator(sp =>
 {
-    var settings = sp.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value;
+    var settings = sp.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
 
-    return new AzureOpenAIClient(new Uri(settings.Url), new ApiKeyCredential(settings.ApiKey))
+    return new OpenAIClient(
+            new ApiKeyCredential(settings.ApiKey),
+            new OpenAIClientOptions { Endpoint = settings.V1Endpoint })
         .GetEmbeddingClient(settings.EmbeddingModel)
         .AsIEmbeddingGenerator();
 });

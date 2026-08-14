@@ -10,8 +10,11 @@ namespace Enterprise.Gpt.Dto.Enums;
 /// </remarks>
 public static class ChatClientKeys
 {
-    /// <summary>Azure AI Foundry.</summary>
-    public const string AzureAIFoundry = "azureaifoundry";
+    /// <summary>Azure OpenAI, over the Responses API. The only provider that serves reasoning.</summary>
+    public const string AzureOpenAI = "azure-open-ai";
+
+    /// <summary>Azure AI Foundry, over Chat Completions. No reasoning.</summary>
+    public const string AzureAIFoundry = "azure-ai-foundry";
 
     /// <summary>Amazon Bedrock.</summary>
     public const string AmazonBedrock = "amazonbedrock";

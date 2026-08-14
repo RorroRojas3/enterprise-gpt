@@ -1,25 +1,25 @@
 # Conversation Turn Lifecycle
 
-The layer above the [Conversation Streaming Client](streaming-client.md): what happens between pressing Send and a settled transcript entry, and what happens when a conversation is reopened. Shipped by thirteen stories: US-401 (send a first prompt; the conversation is created *around* it), US-406 (streamed answer rendering), US-407 (Stop, keeping the partial output) and US-501 (the chronological activity timeline) built the live turn; EP-4's closing five then finished it — **US-408** (the busy warning, §8.1), **US-412** (the MCP consent card, §8.2), **US-410** (reopening a conversation: its stored messages *and* the settings it last used, §7), **US-409** (the name the server generates after a first turn, §7.8) and **US-413** (dictation, §9.2). EP-5's closing four then finished the turn's *own* surfaces — **US-502** (nested activity cards, §8.4), **US-505** (a failed activity, §8.4), **US-504** (what a turn cost, §8.5) and **US-503** (the reasoning region, §4.2 and §8.6). Four recorded deferrals closed along the way: US-303's suggested prompt chips, US-403's tool-server-unavailable card, the generic notice standing in for the busy and consent frames, and US-407's `composer__aux` dimming rule, which had matched no control until the microphone arrived.
+The layer above the [Conversation Streaming Client](streaming-client.md): what happens between pressing Send and a settled transcript entry, and what happens when a conversation is reopened. Shipped by thirteen stories: US-401 (send a first prompt; the conversation is created _around_ it), US-406 (streamed answer rendering), US-407 (Stop, keeping the partial output) and US-501 (the chronological activity timeline) built the live turn; EP-4's closing five then finished it — **US-408** (the busy warning, §8.1), **US-412** (the MCP consent card, §8.2), **US-410** (reopening a conversation: its stored messages _and_ the settings it last used, §7), **US-409** (the name the server generates after a first turn, §7.8) and **US-413** (dictation, §9.2). EP-5's closing four then finished the turn's _own_ surfaces — **US-502** (nested activity cards, §8.4), **US-505** (a failed activity, §8.4), **US-504** (what a turn cost, §8.5) and **US-503** (the reasoning region, §4.2 and §8.6). Four recorded deferrals closed along the way: US-303's suggested prompt chips, US-403's tool-server-unavailable card, the generic notice standing in for the busy and consent frames, and US-407's `composer__aux` dimming rule, which had matched no control until the microphone arrived.
 
-Audience: whoever builds the stories on top — the consent action (US-411), message-level Copy (US-607), the streaming live region (US-1402) — or debugs a turn that ended strangely. The wire format lives in the [contract](streaming-contract.md); the codec, transport, and turn settings live in the [streaming client](streaming-client.md); how the answer text becomes HTML, how a code block is copied, and how the page follows the newest text all live in [Answer Rendering](../ui/answer-rendering.md) — none of the three is restated here.
+Audience: whoever builds the stories on top — the consent action (US-411), response rating (US-1103), the streaming live region (US-1402) — or debugs a turn that ended strangely. The wire format lives in the [contract](streaming-contract.md); the codec, transport, and turn settings live in the [streaming client](streaming-client.md); how the answer text becomes HTML, how a message or a code block is copied, and how the page follows the newest text all live in [Answer Rendering](../ui/answer-rendering.md) — none of the three is restated here.
 
 ## 1. Overview
 
 One route-scoped store owns everything: [`TurnStore`](../../enterprise-gpt-ui/src/app/features/chat/turn-store.ts) holds the session transcript, the live turn, and the send flow, provided by `Chat` beside `ConversationStore` — so its lifetime is the chat screen's, and leaving `/chat` unsubscribes the stream, which aborts the fetch (there is no stop endpoint; [streaming client §4.2](streaming-client.md#42-aborting--stop-sign-out-unsubscribe)).
 
-| Concern | What it does | Where |
-|---|---|---|
-| Turn state | Phases, transcript entries, live snapshot + timeline + reasoning window, settle logic, history replay | `features/chat/turn-store.ts` |
-| Arrival-order index | Which text blocks and activity cards arrived in what order | `domain/stream/turn-timeline.ts` — framework-free, beside the vendored fold |
-| Reasoning window | Where the model's own reasoning starts, and how long it ran | `domain/stream/reasoning-timing.ts` — framework-free (§4.2) |
-| Replaying a stored answer | One persisted message → the same folded shape a live turn produces | `domain/stream/replayed-turn.ts` |
-| Transcript rendering | Settled entries, the live turn, the notices, the stopped card, the history states | `features/chat/transcript/` |
-| Token counts and durations | The one formatter behind the message footer and the activity strip | `features/chat/transcript/turn-usage.ts` (§8.5) |
-| Send / Stop control | The morphing button, composer seeding, focus recovery | `features/chat/composer/` |
-| Dictation | The Web Speech session, the elapsed clock, the phrase handoff | `core/speech/speech-recognition.ts`, `features/chat/composer/dictation-store.ts` |
-| "A turn completed" | The one fact this screen publishes to the rest of the app | `core/events/turn-events.ts` |
-| Landing screen | The wordmark, prompt heading, and four suggested prompt chips | `features/chat/chat-empty-state.ts` |
+| Concern                    | What it does                                                                                          | Where                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Turn state                 | Phases, transcript entries, live snapshot + timeline + reasoning window, settle logic, history replay | `features/chat/turn-store.ts`                                                    |
+| Arrival-order index        | Which text blocks and activity cards arrived in what order                                            | `domain/stream/turn-timeline.ts` — framework-free, beside the vendored fold      |
+| Reasoning window           | Where the model's own reasoning starts, and how long it ran                                           | `domain/stream/reasoning-timing.ts` — framework-free (§4.2)                      |
+| Replaying a stored answer  | One persisted message → the same folded shape a live turn produces                                    | `domain/stream/replayed-turn.ts`                                                 |
+| Transcript rendering       | Settled entries, the live turn, the notices, the stopped card, the history states                     | `features/chat/transcript/`                                                      |
+| Token counts and durations | The one formatter behind the message footer and the activity strip                                    | `features/chat/transcript/turn-usage.ts` (§8.5)                                  |
+| Send / Stop control        | The morphing button, composer seeding, focus recovery                                                 | `features/chat/composer/`                                                        |
+| Dictation                  | The Web Speech session, the elapsed clock, the phrase handoff                                         | `core/speech/speech-recognition.ts`, `features/chat/composer/dictation-store.ts` |
+| "A turn completed"         | The one fact this screen publishes to the rest of the app                                             | `core/events/turn-events.ts`                                                     |
+| Landing screen             | The wordmark, prompt heading, and four suggested prompt chips                                         | `features/chat/chat-empty-state.ts`                                              |
 
 Three structures describe one live turn, and none duplicates the others (§4). Reopening a conversation replays its stored messages (§7) — but only the messages: the **activity timeline, the reasoning summary and the token counts are session state**, because the stream that produces them is never persisted, and that is permanent rather than pending (§7.5).
 
@@ -27,32 +27,32 @@ Three structures describe one live turn, and none duplicates the others (§4). R
 
 `TurnPhase` is one value, and everything the screen shows during a turn derives from it:
 
-| Phase | Meaning | What shows |
-|---|---|---|
-| `idle` | No turn in flight | The Send control; transcript or empty state |
-| `creating` | `POST api/conversations` is out for a first prompt | The thinking ridgeline (frame `1e`) |
+| Phase           | Meaning                                                   | What shows                                                                       |
+| --------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `idle`          | No turn in flight                                         | The Send control; transcript or empty state                                      |
+| `creating`      | `POST api/conversations` is out for a first prompt        | The thinking ridgeline (frame `1e`)                                              |
 | `awaitingFirst` | The stream request is out; nothing renderable has arrived | The thinking ridgeline — or the reasoning region, once the model reasons (below) |
-| `streaming` | Content is arriving | The live turn, with the blinking caret |
-| `stopping` | The user pressed Stop; the abort's error is on its way | The live turn, until the settle lands |
+| `streaming`     | Content is arriving                                       | The live turn, with the blinking caret                                           |
+| `stopping`      | The user pressed Stop; the abort's error is on its way    | The live turn, until the settle lands                                            |
 
 Three computed signals read it, and the first two no longer split on the phase alone. `inFlight` is anything but `idle` — which is also what morphs the composer's button into Stop (§9). `showThinking` and `showLiveTurn` split on **"is the model reasoning"**, so that during `awaitingFirst` exactly one of them is true:
 
-| | `creating` | `awaitingFirst`, no model reasoning | `awaitingFirst`, model reasoning | `streaming` / `stopping` |
-|---|---|---|---|---|
-| `showThinking` | ✅ | ✅ | — | — |
-| `showLiveTurn` | — | — | ✅ | ✅ |
+|                | `creating` | `awaitingFirst`, no model reasoning | `awaitingFirst`, model reasoning | `streaming` / `stopping` |
+| -------------- | ---------- | ----------------------------------- | -------------------------------- | ------------------------ |
+| `showThinking` | ✅         | ✅                                  | —                                | —                        |
+| `showLiveTurn` | —          | —                                   | ✅                               | ✅                       |
 
-That split is US-503's (§8.6). The pre-answer gap belongs to the ridgeline on every turn where the model reasons silently, which is most of them, and is handed to the reasoning region the moment the model reasons in its own words — so the summary is readable *as it streams* rather than appearing whole at the first token, in one component instance for the length of the turn.
+That split is US-503's (§8.6). The pre-answer gap belongs to the ridgeline on every turn where the model reasons silently, which is most of them, and is handed to the reasoning region the moment the model reasons in its own words — so the summary is readable _as it streams_ rather than appearing whole at the first token, in one component instance for the length of the turn.
 
 Reading a conversation's stored messages is deliberately **not** a phase (`historyPending` / `historyError` are their own state, §7.1): no turn is in flight while history loads, the composer stays usable throughout, and folding it into `TurnPhase` would have put both facts at risk.
 
 `awaitingFirst` advances to `streaming` only when a batch carries **renderable** content — an `ActivityStarted` or a `TextDelta`. A batch of `Status` or `ReasoningDelta` events deliberately does not move the phase. US-406 wrote that rule when this app emitted no request-level statuses at all; that rationale is now historical — the server opens every turn with a synthetic `Status` (`"Starting"`) and a server-authored `ReasoningDelta` ([contract §4.3](streaming-contract.md#43-a-turn-frame-by-frame)) — but the rule now does real work: without it, those two frames would advance the phase with nothing renderable to show for it.
 
-The client still renders neither `assistantStatus` nor the server's seeded reasoning delta, and both refusals are the same one: US-406 decided this app shows no request-level status line it did not get from the model. What US-503 added is the *model's* reasoning, which is neither fabricated nor a status line — and reaching it means measuring the seed out first (§4.2).
+The client still renders neither `assistantStatus` nor the server's seeded reasoning delta, and both refusals are the same one: US-406 decided this app shows no request-level status line it did not get from the model. What US-503 added is the _model's_ reasoning, which is neither fabricated nor a status line — and reaching it means measuring the seed out first (§4.2).
 
 ## 3. Sending, and creating the conversation around the first prompt
 
-The send pipeline is one `rxMethod` on `exhaustMap` — the double-send guard. A send while a turn is in flight is *ignored*, not queued: a queued one would only meet the server's 409, because a conversation runs one turn at a time ([contract §6.3](streaming-contract.md#63-it-is-not-resumable-and-not-multiplexed)). `send(prompt)` also re-checks what the composer's disabled button already enforces — no selection resolved or empty text is a no-op, so no caller can issue a turn without a `modelId`.
+The send pipeline is one `rxMethod` on `exhaustMap` — the double-send guard. A send while a turn is in flight is _ignored_, not queued: a queued one would only meet the server's 409, because a conversation runs one turn at a time ([contract §6.3](streaming-contract.md#63-it-is-not-resumable-and-not-multiplexed)). `send(prompt)` also re-checks what the composer's disabled button already enforces — no selection resolved or empty text is a no-op, so no caller can issue a turn without a `modelId`.
 
 ### 3.1 The unbound send
 
@@ -62,13 +62,13 @@ The send pipeline is one `rxMethod` on `exhaustMap` — the double-send guard. A
 2. On the 201: prepends the new conversation into `ConversationListStore` (so the sidebar row and the header's list-fallback name exist the moment the URL updates), patches `boundConversationId`, **then** navigates.
 3. Navigates with `router.navigateByUrl('/chat/{id}', { replaceUrl: true })` and streams the turn against the new id.
 
-The navigation is a **recorded deviation from US-401's letter** (product-owner approved, 2026-08-12). The story says `Location.replaceState`, but that moves the URL without moving the Router: the sidebar's `routerLinkActive` selection breaks, "New conversation" becomes a same-URL no-op, and the route's `conversationId` input never binds. `replaceUrl: true` keeps the story's *intent* — history replaced, no remount, because one route configuration serves both `/chat` and `/chat/{id}`.
+The navigation is a **recorded deviation from US-401's letter** (product-owner approved, 2026-08-12). The story says `Location.replaceState`, but that moves the URL without moving the Router: the sidebar's `routerLinkActive` selection breaks, "New conversation" becomes a same-URL no-op, and the route's `conversationId` input never binds. `replaceUrl: true` keeps the story's _intent_ — history replaced, no remount, because one route configuration serves both `/chat` and `/chat/{id}`.
 
-The ordering in step 2 is load-bearing. `bindRoute` follows the route's `conversationId` input and resets everything on a change of conversation — but it treats an incoming id equal to `boundConversationId` as "the URL caught up with our own create" and passes it through as a no-op. Setting the id *before* navigating is what makes the store's own navigation indistinguishable from no change at all.
+The ordering in step 2 is load-bearing. `bindRoute` follows the route's `conversationId` input and resets everything on a change of conversation — but it treats an incoming id equal to `boundConversationId` as "the URL caught up with our own create" and passes it through as a no-op. Setting the id _before_ navigating is what makes the store's own navigation indistinguishable from no change at all.
 
 ### 3.2 When the create goes wrong
 
-- **The POST fails** — the prompt goes straight back into the composer (US-401's "not lost") and a failure notice renders *without* a Retry button, because the reseeded composer is the retry surface. The pipeline returns `EMPTY` so the `rxMethod` stays alive for the next send.
+- **The POST fails** — the prompt goes straight back into the composer (US-401's "not lost") and a failure notice renders _without_ a Retry button, because the reseeded composer is the retry surface. The pipeline returns `EMPTY` so the `rxMethod` stays alive for the next send.
 - **The user presses Stop, or navigates away, mid-create** — the POST is cancelled (it accepts no `AbortSignal`, so a `takeUntil` subject cancels it) and the prompt is reseeded. A route event during `creating` is always foreign — the store's own navigation cannot fire before the 201 has moved the phase on — so `bindRoute` cancels the create before resetting; without that, the 201 would land after the reset, clobber the new binding, and navigate the user off the conversation they just opened.
 - **Sign-out mid-create** — the same `takeUntil` races `injectSignedOut()`, and `withResetOnSignOut` (composed last, per the repo rule) clears the state.
 
@@ -76,17 +76,17 @@ The ordering in step 2 is load-bearing. `bindRoute` follows the route's `convers
 
 Each delivered batch — at most one per ~16 ms flush, at any token rate ([streaming client §4.4](streaming-client.md#44-batching)) — folds through **three** reducers in **one** `patchState`:
 
-| Reducer | Produces | Owns |
-|---|---|---|
-| `foldAssistantEvents` (vendored) | `AssistantStatusSnapshot` | Activity state and hierarchy, answer text, reasoning text, usage, phase |
-| [`foldTimeline`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts) | `TurnTimeline` | Arrival order, and nothing else (§4.1) |
-| [`foldReasoningTiming`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.ts) | `ReasoningTiming` | Where the model's reasoning starts in that text, and how long it ran (§4.2) |
+| Reducer                                                                                    | Produces                  | Owns                                                                        |
+| ------------------------------------------------------------------------------------------ | ------------------------- | --------------------------------------------------------------------------- |
+| `foldAssistantEvents` (vendored)                                                           | `AssistantStatusSnapshot` | Activity state and hierarchy, answer text, reasoning text, usage, phase     |
+| [`foldTimeline`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts)           | `TurnTimeline`            | Arrival order, and nothing else (§4.1)                                      |
+| [`foldReasoningTiming`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.ts) | `ReasoningTiming`         | Where the model's reasoning starts in that text, and how long it ran (§4.2) |
 
 All three are pure and framework-free, and all three test in Node. The apply is guarded to in-flight phases, so a batch racing a reset cannot resurrect a cleared turn; batches landing while `stopping` still fold, because they are the partial output the stopped card keeps (§6).
 
 ### 4.1 Why an index beside the fold
 
-`foldAssistantEvents` owns every piece of activity *state* — labels, kinds, progress, completion — but its snapshot is hierarchical and unordered across text: it can say a tool ran and finished, but not whether its card arrived before or after a paragraph. US-501 needs exactly that interleaving, so `TurnTimeline` records **only** the ordering:
+`foldAssistantEvents` owns every piece of activity _state_ — labels, kinds, progress, completion — but its snapshot is hierarchical and unordered across text: it can say a tool ran and finished, but not whether its card arrived before or after a paragraph. US-501 needs exactly that interleaving, so `TurnTimeline` records **only** the ordering:
 
 - A `text` node is a half-open `[start, end)` slice into the folded snapshot's single `text` string. The timeline never copies answer text, so a delta costs O(1) here regardless of transcript length; consecutive deltas extend the last text node rather than opening a new one.
 - An `activity` node is a `scopeId` reference into the snapshot's activity tree. Every `ActivityStarted` becomes its own node **regardless of depth** — which is exactly what let US-502 nest children without touching this reducer (§8.4): the renderer keeps the nodes whose scope is a root of the folded snapshot and leaves the rest to the parent cards they already sit inside.
@@ -99,21 +99,21 @@ The join happens once per flush in `AssistantTurn`'s `renderedNodes` computed �
 
 Two facts about the contract shape US-503, and the first is easy to miss.
 
-**Every turn's first `ReasoningDelta` is server-authored.** The service seeds `"Reviewing the request and preparing a response.\n\n"` ahead of the model's first event ([contract §4.1](streaming-contract.md#41-event-kinds), [§4.3](streaming-contract.md#43-a-turn-frame-by-frame)), and the vendored fold accumulates it into `reasoningText` like any other delta. Rendering it would put a request-level status line on screen — the thing US-406 decided this app does not do — and *measuring* from it would report queue and network latency as thinking time.
+**Every turn's first `ReasoningDelta` is server-authored.** The service seeds `"Reviewing the request and preparing a response.\n\n"` ahead of the model's first event ([contract §4.1](streaming-contract.md#41-event-kinds), [§4.3](streaming-contract.md#43-a-turn-frame-by-frame)), and the vendored fold accumulates it into `reasoningText` like any other delta. Rendering it would put a request-level status line on screen — the thing US-406 decided this app does not do — and _measuring_ from it would report queue and network latency as thinking time.
 
 So the seed is identified **by position, not by its text**: `foldReasoningTiming` records the length of the first `ReasoningDelta` it sees and nothing about its content, and `modelReasoningText` slices that many characters off the front of `snapshot.reasoningText`. Hard-coding the server's copy in the client would be the brittle way to reach the same place — a wording change on the server would resurrect the status line.
 
 **The second fact is that no reasoning duration is on the wire.** `ReasoningDelta` leaves `timestamp` at its default ([contract §4.2](streaming-contract.md#42-fields)) and the `durationSeconds` on `Finished` is the whole turn's, which the fold discards. The window is therefore measured from arrival times — which is what a reader is watching anyway:
 
-| | Event |
-|---|---|
-| Opens the window | The **model's** first `ReasoningDelta` — the second one of the turn |
-| Closes it | The first `TextDelta` or `ActivityStarted` after that, or `Finished` |
+|                  | Event                                                                |
+| ---------------- | -------------------------------------------------------------------- |
+| Opens the window | The **model's** first `ReasoningDelta` — the second one of the turn  |
+| Closes it        | The first `TextDelta` or `ActivityStarted` after that, or `Finished` |
 
 Three consequences fall out of that shape:
 
 - **A turn whose only reasoning is the seed reports nothing and renders no region at all** — the same rule as an unreported token count (§8.5), and what makes US-503's third criterion true in practice rather than only for replayed history.
-- **Reasoning that resumes mid-answer neither restarts nor extends the window.** What the pill reports is how long the model thought *before* it started answering, and a model reasoning again has already answered.
+- **Reasoning that resumes mid-answer neither restarts nor extends the window.** What the pill reports is how long the model thought _before_ it started answering, and a model reasoning again has already answered.
 - **`Finished` closes an open window**, so a turn that reasoned and then produced nothing still reports its seconds rather than losing its only figure.
 
 The clock is a **parameter**, not something the reducer reads, which is what keeps it pure and lets a spec pin a turn's seconds without owning a fake clock. `TurnStore` passes `performance.now()` — deliberately not `Date.now()`, because this reading is one end of an elapsed measurement and a clock step between the two ends would render a negative duration. One reading per flush is enough: a ~16 ms batch is finer than a duration written to a tenth of a second.
@@ -122,23 +122,23 @@ The clock is a **parameter**, not something the reducer reads, which is what kee
 
 The transport ends a turn in exactly two ways — `complete`, or `error(AppError)` ([streaming client §4](streaming-client.md#4-the-transport)) — and the store discriminates each against the phase and the folded snapshot. This table is the heart of US-406 and US-407:
 
-| Stream ending | Phase at settle | Outcome |
-|---|---|---|
-| `complete`, `Finished` was folded (`snapshot.phase === 'Completed'`) | any in-flight phase — **including `stopping`** | **One atomic append** of the user and assistant entries; live turn cleared |
-| `complete`, no `Finished` | `awaitingFirst` / `streaming` | Cut-off entry (user + assistant-with-warning, keeping snapshot, timeline, and a Retry) |
-| `complete`, no `Finished` | `stopping` | The stopped card — the server closed the body just as Stop was pressed; visually this is the stop the user asked for, not a cut-off warning |
-| `error` `aborted` | `stopping` | The stopped card: detached, "Stopped — not saved to this conversation", holding the flushed partial text; the optimistic user bubble goes with the live turn |
-| `error` `aborted` | `idle` | Nothing — sign-out or a route-change reset already cleared the state, and patching would resurrect a turn (for sign-out, the previous user's) |
-| `error` `aborted` | any other phase | The live turn is cleared, nothing else — clearing cannot resurrect anything, but a phase left in flight would wedge the composer on a Stop control with nothing to stop |
-| `error`, any other arm | `stopping` | Prompt reseeded into the composer, **no** notice — the user wanted out; raising an error card for a turn they cancelled would be noise |
-| `error`, any other arm | `awaitingFirst` / `streaming` | Pre-stream failure notice, with Retry where the arm is retryable |
-| Create `POST` failed (never reached the stream) | `creating` | Failure notice without Retry + prompt reseeded (§3.2) |
+| Stream ending                                                        | Phase at settle                                | Outcome                                                                                                                                                                 |
+| -------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `complete`, `Finished` was folded (`snapshot.phase === 'Completed'`) | any in-flight phase — **including `stopping`** | **One atomic append** of the user and assistant entries; live turn cleared                                                                                              |
+| `complete`, no `Finished`                                            | `awaitingFirst` / `streaming`                  | Cut-off entry (user + assistant-with-warning, keeping snapshot, timeline, and a Retry)                                                                                  |
+| `complete`, no `Finished`                                            | `stopping`                                     | The stopped card — the server closed the body just as Stop was pressed; visually this is the stop the user asked for, not a cut-off warning                             |
+| `error` `aborted`                                                    | `stopping`                                     | The stopped card: detached, "Stopped — not saved to this conversation", holding the flushed partial text; the optimistic user bubble goes with the live turn            |
+| `error` `aborted`                                                    | `idle`                                         | Nothing — sign-out or a route-change reset already cleared the state, and patching would resurrect a turn (for sign-out, the previous user's)                           |
+| `error` `aborted`                                                    | any other phase                                | The live turn is cleared, nothing else — clearing cannot resurrect anything, but a phase left in flight would wedge the composer on a Stop control with nothing to stop |
+| `error`, any other arm                                               | `stopping`                                     | Prompt reseeded into the composer, **no** notice — the user wanted out; raising an error card for a turn they cancelled would be noise                                  |
+| `error`, any other arm                                               | `awaitingFirst` / `streaming`                  | Pre-stream failure notice, with Retry where the arm is retryable                                                                                                        |
+| Create `POST` failed (never reached the stream)                      | `creating`                                     | Failure notice without Retry + prompt reseeded (§3.2)                                                                                                                   |
 
 Three decisions behind the table:
 
-- **`aborted` is discriminated by phase, never by abort reason.** All three abort sources — Stop, sign-out, unsubscribe — surface as the same `aborted` arm ([streaming client §4.2](streaming-client.md#42-aborting--stop-sign-out-unsubscribe)). What distinguishes them is what the store did *first*: Stop flips the phase to `stopping` before aborting, while sign-out and route changes reset to `idle` before the rejection lands.
+- **`aborted` is discriminated by phase, never by abort reason.** All three abort sources — Stop, sign-out, unsubscribe — surface as the same `aborted` arm ([streaming client §4.2](streaming-client.md#42-aborting--stop-sign-out-unsubscribe)). What distinguishes them is what the store did _first_: Stop flips the phase to `stopping` before aborting, while sign-out and route changes reset to `idle` before the rejection lands.
 - **`Finished` racing a Stop wins.** The abort raced a clean close: the server transcribed the answer, so a card claiming "not saved" would be false — US-407's own honesty rationale.
-- **The settle is one atomic patch.** The optimistic user bubble is a *field* (`pendingUserText`), not a transcript entry — so `Finished` appends user and assistant entries in a single `patchState` (US-406's "exactly one append"), and Stop removes the bubble by nulling a field rather than popping an array.
+- **The settle is one atomic patch.** The optimistic user bubble is a _field_ (`pendingUserText`), not a transcript entry — so `Finished` appends user and assistant entries in a single `patchState` (US-406's "exactly one append"), and Stop removes the bubble by nulling a field rather than popping an array.
 
 A body that ends without `Finished` is US-406's deliberate **non-error** arm: a mid-stream fault and a network drop are indistinguishable on the wire ([contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)), so the partial answer keeps its place in the transcript under a "This response was cut off" warning card, with a Retry that re-sends the turn's own prompt and selection — as sent, even if the pickers have moved since.
 
@@ -147,27 +147,27 @@ A body that ends without `Finished` is US-406's deliberate **non-error** arm: a 
 Stop (US-407) does different things depending on what there is to stop:
 
 - **During `creating`** — the POST is cancelled and the prompt goes straight back into the composer. Nothing streamed, so there is no partial output to card.
-- **During `awaitingFirst` or `streaming`** — the phase flips to `stopping` *before* the abort, for the settle discrimination above, and because the patch is synchronous the Send control returns immediately rather than after the rejection's round trip.
+- **During `awaitingFirst` or `streaming`** — the phase flips to `stopping` _before_ the abort, for the settle discrimination above, and because the patch is synchronous the Send control returns immediately rather than after the rejection's round trip.
 
-The result is the **detached stopped card** (frame `1h`): dashed border and left inset, the design's statement that this text is *not* part of the transcript — the server transcribed neither the answer nor the prompt, and the card vanishes on route change, reopen, and reload because the state behind it does. It offers:
+The result is the **detached stopped card** (frame `1h`): dashed border and left inset, the design's statement that this text is _not_ part of the transcript — the server transcribed neither the answer nor the prompt, and the card vanishes on route change, reopen, and reload because the state behind it does. It offers:
 
 - **Copy** — the partial text, with a two-second "Copied" confirmation (the focused button's label change is what announces it; a denied clipboard permission leaves the button as it was).
-- **Retry** — restores the prompt into the composer *and* the turn's model and MCP selection into the pickers, through the same `applyConversationSettings` seam US-410 seeds a reopened conversation with (§7.6) — and deliberately does **not** re-send. The selection restore routes through the twice-enforced MCP gating invariant ([streaming client §5.3](streaming-client.md#53-the-mcp-gating-invariant-enforced-twice)), so a selection that has gone stale cannot produce the server's 400.
+- **Retry** — restores the prompt into the composer _and_ the turn's model and MCP selection into the pickers, through the same `applyConversationSettings` seam US-410 seeds a reopened conversation with (§7.6) — and deliberately does **not** re-send. The selection restore routes through the twice-enforced MCP gating invariant ([streaming client §5.3](streaming-client.md#53-the-mcp-gating-invariant-enforced-twice)), so a selection that has gone stale cannot produce the server's 400.
 
 There is no stop endpoint and none is called: aborting the fetch is what ends the turn server-side, and the server still records what the stopped turn spent.
 
 ## 7. Reopening a conversation (US-410, US-409)
 
-Until this story, opening an existing conversation showed its title over an empty screen: nothing in the client had ever read `GET api/conversations/{id}/messages`. US-410 was written as "restore the model and MCP selection" and sized S; its third criterion is about a *refetched transcript*, which presupposed a fetch that did not exist, so history replay shipped inside it and it was re-sized to M (agreed with the product owner before implementation, and recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)).
+Until this story, opening an existing conversation showed its title over an empty screen: nothing in the client had ever read `GET api/conversations/{id}/messages`. US-410 was written as "restore the model and MCP selection" and sized S; its third criterion is about a _refetched transcript_, which presupposed a fetch that did not exist, so history replay shipped inside it and it was re-sized to M (agreed with the product owner before implementation, and recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)).
 
 Two independent restores happen on open, in two stores:
 
-| What is restored | From | Owned by |
-|---|---|---|
-| The stored messages | `GET api/conversations/{id}/messages` | `TurnStore` (§7.1–§7.5, §7.7) |
-| The model and MCP selection | `GET api/conversations/{id}` | `ConversationStore` → `TurnSettingsStore` (§7.6) |
+| What is restored            | From                                  | Owned by                                         |
+| --------------------------- | ------------------------------------- | ------------------------------------------------ |
+| The stored messages         | `GET api/conversations/{id}/messages` | `TurnStore` (§7.1–§7.5, §7.7)                    |
+| The model and MCP selection | `GET api/conversations/{id}`          | `ConversationStore` → `TurnSettingsStore` (§7.6) |
 
-US-409 rides along at the other end of the same round trip — after the *first* turn completes, the conversation is re-read for the name the server generated from it (§7.8).
+US-409 rides along at the other end of the same round trip — after the _first_ turn completes, the conversation is re-read for the name the server generated from it (§7.8).
 
 ### 7.1 Replay hangs off the reset, not the route input
 
@@ -200,23 +200,23 @@ No `Completed` phase is invented for a replayed entry, and no `Finished` usage: 
 
 Transcript entry ids are the `@for … track` key, and they are split into two disjoint ranges:
 
-| Range | Holds | Direction |
-|---|---|---|
-| `-1, -2, -3, …` | Replayed history | Descending, assigned in message order |
-| `1, 2, 3, …` | Turns taken this session | Ascending |
+| Range           | Holds                    | Direction                             |
+| --------------- | ------------------------ | ------------------------------------- |
+| `-1, -2, -3, …` | Replayed history         | Descending, assigned in message order |
+| `1, 2, 3, …`    | Turns taken this session | Ascending                             |
 
-That split is what lets a refetch **rebuild the whole history block** without renumbering — or colliding with — entries taken since, keeping their `@for` identity stable across the swap. US-410's third criterion is the reason a rebuild is needed at all: after an aborted turn the server holds *fewer* messages than the screen does, so a merge would leave the abandoned pair on screen forever, claiming the model saw them. A replace lets the transcript legitimately *shrink*.
+That split is what lets a refetch **rebuild the whole history block** without renumbering — or colliding with — entries taken since, keeping their `@for` identity stable across the swap. US-410's third criterion is the reason a rebuild is needed at all: after an aborted turn the server holds _fewer_ messages than the screen does, so a merge would leave the abandoned pair on screen forever, claiming the model saw them. A replace lets the transcript legitimately _shrink_.
 
 The two callers disagree about one thing, `keepLive`:
 
 - **A route-change read keeps live entries.** It was issued before any turn taken during it, so those entries are still to come and are not in the response.
-- **The failure panel's Retry discards them.** It is issued *after* everything on screen — the panel deliberately leaves the composer usable — so a turn taken while history was broken is already in the response about to be installed, and keeping it would render the exchange twice.
+- **The failure panel's Retry discards them.** It is issued _after_ everything on screen — the panel deliberately leaves the composer usable — so a turn taken while history was broken is already in the response about to be installed, and keeping it would render the exchange twice.
 
 ### 7.4 The message shape has two sharp edges
 
 ```jsonc
 // GET api/conversations/{id}/messages
-{ "id": "…", "name": "…", "messages": [ { "text": "…", "role": 3 } ] }
+{ "id": "…", "name": "…", "messages": [{ "text": "…", "role": 3 }] }
 ```
 
 - **`role` is a number, not a string.** The API registers no `JsonStringEnumConverter`, so `ChatRoles` serializes as its integer value: `1` System, `2` Assistant, `3` User, `4` Tool. [`domain/api/conversation.ts`](../../enterprise-gpt-ui/src/app/domain/api/conversation.ts) mirrors that as `CHAT_ROLE`. Only `user` and `assistant` are rendered — the server already filters `System` out of the response, `Tool` is a model-to-model artefact whose proper surface is the activity timeline this response cannot reconstruct anyway, and an unknown role from a future server is skipped rather than guessed at.
@@ -240,7 +240,7 @@ Two things in it are easy to get wrong.
 
 **An empty payload is not a selection of "nothing".** The server writes `modelId` and the MCP set from the newest `ConversationUsage` row, so a conversation whose first turn has **not completed** reports `modelId: null` and `mcpServerIds: []` — which is exactly the state US-401's `replaceUrl` re-opens this store in, while that first turn is still streaming. Seeding it would clear the model and tool servers the user picked for the turn running right now: US-402 and US-403 undone by a round trip. The seed is therefore skipped when both are empty.
 
-**A deactivated model has to be reported, not absorbed.** `restoredModelId` is remembered separately from the selection so the fallback to the default can be explained rather than happening silently; `restoredModelUnavailable` then gates on the catalog having actually *resolved*, because every deep link races the catalog load and an empty `models()` would otherwise flash "your model was deactivated" at every conversation and then withdraw it. The composer renders the result as an amber note above the control row — a state no design frame draws, so it reuses frames `2d`/`2j`'s treatment (§9.1). Picking a model clears `restoredModelId`: the user has answered the warning. Opening the empty screen clears it too, through `clearRestoredModel()` — there is nothing resumed there to explain — while the selection itself persists across conversations for the session, as US-402 requires.
+**A deactivated model has to be reported, not absorbed.** `restoredModelId` is remembered separately from the selection so the fallback to the default can be explained rather than happening silently; `restoredModelUnavailable` then gates on the catalog having actually _resolved_, because every deep link races the catalog load and an empty `models()` would otherwise flash "your model was deactivated" at every conversation and then withdraw it. The composer renders the result as an amber note above the control row — a state no design frame draws, so it reuses frames `2d`/`2j`'s treatment (§9.1). Picking a model clears `restoredModelId`: the user has answered the warning. Opening the empty screen clears it too, through `clearRestoredModel()` — there is nothing resumed there to explain — while the selection itself persists across conversations for the session, as US-402 requires.
 
 ### 7.7 When the stored transcript cannot be read
 
@@ -259,7 +259,7 @@ The Events plugin for the same reachability reason as `conversationEvents`: `Tur
 Three details decide when it fires and what it says:
 
 - **Only a `Finished` frame counts.** The dispatch is in the stream's `complete` callback and guarded on `snapshot.phase === 'Completed'`, so a stopped, cut-off or failed turn publishes nothing — the server named nothing after it, and an observer refetching would read back the placeholder it already holds. That is US-409's third criterion with no special case: the retry that actually completes is the one that announces.
-- **`wasFirstTurn` is read *before* the settle** appends the entry that would make this turn look like it had a predecessor. It derives from "the transcript holds no `assistant` entry", which is why a cut-off attempt — which leaves a `cutOff` entry, never an `assistant` one — still counts the next attempt as first, while §7's replayed history correctly marks an existing conversation as not first.
+- **`wasFirstTurn` is read _before_ the settle** appends the entry that would make this turn look like it had a predecessor. It derives from "the transcript holds no `assistant` entry", which is why a cut-off attempt — which leaves a `cutOff` entry, never an `assistant` one — still counts the next attempt as first, while §7's replayed history correctly marks an existing conversation as not first.
 - **An unread history is not an empty one.** The flag is false when `historyError` is set, or the client would refetch a name the server settled long ago.
 
 `ConversationStore` handles the event with a **silent** `refreshDetail`, not `open` or `retry`: those go through `setPending()` and would blank the header mid-conversation, flashing the sidebar's stale name back for a round trip. Its failure is swallowed — everything on screen is still true, and a name arriving one refresh late does not deserve an error panel — and the swallow lives inside `tapResponse` rather than a `catchError` ahead of it, because a throw escaping there would kill the `rxMethod` and every later first turn would silently stop refreshing. The sidebar needed no new code: `refreshDetail` calls the same `ConversationListStore.refreshRow` seam the detail load already used, unguarded by the open conversation id, so the row earns its generated name even if the user has moved on mid-round-trip.
@@ -269,12 +269,13 @@ Three details decide when it fires and what it says:
 [`Transcript`](../../enterprise-gpt-ui/src/app/features/chat/transcript/transcript.ts) is the conversation column: the history skeleton or its failure panel first (§7.1, §7.7), then the settled entries, then whichever live region applies — the thinking ridgeline, the streaming turn, a failure notice, or the stopped card. Its accessibility posture is deliberate:
 
 - `aria-busy` rides the container for the length of a turn **and while the stored messages load**, so assistive tech treats the region as settling rather than announcing every re-render. The full streaming live-region treatment is US-1402's.
-- A **persistent** visually-hidden `role="status"` region announces abnormal endings only — stopped, failed, cut off. It exists from the first render because a live region created together with its content is not reliably announced, and it empties during every turn so a retry that cuts off *again* transitions the content and is announced a second time.
+- A **persistent** visually-hidden `role="status"` region announces abnormal endings only — stopped, failed, cut off. It exists from the first render because a live region created together with its content is not reliably announced, and it empties during every turn so a retry that cuts off _again_ transitions the content and is announced a second time.
 - A **second** `role="status"` region carries US-603's copy confirmation, and is separate from the first on purpose: that one is emptied for the length of a turn, while a code block can be copied mid-turn. `Transcript` also carries the single delegated click listener behind every code block's Copy control; both belong to [Answer Rendering §3.5](../ui/answer-rendering.md#35-the-code-block-chrome-and-its-copy-control-us-603) and are not restated here.
+- **US-607's message-level Copy adds no third region**, and that asymmetry is deliberate rather than an oversight: it is a real template-bound button that exists only on a settled turn, so changing its own accessible name announces the confirmation on the element the reader just activated ([Answer Rendering §9.1](../ui/answer-rendering.md#91-why-this-one-needs-no-live-region)).
 
-An assistant turn renders top to bottom as: the reasoning region (§8.6), then the text blocks and activity cards in arrival order, then the message footer (§8.5).
+An assistant turn renders top to bottom as: the reasoning region (§8.6), then the text blocks and activity cards in arrival order, then the message footer (§8.5) — which since US-607 carries a Copy control on the prompt bubble as well as under the answer.
 
-[`AssistantTurn`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts) renders the avatar beside all of that, and the middle of it is the render-time join of §4. The blinking caret belongs to the last node, and only when it is a text block. Text renders as **sanitized markdown** as of US-601, and the node still growing renders as two `<markdown>` instances — a stable head and a volatile tail (US-602). Neither the pipeline nor the split is restated here: see [Answer Rendering](../ui/answer-rendering.md). Two facts from it change how this screen behaves, though — the renderer writes its output a microtask *after* change detection returns, which is why US-606's scroll pinning is driven by a `ResizeObserver` rather than by these signals; and the caret is now a CSS pseudo-element on the rendered block, because `innerHTML` leaves no template position inside it for a span.
+[`AssistantTurn`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts) renders the avatar beside all of that, and the middle of it is the render-time join of §4. The blinking caret belongs to the last node, and only when it is a text block. Text renders as **sanitized markdown** as of US-601, and the node still growing renders as two `<markdown>` instances — a stable head and a volatile tail (US-602). Neither the pipeline nor the split is restated here: see [Answer Rendering](../ui/answer-rendering.md). Two facts from it change how this screen behaves, though — the renderer writes its output a microtask _after_ change detection returns, which is why US-606's scroll pinning is driven by a `ResizeObserver` rather than by these signals; and the caret is now a CSS pseudo-element on the rendered block, because `innerHTML` leaves no template position inside it for a span.
 
 Reasoning takes **no timeline node**: it is not a block of the answer and never interleaves with one, so it opens the turn rather than being placed by arrival order.
 
@@ -282,13 +283,13 @@ Reasoning takes **no timeline node**: it is not a block of the answer and never 
 
 [`TurnNoticeCard`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-notice-card.ts) carries every turn-edge notice, and now has four designed arms plus a fallback:
 
-| Arm | Frame `1h` variant | Story |
-|---|---|---|
-| Cut off | Warn panel, triangle, Retry | US-406 |
-| Tool server unavailable | Plain `--surface` card, plug icon, names the server | US-403 / US-406 |
-| Conversation busy | Warn panel, **one row** — hourglass, one sentence, Retry pushed right | US-408 (§8.1) |
-| MCP authorization required | Plain `--surface` card, `--warn` shield, **no action** | US-412 (§8.2) |
-| Anything else | Generic warning with the `userMessage` and the `traceId` line | — |
+| Arm                        | Frame `1h` variant                                                    | Story           |
+| -------------------------- | --------------------------------------------------------------------- | --------------- |
+| Cut off                    | Warn panel, triangle, Retry                                           | US-406          |
+| Tool server unavailable    | Plain `--surface` card, plug icon, names the server                   | US-403 / US-406 |
+| Conversation busy          | Warn panel, **one row** — hourglass, one sentence, Retry pushed right | US-408 (§8.1)   |
+| MCP authorization required | Plain `--surface` card, `--warn` shield, **no action**                | US-412 (§8.2)   |
+| Anything else              | Generic warning with the `userMessage` and the `traceId` line         | —               |
 
 The fallback is deliberate rather than lazy: an arm with no designed frame gets the honest generic treatment instead of invented copy. The card gained a `layout` axis (`stack` | `row`) for the busy arm, which is the only one-line variant the design draws.
 
@@ -302,36 +303,36 @@ The copy is hard-coded beside the tool-server arm's rather than taken from `user
 
 ### 8.2 The MCP consent card (US-412)
 
-A 403 `/problems/mcp-authorization-required` renders frame `1h`'s **current** consent variant: the plain `--surface` card, a `--warn` shield, the title "*{serverName}* requires authorization" in body colour, and copy stating that no authorization flow is available yet and to contact an administrator. No trace line — there is nothing to correlate, and the copy already names what an administrator must fix.
+A 403 `/problems/mcp-authorization-required` renders frame `1h`'s **current** consent variant: the plain `--surface` card, a `--warn` shield, the title "_{serverName}_ requires authorization" in body colour, and copy stating that no authorization flow is available yet and to contact an administrator. No trace line — there is nothing to correlate, and the copy already names what an administrator must fix.
 
-**There is no consent action, and the future variant is deliberately not built.** `scope` is null on every 403 this build can receive — `McpDto` omits it and only the administrative `McpServerDto` carries it — so an "Authorize *{serverName}*" button would have nothing to request. It arrives with **US-411**, the enabler that puts the scope on the wire. That deferral is recorded in the build order.
+**There is no consent action, and the future variant is deliberately not built.** `scope` is null on every 403 this build can receive — `McpDto` omits it and only the administrative `McpServerDto` carries it — so an "Authorize _{serverName}_" button would have nothing to request. It arrives with **US-411**, the enabler that puts the scope on the wire. That deferral is recorded in the build order.
 
 Retry is withheld by `canRetry`, not by the card: `mcp-authorization-required` is `false` in `RETRYABLE_KINDS` because consent happens elsewhere and re-sending the same turn cannot supply it. Review found that table had **no test anywhere**; it is now pinned in both directions, since it is the single fact keeping this card from growing a dead button and US-408's from losing its live one.
 
 Criterion 1 — no token refresh, no refresh loop — was already structural: `authErrorDecision` refreshes only the bare-401 `http` arm ([Frontend Foundation §4.5](../ui/frontend-foundation.md#45-autherrordecision--the-only-place-refresh-is-decided)), so this 403 cannot enter the refresh path however it is handled. It now carries a chat-level regression test beside the policy-level one.
 
-**`userMessage` changed for this arm.** It said the tool server needs "*your* authorization", which is false — consent is an administrative act here and there is no flow to send the user to — and it is the only channel a screen-reader user gets, since the card is not a live region. It now reads `The tool server "X" requires authorization. Contact your administrator.` and agrees with the card.
+**`userMessage` changed for this arm.** It said the tool server needs "_your_ authorization", which is false — consent is an administrative act here and there is no flow to send the user to — and it is the only channel a screen-reader user gets, since the card is not a live region. It now reads `The tool server "X" requires authorization. Contact your administrator.` and agrees with the card.
 
 ### 8.3 Who decides whether Retry appears
 
 Three layers, each answering a different question, and they must not be collapsed:
 
-| Question | Answered by |
-|---|---|
-| Does a re-sendable turn exist at all? | `Transcript`, from the store's retry snapshot — passed to the card as `retryable` |
+| Question                                                       | Answered by                                                                                            |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Does a re-sendable turn exist at all?                          | `Transcript`, from the store's retry snapshot — passed to the card as `retryable`                      |
 | Could a person pressing Retry plausibly get past this failure? | `canRetry` ([shell §8](../ui/shell-and-navigation.md#8-canretry--whether-to-offer-the-control-at-all)) |
-| May the interceptor replay this automatically? | `isTransientRetriable` — never for a 409, never for a problem-typed 503 |
+| May the interceptor replay this automatically?                 | `isTransientRetriable` — never for a 409, never for a problem-typed 503                                |
 
 The card itself decides none of them, which is why the consent arm shows no action even though the store kept a retry snapshot.
 
 ### 8.4 Nested activities, and one that failed (US-502, US-505)
 
-Both stories are **render-side only**. The vendored fold already hangs a child off the parent named by its `parentScopeId`, and already isolates a failure to the scope the `ActivityFailed` names — so `ActivityCard` walks `children` and recurses into itself (a standalone component is in scope of its own template and needs no entry in its own `imports`), and a failed child structurally cannot mark its parent. What US-502 changed is that this is now *observable*: the child is drawn inside its parent rather than beside it.
+Both stories are **render-side only**. The vendored fold already hangs a child off the parent named by its `parentScopeId`, and already isolates a failure to the scope the `ActivityFailed` names — so `ActivityCard` walks `children` and recurses into itself (a standalone component is in scope of its own template and needs no entry in its own `imports`), and a failed child structurally cannot mark its parent. What US-502 changed is that this is now _observable_: the child is drawn inside its parent rather than beside it.
 
 **The filter is root membership, not `parentScopeId`.** `AssistantTurn` opens a top-level card only for a timeline node whose scope is a **root** of `snapshot.activities`. The obvious test — `node.parentScopeId !== undefined` — is wrong in both directions:
 
 - The fold **promotes** a child whose parent scope it has never seen to a root. That card carries a `parentScopeId` and has to stay visible; dropping it loses a whole tool call, where keeping it is at worst an unattached card.
-- It does the same for a child whose parent arrives *late*, for the same reason.
+- It does the same for a child whose parent arrives _late_, for the same reason.
 
 Roots are **consumed from a per-`scopeId` FIFO** rather than looked up. The fold defaults a missing scope id to `''` rather than dropping the event, so two scope-less roots share a key and a plain lookup would render one of them twice. A single pointer walking `activities` in order would also fix that, but it rests on an ordering invariant that lives in the vendored contract: one mismatch stalls the pointer and drops every card after it, where the same mismatch costs a per-id queue exactly one card.
 
@@ -345,19 +346,20 @@ US-505 shipped one thing beyond what was already structural: the card's `visuall
 
 Two surfaces, one formatter — [`turn-usage.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-usage.ts), pinned to **`en-US`** rather than the ambient locale. The app ships one language, the design fixes the grouping separator, and a formatter that followed the host would render `1.842` on a German machine and make every spec depend on where it ran.
 
-| Surface | Renders | Where |
-|---|---|---|
+| Surface                                | Renders                                            | Where                             |
+| -------------------------------------- | -------------------------------------------------- | --------------------------------- |
 | The message footer (frames `1f`, `1g`) | `1,842 in · 512 out · 2,354 total`, JetBrains Mono | Below the answer, `AssistantTurn` |
-| The per-activity strip (frame `1f`) | `duration  3.1s`, behind the card's chevron | Inside `ActivityCard` |
+| The per-activity strip (frame `1f`)    | `duration  3.1s`, behind the card's chevron        | Inside `ActivityCard`             |
 
 **Absence is the rule that matters.** A count the provider did not report is **omitted**; a reported `0` is a measurement and renders. Three "claims nothing" cases fall out structurally rather than from a check, and all three are pinned by specs: a stopped turn keeps only its text, a cut-off turn never folded `Finished`, and a replayed turn never had a stream (§7.5).
 
-Two honest gaps, both recorded as interim behaviours in the build order:
+**The footer is now revealed on hover and focus** (US-607), which is what frame `1g` annotates and what US-504 could not ship: a hover-only footer is unreachable by keyboard and touch until it holds something focusable, and that is the Copy control — also what the criterion meant by "beside". Two consequences for this screen, both owned by [Answer Rendering §9](../ui/answer-rendering.md#9-copying-a-prompt-or-a-response-us-607) rather than restated here: **US-504's gate inverted**, so the footer is unconditional for a settled turn and the counts are the conditional child, since Copy is offerable on a stopped, cut-off or replayed turn that has no counts at all; and the **optimistic user bubble renders an empty footer**, so a prompt row occupies the same box before and after its turn settles rather than growing ~28 px under the reader.
 
-- **The footer is always visible**, where frame `1g` annotates it as revealed on hover. A hover-only footer is unreachable by keyboard and touch until it holds something focusable, and that is **US-607**'s Copy control — which is also what the criterion means by "beside". The reveal arrives with it.
-- **The activity strip shows `duration` only.** No server populates `AssistantActivity.usage`: the contract carries `usage` on `Finished` alone and the vendored fold never writes the field. Rendering the duration there rather than gating the whole strip on tokens is what keeps the chevron a live affordance instead of dead markup, and it is what the frame draws — the expanded card shows the duration in the header *and* in the strip. The token columns arrive the moment something attributes them; the field is already in the type.
+One honest gap remains, recorded as an interim behaviour in the build order:
 
-A **running** activity has no chevron at all, because nothing has settled to show. Children are *not* behind the chevron — the frame draws them open, and hiding an agent's work behind a control is the opposite of what the timeline is for; the chevron reveals the cost strip alone.
+- **The activity strip shows `duration` only.** No server populates `AssistantActivity.usage`: the contract carries `usage` on `Finished` alone and the vendored fold never writes the field. Rendering the duration there rather than gating the whole strip on tokens is what keeps the chevron a live affordance instead of dead markup, and it is what the frame draws — the expanded card shows the duration in the header _and_ in the strip. The token columns arrive the moment something attributes them; the field is already in the type.
+
+A **running** activity has no chevron at all, because nothing has settled to show. Children are _not_ behind the chevron — the frame draws them open, and hiding an agent's work behind a control is the opposite of what the timeline is for; the chevron reveals the cost strip alone.
 
 ### 8.6 The reasoning region (US-503)
 
@@ -374,7 +376,7 @@ Four decisions are worth knowing before changing it:
 
 The Send and Stop controls are **one persistent button** that morphs with `inFlight` — the element survives the swap, so keyboard focus does too. One settle case still strands focus: a turn settling into an empty composer re-disables the morphed Send while it is focused, and engines disagree about what happens next (some drop focus to `<body>`, others leave it on the disabled control) — both arms are caught, and focus is handed to the textarea. Only a fall-through is corrected; a user focused elsewhere is left alone, and since US-408 the fixup also stands down when the turn settled into a notice, whose Retry is the thing worth focusing (§8.1).
 
-Composer text seeding flows **one way, through the store**: `seedComposer` writes a one-shot seed (a fresh object per seed, so seeding the same text twice still propagates), the composer applies it, focuses the textarea, and acknowledges through `consumeComposerSeed`. Three producers use it — the suggested prompt chips, Stop-during-create restoring the prompt, and the Retry restores — and `protectedState` stays intact throughout. Dictated phrases use the same one-way handoff but a different signal (§9.2), because they *append* rather than replace.
+Composer text seeding flows **one way, through the store**: `seedComposer` writes a one-shot seed (a fresh object per seed, so seeding the same text twice still propagates), the composer applies it, focuses the textarea, and acknowledges through `consumeComposerSeed`. Three producers use it — the suggested prompt chips, Stop-during-create restoring the prompt, and the Retry restores — and `protectedState` stays intact throughout. Dictated phrases use the same one-way handoff but a different signal (§9.2), because they _append_ rather than replace.
 
 ### 9.1 The amber note is one message at a time
 
@@ -391,7 +393,7 @@ The microphone ranks last on purpose: one denied permission must not hide the fa
 
 Speaking a prompt runs on the browser's own Web Speech API. **Enterprise GPT never receives the audio**: no microphone stream reaches this application's code, nothing is uploaded to the API, and there is no server-side transcription service anywhere in the product — the PRD's "voice input" was scoped to browser-native recognition for exactly that reason.
 
-That is a statement about *this* application, not about the browser. Several engines — Chrome's included — perform recognition remotely, sending the captured audio to the browser vendor's own speech service, so a regulated tenant should evaluate the browser's behaviour rather than assuming the audio stayed on the machine. Nothing in the client can change that; what the client controls is that it neither handles nor stores the audio itself.
+That is a statement about _this_ application, not about the browser. Several engines — Chrome's included — perform recognition remotely, sending the captured audio to the browser vendor's own speech service, so a regulated tenant should evaluate the browser's behaviour rather than assuming the audio stayed on the machine. Nothing in the client can change that; what the client controls is that it neither handles nor stores the audio itself.
 
 **Absence, not disablement, where it is unsupported.** [`SPEECH_RECOGNITION`](../../enterprise-gpt-ui/src/app/core/speech/speech-recognition.ts) resolves `SpeechRecognition ?? webkitSpeechRecognition` and returns **null** where neither exists — Firefox today, and any non-secure origin. The composer asks the token whether to draw the control at all, so "absent rather than present-and-disabled" is a rendering consequence rather than a check someone has to remember. It is a DI token for the same reason as `STREAM_FETCH`: specs substitute a fake through a provider override instead of assigning to `window`, which is necessary here because the real interface exists in no test environment.
 
@@ -407,7 +409,7 @@ That is a statement about *this* application, not about the browser. Several eng
 
 While a turn streams, **starting** is disabled and **stopping** is not: a user must always be able to release the microphone. The idle microphone carries `composer__aux`, so US-407's in-flight dimming applies to it and that rule finally matches a control; the recording pill deliberately does not, because a dimmed control that still works reads as broken.
 
-The empty state (frame `1a`) closes US-303's deferral: the four suggested prompt chips — *Summarize a document*, *Draft a status update*, *Find open Jira blockers*, *Explain a code change* — render on the landing screen only, and a chip's entire behaviour is seeding the composer's text. No focus is moved on arrival, because this is the application's landing screen rather than a state transition, and taking focus would jump a keyboard user past the shell's skip link on every cold start.
+The empty state (frame `1a`) closes US-303's deferral: the four suggested prompt chips — _Summarize a document_, _Draft a status update_, _Find open Jira blockers_, _Explain a code change_ — render on the landing screen only, and a chip's entire behaviour is seeding the composer's text. No focus is moved on arrival, because this is the application's landing screen rather than a state transition, and taking focus would jump a keyboard user past the shell's skip link on every cold start.
 
 ## 10. Testing
 
@@ -429,26 +431,26 @@ The epic closed with the suite at **1010 specs across 83 files**, all green, and
 
 ## 11. Key files
 
-| Concern | File |
-|---|---|
-| Turn store — phases, transcript, settles, history replay | [`features/chat/turn-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/turn-store.ts) |
-| Arrival-order index | [`domain/stream/turn-timeline.ts`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts) |
-| Reasoning window — the seed's length and the elapsed clock | [`domain/stream/reasoning-timing.ts`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.ts) |
-| Replaying a stored answer, and the shared synthetic event | [`domain/stream/replayed-turn.ts`](../../enterprise-gpt-ui/src/app/domain/stream/replayed-turn.ts), [`domain/stream/stream-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/stream-codec.ts) |
-| Stored-message shape and roles | [`domain/api/conversation.ts`](../../enterprise-gpt-ui/src/app/domain/api/conversation.ts) |
-| Turn completion event | [`core/events/turn-events.ts`](../../enterprise-gpt-ui/src/app/core/events/turn-events.ts) |
-| Conversation detail, settings seed, silent name refresh | [`features/chat/conversation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/conversation-store.ts) |
-| Transcript container, live announcements | [`features/chat/transcript/transcript.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/transcript.ts) |
-| Assistant turn — the render-time join | [`features/chat/transcript/assistant-turn.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts) |
-| Activity card — nesting, depth styling, the cost chevron; kind badge | [`features/chat/transcript/activity-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts), [`shared/badge/kind-badge/kind-badge.ts`](../../enterprise-gpt-ui/src/app/shared/badge/kind-badge/kind-badge.ts) |
-| Reasoning region — frame `1f`'s pill and its expanded card | [`features/chat/transcript/reasoning-region.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/reasoning-region.ts) |
-| Token counts and durations — the one formatter for both surfaces | [`features/chat/transcript/turn-usage.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-usage.ts) |
-| Turn-edge notices | [`features/chat/transcript/turn-notice-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-notice-card.ts) |
-| Stopped card | [`features/chat/transcript/stopped-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/stopped-card.ts) |
-| Composer — morphing button, seeding, the amber note | [`features/chat/composer/composer.ts`](../../enterprise-gpt-ui/src/app/features/chat/composer/composer.ts) |
-| Dictation — token and session store | [`core/speech/speech-recognition.ts`](../../enterprise-gpt-ui/src/app/core/speech/speech-recognition.ts), [`features/chat/composer/dictation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/composer/dictation-store.ts) |
-| Turn settings — restored model, gating invariant | [`core/chat/turn-settings-store.ts`](../../enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts) |
-| Empty state and chips | [`features/chat/chat-empty-state.ts`](../../enterprise-gpt-ui/src/app/features/chat/chat-empty-state.ts) |
-| Chat screen — providers, route binding | [`features/chat/chat.ts`](../../enterprise-gpt-ui/src/app/features/chat/chat.ts) |
-| Markdown rendering, the streaming split, scroll pinning | [`features/chat/markdown/`](../../enterprise-gpt-ui/src/app/features/chat/markdown/), [`domain/markdown/streaming-split.ts`](../../enterprise-gpt-ui/src/app/domain/markdown/streaming-split.ts), [`features/chat/transcript-pinning.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript-pinning.ts) |
-| Related reference | [Conversation Streaming Contract](streaming-contract.md), [Conversation Streaming Client](streaming-client.md), [Answer Rendering](../ui/answer-rendering.md), [Shell & Navigation](../ui/shell-and-navigation.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |
+| Concern                                                              | File                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Turn store — phases, transcript, settles, history replay             | [`features/chat/turn-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/turn-store.ts)                                                                                                                                                                                                                   |
+| Arrival-order index                                                  | [`domain/stream/turn-timeline.ts`](../../enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts)                                                                                                                                                                                                             |
+| Reasoning window — the seed's length and the elapsed clock           | [`domain/stream/reasoning-timing.ts`](../../enterprise-gpt-ui/src/app/domain/stream/reasoning-timing.ts)                                                                                                                                                                                                       |
+| Replaying a stored answer, and the shared synthetic event            | [`domain/stream/replayed-turn.ts`](../../enterprise-gpt-ui/src/app/domain/stream/replayed-turn.ts), [`domain/stream/stream-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/stream-codec.ts)                                                                                                           |
+| Stored-message shape and roles                                       | [`domain/api/conversation.ts`](../../enterprise-gpt-ui/src/app/domain/api/conversation.ts)                                                                                                                                                                                                                     |
+| Turn completion event                                                | [`core/events/turn-events.ts`](../../enterprise-gpt-ui/src/app/core/events/turn-events.ts)                                                                                                                                                                                                                     |
+| Conversation detail, settings seed, silent name refresh              | [`features/chat/conversation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/conversation-store.ts)                                                                                                                                                                                                   |
+| Transcript container, live announcements                             | [`features/chat/transcript/transcript.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/transcript.ts)                                                                                                                                                                                             |
+| Assistant turn — the render-time join                                | [`features/chat/transcript/assistant-turn.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/assistant-turn.ts)                                                                                                                                                                                     |
+| Activity card — nesting, depth styling, the cost chevron; kind badge | [`features/chat/transcript/activity-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts), [`shared/badge/kind-badge/kind-badge.ts`](../../enterprise-gpt-ui/src/app/shared/badge/kind-badge/kind-badge.ts)                                                                     |
+| Reasoning region — frame `1f`'s pill and its expanded card           | [`features/chat/transcript/reasoning-region.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/reasoning-region.ts)                                                                                                                                                                                 |
+| Token counts and durations — the one formatter for both surfaces     | [`features/chat/transcript/turn-usage.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-usage.ts)                                                                                                                                                                                             |
+| Turn-edge notices                                                    | [`features/chat/transcript/turn-notice-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/turn-notice-card.ts)                                                                                                                                                                                 |
+| Stopped card                                                         | [`features/chat/transcript/stopped-card.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript/stopped-card.ts)                                                                                                                                                                                         |
+| Composer — morphing button, seeding, the amber note                  | [`features/chat/composer/composer.ts`](../../enterprise-gpt-ui/src/app/features/chat/composer/composer.ts)                                                                                                                                                                                                     |
+| Dictation — token and session store                                  | [`core/speech/speech-recognition.ts`](../../enterprise-gpt-ui/src/app/core/speech/speech-recognition.ts), [`features/chat/composer/dictation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/composer/dictation-store.ts)                                                                             |
+| Turn settings — restored model, gating invariant                     | [`core/chat/turn-settings-store.ts`](../../enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts)                                                                                                                                                                                                         |
+| Empty state and chips                                                | [`features/chat/chat-empty-state.ts`](../../enterprise-gpt-ui/src/app/features/chat/chat-empty-state.ts)                                                                                                                                                                                                       |
+| Chat screen — providers, route binding                               | [`features/chat/chat.ts`](../../enterprise-gpt-ui/src/app/features/chat/chat.ts)                                                                                                                                                                                                                               |
+| Markdown rendering, the streaming split, scroll pinning              | [`features/chat/markdown/`](../../enterprise-gpt-ui/src/app/features/chat/markdown/), [`domain/markdown/streaming-split.ts`](../../enterprise-gpt-ui/src/app/domain/markdown/streaming-split.ts), [`features/chat/transcript-pinning.ts`](../../enterprise-gpt-ui/src/app/features/chat/transcript-pinning.ts) |
+| Related reference                                                    | [Conversation Streaming Contract](streaming-contract.md), [Conversation Streaming Client](streaming-client.md), [Answer Rendering](../ui/answer-rendering.md), [Shell & Navigation](../ui/shell-and-navigation.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md)                               |

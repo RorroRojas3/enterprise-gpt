@@ -8,7 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { ADMIN_ROUTE, CHAT_ROUTE } from '@core/auth/auth-routes';
+import { ADMIN_ROUTE, CHAT_ROUTE, CONVERSATIONS_ROUTE } from '@core/auth/auth-routes';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { canRetry } from '@core/errors/error-message';
 import { SessionStore } from '@core/session/session-store';
@@ -41,9 +41,9 @@ const SKELETON_ROWS = 6;
  * The persistent navigation of frames `3a` (260px) and `3b` (the 60px icon strip).
  *
  * **Only entries whose route exists are rendered.** The board draws five — Chat,
- * Conversations, Projects, Documents, Admin — but EP-7, EP-9 and EP-10 build the
- * middle three, and a link to a route that redirects back to `/chat` is worse than no
- * link. Each arrives with its own epic, the way US-203 has the Admin entry absent
+ * Conversations, Projects, Documents, Admin — and EP-9 and EP-10 still build the last
+ * two of those, because a link to a route that redirects back to `/chat` is worse than
+ * no link. Each arrives with its own epic, the way US-203 has the Admin entry absent
  * rather than shown-and-disabled for a non-administrator.
  *
  * The **Favorite projects** section between the nav and the list is US-910 and is
@@ -91,6 +91,12 @@ export class Sidebar {
 
   protected readonly navItems = computed<readonly NavItem[]>(() => [
     { label: 'Chat', icon: 'bi-chat-square-text', link: CHAT_ROUTE, restricted: false },
+    {
+      label: 'Conversations',
+      icon: 'bi-clock-history',
+      link: CONVERSATIONS_ROUTE,
+      restricted: false,
+    },
     ...(this._session.isAdministrator()
       ? ([{ label: 'Admin', icon: 'bi-sliders', link: ADMIN_ROUTE, restricted: true }] as const)
       : []),

@@ -44,12 +44,50 @@ public sealed class ChatClientResolverTests : IDisposable
         var azure = Substitute.For<IChatClient>();
         var bedrock = Substitute.For<IChatClient>();
         var resolver = CreateResolver(
-            (ChatClientKeys.AzureAIFoundry, azure),
+            (ChatClientKeys.AzureOpenAI, azure),
             (ChatClientKeys.AmazonBedrock, bedrock));
 
         var resolved = resolver.Resolve(Providers.AzureOpenAI);
 
         Assert.Same(azure, resolved);
+    }
+
+    /// <summary>
+    /// Azure OpenAI and Azure AI Foundry reach the same resource over the same v1 endpoint and differ
+    /// only in API surface, so a slip in <c>Providers.ServiceKeys</c> that collapsed one onto the
+    /// other would look entirely plausible — a turn would still stream, just without reasoning, or
+    /// with reasoning options a Chat Completions deployment rejects. Asserting each resolves to its
+    /// own client and specifically not the other's is what catches that.
+    /// </summary>
+    [Fact]
+    public void Resolve_AzureAIFoundryProvider_ReturnsClientRegisteredUnderTheFoundryKey()
+    {
+        var azureOpenAI = Substitute.For<IChatClient>();
+        var foundry = Substitute.For<IChatClient>();
+        var resolver = CreateResolver(
+            (ChatClientKeys.AzureOpenAI, azureOpenAI),
+            (ChatClientKeys.AzureAIFoundry, foundry));
+
+        var resolved = resolver.Resolve(Providers.AzureAIFoundry);
+
+        Assert.Same(foundry, resolved);
+        Assert.NotSame(azureOpenAI, resolved);
+    }
+
+    /// <summary>
+    /// The shape of a deployment that leaves <c>AzureAIFoundry:Enabled</c> off while a Foundry-backed
+    /// model still sits in the catalog. Registering Azure OpenAI here is the point: the sibling
+    /// provider on the same endpoint must not silently absorb the turn.
+    /// </summary>
+    [Fact]
+    public void Resolve_AzureAIFoundryProviderWithNoRegisteredClient_ThrowsProviderNotConfiguredException()
+    {
+        var resolver = CreateResolver((ChatClientKeys.AzureOpenAI, Substitute.For<IChatClient>()));
+
+        var exception = Assert.Throws<ProviderNotConfiguredException>(
+            () => resolver.Resolve(Providers.AzureAIFoundry));
+
+        Assert.Equal(Providers.AzureAIFoundry, exception.ProviderId);
     }
 
     [Fact]
@@ -58,7 +96,7 @@ public sealed class ChatClientResolverTests : IDisposable
         var azure = Substitute.For<IChatClient>();
         var bedrock = Substitute.For<IChatClient>();
         var resolver = CreateResolver(
-            (ChatClientKeys.AzureAIFoundry, azure),
+            (ChatClientKeys.AzureOpenAI, azure),
             (ChatClientKeys.AmazonBedrock, bedrock));
 
         var resolved = resolver.Resolve(Providers.AmazonBedrock);
@@ -79,7 +117,7 @@ public sealed class ChatClientResolverTests : IDisposable
         var bedrock = Substitute.For<IChatClient>();
         var anthropic = Substitute.For<IChatClient>();
         var resolver = CreateResolver(
-            (ChatClientKeys.AzureAIFoundry, azure),
+            (ChatClientKeys.AzureOpenAI, azure),
             (ChatClientKeys.AmazonBedrock, bedrock),
             (ChatClientKeys.Anthropic, anthropic));
 
@@ -98,7 +136,7 @@ public sealed class ChatClientResolverTests : IDisposable
     public void Resolve_AnthropicProviderWithNoRegisteredClient_ThrowsProviderNotConfiguredException()
     {
         var resolver = CreateResolver(
-            (ChatClientKeys.AzureAIFoundry, Substitute.For<IChatClient>()),
+            (ChatClientKeys.AzureOpenAI, Substitute.For<IChatClient>()),
             (ChatClientKeys.AmazonBedrock, Substitute.For<IChatClient>()));
 
         var exception = Assert.Throws<ProviderNotConfiguredException>(
@@ -114,7 +152,7 @@ public sealed class ChatClientResolverTests : IDisposable
     [Fact]
     public void Resolve_ProviderWithNoRegisteredClient_ThrowsProviderNotConfiguredException()
     {
-        var resolver = CreateResolver((ChatClientKeys.AzureAIFoundry, Substitute.For<IChatClient>()));
+        var resolver = CreateResolver((ChatClientKeys.AzureOpenAI, Substitute.For<IChatClient>()));
 
         var exception = Assert.Throws<ProviderNotConfiguredException>(
             () => resolver.Resolve(Providers.AmazonBedrock));
@@ -132,7 +170,7 @@ public sealed class ChatClientResolverTests : IDisposable
     {
         var unknownProviderId = Guid.NewGuid();
         var resolver = CreateResolver(
-            (ChatClientKeys.AzureAIFoundry, Substitute.For<IChatClient>()),
+            (ChatClientKeys.AzureOpenAI, Substitute.For<IChatClient>()),
             (ChatClientKeys.AmazonBedrock, Substitute.For<IChatClient>()));
 
         var exception = Assert.Throws<ProviderNotConfiguredException>(

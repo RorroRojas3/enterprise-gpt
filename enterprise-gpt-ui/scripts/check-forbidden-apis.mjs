@@ -42,6 +42,22 @@ const FORBIDDEN = [
     exempt: [],
   },
   {
+    // Unanchored on purpose. The specifier is spelled at least five ways in the
+    // wild — bare, `~`-prefixed, `node_modules/…`-prefixed, relative through
+    // `url()`, and as an `angular.json` styles entry — and only the path segment
+    // is common to all of them. Prose mentions are safe: comments are blanked
+    // before scanning, and this file is not itself scanned.
+    pattern: /prismjs\/themes\//,
+    label: "one of Prism's shipped stylesheets",
+    why:
+      'US-604: --code-bg is dark in both themes, so there is exactly one code ' +
+      'surface and _prism.scss tints it from tokens. A second stylesheet would have ' +
+      'to be swapped on a theme change, and a swap is what paints the light-styled ' +
+      'first frame the story forbids. Neither of Prism’s themes matches the design ' +
+      'palette either — change _prism.scss, not this.',
+    exempt: [],
+  },
+  {
     // Writes only. Reading localStorage cannot leave a user's data on a shared
     // machine, and index.html's pre-paint script legitimately reads the theme before
     // any module exists.
@@ -83,6 +99,25 @@ for (const file of walk(SRC)) {
   }
 }
 
+// `angular.json`'s `styles` array is the route ngx-markdown's own README
+// prescribes for a Prism theme, and it is outside `src/` — so the scan above
+// cannot see it, and neither can `check-initial-chunk.mjs`, which walks the JS
+// graph and never meets a global stylesheet entry. The most likely way US-604's
+// decision regresses is the one path no other gate covers.
+const ANGULAR_JSON = join(UI_ROOT, 'angular.json');
+const workspace = readFileSync(ANGULAR_JSON, 'utf8');
+for (const [index, line] of workspace.split('\n').entries()) {
+  if (/prismjs\/themes\//.test(line)) {
+    const rule = FORBIDDEN.find(({ label }) => label.includes('Prism'));
+    findings.push({
+      label: rule.label,
+      why: rule.why,
+      where: `angular.json:${index + 1}`,
+      line: line.trim(),
+    });
+  }
+}
+
 if (findings.length > 0) {
   console.error('\nForbidden API check FAILED\n');
   for (const { label, why, where, line } of findings) {
@@ -94,4 +129,6 @@ if (findings.length > 0) {
   process.exit(1);
 }
 
-console.log(`forbidden APIs OK — none of ${FORBIDDEN.length} patterns appears under src/`);
+console.log(
+  `forbidden APIs OK — none of ${FORBIDDEN.length} patterns appears under src/ or in angular.json`,
+);

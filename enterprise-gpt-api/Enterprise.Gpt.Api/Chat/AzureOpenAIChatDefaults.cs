@@ -3,33 +3,38 @@ using Enterprise.Gpt.Service.Settings;
 using Microsoft.Extensions.AI;
 using OpenAI.Responses;
 
-// OPENAI001: every Responses request type is still marked experimental in OpenAI 2.12.0. The
-// suppression is file-scoped rather than project-wide precisely because this file is the only place
-// those types are allowed to appear — the same containment that keeps them out of the Service
-// project. A second file reaching for them has to make the same declaration deliberately.
+// OPENAI001: every Responses request type is still marked experimental in OpenAI 2.12.0, and it
+// remains so at 2.13.0 — the newest release folded the Computer-Use OPENAICUA001 code into this one
+// rather than retiring it (openai/openai-dotnet#595 tracks the graduation). No package bump removes
+// this. The suppression is file-scoped rather than project-wide precisely because this file is the
+// only place those types are allowed to appear — the same containment that keeps them out of the
+// Service project, and the reason the sibling Chat Completions provider needs no suppression at all.
+// A second file reaching for them has to make the same declaration deliberately.
 #pragma warning disable OPENAI001
 
 namespace Enterprise.Gpt.Api.Chat;
 
 /// <summary>
 /// Builds the callback that stamps Responses-API request settings onto every turn served by the
-/// Azure AI Foundry chat client.
+/// Azure OpenAI chat client.
 /// </summary>
 /// <remarks>
 /// Kept out of <c>Program.cs</c> for the same reason as <see cref="AnthropicChatDefaults"/>:
 /// confining the SDK's request types to one file keeps them out of the provider-agnostic
-/// <c>ChatOptions</c> that <c>ConversationService</c> builds.
+/// <c>ChatOptions</c> that <c>ConversationService</c> builds. Contrast
+/// <see cref="AzureAIFoundryChatDefaults"/>, which reaches the same resource over Chat Completions
+/// and so touches no experimental type.
 /// </remarks>
-internal static class AzureFoundryChatDefaults
+internal static class AzureOpenAIChatDefaults
 {
     /// <summary>
-    /// Creates the <see cref="ChatOptions"/> callback for the Azure AI Foundry provider.
+    /// Creates the <see cref="ChatOptions"/> callback for the Azure OpenAI provider.
     /// </summary>
-    /// <param name="settings">The validated Azure AI Foundry settings.</param>
+    /// <param name="settings">The validated Azure OpenAI settings.</param>
     /// <returns>A callback suitable for <c>ConfigureOptionsChatClient</c>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="settings"/> carries a reasoning summary or effort level the parsers do not
-    /// know. The startup validators reject those first, and <c>AzureFoundryChatDefaultsTests</c>
+    /// know. The startup validators reject those first, and <c>AzureOpenAIChatDefaultsTests</c>
     /// pins every value they accept — the two vocabularies drifting apart is what this guards.
     /// </exception>
     /// <remarks>
@@ -37,7 +42,7 @@ internal static class AzureFoundryChatDefaults
     /// built lazily on first resolution, so a parse failure would surface on the first conversation
     /// rather than at startup; the tests, not the validators, are what keep that unreachable.
     /// </remarks>
-    public static Action<ChatOptions> Create(AzureAIFoundryOptions settings)
+    public static Action<ChatOptions> Create(AzureOpenAIOptions settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
@@ -145,7 +150,7 @@ internal static class AzureFoundryChatDefaults
             "concise" => ResponseReasoningSummaryVerbosity.Concise,
             "detailed" => ResponseReasoningSummaryVerbosity.Detailed,
             _ => throw new ArgumentOutOfRangeException(
-                nameof(summary), summary, "Unknown Azure AI Foundry reasoning summary verbosity.")
+                nameof(summary), summary, "Unknown Azure OpenAI reasoning summary verbosity.")
         };
 
     private static ResponseReasoningEffortLevel ParseEffort(string effort) =>
@@ -156,6 +161,6 @@ internal static class AzureFoundryChatDefaults
             "medium" => ResponseReasoningEffortLevel.Medium,
             "high" => ResponseReasoningEffortLevel.High,
             _ => throw new ArgumentOutOfRangeException(
-                nameof(effort), effort, "Unknown Azure AI Foundry reasoning effort level.")
+                nameof(effort), effort, "Unknown Azure OpenAI reasoning effort level.")
         };
 }

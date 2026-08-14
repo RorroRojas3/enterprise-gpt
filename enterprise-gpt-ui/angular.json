@@ -30,7 +30,17 @@
               }
             ],
             "styles": ["src/styles.scss"],
-            "allowedCommonJsDependencies": ["prismjs"],
+            "allowedCommonJsDependencies": [
+              "prismjs",
+              "cytoscape-fcose",
+              "cytoscape-cose-bilkent",
+              "@braintree/sanitize-url",
+              "dayjs",
+              "dayjs/plugin/isoWeek.js",
+              "dayjs/plugin/customParseFormat.js",
+              "dayjs/plugin/advancedFormat.js",
+              "dayjs/plugin/duration.js"
+            ],
             "stylePreprocessorOptions": {
               "includePaths": ["src/styles"],
               "sass": {
@@ -43,7 +53,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "665kB",
+                  "maximumWarning": "670kB",
                   "maximumError": "720kB"
                 },
                 {

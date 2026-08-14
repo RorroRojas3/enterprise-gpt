@@ -369,7 +369,7 @@ Keys outside this section that retrieval depends on:
 
 | Key | Why |
 |---|---|
-| `AzureAIFoundry:EmbeddingModel` | Embeds the query. **Must be the same deployment documents were ingested with**, and must natively return 1536-dimension vectors — a mismatch throws on the first search |
+| `AzureOpenAI:EmbeddingModel` | Embeds the query. **Must be the same deployment documents were ingested with**, and must natively return 1536-dimension vectors — a mismatch throws on the first search. **Renamed** from `AzureAIFoundry:EmbeddingModel` — see [Azure OpenAI §8](../models/azure-openai.md#8-upgrading-from-the-previous-release--the-configuration-rename) |
 | `Documents:Chunking:OverlapTokens` | Sizes the seam-search window when passages are merged (§4.2) |
 | `ConnectionStrings:DefaultConnection` | Must point at a SQL Server 2025 engine or Azure SQL Database — a 2025 LocalDB qualifies (§11.1) |
 
@@ -421,7 +421,7 @@ A `NULL` there means the database predates chunked ingestion; recreate it rather
 - **No reranker and no query rewriting.** What the model asks for is what is searched. A poorly phrased first query is recovered only by the model searching again, which the prompt asks it to do.
 - **The keyword pass is substring matching**, not stemming or lemmatisation: `"escalate"` does not match `"escalation"` unless one contains the other. It is aimed at identifiers, not at natural-language recall.
 - **`MaximumIterationsPerRequest = 5`** bounds how many tool-calling rounds a turn may take. A model that searches repeatedly without answering will run out of rounds.
-- **`MaxDistance` is a single global threshold.** Cosine distances are not calibrated across embedding models, so changing `AzureAIFoundry:EmbeddingModel` means re-tuning it.
+- **`MaxDistance` is a single global threshold.** Cosine distances are not calibrated across embedding models, so changing `AzureOpenAI:EmbeddingModel` means re-tuning it. (The embedding *client* moved to the OpenAI SDK's v1 route in this release; that is not such a change, because the deployment and therefore the vectors are the same — see [Azure OpenAI §1.2](../models/azure-openai.md#12-what-moved-the-embedding-client).)
 
 ### 11.3 Cost and latency are per search, not per turn
 

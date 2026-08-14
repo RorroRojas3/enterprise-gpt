@@ -18,10 +18,13 @@ public static class ChatRequestProperties
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Read by the Azure AI Foundry client, which turns it into the Responses API's reasoning
+    /// Read by the Azure <em>OpenAI</em> client, which turns it into the Responses API's reasoning
     /// options. Absent or <see langword="false"/> means the turn is sent without them — which is
     /// what a model that does not support reasoning requires, since it rejects the request outright
-    /// rather than ignoring the option.
+    /// rather than ignoring the option. Note the asymmetry with the similarly named Azure AI Foundry
+    /// client, which reaches the same resource over Chat Completions: that one never reads this key,
+    /// because reasoning is a Responses-API feature and it discards any reasoning request either
+    /// way.
     /// </para>
     /// <para>
     /// Deliberately not <c>ChatOptions.Reasoning</c>, which exists in Microsoft.Extensions.AI and
@@ -30,9 +33,10 @@ public static class ChatRequestProperties
     /// configuration here rather than a catalog fact, and it cannot express two of the values this
     /// application accepts: a <c>minimal</c> effort and an <c>auto</c> summary. This key carries the
     /// one thing the catalog knows, which is whether the deployment tolerates being asked at all.
-    /// The consequence is worth stating: it means nothing to the Bedrock and Anthropic clients,
-    /// which take their reasoning settings from their own configuration, so the catalog column is
-    /// Azure-only until those two gaps close.
+    /// The consequence is worth stating: it means nothing to the Bedrock, Anthropic and Azure AI
+    /// Foundry clients — the first two take their reasoning settings from their own configuration,
+    /// and the third has no reasoning surface to take them to — so the catalog column is read by
+    /// exactly one provider until those gaps close.
     /// </para>
     /// </remarks>
     public const string IsReasoningEnabled = "enterprisegpt.reasoning.enabled";

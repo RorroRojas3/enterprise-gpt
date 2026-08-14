@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Dto;
@@ -11,18 +10,21 @@ namespace Enterprise.Gpt.Unit.Test.Chunking;
 
 public sealed class TokenTextChunkerTests
 {
-    private static TokenTextChunker CreateChunker(int maxTokens = 512, int overlapTokens = 128, string? embeddingModel = "text-embedding-3-small")
+    private static TokenTextChunker CreateChunker(int maxTokens = 512, int overlapTokens = 128, string embeddingModel = "text-embedding-3-small")
     {
         var options = Options.Create(new DocumentOptions
         {
             Chunking = new ChunkingOptions { MaxTokens = maxTokens, OverlapTokens = overlapTokens }
         });
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureAIFoundry:EmbeddingModel"] = embeddingModel })
-            .Build();
+        // Non-nullable, matching the bound property: the configuration binder never writes null into
+        // it, so an unset AzureOpenAI:EmbeddingModel arrives as the empty string rather than null.
+        var azureOpenAIOptions = Options.Create(new AzureOpenAIOptions
+        {
+            EmbeddingModel = embeddingModel
+        });
 
-        return new TokenTextChunker(options, configuration, NullLogger<TokenTextChunker>.Instance);
+        return new TokenTextChunker(options, azureOpenAIOptions, NullLogger<TokenTextChunker>.Instance);
     }
 
     private static List<DocumentSegmentDto> Segments(params string[] texts)
@@ -376,10 +378,10 @@ public sealed class TokenTextChunkerTests
     }
 
     [Theory]
-    [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
     [InlineData("my-embedding-deployment")]
-    public void Constructor_UnrecognizedEmbeddingModelName_FallsBackToADefaultTokenizer(string? embeddingModel)
+    public void Constructor_UnrecognizedEmbeddingModelName_FallsBackToADefaultTokenizer(string embeddingModel)
     {
         // Azure OpenAI addresses models by deployment name, which is rarely a name the tokenizer library
         // recognizes; falling back must not throw at startup.

@@ -8,10 +8,27 @@ namespace Enterprise.Gpt.Dto.Enums
     public static class Providers
     {
         /// <summary>
-        /// Azure AI Foundry. This value must match the seeded <c>Core.Ref.Provider</c> row exactly;
-        /// out-of-band data migrations must use it verbatim.
+        /// Azure OpenAI, reached over the Responses API. This value must match the seeded
+        /// <c>Core.Ref.Provider</c> row exactly; out-of-band data migrations must use it verbatim.
         /// </summary>
+        /// <remarks>
+        /// The only provider that can serve a reasoning model: reasoning summaries exist on the
+        /// Responses surface and nowhere else. Distinct from <see cref="AzureAIFoundry"/> even
+        /// though both reach the same resource over the same v1 endpoint — they differ in the API
+        /// surface called, and so in whether <c>IsReasoningEnabled</c> means anything.
+        /// </remarks>
         public static readonly Guid AzureOpenAI = new("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0");
+
+        /// <summary>
+        /// Azure AI Foundry, reached over Chat Completions. This value must match the seeded
+        /// <c>Core.Ref.Provider</c> row exactly; out-of-band data migrations must use it verbatim.
+        /// </summary>
+        /// <remarks>
+        /// Serves every deployment on the resource — Azure OpenAI models and Foundry Models such as
+        /// DeepSeek or Llama alike — without reasoning. A model row here that sets
+        /// <c>IsReasoningEnabled</c> has it discarded at request time.
+        /// </remarks>
+        public static readonly Guid AzureAIFoundry = new("b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45");
 
         /// <summary>
         /// Amazon Bedrock. This value must match the seeded <c>Core.Ref.Provider</c> row exactly;
@@ -42,7 +59,8 @@ namespace Enterprise.Gpt.Dto.Enums
         /// </remarks>
         public static readonly FrozenDictionary<Guid, string> ServiceKeys = new Dictionary<Guid, string>
         {
-            [AzureOpenAI] = ChatClientKeys.AzureAIFoundry,
+            [AzureOpenAI] = ChatClientKeys.AzureOpenAI,
+            [AzureAIFoundry] = ChatClientKeys.AzureAIFoundry,
             [AmazonBedrock] = ChatClientKeys.AmazonBedrock,
             [Anthropic] = ChatClientKeys.Anthropic
         }.ToFrozenDictionary();

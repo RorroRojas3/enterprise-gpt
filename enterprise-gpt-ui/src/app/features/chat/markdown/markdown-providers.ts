@@ -1,12 +1,15 @@
 import { Provider } from '@angular/core';
 import DOMPurify from 'dompurify';
 import {
+  MARKED_EXTENSIONS,
   MARKED_OPTIONS,
   MarkedOptions,
   MarkedRenderer,
   SANITIZE,
   provideMarkdown,
 } from 'ngx-markdown';
+import { LazyRendererLoader } from './lazy-renderer-loader';
+import { mathExtension } from './math-extension';
 import './prism';
 
 /**
@@ -124,6 +127,9 @@ function escapeHtml(text: string): string {
  */
 const LANGUAGE = /^[\w+#.-]+/;
 
+/** The fence info string `MarkdownExtras` renders as a diagram (US-605). */
+export const DIAGRAM_LANGUAGE = 'mermaid';
+
 /**
  * The first of the two layers, and the reason the second is never asked to carry
  * the boundary alone.
@@ -194,9 +200,16 @@ export function chatMarkedOptionsFactory(): MarkedOptions {
     // language is the only thing that tells them apart, and ARIA attributes
     // survive the sanitizer through its `ALLOW_ARIA_ATTR` default.
     const name = language === '' ? 'Copy code block' : `Copy ${language} code block`;
+    // A mermaid fence is marked and otherwise left exactly as any other block
+    // (US-605). That is the whole of this renderer's involvement: it reads no
+    // configuration and renders no diagram, so with the flag off — or before
+    // `MarkdownExtras` has loaded anything — the block *is* a code block, with
+    // no disabled branch to get wrong and no error to report. It is also why a
+    // diagram that fails to parse can show its source: the source never left.
+    const diagram = language === DIAGRAM_LANGUAGE ? ' md-diagram' : '';
 
     return (
-      `<div class="md-code"><div class="md-code__head">${label}` +
+      `<div class="md-code${diagram}"><div class="md-code__head">${label}` +
       `<button class="md-code__copy" type="button" aria-label="${name}">Copy</button></div>` +
       `<pre${marker}><code${marker}>${body}\n</code></pre></div>\n`
     );
@@ -225,8 +238,19 @@ export function chatMarkedOptionsFactory(): MarkedOptions {
  * build if any of it is ever reachable from `main.ts` by a static import.
  */
 export function provideChatMarkdown(): Provider[] {
-  return provideMarkdown({
-    markedOptions: { provide: MARKED_OPTIONS, useFactory: chatMarkedOptionsFactory },
-    sanitize: { provide: SANITIZE, useValue: sanitizeChatMarkdown },
-  });
+  return [
+    ...provideMarkdown({
+      markedOptions: { provide: MARKED_OPTIONS, useFactory: chatMarkedOptionsFactory },
+      // Math has to be captured before marked's own rules rewrite it, which only a
+      // tokenizer can do — see `math-extension.ts`. It runs unconditionally: the
+      // placeholder it emits renders as ordinary text when the flag is off, and
+      // KaTeX itself is still behind the dynamic import.
+      markedExtensions: [{ provide: MARKED_EXTENSIONS, multi: true, useFactory: mathExtension }],
+      sanitize: { provide: SANITIZE, useValue: sanitizeChatMarkdown },
+    }),
+    // US-605's deferred renderers ride the same route for the same reason, and
+    // folding them in here means a surface that renders answers cannot acquire
+    // one without the other.
+    LazyRendererLoader,
+  ];
 }
