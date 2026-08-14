@@ -147,14 +147,27 @@ export class UiKit {
     { id: '3', fileName: 'notes.md', sizeLabel: '12 KB', state: { kind: 'ready' } },
     {
       id: '4',
-      fileName: 'demo.mov',
-      sizeLabel: '212 MB',
+      fileName: 'scanned.pdf',
+      sizeLabel: '8.2 MB',
+      // A job the pipeline could not finish, carrying the server's sanitized message.
+      // Only this arm offers Retry — the same file can succeed on a second attempt.
       state: {
-        kind: 'unsupported',
-        reason: ".mov isn't supported — PDF, DOCX, XLSX, CSV, MD, TXT",
+        kind: 'failed',
+        reason: 'No readable text was found in the document, so there is nothing to index.',
       },
     },
-    { id: '5', fileName: 'archive.har', sizeLabel: null, state: { kind: 'unknown' } },
+    {
+      id: '5',
+      fileName: 'demo.mov',
+      sizeLabel: '212 MB',
+      // Refused before any request. The supported set is built from the API's own
+      // `file-extensions` list in the app; here it is written out for the demo.
+      state: {
+        kind: 'unsupported',
+        reason: '.mov isn’t supported — DOC, DOCX, MD, PDF, PPTX, TXT',
+      },
+    },
+    { id: '6', fileName: 'archive.har', sizeLabel: null, state: { kind: 'unknown' } },
   ];
 
   protected readonly pills: readonly PillItem[] = [
@@ -176,4 +189,9 @@ export class UiKit {
     traceId: '8f42-a1c9-77d0-3b61',
     instance: null,
   } as AppError;
+
+  /** A retry handler is what makes the toast's Retry render at all — see `ToastStore`. */
+  protected readonly demoRetry = (): void => {
+    this.toasts.info('Retried');
+  };
 }

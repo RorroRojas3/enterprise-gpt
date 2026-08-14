@@ -18,6 +18,34 @@
   }
 }
 
+// Frame 2a: the chips sit above the prompt box, wrapping onto as many rows as they
+// need. A list, because that is what it is — several files with a shared purpose —
+// and screen readers announce the count from it.
+.composer__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+
+  li {
+    max-width: 290px;
+  }
+}
+
+// Off-screen rather than `display: none`, which would make `.click()` a no-op in
+// some engines, and rather than `visibility: hidden`, which some skip for the same
+// reason. The visible control is the paperclip button beside it.
+.composer__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .composer__prompt {
   display: block;
   width: 100%;
@@ -112,15 +140,15 @@
   background: var(--brand);
 }
 
-// US-407: the auxiliary controls dim while a turn runs. The microphone
-// (US-413) carries the class; attach (US-801) and download (US-1502) adopt it
-// when they land, and inherit the dimming for free.
+// US-407: the auxiliary controls dim while a turn runs. The microphone (US-413) and
+// the attach control (US-801) carry the class; download (US-1502) adopts it when it
+// lands, and inherits the dimming for free.
 .composer--streaming .composer__aux {
   opacity: 0.4;
 }
 
-// Frame 2i, idle: the same 34px square the other auxiliary controls use.
-.composer__mic {
+// The 34px square every auxiliary control in the row uses — frames 2a and 2i.
+.composer__icon-button {
   display: flex;
   flex: 0 0 auto;
   align-items: center;

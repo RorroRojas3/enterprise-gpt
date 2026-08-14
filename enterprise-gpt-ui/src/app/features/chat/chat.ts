@@ -26,6 +26,7 @@ import { provideChatMarkdown } from './markdown/markdown-providers';
 import { TranscriptPinning } from './transcript-pinning';
 import { Transcript } from './transcript/transcript';
 import { TurnStore } from './turn-store';
+import { UploadStore } from './upload-store';
 
 /**
  * The chat screen, served for both `/chat` and `/chat/{conversationId}` by the single
@@ -55,7 +56,9 @@ import { TurnStore } from './turn-store';
   // US-601: the markdown renderer is provided here, at the lazy route's own
   // component, so ngx-markdown/marked/Prism ride the chat chunk instead of the
   // initial bundle.
-  providers: [ConversationStore, TurnStore, provideChatMarkdown()],
+  // UploadStore is listed before TurnStore only for readability; TurnStore injects it,
+  // and Angular resolves both from this injector regardless of order.
+  providers: [ConversationStore, UploadStore, TurnStore, provideChatMarkdown()],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
@@ -70,6 +73,7 @@ export class Chat {
   protected readonly conversation = inject(ConversationStore);
   protected readonly actions = inject(ConversationActionsStore);
   protected readonly turn = inject(TurnStore);
+  private readonly uploads = inject(UploadStore);
 
   /**
    * A 404 here means the conversation does not exist *or* belongs to someone else, and
@@ -88,6 +92,13 @@ export class Chat {
     // as a no-op — which is what keeps it from reading back a conversation
     // whose first turn is still streaming.
     this.turn.bindRoute(this.conversationId);
+
+    // The route is the authority on which conversation the chips belong to, so moving
+    // to another one drops them. A `signalMethod`, exactly as `bindRoute` above is:
+    // it is not the *only* caller, because US-401's create binds the id synchronously
+    // the moment the conversation exists so a deferred upload starts without waiting
+    // for a change-detection pass — and the same method takes a bare value there.
+    this.uploads.bindConversation(this.conversationId);
 
     const router = inject(Router);
     const document = inject(DOCUMENT);
