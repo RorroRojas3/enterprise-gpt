@@ -43,14 +43,35 @@
 }
 
 // Frame 1g's message footer. The 14px gap is the design's spacing between the
-// Copy control, the feedback controls and the counts; only the counts exist so
-// far, so the gap is doing nothing yet and is stated once here rather than
-// added when the row finally has two children.
+// Copy control, the feedback controls (US-1103) and the counts.
+//
+// Revealed rather than inserted, for two reasons. Opacity keeps the Copy control
+// in the tab order and the accessibility tree, so `:focus-within` has something to
+// reveal it *for* — the board draws hover only, and hover alone is unreachable by
+// keyboard. And US-606 follows the growing answer with a `ResizeObserver`: a footer
+// that changed height on hover would move the geometry that drives pinning.
+// Hidden-until-hover means nothing on a touch screen, so `(hover: none)` shows it.
 .assistant-turn__footer {
   display: flex;
   align-items: center;
   gap: 14px;
   color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+
+// The third selector is the confirmation's: clicking can leave focus and the
+// pointer elsewhere, and a "Copied" nobody can see is not a confirmation.
+.assistant-turn:hover .assistant-turn__footer,
+.assistant-turn:focus-within .assistant-turn__footer,
+.assistant-turn__footer:has(.message-copy--copied) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .assistant-turn__footer {
+    opacity: 1;
+  }
 }
 
 .assistant-turn__usage {

@@ -18,7 +18,7 @@ namespace Enterprise.Gpt.Repository.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -873,6 +873,12 @@ namespace Enterprise.Gpt.Repository.Migrations
                             Id = new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0"),
                             DateCreated = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Name = "AzureOpenAI"
+                        },
+                        new
+                        {
+                            Id = new Guid("b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45"),
+                            DateCreated = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Name = "AzureAIFoundry"
                         },
                         new
                         {

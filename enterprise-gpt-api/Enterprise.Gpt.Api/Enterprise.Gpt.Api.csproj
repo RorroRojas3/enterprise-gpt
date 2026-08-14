@@ -26,10 +26,9 @@
     <!-- Amazon Bedrock. The MEAI package supplies IAmazonBedrockRuntime.AsIChatClient(), which wraps
          Converse/ConverseStream; BedrockRuntime itself is a direct dependency because Program.cs
          constructs AmazonBedrockRuntimeClient and its config to wire bearer-token auth. -->
-    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101" />
-    <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" Version="4.0.101.7" />
+    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101.1" />
+    <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" Version="4.0.101.8" />
     <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <!-- Application Insights. The OpenTelemetry distro rather than Microsoft.ApplicationInsights.AspNetCore:
          it is the current guidance for new ASP.NET Core apps, the two must not coexist, and only the
@@ -37,32 +36,38 @@
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.6.0" />
     <PackageReference Include="FluentValidation" Version="12.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.10">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.11">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.3" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.3" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
     <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="Microsoft.Identity.Web" Version="4.14.2" />
-    <!-- Direct pin: Microsoft.AspNetCore.OpenApi 10.0.10 transitively brings 2.0.0, which has a known
+    <!-- Direct pin: Microsoft.AspNetCore.OpenApi 10.0.11 transitively brings 2.0.0, which has a known
          vulnerability (GHSA-v5pm-xwqc-g5wc / CVE-2026-49451, stack overflow on a circular schema
-         reference). 2.7.5 is the first patched release on this line. Held on 2.x deliberately: 3.x
-         made IOpenApiMediaType.Example read-only, and the XML-comment source generator that ships
-         with Microsoft.AspNetCore.OpenApi 10.0.10 still assigns it, so a 3.x pin fails the build in
-         generated code. Move both together when a matching AspNetCore.OpenApi is available. -->
-    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
-    <PackageReference Include="ModelContextProtocol" Version="2.1.0" />
+         reference). 2.7.5 is the first patched release on this line. Held on 2.x deliberately, and
+         now doubly so: AspNetCore.OpenApi 10.0.11 constrains it to [2.7.5, 3.0.0), and 3.x made
+         IOpenApiMediaType.Example read-only while that package's XML-comment source generator still
+         assigns it. Move both together when a matching AspNetCore.OpenApi is available. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.12.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Scalar.AspNetCore" Version="2.16.18" />
+    <!-- Direct rather than transitive through Microsoft.Extensions.AI.OpenAI: Program.cs and
+         Chat/AzureOpenAIChatDefaults.cs construct OpenAIClient and the OpenAI.Responses request
+         types by hand. Ceiling, not a floor — Microsoft.Extensions.AI.OpenAI 10.9.0 declares
+         OpenAI [2.12.0, 2.13.0), so 2.13.0 is excluded and pinning it produces NU1608. Raise this
+         only when that adapter widens its range. -->
+    <PackageReference Include="OpenAI" Version="2.12.0" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.16.20" />
   </ItemGroup>
 
   <ItemGroup>

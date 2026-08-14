@@ -13,7 +13,7 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Chat;
 
 /// <summary>
-/// Pins the request the OpenAI Responses bridge actually puts on the wire for the Azure AI Foundry
+/// Pins the request the OpenAI Responses bridge actually puts on the wire for the Azure OpenAI
 /// provider.
 /// </summary>
 /// <remarks>
@@ -31,7 +31,7 @@ namespace Enterprise.Gpt.Unit.Test.Chat;
 /// answers with a minimal completed response.
 /// </para>
 /// </remarks>
-public sealed class AzureFoundryChatClientBridgeTests
+public sealed class AzureOpenAIChatClientBridgeTests
 {
     private sealed class RecordingHandler(params string[] responses) : HttpMessageHandler
     {
@@ -98,7 +98,7 @@ public sealed class AzureFoundryChatClientBridgeTests
         }
         """;
 
-    private static AzureAIFoundryOptions Settings() => new()
+    private static AzureOpenAIOptions Settings() => new()
     {
         Url = "https://test.services.ai.azure.com/",
         ApiKey = "test-key",
@@ -108,11 +108,16 @@ public sealed class AzureFoundryChatClientBridgeTests
         ReasoningEffort = "high"
     };
 
-    private static async Task<JsonElement> SendAsync(AzureAIFoundryOptions settings, ChatOptions options)
+    private static async Task<JsonElement> SendAsync(AzureOpenAIOptions settings, ChatOptions options)
     {
         var handler = new RecordingHandler();
         using var httpClient = new HttpClient(handler);
 
+        // OPENAI001 / MEAI001: GetResponsesClient and the Responses AsIChatClient overload are both
+        // still experimental, in OpenAI 2.12.0 and Microsoft.Extensions.AI.OpenAI 10.9.0
+        // respectively, and remain so at the newest release of each. Scoped to the construction
+        // rather than the file so the assertions below cannot quietly pick up a third experimental
+        // API — the same containment Program.cs applies at the real registration.
 #pragma warning disable OPENAI001, MEAI001
         var chatClient = new OpenAIClient(
                 new ApiKeyCredential(settings.ApiKey),
@@ -121,7 +126,7 @@ public sealed class AzureFoundryChatClientBridgeTests
             .AsIChatClient(settings.DefaultModel);
 #pragma warning restore OPENAI001, MEAI001
 
-        AzureFoundryChatDefaults.Create(settings)(options);
+        AzureOpenAIChatDefaults.Create(settings)(options);
 
         await chatClient.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "Hello")],
@@ -230,6 +235,9 @@ public sealed class AzureFoundryChatClientBridgeTests
         using var httpClient = new HttpClient(handler);
         var settings = Settings();
 
+        // OPENAI001 / MEAI001: as in SendAsync above — the Responses client and its IChatClient
+        // adapter are both still experimental, and scoping the suppression to the construction keeps
+        // it from covering the pipeline assembled underneath it.
 #pragma warning disable OPENAI001, MEAI001
         var chatClient = new OpenAIClient(
                 new ApiKeyCredential(settings.ApiKey),
@@ -238,7 +246,7 @@ public sealed class AzureFoundryChatClientBridgeTests
             .AsIChatClient(settings.DefaultModel)
             .AsBuilder()
             .UseFunctionInvocation()
-            .Use((inner, _) => new ConfigureOptionsChatClient(inner, AzureFoundryChatDefaults.Create(settings)))
+            .Use((inner, _) => new ConfigureOptionsChatClient(inner, AzureOpenAIChatDefaults.Create(settings)))
             .Build();
 #pragma warning restore OPENAI001, MEAI001
 

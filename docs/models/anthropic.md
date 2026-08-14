@@ -1,6 +1,6 @@
 # Anthropic Provider
 
-Reference for running Enterprise GPT against Anthropic's own API alongside Azure AI Foundry and Amazon Bedrock: when to pick Anthropic over Bedrock for the same Claude models, how to configure and validate the provider, how thinking and effort are applied to every turn, and the one out-of-band database change this feature depends on. Audience: engineers wiring up a third provider, and operators deploying this build.
+Reference for running Enterprise GPT against Anthropic's own API alongside the Azure providers ([Azure OpenAI](azure-openai.md), [Azure AI Foundry](azure-ai-foundry.md)) and Amazon Bedrock: when to pick Anthropic over Bedrock for the same Claude models, how to configure and validate the provider, how thinking and effort are applied to every turn, and the one out-of-band database change this feature depends on. Audience: engineers wiring up a third provider, and operators deploying this build.
 
 ## 1. Why this exists
 

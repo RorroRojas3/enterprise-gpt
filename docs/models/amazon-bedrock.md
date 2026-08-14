@@ -1,10 +1,10 @@
 # Amazon Bedrock Provider
 
-Reference for running Enterprise GPT against Amazon Bedrock alongside Azure AI Foundry: how a request picks its provider, how to obtain and configure a Bedrock API key, how to add a Bedrock-backed model to the catalog, and the two out-of-band database changes this release depends on. Audience: engineers wiring up a second provider, and operators deploying this build.
+Reference for running Enterprise GPT against Amazon Bedrock alongside the Azure providers: how a request picks its provider, how to obtain and configure a Bedrock API key, how to add a Bedrock-backed model to the catalog, and the two out-of-band database changes this release depends on. Audience: engineers wiring up a second provider, and operators deploying this build.
 
 ## 1. Why this exists
 
-Until this change the API had exactly one chat client. It was registered under the key `"azureaifoundry"` and injected straight into [`ConversationService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) with `[FromKeyedServices]`. Every model in the catalog carried a `ProviderId`, and nothing ever read it — whichever provider a model claimed to belong to, its turns went to Azure.
+Until this change the API had exactly one chat client. It was registered under the single Azure key (`"azure-open-ai"` today; it was spelled `"azureaifoundry"` at the time) and injected straight into [`ConversationService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) with `[FromKeyedServices]`. Every model in the catalog carried a `ProviderId`, and nothing ever read it — whichever provider a model claimed to belong to, its turns went to Azure.
 
 Adding Anthropic's Claude models means adding a provider, and adding a provider means the choice has to move from *construction time* to *request time*. That is the whole shape of this change:
 
@@ -67,8 +67,8 @@ Three pieces do the routing, and they live together on purpose:
 
 | Piece | Where | What it holds |
 |---|---|---|
-| Provider ids | [`Providers`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs) | `AzureOpenAI` = `3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0`, `AmazonBedrock` = `8c4b1f27-6a3d-4d59-9e21-b0f4a7c6d812` |
-| DI keys | [`ChatClientKeys`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs) | `"azureaifoundry"`, `"amazonbedrock"` |
+| Provider ids | [`Providers`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs) | `AzureOpenAI` = `3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0`, `AmazonBedrock` = `8c4b1f27-6a3d-4d59-9e21-b0f4a7c6d812` (`AzureAIFoundry` and `Anthropic` were added later) |
+| DI keys | [`ChatClientKeys`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs) | `"azure-open-ai"`, `"amazonbedrock"` (plus `"azure-ai-foundry"` and `"anthropic"` since) |
 | The map between them | `Providers.ServiceKeys` (a `FrozenDictionary<Guid, string>`) | provider id → DI key |
 
 [`ChatClientResolver`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatClientResolver.cs) is a singleton that walks that map and pulls the keyed `IChatClient` out of the root container:

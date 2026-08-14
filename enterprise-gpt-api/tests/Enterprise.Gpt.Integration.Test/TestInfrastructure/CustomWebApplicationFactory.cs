@@ -63,10 +63,12 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["AzureAd:TenantId"] = "11111111-1111-1111-1111-111111111111",
             ["AzureAd:ClientId"] = "22222222-2222-2222-2222-222222222222",
             ["AzureAd:ClientSecret"] = "test-secret",
-            ["AzureAIFoundry:Url"] = "https://test.openai.azure.com/",
-            ["AzureAIFoundry:ApiKey"] = "test-key",
-            ["AzureAIFoundry:DefaultModel"] = "test-model",
-            ["AzureAIFoundry:EmbeddingModel"] = "test-embedding",
+            ["AzureOpenAI:Url"] = "https://test.openai.azure.com/",
+            ["AzureOpenAI:ApiKey"] = "test-key",
+            ["AzureOpenAI:DefaultModel"] = "test-model",
+            ["AzureOpenAI:EmbeddingModel"] = "test-embedding",
+            // AzureAIFoundry is left unset: it is Enabled-gated, and an absent section means no
+            // keyed client, which is exactly the shape the resolver's 503 path expects.
             // The AccountKey is the well-known public Cosmos DB emulator key, published in
             // Microsoft's docs — not a secret, and nothing ever connects to it under test.
             ["CosmosDb:ConnectionString"] =

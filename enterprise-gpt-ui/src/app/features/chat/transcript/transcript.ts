@@ -11,6 +11,12 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import {
+  COPIED_LABEL,
+  COPY_CONFIRMATION_MS,
+  COPY_LABEL,
+  copyText,
+} from '@core/clipboard/copy-text';
 import { canRetry, userMessage } from '@core/errors/error-message';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
@@ -18,6 +24,7 @@ import { Ridgeline } from '@shared/ridgeline/ridgeline';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { TurnErrorNotice, TurnStore } from '../turn-store';
 import { AssistantTurn } from './assistant-turn';
+import { MessageCopy } from './message-copy';
 import { StoppedCard } from './stopped-card';
 import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
 
@@ -41,7 +48,16 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
 @Component({
   selector: 'app-transcript',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AssistantTurn, BrandLogo, ErrorPanel, Ridgeline, Skeleton, StoppedCard, TurnNoticeCard],
+  imports: [
+    AssistantTurn,
+    BrandLogo,
+    ErrorPanel,
+    MessageCopy,
+    Ridgeline,
+    Skeleton,
+    StoppedCard,
+    TurnNoticeCard,
+  ],
   templateUrl: './transcript.html',
   styleUrl: './transcript.scss',
   // Reading the stored messages counts as busy too (US-410): the skeleton is
@@ -122,11 +138,9 @@ export class Transcript {
       return;
     }
 
-    try {
-      await navigator.clipboard.writeText(source);
-    } catch {
-      // Denied clipboard permission leaves the button as it was; there is
-      // nothing actionable to tell the user beyond "it did not happen".
+    // A refused clipboard leaves the button as it was; there is nothing
+    // actionable to tell the user beyond "it did not happen".
+    if (!(await copyText(source))) {
       return;
     }
 
@@ -151,7 +165,7 @@ export class Transcript {
     button.setAttribute('aria-label', COPIED_LABEL);
     button.classList.add('is-copied');
     this._copiedButton = button;
-    this._copiedTimer = setTimeout(() => this.endConfirmation(), COPIED_MS);
+    this._copiedTimer = setTimeout(() => this.endConfirmation(), COPY_CONFIRMATION_MS);
 
     // Deferred one render on purpose. `endConfirmation` has just cleared the
     // region, but change detection is scheduled rather than synchronous, so
@@ -248,8 +262,4 @@ export class Transcript {
   });
 }
 
-const COPY_LABEL = 'Copy';
-const COPIED_LABEL = 'Copied';
 const COPIED_ANNOUNCEMENT = 'Code block copied.';
-/** The kit's confirmation span, as `StoppedCard` uses it. */
-const COPIED_MS = 2000;

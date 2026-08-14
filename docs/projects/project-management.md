@@ -340,7 +340,7 @@ Indexes: `IX_Project_UserId_DateDeactivated` (`UserId`, `DateDeactivated`) — p
 
 **`Core.ProjectDocumentChunk`** — `ProjectDocumentId` (FK → `Core.ProjectDocument`) plus the `BaseDocumentChunk` columns: `Index`, nullable `SourceNumber`, `TokenCount`, `Text nvarchar(max)`, and `Embedding vector(1536)`. One index: `IX_ProjectDocumentChunk_ProjectDocumentId_Index` `UNIQUE WHERE DateDeactivated IS NULL` — chunk ordinals are dense and unique per document, and the filter keeps soft-deleted rows from blocking a re-ingestion of the same document.
 
-The vector width is fixed by the column, exactly as for conversation chunks: the deployment behind `AzureAIFoundry:EmbeddingModel` **must** return 1536-dimension vectors. Moving to a model of a different width is a schema change, not a config change.
+The vector width is fixed by the column, exactly as for conversation chunks: the deployment behind `AzureOpenAI:EmbeddingModel` **must** return 1536-dimension vectors. Moving to a model of a different width is a schema change, not a config change.
 
 **`Core.Conversation.ProjectId`** — new nullable `uniqueidentifier`, FK → `Core.Project(Id)`, with `IX_Conversation_ProjectId_DateDeactivated`. That index serves both the per-project conversation listing and the cascade in §7.
 

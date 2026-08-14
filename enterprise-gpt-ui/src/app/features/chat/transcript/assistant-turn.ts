@@ -11,7 +11,9 @@ import {
 import { TurnTimeline } from '@domain/stream/turn-timeline';
 import { MarkdownComponent } from 'ngx-markdown';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
+import { MarkdownExtras } from '../markdown/markdown-extras';
 import { ActivityCard } from './activity-card';
+import { MessageCopy } from './message-copy';
 import { ReasoningRegion } from './reasoning-region';
 import { formatTurnUsage } from './turn-usage';
 
@@ -38,7 +40,14 @@ type RenderedNode =
 @Component({
   selector: 'app-assistant-turn',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ActivityCard, BrandLogo, MarkdownComponent, ReasoningRegion],
+  imports: [
+    ActivityCard,
+    BrandLogo,
+    MarkdownComponent,
+    MarkdownExtras,
+    MessageCopy,
+    ReasoningRegion,
+  ],
   templateUrl: './assistant-turn.html',
   styleUrl: './assistant-turn.scss',
 })
@@ -112,6 +121,18 @@ export class AssistantTurn {
    * where the stream that carried the counts is long gone.
    */
   protected readonly usageLine = computed(() => formatTurnUsage(this.snapshot().usage));
+
+  /**
+   * What the footer's Copy control puts on the clipboard (US-607): the answer's
+   * original markdown, not the rendered HTML.
+   *
+   * Read off the snapshot rather than re-joined from {@link renderedNodes},
+   * whose slices exist to be interleaved with activity cards in arrival order.
+   * They happen to cover the whole text today, but that is the timeline's
+   * contract to change, and a copy that silently lost a block would look like a
+   * clipboard fault rather than a rendering one.
+   */
+  protected readonly copySource = computed(() => this.snapshot().text ?? '');
 
   /** The caret belongs to the last node, and only when it is a text block. */
   protected readonly caretIndex = computed(() => {

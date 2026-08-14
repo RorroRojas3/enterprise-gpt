@@ -14,10 +14,25 @@ import { fileURLToPath } from 'node:url';
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const STATS = join(UI_ROOT, 'dist', 'enterprise-gpt-ui', 'stats.json');
 
-/** Code that must never be statically imported into the initial graph. */
+/**
+ * Code that must never be statically imported into the initial graph.
+ *
+ * `roots` names the other graphs it must also stay out of, and `expect` says the
+ * build has to contain it *somewhere* — see the two traversals below.
+ */
 const FORBIDDEN = [
-  { label: 'diagrams (US-605)', match: /(^|\/)node_modules\/(mermaid|@mermaid-js\/[^/]+)\// },
-  { label: 'math (US-605)', match: /(^|\/)node_modules\/(katex|mathjax|mathjax-full)\// },
+  {
+    label: 'diagrams (US-605)',
+    match: /(^|\/)node_modules\/(mermaid|@mermaid-js\/[^/]+)\//,
+    roots: ['src/app/features/chat/chat.ts'],
+    expect: true,
+  },
+  {
+    label: 'math (US-605)',
+    match: /(^|\/)node_modules\/(katex|mathjax|mathjax-full)\//,
+    roots: ['src/app/features/chat/chat.ts'],
+    expect: true,
+  },
   // US-601 resolved the budget question by putting the transcript renderer behind
   // the lazy chat route rather than by raising the ceiling: the initial graph had
   // ~11 kB of headroom under its warning line and this stack is an order of
@@ -58,42 +73,98 @@ const entry =
   Object.keys(outputs).find((file) => /(^|\/)main[-.][^/]*\.js$/.test(file));
 if (!entry) die('Could not find the src/main.ts entry point in the build metafile.');
 
-// Mirrors the builder's own initial-file traversal, so "initial" here means exactly
-// what the `initial` budget means: follow static imports, stop at every dynamic one.
-const initial = new Set([entry]);
-const queue = [entry];
-while (queue.length > 0) {
-  const file = queue.pop();
-  for (const dependency of outputs[file]?.imports ?? []) {
-    const isStatic = dependency.kind === 'import-statement' || dependency.kind === 'import-rule';
-    if (isStatic && outputs[dependency.path] && !initial.has(dependency.path)) {
-      initial.add(dependency.path);
-      queue.push(dependency.path);
+/**
+ * Mirrors the builder's own initial-file traversal, so "initial" here means exactly
+ * what the `initial` budget means: follow static imports, stop at every dynamic one.
+ */
+function staticGraph(from) {
+  const reached = new Set([from]);
+  const queue = [from];
+  while (queue.length > 0) {
+    const file = queue.pop();
+    for (const dependency of outputs[file]?.imports ?? []) {
+      const isStatic = dependency.kind === 'import-statement' || dependency.kind === 'import-rule';
+      if (isStatic && outputs[dependency.path] && !reached.has(dependency.path)) {
+        reached.add(dependency.path);
+        queue.push(dependency.path);
+      }
+    }
+  }
+  return reached;
+}
+
+/** The chunk that owns `input`, whichever one esbuild put it in. */
+function chunkOwning(input) {
+  return Object.keys(outputs).find((file) => outputs[file]?.inputs?.[input] !== undefined);
+}
+
+const initial = staticGraph(entry);
+
+const violations = [];
+
+function scan(graph, rules, origin) {
+  for (const file of graph) {
+    for (const input of Object.keys(outputs[file]?.inputs ?? {})) {
+      const hit = rules.find(({ match }) => match.test(input));
+      if (hit) violations.push({ label: hit.label, input, file, origin });
     }
   }
 }
 
-const violations = [];
-for (const file of initial) {
-  for (const input of Object.keys(outputs[file]?.inputs ?? {})) {
-    const hit = FORBIDDEN.find(({ match }) => match.test(input));
-    if (hit) violations.push({ label: hit.label, input, file });
+scan(initial, FORBIDDEN, 'src/main.ts');
+
+// A library can satisfy the rule above and still be paid for by everyone: a static
+// `import 'mermaid'` from the chat route lands in the *lazy* chunk, off the initial
+// graph and green here, yet downloaded by every user who opens a conversation. Each
+// rule therefore names the other roots it must stay out of.
+for (const rule of FORBIDDEN.filter(({ roots }) => roots?.length)) {
+  for (const root of rule.roots) {
+    const chunk = chunkOwning(root);
+    if (chunk === undefined) {
+      die(`Could not find the chunk owning ${root}; the build layout has changed.`);
+    }
+    scan(staticGraph(chunk), [rule], root);
   }
 }
 
 if (violations.length > 0) {
   die(
-    'These libraries must be loaded on demand, but they are reachable from',
-    'src/main.ts through static imports:',
+    'These libraries must be loaded on demand, but they are reachable through',
+    'static imports:',
     '',
-    ...violations.flatMap(({ label, input, file }) => [
+    ...violations.flatMap(({ label, input, file, origin }) => [
       `${label}`,
-      `  input:  ${input}`,
-      `  chunk:  ${file}`,
+      `  reached from: ${origin}`,
+      `  input:        ${input}`,
+      `  chunk:        ${file}`,
       '',
     ]),
-    'Import them with `await import(…)` from the component that needs them, so',
+    'Import them with `await import(…)` from the code that needs them, so',
     'esbuild splits them into their own chunk.',
+  );
+}
+
+// The checks above all pass when a library is simply absent from the build — so the
+// day someone deletes the dynamic import, this would report OK and quietly stop
+// testing anything. `expect` says the opposite: it has to be here, and it has to be
+// somewhere lazy.
+const missing = [];
+for (const { label, match, expect } of FORBIDDEN.filter((rule) => rule.expect)) {
+  const found = Object.keys(outputs).some((file) =>
+    Object.keys(outputs[file]?.inputs ?? {}).some((input) => match.test(input)),
+  );
+  if (expect && !found) missing.push(label);
+}
+
+if (missing.length > 0) {
+  die(
+    'These libraries are not in the build at all:',
+    '',
+    ...missing.map((label) => `  ${label}`),
+    '',
+    'US-605 loads them with `await import(…)` at the moment the content appears.',
+    'If that import has been removed, remove the `expect` flag with it — otherwise',
+    'this check is passing because there is nothing left to check.',
   );
 }
 

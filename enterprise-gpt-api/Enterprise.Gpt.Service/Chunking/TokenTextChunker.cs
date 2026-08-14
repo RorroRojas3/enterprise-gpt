@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.ML.Tokenizers;
@@ -49,11 +48,22 @@ namespace Enterprise.Gpt.Service.Chunking
         /// Initializes a new instance of the <see cref="TokenTextChunker"/> class.
         /// </summary>
         /// <param name="options">Chunking options; <c>OverlapTokens</c> is clamped below <c>MaxTokens</c>.</param>
-        /// <param name="configuration">Reads <c>AzureAIFoundry:EmbeddingModel</c> to pick the tokenizer.</param>
+        /// <param name="azureOpenAIOptions">
+        /// Supplies the embedding deployment name, which selects the tokenizer. Taken from the
+        /// validated options rather than read off <c>IConfiguration</c> by key, which couples this
+        /// class to a section name nothing checks: the rename of that section to <c>AzureOpenAI</c>
+        /// would have left a raw read returning nothing and silently falling back to
+        /// <c>cl100k_base</c> — chunking every document against a tokenizer that need not match the
+        /// one the embedding model actually uses.
+        /// </param>
         /// <param name="logger">Logger used for tokenizer selection and chunking telemetry.</param>
-        public TokenTextChunker(IOptions<DocumentOptions> options, IConfiguration configuration, ILogger<TokenTextChunker> logger)
+        public TokenTextChunker(
+            IOptions<DocumentOptions> options,
+            IOptions<AzureOpenAIOptions> azureOpenAIOptions,
+            ILogger<TokenTextChunker> logger)
         {
             ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(azureOpenAIOptions);
 
             _logger = logger;
 
@@ -70,7 +80,7 @@ namespace Enterprise.Gpt.Service.Chunking
                     chunking.OverlapTokens, OverlapTokens, MaxTokens);
             }
 
-            _tokenizer = CreateTokenizer(configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel"), logger);
+            _tokenizer = CreateTokenizer(azureOpenAIOptions.Value.EmbeddingModel, logger);
             _separatorTokens = _tokenizer.CountTokens(UnitSeparator);
         }
 

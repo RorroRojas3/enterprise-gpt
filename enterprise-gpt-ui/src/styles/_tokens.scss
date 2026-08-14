@@ -92,7 +92,10 @@ $dark: (
 //
 // The code palette is what makes Prism themeable from tokens instead of a second
 // stylesheet. The code surface is dark in both themes by design, so there is no
-// light variant to swap to.
+// light variant to swap to — which puts the whole of US-604's legibility criterion
+// on these values. `scripts/check-tokens.mjs` measures every code-surface pair in
+// both maps, including the head bar's hovered state, so editing one is checked
+// rather than trusted.
 // The focus indicator is its own token rather than `--accent`. WCAG 2.1 SC 1.4.11
 // wants 3:1 against adjacent colours, and #21A8D8 gives only 2.74:1 on --surface,
 // 2.62:1 on --bs-body-bg and 2.48:1 on --surface-2 — so an accent-coloured ring fails
@@ -103,7 +106,8 @@ $dark: (
 // where they are literals rather than tokens (#B9CBDC for the Copy control,
 // #8FA9C0 for the language label). They sit in both maps unchanged for the same
 // reason the Prism palette does: --code-head is dark in both themes, so text on
-// it never flips. Both clear 4.5:1 on --code-head in either theme.
+// it never flips. Both clear 4.5:1 on --code-head in either theme, hovered as well
+// as at rest — the token check measures both states.
 //
 // The provider dots (frame 2b) are pinned rather than aliased to --accent/--ok:
 // a provider's colour is its identity across themes and must not silently

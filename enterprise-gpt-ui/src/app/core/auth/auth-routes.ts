@@ -29,5 +29,8 @@ export const FORBIDDEN_ROUTE = '/forbidden';
  */
 export const SIGNED_OUT_ROUTE = '/signed-out';
 
+/** EP-7's conversation library, frame `4a`. */
+export const CONVERSATIONS_ROUTE = '/conversations';
+
 /** The administration area. Behind `adminCanMatch`, so its chunk is withheld, not hidden. */
 export const ADMIN_ROUTE = '/admin';

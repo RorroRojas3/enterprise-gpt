@@ -1,310 +1,176 @@
 # Azure AI Foundry Provider
 
-Reference for the provider that serves Enterprise GPT's default models and every document embedding: which API surface each of its two clients talks to and why they differ, how the endpoint is derived from one setting, how a model opts into reasoning summaries, and the two Responses-API behaviours that had to be decided before the swap was safe. Audience: engineers working on the chat path, and operators deploying this build. Companion to [Amazon Bedrock Provider](amazon-bedrock.md) and [Anthropic Provider](anthropic.md).
+Reference for the optional second Azure provider: what it is for, how it differs from the Azure OpenAI provider that shares its resource and its endpoint, how to switch it on, and why a reasoning-flagged model served here reasons anyway but shows nothing. Audience: engineers working on the chat path, and operators deploying this build. Companion to [Azure OpenAI Provider](azure-openai.md), [Amazon Bedrock](amazon-bedrock.md) and [Anthropic](anthropic.md).
 
-## 1. Why this exists, and what changed
+> ## ⚠️ This page used to document a different provider
+>
+> Until this release, "Azure AI Foundry" was the name of the single Azure provider — the one that serves the default model and every document embedding. That provider is now called **Azure OpenAI** and is documented at **[azure-openai.md](azure-openai.md)**.
+>
+> **Its configuration section was renamed `AzureAIFoundry:*` → `AzureOpenAI:*`, and `AzureAIFoundry:*` now means the provider described on this page.** If you are here looking for `Url`, `ApiKey`, `DefaultModel`, `EmbeddingModel` or the reasoning settings, they moved: see [Azure OpenAI §8](azure-openai.md#8-upgrading-from-the-previous-release--the-configuration-rename) for the re-key steps.
 
-Azure AI Foundry is the provider this application cannot run without: it serves the default model, and it is the only source of document embeddings. Unlike Bedrock and Anthropic it has **no `Enabled` flag** — a deployment missing its settings is broken, not opted out.
+## 1. Why this exists
 
-What changed in this release is the API surface the *chat* client talks to. It used to be **Chat Completions**, reached through `AzureOpenAIClient`. It is now the **Responses API**, reached through the plain `OpenAIClient` pointed at Foundry's OpenAI-compatible v1 endpoint:
+An Azure AI Foundry resource hosts more than Azure OpenAI deployments. It also serves **Foundry Models** from other providers — DeepSeek, Llama, Mistral, Grok — and those do not all implement the Responses API. Microsoft's guidance is to use Responses for Azure OpenAI models, and Chat Completions on the same v1 endpoint for the rest; a deployment that does not support Responses answers **`400 Model not supported`** rather than degrading ([Endpoints for Foundry Models](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/endpoints#azure-openai-inference-endpoint)).
+
+Before this release the application had one Azure chat client, on the Responses API. That made every non-Responses deployment on the resource unreachable: a model row pointing at one created fine and then failed on every turn. This provider is the second surface, so the catalog can carry both kinds of deployment at once.
+
+### 1.1 Same resource, same endpoint, different surface
+
+| | [Azure OpenAI](azure-openai.md) | **Azure AI Foundry** (this page) |
+|---|---|---|
+| Provider GUID | `3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0` | `b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45` |
+| API surface | Responses | **Chat Completions** |
+| Reasoning summaries | Yes | **No** — the request is stripped ([§4](#4-reasoning-is-stripped-and-that-is-the-design)) |
+| Document embeddings | Yes — owns the generator | No |
+| Configuration section | `AzureOpenAI:*` | `AzureAIFoundry:*` |
+| Registered when | Always | `AzureAIFoundry:Enabled` is `true` |
+| SDK | `OpenAI` 2.12.0 | `OpenAI` 2.12.0 — the same client |
+| Experimental suppressions | `OPENAI001`, `MEAI001` | **None** |
+
+Both reach the same resource over the same OpenAI-compatible v1 endpoint with the same kind of credential. The registration differs in one call:
 
 ```csharp
 new OpenAIClient(
         new ApiKeyCredential(settings.ApiKey),
         new OpenAIClientOptions { Endpoint = settings.V1Endpoint })
-    .GetResponsesClient()
-    .AsIChatClient(settings.DefaultModel);
+    .GetChatClient(settings.DefaultModel)
+    .AsIChatClient();
 ```
 
-**The motivation was a bug users could see.** The assistant's activity timeline has a reasoning region, and on Azure-served turns it never appeared. Nothing in the pipeline was missing: the tracking middleware's `ToUiEventsAsync()` already maps a `TextReasoningContent` fragment to a `ReasoningDelta` event, the stream already carries those frames ([streaming contract §4.1](../conversations/streaming-contract.md#41-event-kinds)), and the web client already renders every delta past the server's seeded one. What was missing was a provider that emits any. **Azure returns reasoning summaries only on the Responses surface** — over Chat Completions it returns none, whatever the deployment — so the region had nothing to draw and no amount of client work would have filled it.
+`GetChatClient` and its `AsIChatClient()` overload are **stable and unattributed**, where the Responses equivalents are still `[Experimental]`. That is a real benefit of the split rather than an accident: this provider and the relocated embedding generator carry no suppressions at all, so the experimental surface in the solution is now exactly the Responses path and nothing else ([Azure OpenAI §1.3](azure-openai.md#13-the-experimental-diagnostics-and-why-no-upgrade-retires-them)).
 
-Everything below the `IChatClient` abstraction is untouched by the swap: MCP tool invocation, function calling, OpenTelemetry spans, per-tool token accounting, and SSE streaming all behave as before, and the other two providers are not affected at all.
+### 1.2 Why a separate section rather than a flag
 
-### 1.1 What did **not** move
+`AzureAIFoundry` is its own configuration section, not a mode switch on `AzureOpenAI`. Two reasons:
 
-The **embedding** client is still `AzureOpenAIClient`, deliberately:
-
-- Embeddings have no Responses equivalent, so the v1 endpoint has nothing to offer them.
-- Every vector already stored in `Core.ConversationDocumentChunk` and `Core.ProjectDocumentChunk` was produced by this client. Retrieval compares new query vectors against them ([document retrieval](../documents/retrieval.md)), so a client that embedded even slightly differently would degrade every search silently rather than fail.
-
-It is now built from a factory rather than eagerly, which is a correctness fix rather than a style change — see §4.3.
-
-### 1.2 Both APIs are still marked experimental
-
-| Package | Version | Diagnostic | Where it is suppressed |
-|---|---|---|---|
-| `OpenAI` | 2.12.0 (transitive) | `OPENAI001` — every Responses request type | The client registration in `Program.cs`, and [`AzureFoundryChatDefaults.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Chat/AzureFoundryChatDefaults.cs) file-wide |
-| `Microsoft.Extensions.AI.OpenAI` | 10.8.3 | `MEAI001` — the `AsIChatClient` Responses adapter | The client registration in `Program.cs` |
-
-Both suppressions are **at the call site**, never project-wide, and the SDK's request types are confined to that one file in `Enterprise.Gpt.Api`. That containment is what keeps `Enterprise.Gpt.Service` free of any OpenAI package reference — the same split that keeps AWS types out of it for Bedrock and Anthropic types out of it for Anthropic. It also means a second experimental API cannot slip in behind this one: reaching for `OpenAI.Responses` anywhere else is a build error until someone writes the suppression deliberately.
+- **Credentials differ in practice.** A deployment running both commonly points them at different resources, or at the same resource with different keys.
+- **The choice belongs in the catalog.** A model row selects its surface by naming a provider, so an administrator changes it per model. A configuration flag would decide it for every model at once.
 
 ## 2. Quick start
 
-**1. Configure the four required settings** with user secrets — never `appsettings.json`, which is checked in and carries no `AzureAIFoundry` section at all:
+**1. Switch the provider on** with user secrets — never `appsettings.json`, which is checked in and ships this section with `Enabled: false` and blank values:
 
 ```bash
 cd enterprise-gpt-api/Enterprise.Gpt.Api
+dotnet user-secrets set "AzureAIFoundry:Enabled" "true"
 dotnet user-secrets set "AzureAIFoundry:Url" "https://my-resource.services.ai.azure.com/"
-dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-foundry-key"
-dotnet user-secrets set "AzureAIFoundry:DefaultModel" "gpt-5.6-luna"
-dotnet user-secrets set "AzureAIFoundry:EmbeddingModel" "text-embedding-3-small"
+dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-resource-key"
+dotnet user-secrets set "AzureAIFoundry:DefaultModel" "DeepSeek-R1"
 ```
 
-`Url` is the **resource root**. Do not include `/openai/v1` — the client appends it (§3.2), and a URL whose path already carries it is rejected at startup.
+`Url` is the **resource root**. Do not include `/openai/v1` — the client appends it, and a URL whose path already carries it is rejected at startup ([Azure OpenAI §3.2](azure-openai.md#32-the-v1-endpoint-is-derived-not-configured) documents the shared derivation).
 
-**2. Start the API.** All seven validators run at boot (§4.2), so a missing or malformed setting refuses to start rather than failing on someone's first message.
+**2. Start the API.** The four validators run at boot, all gated on `Enabled` ([§3.2](#32-startup-validation)).
 
-**3. Turn reasoning on for a model that supports it** — it is off for every model until you do (§5):
+**3. Add a model** pointed at this provider:
 
 ```bash
-curl -X PUT https://localhost:7045/api/models/{id} \
+curl -X POST https://localhost:7045/api/models \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-        "providerId": "3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0",
-        "name": "RR GPT 5.6 Luna",
-        "deploymentName": "rr-gpt-5.6-luna",
-        "description": "OpenAI GPT-5.6 Luna, served by Azure AI Foundry.",
-        "contextWindowSize": 200000,
-        "maxOutputTokens": 16384,
+        "providerId": "b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45",
+        "name": "DeepSeek R1",
+        "deploymentName": "DeepSeek-R1",
+        "description": "DeepSeek-R1, served by Azure AI Foundry over Chat Completions.",
+        "contextWindowSize": 128000,
+        "maxOutputTokens": 8192,
         "isToolEnabled": true,
-        "isReasoningEnabled": true,
-        "isDefault": true
+        "isDefault": false
       }'
 ```
 
-`PUT` replaces the whole model, so send every field — see [Model Management §2.1](model-management.md#21-wire-shape-contracts).
+**The provider row is seeded, but only a migrated database has it** — see [§6](#6-operational-notes) before deploying.
 
-The next turn on that model streams the model's own reasoning summary, and the client's reasoning region fills as it arrives.
+## 3. Configuration
 
-## 3. Core concepts
+### 3.1 Settings
 
-### 3.1 A provider id selects a chat client
-
-Unchanged in shape from the other two providers:
-
-| Piece | Where | What it holds for Foundry |
-|---|---|---|
-| Provider id | [`Providers`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs) | `AzureOpenAI` = `3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0` |
-| DI key | [`ChatClientKeys`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs) | `"azureaifoundry"` |
-| The map between them | `Providers.ServiceKeys` | provider id → DI key |
-
-The row is named `AzureOpenAI` in `Core.Ref.Provider` and is seeded both by `HasData` and by the `InitialCreate` migration, so it is present in any database this application built. [`ChatClientResolver`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatClientResolver.cs) turns the id into the keyed `IChatClient` at request time; see [Amazon Bedrock §3.1](amazon-bedrock.md#31-a-provider-id-selects-a-chat-client) for the resolver itself.
-
-### 3.2 The v1 endpoint is derived, not configured
-
-`AzureAIFoundryOptions.V1Endpoint` appends `openai/v1/` to the configured resource root:
-
-| `AzureAIFoundry:Url` | `V1Endpoint` |
-|---|---|
-| `https://my-resource.services.ai.azure.com/` | `https://my-resource.services.ai.azure.com/openai/v1/` |
-| `https://my-resource.services.ai.azure.com` (no trailing slash) | `https://my-resource.services.ai.azure.com/openai/v1/` |
-| `https://my-resource.openai.azure.com/` | `https://my-resource.openai.azure.com/openai/v1/` |
-
-Three things are worth knowing about that derivation:
-
-- **It is derived rather than added as a second setting** so an existing deployment needs no configuration change to take this release. The same `Url` also still builds the embedding client, against the resource root (§4.3).
-- **Azure accepts both hosts.** `services.ai.azure.com` and `openai.azure.com` both serve the OpenAI-compatible API, so either form works and neither is preferred here.
-- **The trailing slash on the path constant is load-bearing.** The SDK resolves relative request paths against this URI; without it the last segment is replaced instead of extended. `EnsureTrailingSlash` covers the resource root copied out of the portal, which usually lacks one.
-
-The v1 endpoint is OpenAI-compatible, which is what lets the plain `OpenAIClient` talk to Foundry at all. It takes the **deployment name** in the request's `model` field — the same value `Model.DeploymentName` has always supplied through `ChatOptions.ModelId`, so nothing about the catalog changes.
-
-### 3.3 Where the per-turn settings are applied
-
-The keyed client is built with the same builder chain as the other providers, plus one link:
-
-```text
-UseOpenTelemetry(named source)      ← outermost
-  └─ UseToolTracking
-       └─ UseFunctionInvocation
-            └─ ConfigureOptionsChatClient(AzureFoundryChatDefaults.Create(settings))   ← innermost
-                 └─ the Responses adapter
-```
-
-`ChatClientBuilder` applies its factories in reverse, so the link registered **last** is **innermost** — closest to the SDK, and the one whose `ChatOptions` the adapter actually reads. Two consequences follow from that position and both are relied on in §6:
-
-- `UseOpenTelemetry` has already recorded `gen_ai.conversation.id` by the time the callback clears `ConversationId`, so the telemetry keeps the conversation correlation the wire deliberately loses.
-- `FunctionInvokingChatClient` sits **above** the callback, which is why the two Responses behaviours in §6 are coupled rather than independent.
-
-[`AzureFoundryChatDefaults`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Chat/AzureFoundryChatDefaults.cs) is kept out of `Program.cs` for the same reason as its Anthropic counterpart: confining the SDK's request types to one file keeps them out of the provider-agnostic `ChatOptions` that `ConversationService` builds.
-
-## 4. Configuration
-
-### 4.1 Settings
-
-The `AzureAIFoundry` section binds to [`AzureAIFoundryOptions`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/AzureAIFoundryOptions.cs). None of it ships in `appsettings.json`, so the two reasoning settings run on the type's own defaults unless a deployment overrides them.
+The `AzureAIFoundry` section binds to [`AzureAIFoundryOptions`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/AzureAIFoundryOptions.cs), which derives its URL and credential members from the shared [`AzureV1EndpointOptions`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/AzureV1EndpointOptions.cs).
 
 | Setting | Default | Required | What it does |
 |---|---|---|---|
-| `Url` | — | yes | The Foundry resource root, e.g. `https://my-resource.services.ai.azure.com/`. **Not** the v1 endpoint (§3.2). |
-| `ApiKey` | — | yes | The resource key. **Secrets store only** — user secrets locally, Key Vault when deployed. |
-| `DefaultModel` | — | yes | The deployment the SDK is constructed with. Every turn sets the model explicitly from the catalog, so this is only the fallback the client needs to exist. |
-| `EmbeddingModel` | — | yes | The embedding deployment. It must natively return 1536-dimension vectors, because the stored column is fixed at that width, and it selects the chunker's tokenizer. Changing it invalidates every stored embedding. |
-| `ReasoningSummary` | `auto` | no | How verbose a summary to ask for: `auto`, `concise`, `detailed`, or `none` to ask for none at all (§5.2). |
-| `ReasoningEffort` | `medium` | no | How much the model reasons: `minimal`, `low`, `medium`, `high` (§5.2). |
+| `Enabled` | `false` | no | Registers the chat client at all. Off means no keyed client, and a model row pointing here fails with a 503 ([§6](#6-operational-notes)). |
+| `Url` | — | if enabled | The resource root, e.g. `https://my-resource.services.ai.azure.com/`. **Not** the v1 endpoint. |
+| `ApiKey` | — | if enabled | The resource key. **Secrets store only** — user secrets locally, Key Vault when deployed. |
+| `DefaultModel` | — | if enabled | The deployment the SDK is constructed with. Every turn sets the model explicitly from the catalog, so this is only the fallback the client needs to exist. |
 
-Both reasoning settings are **deployment-wide** and are read once, when the client is built. A model row carries no override, and changing either needs a restart.
+**There are no reasoning settings, and no embedding setting.** Both absences are deliberate: reasoning parameters are a Responses-API feature ([§4](#4-reasoning-is-stripped-and-that-is-the-design)), and the embedding generator belongs to the Azure OpenAI provider, which always exists. A test pins the first — `Options_CarryNoReasoningSettings` fails if a `Reasoning*` property is ever added here.
 
-### 4.2 Startup validation
+`appsettings.json` ships `Enabled`, `Url` and `DefaultModel` as empty placeholders so the section is discoverable; `ApiKey` is deliberately absent from it.
 
-This was the last provider read with raw `GetValue<string>` calls, and the cost of that was concrete: a blank `AzureAIFoundry:Url` became `new Uri("")` inside a lazily-built client factory, so the deployment started cleanly and threw `UriFormatException` on someone's first conversation. All seven predicates now run under `ValidateOnStart()`, and — unlike Bedrock and Anthropic — none of them is gated on an `Enabled` flag, because there is none.
+### 3.2 Startup validation
+
+Four predicates run under `ValidateOnStart()`, every one of them short-circuited on `Enabled` — the same shape as Bedrock and Anthropic. A deployment that does not use this provider needs no settings at all; a **half-filled** section still fails at startup rather than on the first conversation.
 
 | Rule | Message |
 |---|---|
-| `Url` is an absolute http/https URI | `AzureAIFoundry:Url must be an absolute http or https URI, for example https://my-resource.services.ai.azure.com/.` |
-| `Url`'s **path** does not contain `openai` | `AzureAIFoundry:Url must be the resource root, without /openai/v1 — the client appends it.` |
-| `ApiKey` is non-blank | `AzureAIFoundry:ApiKey is required.` |
-| `DefaultModel` is non-blank | `AzureAIFoundry:DefaultModel is required.` |
-| `EmbeddingModel` is non-blank | `AzureAIFoundry:EmbeddingModel is required.` |
-| `ReasoningSummary` is a known value | `AzureAIFoundry:ReasoningSummary must be one of auto, concise, detailed, none.` |
-| `ReasoningEffort` is a known value | `AzureAIFoundry:ReasoningEffort must be one of minimal, low, medium, high.` |
+| `Url` is an absolute http/https URI | `AzureAIFoundry:Url must be an absolute http or https URI when AzureAIFoundry:Enabled is true, for example https://my-resource.services.ai.azure.com/.` |
+| `Url`'s **path** does not contain `openai` | `AzureAIFoundry:Url must be the resource root when AzureAIFoundry:Enabled is true, without /openai/v1 — the client appends it.` |
+| `ApiKey` is non-blank | `AzureAIFoundry:ApiKey is required when AzureAIFoundry:Enabled is true.` |
+| `DefaultModel` is non-blank | `AzureAIFoundry:DefaultModel is required when AzureAIFoundry:Enabled is true.` |
 
-Three of them deserve a note:
+The URL predicates themselves live on the shared base type, so the two Azure providers cannot drift apart on what a valid resource root is. None of the messages echoes the key.
 
-- **The resource-root check tests the path, not the whole string.** `https://my-resource.openai.azure.com/` is a perfectly correct value whose *host* contains `openai`; only the path may not. It also rejects a bare `/openai`, because half the path repeated produces the same unexplained 404 as all of it — a request to `/openai/v1/openai/v1/responses`, whose error names neither the setting nor the cause.
-- **The two reasoning checks null-guard before the lookup.** The accepted-value sets compare case-insensitively and that comparer throws on a null rather than reporting a miss, which would surface as a startup crash instead of the message above.
-- **The vocabularies are shared with their tests.** [`AzureFoundryChatDefaultsTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/AzureFoundryChatDefaultsTests.cs) drives every value the validators accept through the parsers, so a value added to a set without a matching parser arm fails there rather than on the first conversation — which matters because the keyed client is built lazily, and a parse failure would otherwise surface mid-turn rather than at boot.
+## 4. Reasoning is stripped, and that is the design
 
-None of the messages echoes the key.
+`ConversationService` writes the catalog's `IsReasoningEnabled` onto every turn on two channels, because they reach different providers ([Azure OpenAI §5.1](azure-openai.md#51-the-gate-is-a-catalog-column-and-it-is-opt-in)). One of them is `ChatOptions.Reasoning` — Microsoft.Extensions.AI's provider-agnostic reasoning request — and **the Chat Completions adapter translates it into `reasoning_effort` on the wire**, which a deployment reached over this surface rejects.
 
-### 4.3 The embedding client is built from a factory
+So [`AzureAIFoundryChatDefaults`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Chat/AzureAIFoundryChatDefaults.cs) clears it unconditionally:
 
-`AddEmbeddingGenerator` now takes a factory that resolves `IOptions<AzureAIFoundryOptions>`, rather than constructing the client inline while the service collection is being built. That is not tidying: constructing it inline runs `new Uri(settings.Url)` *before* `Build()`, and therefore before `ValidateOnStart` — so a blank URL surfaced as a bare `UriFormatException` from that line instead of as the validator's message. The factory defers construction until the validated options exist.
-
-## 5. Reasoning
-
-### 5.1 The gate is a catalog column, and it is opt-in
-
-`Model.IsReasoningEnabled` (`bit NOT NULL`, default `0`) says whether a deployment is asked for reasoning on every turn. It is exposed on `ModelDto` and both model action DTOs as `isReasoningEnabled`, admin-editable like the rest of the catalog — see [Model Management §2.1](model-management.md#21-wire-shape-contracts).
-
-**It defaults to false and existing rows are not back-filled**, because the failure mode is total rather than graceful: a deployment that does not support reasoning **rejects the whole request** instead of ignoring the option. Guessing "yes" for a model that turns out not to reason breaks every turn on it; guessing "no" costs a UI region nobody had before. It also costs money when on — reasoning tokens are billed as output tokens.
-
-The flag reaches the client on `ChatOptions.AdditionalProperties`, under the constant `ChatRequestProperties.IsReasoningEnabled` (`enterprisegpt.reasoning.enabled`):
-
-```text
-ConversationService                          AzureFoundryChatDefaults
-(provider-agnostic, no SDK reference)        (the only place SDK types live)
-        │                                              ▲
-        └── AdditionalProperties[key] = model.IsReasoningEnabled ──┘
+```csharp
+options.Reasoning = null;
 ```
 
-That channel exists because the two ends cannot see each other's types: everything that decides what a turn asks for is in `Enterprise.Gpt.Service`, which takes no provider SDK reference, and everything that knows how to say it lives beside the client registration in `Enterprise.Gpt.Api`. The key is spelled once, in [`ChatRequestProperties`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatRequestProperties.cs), so neither side can misspell it.
+That is the entire callback, and its unconditional-ness is the point. Without it, a model row here that sets `isReasoningEnabled` would fail **every turn** — and setting that flag on a Foundry-served model is an entirely reasonable mistake, because plenty of Foundry Models do reason. Clearing it in the one place that knows this provider's rule is what makes the mistake harmless instead. `AzureAIFoundryChatClientBridgeTests` pins the absence of `reasoning_effort` on the wire for a reasoning-flagged model, which is the load-bearing assertion in that class.
 
-Two details about the channel:
+**A distinction worth being precise about.** This is a statement about the *request*, not the *response*. Some Foundry Models — DeepSeek-R1 among them — reason regardless and return that content inline over Chat Completions, typically wrapped in `<think>` tags in the message body. Nothing here suppresses that; it simply arrives as answer text rather than as a structured reasoning item. What this provider cannot do is **ask for a structured reasoning summary**, which is what fills the client's reasoning region. A deployment that needs that region filled belongs on the [Azure OpenAI provider](azure-openai.md).
 
-- **It is written on every turn, including when false**, so the reading end can tell "this model does not reason" from "nobody said".
-- **Absent means no.** The reader requires the value to be `true`, so a request assembled anywhere else cannot turn a stray value into a reasoning request the deployment then rejects.
+`ConversationId` is deliberately left alone, and the asymmetry with the Responses callback is instructive: that one must clear it, because the Responses adapter reads any id not beginning with `conv_` as a response id and sends it as `previous_response_id` ([Azure OpenAI §6.1](azure-openai.md#61-chatoptionsconversationid-is-now-a-wire-parameter)). Chat Completions is stateless and the adapter has nowhere to put it, so there is nothing to defend against and nothing to clear. Nor is there any of the storage or encrypted-reasoning handling the Responses path needs — the whole exchange travels in each request because it always did.
 
-> **Known limitation — the column is Azure-only.** Only this provider's client reads the property. The Bedrock and Anthropic clients take their reasoning settings from their own configuration ([Anthropic §5](anthropic.md#5-thinking-and-effort)), so setting `isReasoningEnabled` on a model served by either changes nothing. It is a catalog-wide column with a provider-specific effect, and closing that gap means teaching those two clients to read it.
+## 5. Adding a Foundry-backed model to the catalog
 
-### 5.2 Summary verbosity and effort
+Model CRUD is administrator-only and otherwise unchanged; see [Model Management](model-management.md). What is specific to this provider:
 
-Both are deployment-wide settings, parsed once when the client is built (§4.1) and applied to every reasoning-enabled model.
+- **`providerId`** is `b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45`.
+- **`deploymentName`** is the **Azure deployment name**, not a model family name — it goes into the request's `model` field on the v1 endpoint.
+- **`isReasoningEnabled`** has no effect here. It is not rejected at create time and it is not an error; the request is stripped of reasoning at turn time ([§4](#4-reasoning-is-stripped-and-that-is-the-design)).
+- **`isToolEnabled`** governs whether MCP tools and document retrieval are attached at all, exactly as elsewhere. Function calling works over Chat Completions unchanged; `AsIChatClient_AcrossAToolCall_CompletesTheExchange` pins a full tool round trip against a stub transport.
 
-| `ReasoningSummary` | Effect |
-|---|---|
-| `auto` (default) | The service picks the summary detail. |
-| `concise` | A short summary. |
-| `detailed` | A fuller one. |
-| `none` | **Application-level, not the API's.** No summary is requested at all — the property is left off the request rather than sent with a "none" value, which is how a request declines a summary while still asking the model to reason. This is how a deployment turns summaries off globally without editing every model row. |
+An Azure OpenAI deployment will serve happily from this provider too — Chat Completions accepts it — but it loses reasoning by doing so. Put Azure OpenAI deployments on the [Azure OpenAI provider](azure-openai.md) unless there is a reason not to.
 
-| `ReasoningEffort` | Effect |
-|---|---|
-| `minimal` / `low` | Least reasoning; fastest and cheapest. |
-| `medium` (default) | The balance. |
-| `high` | Most reasoning — deeper answers, more latency, more billed output tokens. |
+## 6. Operational notes
 
-An unknown value in either setting throws `ArgumentOutOfRangeException` from the parser. The validators reject those first, so that throw is unreachable in practice; it exists to make the two vocabularies drifting apart a loud failure rather than a silent default.
+- **The provider row ships as a real migration.** `20260814031023_AddAzureAIFoundryProvider` inserts `b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45` / `AzureAIFoundry` into `Core.Ref.Provider`, and `Database.Migrate()` applies it at startup outside the `Testing` environment. Unlike the Bedrock and Anthropic rows, there is **no manual `INSERT` to remember** — provided the database has an `__EFMigrationsHistory` at all. A database that predates the repository's first migration must be baselined before `Migrate()` can run against it; until then the row is absent and every attempt to create a model here returns 404 "Provider not found".
+- **The row exists whether or not the provider is enabled.** Seeding it is a schema fact; registering a client is a configuration one. A model can therefore be created against a provider this deployment cannot serve — which is the same shape as every other provider, and produces a 503 rather than a 500.
+- **The 503 is what an unconfigured provider looks like.** A turn on a Foundry-backed model with `Enabled` off fails with `/problems/provider-not-configured`; see [Anthropic §9](anthropic.md#9-when-the-provider-is-not-configured--the-503-contract). Two resolver tests cover this specific case, including the one that matters most: the sibling Azure provider on the same endpoint must **not** silently absorb the turn.
+- **Configuration is read once**, at client construction. Changing any `AzureAIFoundry:*` value needs a restart; there is no `IOptionsMonitor` reload path. `Enabled` in particular is read during service registration, so flipping it needs a restart by construction.
+- **MCP tools, streaming, telemetry and token accounting are unchanged.** This provider goes through the same builder chain as the others — `UseOpenTelemetry` → `UseToolTracking` → `UseFunctionInvocation` → the defaults callback — so everything above `IChatClient` behaves identically.
 
-### 5.3 What a reasoning turn puts on the wire
-
-For a model whose row sets the flag, the callback supplies a raw `CreateResponseOptions` carrying:
-
-- `ReasoningOptions` with the configured effort, and the configured summary verbosity unless it is `none`.
-- `IncludedProperties += ReasoningEncryptedContent`. **Stateless mode requires this** (§6.2): with nothing stored service-side, a reasoning item replayed on a later tool iteration is one the service cannot look up, so it has to travel with the request. Without it, a reasoning model rejects its own replayed reasoning item the moment a turn calls a tool.
-
-For every other model the request carries **no reasoning options at all** — not "reasoning switched off", which is a different thing and not what the API offers.
-
-What the user sees is documented on the client side of the contract: reasoning arrives as `ReasoningDelta` frames, is display-only, and is never written to the transcript. See [streaming contract §4.1](../conversations/streaming-contract.md#41-event-kinds).
-
-## 6. Two Responses-API behaviours the swap forced decisions about
-
-These are the two things that are not visible in the diff and that anyone touching this client needs to know. They are also **coupled** — §6.3 — so changing one without the other breaks tool calling.
-
-### 6.1 `ChatOptions.ConversationId` is now a wire parameter
-
-Under Chat Completions this field was inert. The Responses adapter reads it: `OpenAIClientExtensions.IsConversationId` treats an id beginning with `conv_` as a service-side conversation and **anything else as a response id**, which it sends as `previous_response_id`.
-
-`ConversationService` sets `ConversationId` to the conversation's own GUID — it is this application's identifier, and no Azure resource has ever seen it. Left alone, every turn would ask the service to continue a response it never issued.
-
-So the callback clears it: `options.ConversationId = null`. Being innermost is what makes that safe for observability (§3.3) — the telemetry client above has already recorded the id.
-
-### 6.2 The Responses API stores prompts and answers for 30 days by default
-
-Chat Completions stored nothing. The Responses API retains request and response content service-side for 30 days unless told otherwise, so taking the default would have changed this application's privacy posture as a side effect of an unrelated fix.
-
-Every turn is therefore sent with `StoredOutputEnabled = false`. That is a deliberate decision, not an omission: a turn already carries the user's prompt, the project's standing instructions and any retrieved document passages, and the conversation's own transcript in Cosmos DB is the system of record for what was said ([what a turn records](../conversations/usage-and-favorites.md)). Nothing is gained by a second copy in a service store, and the copy would be one nobody in this application can enumerate or delete.
-
-### 6.3 Why the two are coupled
-
-`FunctionInvokingChatClient` sits **above** the callback in the chain (§3.3), and it changes strategy based on what the service hands back:
-
-1. With storage **on**, the service returns its own response id, which the adapter surfaces as the response's `ConversationId`.
-2. The function-invoking client reads that as *"the service is tracking history"*, **drops the local messages**, and sends only the tool result on the next iteration, expecting the service to continue from the id.
-3. Clearing the id (§6.1) removes exactly what that next request needs. It would send a bare `function_call_output` with nothing to attach it to.
-
-So clearing `ConversationId` **without** disabling storage breaks every tool-calling turn from its second iteration — which is to say every turn that calls an MCP server, searches a document, or runs an agent. Disabling storage is what keeps the whole exchange in each request, and that is what makes the clear safe.
-
-[`AzureFoundryChatClientBridgeTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/AzureFoundryChatClientBridgeTests.cs) pins this against a stub transport by driving **two** function-invocation iterations and asserting the second request resends the prompt and the call, not just the orphaned result. The rest of that class pins the wire shape the isolated tests cannot see: `previous_response_id` absent, `store: false`, `reasoning` present only for a flagged model, and the catalog property itself never leaking into the request body.
-
-## 7. Adding a Foundry-backed model to the catalog
-
-Model CRUD is administrator-only and otherwise unchanged; see [Model Management](model-management.md). What is Foundry-specific:
-
-- **`providerId`** is `3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0` — seeded, so unlike the other two providers there is no row to insert by hand.
-- **`deploymentName`** is the **Azure deployment name**, not a model family name — it is what goes into the request's `model` field on the v1 endpoint.
-- **`isReasoningEnabled`** should be `true` only for a deployment that actually supports reasoning (§5.1).
-- **`isToolEnabled`** still governs whether MCP tools and document retrieval are attached at all.
-
-## 8. Operational notes
-
-- **No configuration change is needed to take this release**, unless `AzureAIFoundry:Url` was set to something other than the resource root. A URL carrying `/openai` or `/openai/v1` in its path now fails at startup with a message naming the setting.
-- **Configuration is read once**, at client construction. Changing any `AzureAIFoundry:*` value needs a restart; there is no `IOptionsMonitor` reload path.
-- **The keyed chat client is built lazily**, on first resolution — so anything the validators do not cover surfaces on the first Foundry conversation rather than at boot. That is why the accepted-value sets are shared between the validators and their tests (§4.2).
-- **The catalog column ships as a real migration.** `20260813233326_AddModelIsReasoningEnabled` adds `Core.Ref.Model.IsReasoningEnabled` as `bit NOT NULL DEFAULT 0`, and `Database.Migrate()` at startup applies it outside the `Testing` environment. It is additive and back-compatible: an older build ignores the column.
-- **Embeddings are unaffected** by everything above (§1.1). A turn's chat traffic goes to `…/openai/v1/`, its embedding traffic to the resource root, both authenticated with the same key.
-- **The 503 contract is unchanged.** A model whose provider has no client still fails with `/problems/provider-not-configured`; see [Anthropic §9](anthropic.md#9-when-the-provider-is-not-configured--the-503-contract). For this provider it is close to unreachable, since the client is always registered.
-
-> **The gate is enforced twice, and the second time is not redundant.** `ConversationService` also sets `ChatOptions.Reasoning` — Microsoft.Extensions.AI's own provider-agnostic reasoning request, and the only reason the catalog flag means anything to the Bedrock and Anthropic bridges. The Responses adapter applies it with `result.ReasoningOptions ??= …`, so it fills in exactly the raw options this path deliberately leaves empty: set unconditionally, it would put a `reasoning` block on the wire for a deployment that rejects the whole request for one. So it is written only alongside the catalog flag, **and** the callback clears it when the flag is off. Two enforcement points because they fail differently — the caller's is the correct default, the callback's is what holds when a future call site forgets. A bridge test sets `ChatOptions.Reasoning` on a non-reasoning turn and asserts nothing reaches the wire.
-
-## 9. Key files
+## 7. Key files
 
 | Concern | File |
 |---|---|
 | Provider ids and the provider → DI-key map | [`Enterprise.Gpt.Dto/Enums/Providers.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs) |
-| DI keys | [`Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs) |
-| Settings, endpoint derivation, accepted values | [`Enterprise.Gpt.Service/Settings/AzureAIFoundryOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/AzureAIFoundryOptions.cs) |
-| Per-turn Responses settings (the callback) | [`Enterprise.Gpt.Api/Chat/AzureFoundryChatDefaults.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Chat/AzureFoundryChatDefaults.cs) |
-| The catalog → client channel | [`Enterprise.Gpt.Dto/Enums/ChatRequestProperties.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatRequestProperties.cs) |
-| Client registration, validation, builder chain, embeddings | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
-| Where the flag is put on the request | [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) |
-| Catalog column | [`Enterprise.Gpt.Entity/Model.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs), [`Migrations/20260813233326_AddModelIsReasoningEnabled.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260813233326_AddModelIsReasoningEnabled.cs) |
-| Settings and endpoint tests | [`tests/Enterprise.Gpt.Unit.Test/Settings/AzureAIFoundryOptionsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/AzureAIFoundryOptionsTests.cs) |
-| Per-turn callback tests | [`tests/Enterprise.Gpt.Unit.Test/Chat/AzureFoundryChatDefaultsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/AzureFoundryChatDefaultsTests.cs) |
-| Wire-shape tests against the SDK bridge | [`tests/Enterprise.Gpt.Unit.Test/Chat/AzureFoundryChatClientBridgeTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/AzureFoundryChatClientBridgeTests.cs) |
-| Related reference | [Model Management](model-management.md), [Conversation Streaming Contract](../conversations/streaming-contract.md), [Amazon Bedrock](amazon-bedrock.md), [Anthropic](anthropic.md) |
+| DI keys (`"azure-ai-foundry"`) | [`Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs) |
+| Settings | [`Enterprise.Gpt.Service/Settings/AzureAIFoundryOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/AzureAIFoundryOptions.cs) |
+| Shared URL handling and endpoint derivation | [`Enterprise.Gpt.Service/Settings/AzureV1EndpointOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/AzureV1EndpointOptions.cs) |
+| Per-turn settings (the callback) | [`Enterprise.Gpt.Api/Chat/AzureAIFoundryChatDefaults.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Chat/AzureAIFoundryChatDefaults.cs) |
+| Client registration and validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
+| Provider row | [`Repository/Configurations/ProviderConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProviderConfiguration.cs), [`Migrations/20260814031023_AddAzureAIFoundryProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260814031023_AddAzureAIFoundryProvider.cs) |
+| Settings tests | [`tests/Enterprise.Gpt.Unit.Test/Settings/AzureAIFoundryOptionsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/AzureAIFoundryOptionsTests.cs) |
+| Per-turn callback tests | [`tests/Enterprise.Gpt.Unit.Test/Chat/AzureAIFoundryChatDefaultsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/AzureAIFoundryChatDefaultsTests.cs) |
+| Wire-shape tests against the SDK bridge | [`tests/Enterprise.Gpt.Unit.Test/Chat/AzureAIFoundryChatClientBridgeTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/AzureAIFoundryChatClientBridgeTests.cs) |
+| Related reference | [Azure OpenAI](azure-openai.md), [Model Management](model-management.md), [Amazon Bedrock](amazon-bedrock.md), [Anthropic](anthropic.md) |
 
-## 10. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| App refuses to start: `AzureAIFoundry:Url must be the resource root…` | The configured URL already carries `/openai` or `/openai/v1` | Set it to the resource root; the client appends the path (§3.2) |
-| App refuses to start: `AzureAIFoundry:Url must be an absolute http or https URI…` | Blank, relative, or a non-HTTP scheme | Supply the full `https://…` root. This used to be a `UriFormatException` on the first conversation (§4.2) |
-| App refuses to start: `AzureAIFoundry:ReasoningEffort must be one of…` | A value from another provider's vocabulary — Anthropic's `xhigh`/`max` are not accepted here | Use `minimal`, `low`, `medium`, or `high` (§5.2) |
-| 404 from the provider on every turn, naming no setting | The v1 path reached the wire twice | The resource-root validator covers the configured value; check for a proxy rewriting the path (§3.2) |
-| The reasoning region never appears for a model | `isReasoningEnabled` is `false` on its catalog row, or `ReasoningSummary` is `none` | Set the flag (§5.1); check the setting (§5.2) |
-| The provider rejects every turn on a model, with reasoning requested | The deployment does not support reasoning, but the flag is set — or the known issue in §8 is in play | Clear `isReasoningEnabled`; see §8 |
-| Every tool-calling turn fails from its second iteration | `StoredOutputEnabled` was turned on, or the `ConversationId` clear was removed, without the other | Keep both, or neither (§6.3) |
-| A reasoning model fails as soon as a turn calls a tool | `ReasoningEncryptedContent` is not being included | It is required by stateless mode (§5.3) |
-| Document search quality drops after a configuration change | `EmbeddingModel` was changed | Re-ingest every document; stored vectors are only comparable to vectors from the same deployment (§4.1) |
-| Turns work but no LLM spans reach Application Insights | The telemetry source name drifted from `TelemetryRegistration.ChatTelemetrySourceName` | Both ends must register the same name (§3.3) |
+| App refuses to start naming `AzureOpenAI:…` after an upgrade | The *other* provider's section was renamed out of `AzureAIFoundry:*` in this release | Re-key it — [Azure OpenAI §8](azure-openai.md#8-upgrading-from-the-previous-release--the-configuration-rename) |
+| App refuses to start: `AzureAIFoundry:ApiKey is required when AzureAIFoundry:Enabled is true.` | The section is half filled | Supply all three settings, or set `Enabled` to `false` ([§3.2](#32-startup-validation)) |
+| 503 `/problems/provider-not-configured` on every turn on one model | `AzureAIFoundry:Enabled` is off in this deployment, but a model row points here | Enable the provider, or move the model to another one ([§6](#6-operational-notes)) |
+| 404 "Provider not found" when creating a model | The provider row is missing — a database that predates the repository's migrations | Baseline the database so `Migrate()` can apply `20260814031023_AddAzureAIFoundryProvider` ([§6](#6-operational-notes)) |
+| The reasoning region is always empty for a model served here | By design — this surface cannot request a reasoning summary | Move the model to the [Azure OpenAI provider](azure-openai.md) ([§4](#4-reasoning-is-stripped-and-that-is-the-design)) |
+| The answer contains `<think>…</think>` text | The model reasons inline over Chat Completions; this is response content, not a structured reasoning item | Expected ([§4](#4-reasoning-is-stripped-and-that-is-the-design)). Move the model to Azure OpenAI if the reasoning belongs in its own region |
+| 404 from the provider on every turn, naming no setting | The v1 path reached the wire twice | The resource-root validator covers the configured value; check for a proxy rewriting the path |

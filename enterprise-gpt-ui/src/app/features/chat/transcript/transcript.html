@@ -25,6 +25,11 @@
     @case ('user') {
       <div class="transcript__user-row">
         <div class="transcript__bubble">{{ entry.text }}</div>
+        <!-- US-607. Only the settled prompt gets one: the optimistic bubble
+             below is mid-turn, and the criterion is about a completed turn. -->
+        <div class="transcript__user-footer">
+          <app-message-copy [text]="entry.text" subject="prompt" />
+        </div>
       </div>
     }
     @case ('assistant') {
@@ -55,6 +60,10 @@
 @if (turn.pendingUserText(); as pending) {
   <div class="transcript__user-row">
     <div class="transcript__bubble">{{ pending }}</div>
+    <!-- Empty, and deliberately not a Copy control: the turn is not complete.
+         It is here so the row is the same height it will be once it settles,
+         rather than growing under the reader at the moment the answer lands. -->
+    <div class="transcript__user-footer"></div>
   </div>
 }
 

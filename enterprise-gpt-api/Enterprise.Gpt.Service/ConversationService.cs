@@ -1104,8 +1104,12 @@ namespace Enterprise.Gpt.Service
             // The catalog's per-model reasoning flag, on two channels because they reach different
             // providers.
             //
-            // The property is the gate the Azure AI Foundry client reads, and it is set even when
-            // false so that client can tell "this model does not reason" from "nobody said".
+            // The property is the gate the Azure OpenAI client reads, and it is set even when false
+            // so that client can tell "this model does not reason" from "nobody said". The Azure AI
+            // Foundry client — Chat Completions on the same resource — reads neither channel and
+            // clears `Reasoning` outright, because reasoning is a Responses-API feature; that is
+            // what makes a reasoning-flagged model pointed at that provider harmless rather than a
+            // rejected request on every turn.
             //
             // `Reasoning` is Microsoft.Extensions.AI's own provider-agnostic request, which the
             // Bedrock and Anthropic bridges understand and which is the only reason this flag means

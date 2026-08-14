@@ -8,7 +8,15 @@
 // Because every colour below is a custom property, a theme change re-tints the code
 // block on the identical paint as `data-bs-theme` flipping — no second stylesheet, no
 // `<link>` toggle, no script, and no frame where the old palette is still on screen.
-// prismjs stays a dependency for tokenising; only its themes go unused.
+// prismjs stays a dependency for tokenising; only its themes go unused, and
+// `scripts/check-forbidden-apis.mjs` fails the build if one is ever imported.
+//
+// With no light variant to fall back to, every value here has to be legible on a dark
+// surface on its own merits. `scripts/check-tokens.mjs` measures each of them against
+// `--code-bg` in both theme maps and fails below 4.5:1, so a palette edit is told which
+// colour it broke rather than shipping one that only looks right in the editor. It also
+// fails on a `var(--code-*)` added here that it does not know how to measure, so the
+// gate cannot silently fall behind the stylesheet.
 pre[class*='language-'],
 code[class*='language-'] {
   background: var(--code-bg);

@@ -49,7 +49,10 @@ describe('Transcript', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        provideTestAppConfig(),
+        // Pinned off rather than inherited from `public/config.json`: these specs
+        // render fences and answers, and a deployment that switches diagrams or
+        // math on would otherwise have them reach for a library jsdom cannot run.
+        provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: fetchMock },
@@ -455,6 +458,47 @@ describe('Transcript', () => {
       await settle();
 
       expect(writeText).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('copying a prompt (US-607)', () => {
+    it('puts the prompt on the clipboard from the settled user bubble', async () => {
+      await streamFullTurn();
+
+      const footer = host.querySelector('.transcript__user-footer');
+      expect(footer).not.toBeNull();
+      footer?.querySelector<HTMLButtonElement>('button')?.click();
+      await settle();
+
+      expect(writeText).toHaveBeenCalledExactlyOnceWith('What is the weather?');
+    });
+
+    it('offers nothing on the optimistic bubble, which is mid-turn', async () => {
+      await startTurn();
+
+      // The prompt is on screen but the turn is not complete, so the row is the
+      // pending bubble rather than a settled entry — and the criterion is about
+      // a completed turn. The footer element is there and empty, holding the
+      // height the row will keep once it settles.
+      expect(host.querySelector('.transcript__bubble')?.textContent).toBe('What is the weather?');
+      expect(host.querySelector('.transcript__user-footer')).not.toBeNull();
+      expect(host.querySelector('.transcript__user-footer app-message-copy')).toBeNull();
+    });
+
+    it('serves the prompt control itself, not the delegated code listener', async () => {
+      await streamFullTurn();
+
+      // Both live inside the transcript host, and the delegated listener matches
+      // on `.md-code__copy`. A prompt control reaching it would copy nothing —
+      // there is no `.md-code` wrapper above it to read a block from — and a
+      // control served by both would copy twice and announce a code block.
+      const button = host.querySelector<HTMLButtonElement>('.transcript__user-footer button');
+      expect(button).not.toBeNull();
+      button?.click();
+      await settle();
+
+      expect(writeText).toHaveBeenCalledExactlyOnceWith('What is the weather?');
+      expect(host.querySelector('.transcript__copy-status')?.textContent).toBe('');
     });
   });
 

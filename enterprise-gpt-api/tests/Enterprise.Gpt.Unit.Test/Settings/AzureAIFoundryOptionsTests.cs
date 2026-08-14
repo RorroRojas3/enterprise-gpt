@@ -1,83 +1,58 @@
-﻿using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Settings;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Settings;
 
 /// <summary>
-/// Covers the predicates <c>Program.cs</c> wires as startup validators, and the endpoint the chat
-/// client is built against.
+/// Covers what the Azure AI Foundry section adds over the shared v1-endpoint behaviour, and pins
+/// that it actually inherits that behaviour.
 /// </summary>
+/// <remarks>
+/// The URL predicates themselves are exercised in depth by <see cref="AzureOpenAIOptionsTests"/>,
+/// against the same <see cref="AzureV1EndpointOptions"/> base. Repeating every theory here would
+/// duplicate the table without testing anything new — what these cover is the derivation being
+/// wired at all, which a refactor that gave this type its own copy of the logic would break.
+/// </remarks>
 public sealed class AzureAIFoundryOptionsTests
 {
-    [Theory]
-    [InlineData("https://test.services.ai.azure.com/", "https://test.services.ai.azure.com/openai/v1/")]
-    [InlineData("https://test.openai.azure.com/", "https://test.openai.azure.com/openai/v1/")]
-    // Azure documents both hosts, and a resource root copied out of the portal often lacks the
-    // trailing slash — without one, resolving a relative path replaces the last segment instead of
-    // extending it, which is the difference between /openai/v1/ and /.
-    [InlineData("https://test.services.ai.azure.com", "https://test.services.ai.azure.com/openai/v1/")]
-    public void V1Endpoint_FromAResourceRoot_AppendsTheOpenAIV1Path(string url, string expected)
+    [Fact]
+    public void V1Endpoint_FromAResourceRoot_AppendsTheOpenAIV1Path()
     {
-        var options = new AzureAIFoundryOptions { Url = url };
+        var options = new AzureAIFoundryOptions { Url = "https://test.services.ai.azure.com" };
 
-        Assert.Equal(expected, options.V1Endpoint.ToString());
-    }
-
-    [Theory]
-    [InlineData("https://test.services.ai.azure.com/", true)]
-    [InlineData("http://localhost:8080/", true)]
-    [InlineData("", false)]
-    [InlineData("   ", false)]
-    [InlineData("test.services.ai.azure.com", false)]
-    [InlineData("ftp://test.services.ai.azure.com/", false)]
-    public void IsUrlAbsolute_AcceptsOnlyAnAbsoluteHttpUri(string url, bool expected)
-    {
-        Assert.Equal(expected, new AzureAIFoundryOptions { Url = url }.IsUrlAbsolute);
-    }
-
-    [Theory]
-    [InlineData("https://test.services.ai.azure.com/", true)]
-    // Configuring the v1 endpoint rather than the root would have it appended twice, and the 404
-    // that produces names neither the setting nor the cause.
-    [InlineData("https://test.services.ai.azure.com/openai/v1/", false)]
-    [InlineData("https://test.services.ai.azure.com/OpenAI/V1", false)]
-    // The host of a classic Azure OpenAI resource contains "openai"; only the path may not.
-    [InlineData("https://test.openai.azure.com/", true)]
-    // Half the path repeated is the same 404 as all of it.
-    [InlineData("https://test.services.ai.azure.com/openai", false)]
-    public void IsUrlResourceRoot_RejectsAUrlThatAlreadyCarriesTheV1Path(string url, bool expected)
-    {
-        Assert.Equal(expected, new AzureAIFoundryOptions { Url = url }.IsUrlResourceRoot);
-    }
-
-    [Theory]
-    [InlineData("auto", true)]
-    [InlineData("detailed", true)]
-    [InlineData("none", false)]
-    [InlineData("None", false)]
-    public void IsReasoningSummaryRequested_TreatsOnlyNoneAsDeclining(string summary, bool expected)
-    {
-        var options = new AzureAIFoundryOptions { ReasoningSummary = summary };
-
-        Assert.Equal(expected, options.IsReasoningSummaryRequested);
+        Assert.Equal("https://test.services.ai.azure.com/openai/v1/", options.V1Endpoint.ToString());
     }
 
     [Fact]
-    public void V1Endpoint_WithNoUrl_ThrowsRatherThanBuildingANonsenseEndpoint()
+    public void UrlPredicates_AreInheritedFromTheSharedBase()
     {
-        // The validator rejects this first; the throw is what stops a caller that skipped it from
-        // getting a client pointed at nowhere.
-        Assert.Throws<UriFormatException>(() => new AzureAIFoundryOptions { Url = "" }.V1Endpoint);
+        Assert.True(new AzureAIFoundryOptions { Url = "https://test.openai.azure.com/" }.IsUrlAbsolute);
+        Assert.False(new AzureAIFoundryOptions { Url = "test.services.ai.azure.com" }.IsUrlAbsolute);
+        Assert.False(new AzureAIFoundryOptions { Url = "https://test.services.ai.azure.com/openai/v1/" }.IsUrlResourceRoot);
     }
 
+    /// <summary>
+    /// Off by default is what lets an existing deployment upgrade without adding a section, and what
+    /// makes a model row on this provider fail with a 503 rather than resolving to nothing.
+    /// </summary>
     [Fact]
-    public void Defaults_AskForAnAutomaticSummaryAtMediumEffort()
+    public void Enabled_DefaultsToOff()
     {
-        var options = new AzureAIFoundryOptions();
+        Assert.False(new AzureAIFoundryOptions().Enabled);
+    }
 
-        // Cast because FrozenSet satisfies both ISet and IReadOnlySet, which makes the Assert
-        // overload ambiguous.
-        Assert.Contains(options.ReasoningSummary, (ISet<string>)AzureAIFoundryOptions.ReasoningSummaries);
-        Assert.Contains(options.ReasoningEffort, (ISet<string>)AzureAIFoundryOptions.ReasoningEfforts);
+    /// <summary>
+    /// Reasoning is a Responses-API feature, so this provider carries no reasoning settings at all —
+    /// the absence is the contract, and <c>AzureAIFoundryChatDefaults</c> enforces it at request
+    /// time. A property added here later would be a signal that the enforcement moved.
+    /// </summary>
+    [Fact]
+    public void Options_CarryNoReasoningSettings()
+    {
+        var names = typeof(AzureAIFoundryOptions)
+            .GetProperties()
+            .Select(property => property.Name);
+
+        Assert.DoesNotContain(names, name => name.Contains("Reasoning", StringComparison.Ordinal));
     }
 }

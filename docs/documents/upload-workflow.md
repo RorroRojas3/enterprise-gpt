@@ -259,7 +259,9 @@ A chunk's `SourceNumber` is **the source number of the first unit it contains** 
 
 ### 5.4 Tokenizer selection
 
-The tokenizer comes from `TiktokenTokenizer.CreateForModel(AzureAIFoundry:EmbeddingModel)`. Azure OpenAI addresses models by *deployment* name, which is whatever the deployment's creator chose and often is not a model identifier the tokenizer library knows — so an unrecognised name falls back to the **`cl100k_base`** encoding (used by the `text-embedding-3-*` and `ada-002` families) and logs which path it took. Token counts are therefore approximate only if you deploy a model outside those families under an unrecognised alias.
+The tokenizer comes from `TiktokenTokenizer.CreateForModel(AzureOpenAI:EmbeddingModel)`. Azure OpenAI addresses models by *deployment* name, which is whatever the deployment's creator chose and often is not a model identifier the tokenizer library knows — so an unrecognised name falls back to the **`cl100k_base`** encoding (used by the `text-embedding-3-*` and `ada-002` families) and logs which path it took. Token counts are therefore approximate only if you deploy a model outside those families under an unrecognised alias.
+
+The chunker reads that name from the **validated** `IOptions<AzureOpenAIOptions>`, not from `IConfiguration` by key. That distinction matters because the two failures look alike and are not: an unrecognised *deployment alias* is the benign case above, while a missing or mistyped *setting* used to slip through the same fallback and chunk every document against a tokenizer nobody chose. The startup validator now rejects a blank `AzureOpenAI:EmbeddingModel` before the chunker is ever constructed.
 
 ## 6. Embeddings
 
@@ -268,7 +270,7 @@ The tokenizer comes from `TiktokenTokenizer.CreateForModel(AzureAIFoundry:Embedd
 Two invariants:
 
 - **Positional alignment is verified.** Vectors are matched to chunks by index, so a short or padded response would silently attach the wrong embedding to every chunk after the gap. A batch whose returned count differs from its input count throws `InvalidOperationException`, failing the job.
-- **Dimension is fixed by the column.** `Embedding` is `SqlVector<float>` mapped to `vector(1536)` ([`BaseDocumentChunk`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/BaseDocumentChunk.cs)). SQL Server rejects any other length, and no `dimensions` option is passed to the generator, so the deployment behind `AzureAIFoundry:EmbeddingModel` **must natively return 1536-dimension vectors** (for example `text-embedding-3-small` or `text-embedding-ada-002`). Moving to a model of a different width is a schema change, not a config change.
+- **Dimension is fixed by the column.** `Embedding` is `SqlVector<float>` mapped to `vector(1536)` ([`BaseDocumentChunk`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/BaseDocumentChunk.cs)). SQL Server rejects any other length, and no `dimensions` option is passed to the generator, so the deployment behind `AzureOpenAI:EmbeddingModel` **must natively return 1536-dimension vectors** (for example `text-embedding-3-small` or `text-embedding-ada-002`). Moving to a model of a different width is a schema change, not a config change.
 
 Embeddings are generated for the chunk text exactly as stored — there is no "EMPTY PAGE" placeholder any more, because empty segments never become chunks.
 
@@ -411,8 +413,8 @@ Keys outside the `Documents` section that ingestion depends on — none of them 
 | `DocumentIntelligence:AnalysisTimeout` | [`DocumentIntelligenceService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentIntelligenceService.cs) | Optional `TimeSpan`, default `00:10:00`. Caps the poll loop: an analysis that never reaches a terminal state would otherwise hold one of the few background-processing slots until the host restarts, and its job would never become terminal so its snapshot would never be evicted either. Exceeding it fails the job with a timeout |
 | `AzureStorage:ConnectionString` | `BlobServiceClient` | |
 | `AzureStorage:DocumentsContainer` | `DocumentService.StoreAsync` | The container **must already exist** — nothing creates it |
-| `AzureAIFoundry:Url`, `:ApiKey` | embedding client in `Program.cs` | |
-| `AzureAIFoundry:EmbeddingModel` | embedding client **and** `TokenTextChunker` | Must be a 1536-dimension model (§6); also selects the tokenizer (§5.4) |
+| `AzureOpenAI:Url`, `:ApiKey` | embedding client in `Program.cs` | Validated at startup. **Renamed** from `AzureAIFoundry:*` — see [Azure OpenAI §8](../models/azure-openai.md#8-upgrading-from-the-previous-release--the-configuration-rename) |
+| `AzureOpenAI:EmbeddingModel` | embedding client **and** `TokenTextChunker` | Must be a 1536-dimension model (§6); also selects the tokenizer (§5.4). Validated at startup |
 | `Permissions:Cache:EntryLifetime` | [`UserPermissionCache`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs), behind the `Upload File` gate (§3.1) | `TimeSpan`, default `00:05:00`, validated at startup. How long a revoked `Upload File` grant can still be honoured on an instance that did not serve the revoke — see [Permission Cache](../permissions/permission-cache.md) |
 
 The repository's [`appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) ships only the `Documents` and `BackgroundJobs` sections — the Azure sections come from user secrets or environment configuration. Per the repo standard, prefer Key Vault or a managed identity over API keys in any deployed environment.
@@ -478,7 +480,7 @@ VALUES
 
 **Chunks are read.** The `document_search` tool runs a hybrid `VECTOR_DISTANCE` + keyword search over `Core.ConversationDocumentChunk` (and its project sibling) on every turn where the conversation has documents, so uploading a document now changes the answers a user gets. Everything this pipeline records is what that layer consumes: provenance becomes the citation, the 128-token overlap is what lets adjacent chunks merge into one passage without repeating themselves, and the 1536-dimension column is the width the query vector must match.
 
-Two consequences for anyone changing ingestion: altering `Documents:Chunking` changes how much context each answer is grounded in, and changing `AzureAIFoundry:EmbeddingModel` invalidates every stored embedding — documents ingested under the old model must be re-uploaded, and `Documents:Retrieval:MaxDistance` needs re-tuning.
+Two consequences for anyone changing ingestion: altering `Documents:Chunking` changes how much context each answer is grounded in, and changing `AzureOpenAI:EmbeddingModel` invalidates every stored embedding — documents ingested under the old model must be re-uploaded, and `Documents:Retrieval:MaxDistance` needs re-tuning.
 
 [Document Retrieval (RAG)](retrieval.md) is the full reference. Outside ingestion and retrieval, the only other code that touches `ConversationDocumentChunks` is the soft-delete cascade in `ConversationService.DeactivateConversationAsync` / `DeactivateConversationsBulkAsync`.
 

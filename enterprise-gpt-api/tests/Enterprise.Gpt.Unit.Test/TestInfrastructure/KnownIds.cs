@@ -19,6 +19,11 @@ public static class KnownIds
     public static readonly Guid SeedProviderId = Providers.AzureOpenAI;
 
     /// <summary>
+    /// The Azure AI Foundry provider seeded by <c>ProviderConfiguration</c>.
+    /// </summary>
+    public static readonly Guid SeedFoundryProviderId = Providers.AzureAIFoundry;
+
+    /// <summary>
     /// The Amazon Bedrock provider seeded by <c>ProviderConfiguration</c>.
     /// </summary>
     public static readonly Guid SeedBedrockProviderId = Providers.AmazonBedrock;

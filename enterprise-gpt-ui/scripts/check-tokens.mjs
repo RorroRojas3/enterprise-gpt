@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-// Asserts that the design tokens in the app still match the design bundle, and that
-// the colours duplicated into index.html's pre-paint shell still match the tokens.
-// US-105.
+// Asserts that the design tokens in the app still match the design bundle, that the
+// colours duplicated into index.html's pre-paint shell still match the tokens, and
+// that the code surface stays legible in both themes. US-105 / US-604.
 //
 // This is the acceptance criterion made executable: "the [data-bs-theme=light] and
 // [data-bs-theme=dark] blocks carry the same custom properties with the same values".
+//
+// The contrast section at the end is US-604's. That story has no light Prism variant
+// to swap to — the board fixes --code-bg dark in both themes — so what makes its
+// "legible in dark mode" criterion true is the palette itself, and a criterion that
+// is only true by inspection is a criterion that drifts. Measuring it here is what
+// tells a future palette edit which colour it broke, and by how much.
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -158,11 +164,145 @@ if (!serviceKey || serviceKey !== scriptKey) {
   );
 }
 
+// US-604. The code surface is dark in *both* themes by design, so nothing about it
+// flips and no light variant exists to swap to — which means the whole of the story's
+// legibility criterion rests on this palette. Both surfaces are measured because
+// --code-bg and --code-head differ between the two maps even though the text on them
+// does not.
+//
+// `over` is the state the element is actually in when it matters: the head bar's
+// controls sit on a white 8% wash while hovered or confirming (_markdown.scss), and
+// measuring the unhovered case alone would report a margin the user never has.
+const TEXT_MINIMUM = 4.5;
+const NON_TEXT_MINIMUM = 3;
+const HOVER_WASH = { colour: '#ffffff', alpha: 0.08 };
+
+const CONTRAST_PAIRS = [
+  { background: 'code-bg', foregrounds: ['code-fg'], minimum: TEXT_MINIMUM },
+  {
+    background: 'code-bg',
+    foregrounds: [
+      'code-comment',
+      'code-punct',
+      'code-keyword',
+      'code-string',
+      'code-number',
+      'code-function',
+    ],
+    minimum: TEXT_MINIMUM,
+  },
+  {
+    background: 'code-head',
+    foregrounds: ['code-head-fg', 'code-head-muted'],
+    minimum: TEXT_MINIMUM,
+  },
+  {
+    background: 'code-head',
+    over: HOVER_WASH,
+    foregrounds: ['code-head-fg', 'code-head-muted'],
+    minimum: TEXT_MINIMUM,
+  },
+  // SC 1.4.11: the focus ring on the Copy control and the streaming caret are both
+  // --accent on a code surface, and neither is text. The page's --focus-ring is the
+  // wrong token here, which _markdown.scss says in prose — this is that claim
+  // measured.
+  { background: 'code-head', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
+  { background: 'code-bg', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
+];
+
+/** WCAG 2.1 relative luminance of a `#rrggbb` value. */
+function luminance(hex) {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrast(foreground, background) {
+  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** The opaque colour a translucent `wash` resolves to over `base`. */
+function composite(base, wash) {
+  const channels = [1, 3, 5].map((offset) => {
+    const under = parseInt(base.slice(offset, offset + 2), 16);
+    const over = parseInt(wash.colour.slice(offset, offset + 2), 16);
+    return Math.round(over * wash.alpha + under * (1 - wash.alpha));
+  });
+  return '#' + channels.map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+const HEX = /^#[0-9a-f]{6}$/;
+const palette = {
+  light: new Map([...actual.light, ...mapEntries(tokensScss, 'extra-light')]),
+  dark: new Map([...actual.dark, ...mapEntries(tokensScss, 'extra-dark')]),
+};
+
+/** Reports a value this check cannot measure, which is a gap in the gate, not a token defect. */
+function unmeasurable(theme, name, value) {
+  return (
+    `${theme}: --${name} is ${value ?? 'missing'}, which this check cannot measure — ` +
+    `it reads six-digit hex only. Widen the parser in check-tokens.mjs.`
+  );
+}
+
+for (const theme of ['light', 'dark']) {
+  for (const { background, foregrounds, minimum, over } of CONTRAST_PAIRS) {
+    const backgroundValue = palette[theme].get(background);
+    if (!HEX.test(backgroundValue ?? '')) {
+      problems.push(unmeasurable(theme, background, backgroundValue));
+      continue;
+    }
+
+    const surface = over === undefined ? backgroundValue : composite(backgroundValue, over);
+    const surfaceName = over === undefined ? `--${background}` : `--${background} + hover wash`;
+
+    for (const foreground of foregrounds) {
+      const foregroundValue = palette[theme].get(foreground);
+      if (!HEX.test(foregroundValue ?? '')) {
+        problems.push(unmeasurable(theme, foreground, foregroundValue));
+        continue;
+      }
+
+      const ratio = contrast(foregroundValue, surface);
+      if (ratio < minimum) {
+        problems.push(
+          `${theme}: --${foreground} ${foregroundValue} on ${surfaceName} ${surface} ` +
+            `measures ${ratio.toFixed(2)}:1, below the ${minimum}:1 WCAG 2.1 AA minimum`,
+        );
+      }
+    }
+  }
+}
+
+// The list above is hand-written, so a stylesheet that repointed `.token.keyword` at
+// a different token would leave the gate measuring one nothing renders. Every
+// `--code-*` the two code stylesheets consume has to appear in it.
+const gated = new Set(
+  CONTRAST_PAIRS.flatMap(({ background, foregrounds }) => [background, ...foregrounds]),
+);
+for (const file of ['_prism.scss', '_markdown.scss']) {
+  const source = readFileSync(join(UI_ROOT, 'src', 'styles', file), 'utf8');
+  for (const [, name] of source.matchAll(/var\(--(code-[\w-]+)\)/g)) {
+    if (!gated.has(name)) {
+      problems.push(
+        `${file} renders --${name} on the code surface, but CONTRAST_PAIRS does not measure it`,
+      );
+    }
+  }
+}
+
 if (problems.length > 0) {
   die(...problems, '', `tokens:   ${TOKENS}`, `design:   ${THEME_CSS}`, `shell:    ${INDEX}`);
 }
 
+const measured =
+  CONTRAST_PAIRS.reduce((count, { foregrounds }) => count + foregrounds.length, 0) * 2;
+
 console.log(
   `tokens OK — ${expected.light.size} light and ${expected.dark.size} dark properties match ` +
-    `theme.css, and the pre-paint shell matches the tokens`,
+    `theme.css, the pre-paint shell matches the tokens, and ${measured} code-surface pairs ` +
+    `clear their WCAG minimum`,
 );

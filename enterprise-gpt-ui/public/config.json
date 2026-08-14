@@ -8,8 +8,8 @@
     "apiScopes": ["api://b40defa0-5309-45c4-82fc-cb284010cc10/access_as_user"]
   },
   "features": {
-    "diagrams": false,
-    "math": false,
+    "diagrams": true,
+    "math": true,
     "rawStreamCodec": false
   }
 }

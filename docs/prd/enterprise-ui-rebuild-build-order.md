@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 42 / 94 done.** Current position: P4, `US-604` — EP-5 is complete; what remains of the phase is EP-6's code theming, deferred loading, and message-level copy.
+**Progress: 46 / 94 done.** Current position: P5, `US-702` — P4 is complete, EP-6 with it, and P5 has opened with US-701's conversations library.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -14,56 +14,56 @@ Within a phase, stories on the same table row have no ordering constraint betwee
 
 ## P1 — Foundation · ✅ complete
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 1 | US-101 `[enabler]` Scaffold the zoneless Angular 21 workspace | — | P0 | ✅ 2026-08-09 |
-| 2 | US-102 `[enabler]` Load configuration at runtime before bootstrap | US-101 | P0 | ✅ 2026-08-09 |
-| 3 | US-103 `[enabler]` Type and normalize every API error | US-101 | P0 | ✅ 2026-08-09 |
-| 4 | US-104 `[enabler]` Build the reusable signal-store features | US-101 | P0 | ✅ 2026-08-09 |
-| 5 | US-107 `[enabler]` Vendor the Andes streaming contract with a drift check | US-101 | P0 | ✅ 2026-08-10 |
-| 6 | US-108 `[enabler]` Enforce lint rules and bundle budgets in the build | US-101 | P0 | ✅ 2026-08-10 |
-| 7 | US-109 `[enabler]` Ship the brand assets, type scale, and icon set | US-101 | P0 | ✅ 2026-08-10 |
-| 8 | US-105 Switch between light and dark without a flash | US-101, US-109 | P0 | ✅ 2026-08-10 |
-| 9 | US-106 `[enabler]` Build the shared UI kit | US-101, US-105, US-109 | P0 | ✅ 2026-08-10 |
+| Order | Story                                                                     | Depends on             | Pri | Status        |
+| ----- | ------------------------------------------------------------------------- | ---------------------- | --- | ------------- |
+| 1     | US-101 `[enabler]` Scaffold the zoneless Angular 21 workspace             | —                      | P0  | ✅ 2026-08-09 |
+| 2     | US-102 `[enabler]` Load configuration at runtime before bootstrap         | US-101                 | P0  | ✅ 2026-08-09 |
+| 3     | US-103 `[enabler]` Type and normalize every API error                     | US-101                 | P0  | ✅ 2026-08-09 |
+| 4     | US-104 `[enabler]` Build the reusable signal-store features               | US-101                 | P0  | ✅ 2026-08-09 |
+| 5     | US-107 `[enabler]` Vendor the Andes streaming contract with a drift check | US-101                 | P0  | ✅ 2026-08-10 |
+| 6     | US-108 `[enabler]` Enforce lint rules and bundle budgets in the build     | US-101                 | P0  | ✅ 2026-08-10 |
+| 7     | US-109 `[enabler]` Ship the brand assets, type scale, and icon set        | US-101                 | P0  | ✅ 2026-08-10 |
+| 8     | US-105 Switch between light and dark without a flash                      | US-101, US-109         | P0  | ✅ 2026-08-10 |
+| 9     | US-106 `[enabler]` Build the shared UI kit                                | US-101, US-105, US-109 | P0  | ✅ 2026-08-10 |
 
 US-109 sits ahead of US-105 and US-106 despite its number: it ships the assets both of them consume.
 
 ## P2 — Signed-in shell · ✅ complete
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 10 | US-201 Sign in with Entra ID | US-102 | P0 | ✅ 2026-08-11 |
-| 11 | US-202 Bootstrap the session from the current user | US-201, US-104 | P0 | ✅ 2026-08-11 |
-| 12 | US-203 Keep the admin area off non-admin devices | US-202 | P0 | ✅ 2026-08-11 |
-| 13 | US-204 Gate upload affordances on the Upload File permission | US-202 | P1 | ✅ 2026-08-11 — primitives only; frame `2h` re-asserts under US-801 |
-| 14 | US-205 Sign out and leave nothing behind | US-202, US-104 | P0 | ✅ 2026-08-11 |
-| 15 | US-302 See my recent conversations | US-202, US-104 | P0 | ✅ 2026-08-11 — with the shell that hosts the sidebar |
-| — | ⛔ **Pattern gate** — review `ConversationListStore` before any second list store | | | ✅ reviewed 2026-08-11 |
-| 16 | US-301 Collapse the sidebar and have it stay collapsed | US-106 | P0 | ✅ 2026-08-11 |
-| 17 | US-303 Start a new conversation without creating one | US-302 | P0 | ✅ 2026-08-11 — prompt chips deferred to US-401 |
-| 18 | US-304 Rename a conversation without unlinking it | US-302, US-106 | P0 | ✅ 2026-08-11 — first Signal Form; row kebab ships Rename-only |
-| 19 | US-306 Delete a conversation | US-302, US-106 | P0 | ✅ 2026-08-11 — optimistic removal, navigation on the 204 |
-| 20 | US-308 Act on the open conversation from its header | US-302 | P1 | ✅ 2026-08-11 — ⚠ shipped per the note below |
+| Order | Story                                                                             | Depends on     | Pri | Status                                                              |
+| ----- | --------------------------------------------------------------------------------- | -------------- | --- | ------------------------------------------------------------------- |
+| 10    | US-201 Sign in with Entra ID                                                      | US-102         | P0  | ✅ 2026-08-11                                                       |
+| 11    | US-202 Bootstrap the session from the current user                                | US-201, US-104 | P0  | ✅ 2026-08-11                                                       |
+| 12    | US-203 Keep the admin area off non-admin devices                                  | US-202         | P0  | ✅ 2026-08-11                                                       |
+| 13    | US-204 Gate upload affordances on the Upload File permission                      | US-202         | P1  | ✅ 2026-08-11 — primitives only; frame `2h` re-asserts under US-801 |
+| 14    | US-205 Sign out and leave nothing behind                                          | US-202, US-104 | P0  | ✅ 2026-08-11                                                       |
+| 15    | US-302 See my recent conversations                                                | US-202, US-104 | P0  | ✅ 2026-08-11 — with the shell that hosts the sidebar               |
+| —     | ⛔ **Pattern gate** — review `ConversationListStore` before any second list store |                |     | ✅ reviewed 2026-08-11                                              |
+| 16    | US-301 Collapse the sidebar and have it stay collapsed                            | US-106         | P0  | ✅ 2026-08-11                                                       |
+| 17    | US-303 Start a new conversation without creating one                              | US-302         | P0  | ✅ 2026-08-11 — prompt chips deferred to US-401                     |
+| 18    | US-304 Rename a conversation without unlinking it                                 | US-302, US-106 | P0  | ✅ 2026-08-11 — first Signal Form; row kebab ships Rename-only      |
+| 19    | US-306 Delete a conversation                                                      | US-302, US-106 | P0  | ✅ 2026-08-11 — optimistic removal, navigation on the 204           |
+| 20    | US-308 Act on the open conversation from its header                               | US-302         | P1  | ✅ 2026-08-11 — ⚠ shipped per the note below                        |
 
-US-302 leads the phase on two counts: US-303, US-304, US-306, and US-308 all hang off it, and the PRD's risk table requires it be reviewed as a *pattern decision* before the 15 stores that copy it exist. US-301 needs only US-106, so it can run alongside.
+US-302 leads the phase on two counts: US-303, US-304, US-306, and US-308 all hang off it, and the PRD's risk table requires it be reviewed as a _pattern decision_ before the 15 stores that copy it exist. US-301 needs only US-106, so it can run alongside.
 
 ⚠ **US-308 was scheduled ahead of its own criteria, and shipped that way.** §8 places it in P2, but its header star routed through US-305 (P4) and two of its four kebab items through US-307 (P5); the 52px header bar shipped with those controls absent, per this note. Its sub-768px mobile-navbar criterion was additionally deferred to US-1403 on 2026-08-11 — frame `1d`'s hamburger opens frame `3e`'s sidebar overlay, which does not exist until the responsive shell does. The star was retired on 2026-08-13 when US-305 was pulled forward; the other two deferrals remain, tracked in the interim-behaviors table below.
 
 ## P3 — MVP chat · ✅ complete — the minimum viable replacement, and the first phase worth deploying
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 21 | US-404 `[enabler]` Decode the SSE frame stream | US-107 | P0 | ✅ 2026-08-12 |
-| 22 | US-405 `[enabler]` Stream over an abortable fetch that reads errors first | US-103, US-404 | P0 | ✅ 2026-08-12 |
-| 23 | US-402 Choose the model for a turn | US-202 | P0 | ✅ 2026-08-12 — send ships inert until US-401 |
-| 24 | US-403 Select MCP servers, and be stopped from selecting them where they cannot work | US-402 | P0 | ✅ 2026-08-12 — ⚠ two deviations, see below |
-| 25 | US-401 Send a first prompt and have the conversation created around it | US-303, US-405 | P0 | ✅ 2026-08-12 — ⚠ URL via `router.navigateByUrl` + `replaceUrl`, a documented deviation; chips from US-303 ship here |
-| 26 | US-406 Watch the answer arrive | US-405, US-104 | P0 | ✅ 2026-08-12 — also retires US-403's tool-server-unavailable panel |
-| 27 | US-407 Stop a turn and keep what it produced | US-406 | P0 | ✅ 2026-08-12 |
-| 28 | US-501 See what the assistant is doing, in the order it happened | US-404, US-406 | P0 | ✅ 2026-08-12 — flat cards; US-502 nests them |
-| 29 | US-601 Render model output as markdown that cannot execute | US-108 | P0 | ✅ 2026-08-13 — gate resolved, see below |
-| 30 | US-602 Read a streaming answer without the page slowing down | US-601, US-406 | P0 | ✅ 2026-08-13 — split takes a third boundary the criteria omit |
-| 31 | US-606 Stay with the latest message, or stay where I am reading | US-406 | P0 | ✅ 2026-08-13 — following driven by a `ResizeObserver`, not the turn's signals |
+| Order | Story                                                                                | Depends on     | Pri | Status                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------ | -------------- | --- | -------------------------------------------------------------------------------------------------------------------- |
+| 21    | US-404 `[enabler]` Decode the SSE frame stream                                       | US-107         | P0  | ✅ 2026-08-12                                                                                                        |
+| 22    | US-405 `[enabler]` Stream over an abortable fetch that reads errors first            | US-103, US-404 | P0  | ✅ 2026-08-12                                                                                                        |
+| 23    | US-402 Choose the model for a turn                                                   | US-202         | P0  | ✅ 2026-08-12 — send ships inert until US-401                                                                        |
+| 24    | US-403 Select MCP servers, and be stopped from selecting them where they cannot work | US-402         | P0  | ✅ 2026-08-12 — ⚠ two deviations, see below                                                                          |
+| 25    | US-401 Send a first prompt and have the conversation created around it               | US-303, US-405 | P0  | ✅ 2026-08-12 — ⚠ URL via `router.navigateByUrl` + `replaceUrl`, a documented deviation; chips from US-303 ship here |
+| 26    | US-406 Watch the answer arrive                                                       | US-405, US-104 | P0  | ✅ 2026-08-12 — also retires US-403's tool-server-unavailable panel                                                  |
+| 27    | US-407 Stop a turn and keep what it produced                                         | US-406         | P0  | ✅ 2026-08-12                                                                                                        |
+| 28    | US-501 See what the assistant is doing, in the order it happened                     | US-404, US-406 | P0  | ✅ 2026-08-12 — flat cards; US-502 nests them                                                                        |
+| 29    | US-601 Render model output as markdown that cannot execute                           | US-108         | P0  | ✅ 2026-08-13 — gate resolved, see below                                                                             |
+| 30    | US-602 Read a streaming answer without the page slowing down                         | US-601, US-406 | P0  | ✅ 2026-08-13 — split takes a third boundary the criteria omit                                                       |
+| 31    | US-606 Stay with the latest message, or stay where I am reading                      | US-406         | P0  | ✅ 2026-08-13 — following driven by a `ResizeObserver`, not the turn's signals                                       |
 
 Transport first, then the composer controls, then send, then rendering. US-402 precedes US-401 by practical necessity rather than by its `Depends on` field — a turn needs a `modelId`.
 
@@ -73,107 +73,113 @@ Also fixed here, per the risk table: the coalescing and head/tail split in US-40
 
 ## P4 — Chat completeness
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 32 | US-305 Favorite a conversation | US-302 | P1 | ✅ 2026-08-13 — taken early, with P3's rendering stories; retires US-308's header star |
-| 33 | US-408 Recover when the conversation is already busy | US-405 | P1 | ✅ 2026-08-13 — frame `1h`'s row variant; a focus defect on repeated Retry fixed with it |
-| 34 | US-409 See the name the server gave my conversation | US-406, US-302 | P1 | ✅ 2026-08-13 — taken after US-410, see below |
-| 35 | US-410 Resume a conversation with the settings it last used | US-402, US-403 | P1 | ✅ 2026-08-13 — ⚠ re-sized S → M: history replay shipped here |
-| 36 | US-412 Understand an MCP consent requirement | US-403, US-103 | P1 | ✅ 2026-08-13 — interim variant; consent action still waits on US-411 |
-| 37 | US-413 Dictate a prompt | US-401 | P2 | ✅ 2026-08-13 |
-| 38 | US-502 See nested work inside the activity that caused it | US-501 | P1 | ✅ 2026-08-13 — render-side only; the filter is root membership, not `parentScopeId` |
-| 39 | US-503 Read the model's reasoning as it streams | US-501 | P1 | ✅ 2026-08-13 — the duration is measured client-side; the wire carries none |
-| 40 | US-504 See what a turn cost | US-501 | P1 | ✅ 2026-08-13 — footer always visible until US-607; the activity strip shows what is known |
-| 41 | US-505 Understand an activity that failed | US-501 | P1 | ✅ 2026-08-13 — mostly already structural; taken after US-502, which made it observable |
-| 42 | US-603 Copy a code block | US-601 | P1 | ✅ 2026-08-13 — custom renderer + one delegated listener; `div`/`button` join the profile |
-| 43 | US-604 Read code in a theme that matches the page | US-105, US-603 | P1 | → US-603 |
-| 44 | US-605 Render diagrams and math without paying for them upfront | US-601, US-108 | P2 | |
-| 45 | US-607 Copy a prompt or a response | US-601 | P1 | |
+| Order | Story                                                           | Depends on     | Pri | Status                                                                                     |
+| ----- | --------------------------------------------------------------- | -------------- | --- | ------------------------------------------------------------------------------------------ |
+| 32    | US-305 Favorite a conversation                                  | US-302         | P1  | ✅ 2026-08-13 — taken early, with P3's rendering stories; retires US-308's header star     |
+| 33    | US-408 Recover when the conversation is already busy            | US-405         | P1  | ✅ 2026-08-13 — frame `1h`'s row variant; a focus defect on repeated Retry fixed with it   |
+| 34    | US-409 See the name the server gave my conversation             | US-406, US-302 | P1  | ✅ 2026-08-13 — taken after US-410, see below                                              |
+| 35    | US-410 Resume a conversation with the settings it last used     | US-402, US-403 | P1  | ✅ 2026-08-13 — ⚠ re-sized S → M: history replay shipped here                              |
+| 36    | US-412 Understand an MCP consent requirement                    | US-403, US-103 | P1  | ✅ 2026-08-13 — interim variant; consent action still waits on US-411                      |
+| 37    | US-413 Dictate a prompt                                         | US-401         | P2  | ✅ 2026-08-13                                                                              |
+| 38    | US-502 See nested work inside the activity that caused it       | US-501         | P1  | ✅ 2026-08-13 — render-side only; the filter is root membership, not `parentScopeId`       |
+| 39    | US-503 Read the model's reasoning as it streams                 | US-501         | P1  | ✅ 2026-08-13 — the duration is measured client-side; the wire carries none                |
+| 40    | US-504 See what a turn cost                                     | US-501         | P1  | ✅ 2026-08-13 — footer always visible until US-607; the activity strip shows what is known |
+| 41    | US-505 Understand an activity that failed                       | US-501         | P1  | ✅ 2026-08-13 — mostly already structural; taken after US-502, which made it observable    |
+| 42    | US-603 Copy a code block                                        | US-601         | P1  | ✅ 2026-08-13 — custom renderer + one delegated listener; `div`/`button` join the profile  |
+| 43    | US-604 Read code in a theme that matches the page               | US-105, US-603 | P1  | ✅ 2026-08-14 — ⚠ no stylesheet swap; verification and gates instead, see below            |
+| 45    | US-607 Copy a prompt or a response                              | US-601         | P1  | ✅ 2026-08-14 — retires US-504's always-visible footer                                     |
+| 44    | US-605 Render diagrams and math without paying for them upfront | US-601, US-108 | P2  | ✅ 2026-08-14 — the custom-renderer branch again; diagrams appear at settle                |
 
 US-305 was pulled forward and landed with P3, which is what unblocked the header star deferred out of US-308; the rest of the phase is untouched.
 
+**EP-6 completed 2026-08-14, in the order US-604 → US-607 → US-605.** They are sequential rather than parallel for one mechanical reason: US-607 and US-605 both edit `assistant-turn.html`, and taking the smallest first meant the code-block chrome was settled before anything else touched it. US-701 shares no file with any of the three and was taken alongside them.
+
+⚠ **US-604 does not swap a stylesheet, and will not.** The board fixes `--code-bg` and `--code-head` dark in _both_ themes and `check-tokens.mjs` enforces that parity, so there is one token-driven Prism palette and nothing to swap to — which is also why the story's third criterion is free. Agreed with the product owner before implementation. What the story shipped instead is the enforcement its fourth criterion needed: 26 measured code-surface pairs, including the head bar's hovered state and `--accent` at SC 1.4.11's 3:1, plus a check that the pair list has not fallen behind the stylesheets and a ban on importing a Prism theme — in `angular.json` as well as `src/`, since the `styles` array is the route a theme would most likely arrive by.
+
+⚠ **US-605 renders a diagram at settle, not as it streams.** The tail's fences have had their info strings stripped, and re-laying-out an SVG on every flush of the head would fight both the batch cadence and US-606's `ResizeObserver`. A mermaid fence reads as a `mermaid`-labelled code block while the answer arrives — the same contract US-602 set for highlighting. It also declines `ngx-markdown`'s own integrations, as US-603 declined its clipboard directive: theirs mutate the shared renderer globally, interpolate the source unescaped, and offer no error hook, which puts the story's fourth criterion out of reach.
+
 **EP-4 completed 2026-08-13, in two lanes rather than the numbered order.** US-408 and US-412 are two variants of one component and were taken together; US-410 preceded US-409 because both extend `TurnStore` and `ConversationStore`, and US-409's "was this the conversation's first turn" reads cleanest once replayed history exists to answer it. US-413 touches only the composer and was independent of all four.
 
-⚠ **US-410 was an S that turned out to be an M.** Its third criterion is about a *refetched* transcript, and nothing in the client had ever fetched one — reopening a conversation showed a blank screen. History replay shipped inside the story rather than becoming a new one, agreed with the product owner before implementation.
+⚠ **US-410 was an S that turned out to be an M.** Its third criterion is about a _refetched_ transcript, and nothing in the client had ever fetched one — reopening a conversation showed a blank screen. History replay shipped inside the story rather than becoming a new one, agreed with the product owner before implementation.
 
 **EP-5 completed 2026-08-13, in the order US-502 → US-505 → US-504 → US-503, not the numbered one.** The three card stories share `ActivityCard`, so they are strictly sequential whatever order they take; US-505 follows US-502 because nesting is what makes "a failed child does not fail its parent" something a spec can see, and US-504's chevron is easier to place once the card's header is final. US-603 shares no code with any of them, but it adds a delegated listener to `Transcript` and cases to `transcript.spec.ts`, which is why it ran after rather than beside them — the only two files a parallel worktree would have collided on.
 
 **Three of the five had no data behind part of their design**, and each resolved differently rather than by one rule: US-503 measures the reasoning duration client-side because a plausible number exists to measure; US-504 renders the activity strip with the duration alone, because that keeps the chevron live and the token columns arrive with the field; US-505 leaves frame `1f`'s failure-reason line unbuilt, because nothing on the wire could fill it and inventing copy is the fabricated status line US-406 refuses.
 
-**The review round changed US-503 twice over.** Its first cut opened the timing window on the turn's *first* `ReasoningDelta` — which is the server's seed, so the pill reported stream latency as thinking time — and hung the region inside a component that `showLiveTurn` keeps off screen until the first token, so a story called "read the model's reasoning **as it streams**" showed it only once streaming was over. Both are fixed, and the fix that resolved them together was to treat the seeded delta as what it is: a request-level status line, which US-406 already decided this app does not render. It is now measured out of the text by length and skipped by the clock, and the ridgeline hands the gap to the region exactly when the model starts reasoning in its own words.
+**The review round changed US-503 twice over.** Its first cut opened the timing window on the turn's _first_ `ReasoningDelta` — which is the server's seed, so the pill reported stream latency as thinking time — and hung the region inside a component that `showLiveTurn` keeps off screen until the first token, so a story called "read the model's reasoning **as it streams**" showed it only once streaming was over. Both are fixed, and the fix that resolved them together was to treat the seeded delta as what it is: a request-level status line, which US-406 already decided this app does not render. It is now measured out of the text by length and skipped by the clock, and the ridgeline hands the gap to the region exactly when the model starts reasoning in its own words.
 
 ## P5 — Library, files, projects
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 46 | US-701 Find a conversation by name | US-302 | P0 | |
-| 47 | US-702 Page through my conversations | US-701 | P1 | |
-| 48 | US-703 Filter to my favorites | US-701, US-305 | P1 | |
-| 49 | US-704 Delete several conversations at once | US-702, US-106 | P1 | |
-| 50 | US-705 Understand why conversations cannot be sorted | US-702 | P2 | interim until US-706 |
-| 51 | US-801 Attach files to a conversation | US-204, US-401 | P1 | |
-| 52 | US-802 Watch an upload get processed | US-801 | P1 | |
-| 53 | US-803 Tell an expired upload apart from a failed one | US-802 | P1 | |
-| 54 | US-804 Download a document | US-802 | P1 | |
-| 55 | US-805 Understand why a file was rejected | US-801, US-103 | P1 | |
-| 56 | US-901 Browse and search projects | US-104, US-106 | P1 | |
-| 57 | US-903 Create, rename, describe, and delete a project | US-901 | P1 | |
-| 58 | US-904 Give a project standing instructions | US-903 | P1 | |
-| 59 | US-905 Manage a project's files | US-802, US-903 | P1 | |
-| 60 | US-906 Start a conversation inside a project | US-401, US-903 | P1 | |
-| 61 | US-307 Move a conversation into or out of a project | US-304, US-901 | P1 | deferred out of EP-3 |
-| 62 | US-908 See and manage a project's conversations | US-903, US-307 | P1 | |
+| Order | Story                                                 | Depends on     | Pri | Status                                                                              |
+| ----- | ----------------------------------------------------- | -------------- | --- | ----------------------------------------------------------------------------------- |
+| 46    | US-701 Find a conversation by name                    | US-302         | P0  | ✅ 2026-08-14 — the screen and the URL contract; the `name=` search already existed |
+| 47    | US-702 Page through my conversations                  | US-701         | P1  |                                                                                     |
+| 48    | US-703 Filter to my favorites                         | US-701, US-305 | P1  |                                                                                     |
+| 49    | US-704 Delete several conversations at once           | US-702, US-106 | P1  |                                                                                     |
+| 50    | US-705 Understand why conversations cannot be sorted  | US-702         | P2  | interim until US-706                                                                |
+| 51    | US-801 Attach files to a conversation                 | US-204, US-401 | P1  |                                                                                     |
+| 52    | US-802 Watch an upload get processed                  | US-801         | P1  |                                                                                     |
+| 53    | US-803 Tell an expired upload apart from a failed one | US-802         | P1  |                                                                                     |
+| 54    | US-804 Download a document                            | US-802         | P1  |                                                                                     |
+| 55    | US-805 Understand why a file was rejected             | US-801, US-103 | P1  |                                                                                     |
+| 56    | US-901 Browse and search projects                     | US-104, US-106 | P1  |                                                                                     |
+| 57    | US-903 Create, rename, describe, and delete a project | US-901         | P1  |                                                                                     |
+| 58    | US-904 Give a project standing instructions           | US-903         | P1  |                                                                                     |
+| 59    | US-905 Manage a project's files                       | US-802, US-903 | P1  |                                                                                     |
+| 60    | US-906 Start a conversation inside a project          | US-401, US-903 | P1  |                                                                                     |
+| 61    | US-307 Move a conversation into or out of a project   | US-304, US-901 | P1  | deferred out of EP-3                                                                |
+| 62    | US-908 See and manage a project's conversations       | US-903, US-307 | P1  |                                                                                     |
 
 **Start US-907 (B1) during P3.** It is the one enabler the PRD explicitly schedules early, so US-908 never ships with its interim 500-item drain ceiling.
 
 ## P6 — Administration
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 63 | US-1201 Find and page through users | US-203, US-104 | P1 | |
-| 64 | US-1202 Create a user | US-1201 | P1 | |
-| 65 | US-1203 Edit a user's profile and permissions | US-1201 | P1 | |
-| 66 | US-1204 Deactivate a user | US-1201 | P1 | |
-| 67 | US-1207 Manage the model catalog | US-203 | P1 | |
-| 68 | US-1208 Manage MCP servers | US-203 | P1 | |
-| 69 | US-1209 Reach an admin tab by URL | US-203 | P1 | |
+| Order | Story                                         | Depends on     | Pri | Status |
+| ----- | --------------------------------------------- | -------------- | --- | ------ |
+| 63    | US-1201 Find and page through users           | US-203, US-104 | P1  |        |
+| 64    | US-1202 Create a user                         | US-1201        | P1  |        |
+| 65    | US-1203 Edit a user's profile and permissions | US-1201        | P1  |        |
+| 66    | US-1204 Deactivate a user                     | US-1201        | P1  |        |
+| 67    | US-1207 Manage the model catalog              | US-203         | P1  |        |
+| 68    | US-1208 Manage MCP servers                    | US-203         | P1  |        |
+| 69    | US-1209 Reach an admin tab by URL             | US-203         | P1  |        |
 
 ## P7 — Conformance · gates run against everything shipped in P1–P6
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 70 | US-1401 Use the whole app from the keyboard | US-606, US-903, US-1201 | P0 | |
-| 71 | US-1402 Follow a streaming answer with a screen reader | US-406, US-501 | P0 | |
-| 72 | US-1403 Use the app on a tablet or a phone | US-301, US-1201 | P0 | |
-| 73 | US-1404 Respect a reduced-motion preference | US-106 | P1 | |
-| 74 | US-1405 `[enabler]` Gate accessibility and budgets in the build | US-108, US-1401 | P1 | → US-1401 |
+| Order | Story                                                           | Depends on              | Pri | Status    |
+| ----- | --------------------------------------------------------------- | ----------------------- | --- | --------- |
+| 70    | US-1401 Use the whole app from the keyboard                     | US-606, US-903, US-1201 | P0  |           |
+| 71    | US-1402 Follow a streaming answer with a screen reader          | US-406, US-501          | P0  |           |
+| 72    | US-1403 Use the app on a tablet or a phone                      | US-301, US-1201         | P0  |           |
+| 73    | US-1404 Respect a reduced-motion preference                     | US-106                  | P1  |           |
+| 74    | US-1405 `[enabler]` Gate accessibility and budgets in the build | US-108, US-1401         | P1  | → US-1401 |
 
 The `--warn` contrast question in §9 must be resolved upstream in `docs/design/` before US-1401's axe gate, not worked around locally.
 
 ## P8 — Enabled features · each enabler releases a frontend story
 
-| Order | Story | Depends on | Pri | Status |
-| --- | --- | --- | --- | --- |
-| 75 | US-1001 `[enabler]` List the documents belonging to a conversation (B2) | — | P1 | open question on cross-conversation fetch |
-| 76 | US-1002 Browse every document I have uploaded | US-1001, US-106 | P1 | |
-| 77 | US-1003 Filter documents and group them by conversation | US-1002 | P2 | |
-| 78 | US-1004 `[enabler]` Distinguish model-created documents (B7) | — | P2 | |
-| 79 | US-1005 Filter to documents the assistant created | US-1004, US-1002 | P2 | |
-| 80 | US-1101 `[enabler]` Put a message identity on the transcript and the stream (B4) | — | P1 | |
-| 81 | US-1102 `[enabler]` Record feedback on an assistant message (B5) | US-1101 | P1 | |
-| 82 | US-1103 Rate an assistant response | US-1102, US-607 | P2 | |
-| 83 | US-1301 `[enabler]` Expose the usage audit trail over HTTP (B6) | — | P2 | verify against `ConversationUsage` first |
-| 84 | US-1302 See what the platform is spending | US-1301, US-1209 | P2 | |
-| 85 | US-1501 `[enabler]` Expose conversation export over HTTP (B11) | — | P2 | renderer stack undecided |
-| 86 | US-1502 Download a conversation | US-1501, US-106 | P2 | |
-| 87 | US-909 `[enabler]` Support project favorites (B3) | — | P2 | |
-| 88 | US-910 Pin favorite projects to the sidebar | US-909, US-907, US-301 | P2 | replaces device-local pins |
-| 89 | US-706 `[enabler]` Accept sort parameters on the paginated list endpoints (B8) | — | P2 | releases US-705's disabled sort |
-| 90 | US-902 Sort projects, honestly | US-901 | P2 | |
-| 91 | US-1205 `[enabler]` Filter user search by permission (B10) | — | P2 | |
-| 92 | US-1206 Filter users by permission | US-1205, US-1201 | P2 | |
-| 93 | US-411 `[enabler]` Carry the consent scope on the MCP authorization problem (B9) | — | P2 | upgrades US-412 |
-| 94 | US-412 revisit — consent scope rendered from the problem extension | US-411 | P1 | not a separate story |
+| Order | Story                                                                            | Depends on             | Pri | Status                                    |
+| ----- | -------------------------------------------------------------------------------- | ---------------------- | --- | ----------------------------------------- |
+| 75    | US-1001 `[enabler]` List the documents belonging to a conversation (B2)          | —                      | P1  | open question on cross-conversation fetch |
+| 76    | US-1002 Browse every document I have uploaded                                    | US-1001, US-106        | P1  |                                           |
+| 77    | US-1003 Filter documents and group them by conversation                          | US-1002                | P2  |                                           |
+| 78    | US-1004 `[enabler]` Distinguish model-created documents (B7)                     | —                      | P2  |                                           |
+| 79    | US-1005 Filter to documents the assistant created                                | US-1004, US-1002       | P2  |                                           |
+| 80    | US-1101 `[enabler]` Put a message identity on the transcript and the stream (B4) | —                      | P1  |                                           |
+| 81    | US-1102 `[enabler]` Record feedback on an assistant message (B5)                 | US-1101                | P1  |                                           |
+| 82    | US-1103 Rate an assistant response                                               | US-1102, US-607        | P2  |                                           |
+| 83    | US-1301 `[enabler]` Expose the usage audit trail over HTTP (B6)                  | —                      | P2  | verify against `ConversationUsage` first  |
+| 84    | US-1302 See what the platform is spending                                        | US-1301, US-1209       | P2  |                                           |
+| 85    | US-1501 `[enabler]` Expose conversation export over HTTP (B11)                   | —                      | P2  | renderer stack undecided                  |
+| 86    | US-1502 Download a conversation                                                  | US-1501, US-106        | P2  |                                           |
+| 87    | US-909 `[enabler]` Support project favorites (B3)                                | —                      | P2  |                                           |
+| 88    | US-910 Pin favorite projects to the sidebar                                      | US-909, US-907, US-301 | P2  | replaces device-local pins                |
+| 89    | US-706 `[enabler]` Accept sort parameters on the paginated list endpoints (B8)   | —                      | P2  | releases US-705's disabled sort           |
+| 90    | US-902 Sort projects, honestly                                                   | US-901                 | P2  |                                           |
+| 91    | US-1205 `[enabler]` Filter user search by permission (B10)                       | —                      | P2  |                                           |
+| 92    | US-1206 Filter users by permission                                               | US-1205, US-1201       | P2  |                                           |
+| 93    | US-411 `[enabler]` Carry the consent scope on the MCP authorization problem (B9) | —                      | P2  | upgrades US-412                           |
+| 94    | US-412 revisit — consent scope rendered from the problem extension               | US-411                 | P1  | not a separate story                      |
 
 **These eleven enablers are a parallel track, not a final phase.** Nine have no dependencies and can start any time from P1 onward; only US-1102 and US-1004 wait on another enabler. Landing one early removes an interim behavior rather than adding a feature. Two questions gate the track: whether B3/B4/B7's new columns force the repository's **first EF Core migration** (settle before US-909 or US-1101), and which server-side stack renders `.docx`/`.pdf` for US-1501.
 
@@ -183,23 +189,27 @@ The `--warn` contrast question in §9 must be resolved upstream in `docs/design/
 
 Each of these ships deliberately incomplete and is closed later. Kept here so none of them quietly becomes permanent.
 
-| Interim behavior | Shipped in | Retired by |
-| --- | --- | --- |
-| ~~Header star absent~~ | US-308 (P2) | ✅ retired by US-305, 2026-08-13 |
-| Two kebab items (move to / remove from project) absent | US-308 (P2) | US-307 (P5) |
-| Tools rows show the server name without frame `2c`'s mono key — `McpDto` carries no key field | US-403 (P3) | a backend enabler adding a key, if ever prioritized |
-| ~~409-busy and MCP-consent errors render the generic turn-error notice~~ | US-406/407 (P3) | ✅ retired by US-408 and US-412, 2026-08-13 |
-| `composer--streaming` dims `.composer__aux` — the microphone carries it; attach and download do not exist yet | US-407 (P3) | US-801, US-1502 adopt the class as they land (US-413 did, 2026-08-13) |
-| Chat header does not collapse into frame `1d`'s 54px mobile navbar below 768px | US-308 (P2) | US-1403 (P7) |
-| Upload gating verified against a test host, not the composer | US-204 (P2) | US-801 (P5) |
-| MCP consent card with no action, because the scope to request one is not on the wire | US-412 (P4) | US-411 (P8) |
-| Failed activity cards carry no reason, because `ActivityFailed` sends none | US-505 (P4) | a backend enabler putting failure text on the event, if ever prioritized |
-| The activity cost strip shows `duration` only — no server attributes tokens per activity | US-504 (P4) | a contract upgrade populating `AssistantActivity.usage` |
-| The message footer is always visible rather than revealed on hover and focus | US-504 (P4) | US-607 (P4), which gives it something focusable to reveal |
-| The code-head Copy control has no `bi-copy` glyph — the sprite needs `svg`/`use` in the sanitizer profile | US-603 (P4) | nothing planned; revisit only if the profile widens for another reason |
+| Interim behavior                                                                                                                                                 | Shipped in                                  | Retired by                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| ~~Header star absent~~                                                                                                                                           | US-308 (P2)                                 | ✅ retired by US-305, 2026-08-13                                                                                                     |
+| Two kebab items (move to / remove from project) absent                                                                                                           | US-308 (P2)                                 | US-307 (P5)                                                                                                                          |
+| Tools rows show the server name without frame `2c`'s mono key — `McpDto` carries no key field                                                                    | US-403 (P3)                                 | a backend enabler adding a key, if ever prioritized                                                                                  |
+| ~~409-busy and MCP-consent errors render the generic turn-error notice~~                                                                                         | US-406/407 (P3)                             | ✅ retired by US-408 and US-412, 2026-08-13                                                                                          |
+| `composer--streaming` dims `.composer__aux` — the microphone carries it; attach and download do not exist yet                                                    | US-407 (P3)                                 | US-801, US-1502 adopt the class as they land (US-413 did, 2026-08-13)                                                                |
+| Chat header does not collapse into frame `1d`'s 54px mobile navbar below 768px                                                                                   | US-308 (P2)                                 | US-1403 (P7)                                                                                                                         |
+| Upload gating verified against a test host, not the composer                                                                                                     | US-204 (P2)                                 | US-801 (P5)                                                                                                                          |
+| MCP consent card with no action, because the scope to request one is not on the wire                                                                             | US-412 (P4)                                 | US-411 (P8)                                                                                                                          |
+| Failed activity cards carry no reason, because `ActivityFailed` sends none                                                                                       | US-505 (P4)                                 | a backend enabler putting failure text on the event, if ever prioritized                                                             |
+| The activity cost strip shows `duration` only — no server attributes tokens per activity                                                                         | US-504 (P4)                                 | a contract upgrade populating `AssistantActivity.usage`                                                                              |
+| ~~The message footer is always visible rather than revealed on hover and focus~~                                                                                 | US-504 (P4)                                 | ✅ retired by US-607, 2026-08-14                                                                                                     |
+| The library shows the first page only — no counter, no Load more                                                                                                 | US-701 (P5)                                 | US-702 (P5)                                                                                                                          |
+| The library offers no favourites filter, and no row star                                                                                                         | US-701 (P5)                                 | US-703 (P5), with US-305's star                                                                                                      |
+| The library offers no row selection, bulk bar or per-row kebab                                                                                                   | US-701 (P5)                                 | US-704 (P5); the kebab with the story that gives the library row actions                                                             |
+| Diagrams appear when a turn settles, never as it streams                                                                                                         | US-605 (P4)                                 | nothing planned — re-laying-out an SVG per flush is the cost this avoids                                                             |
+| The code-head Copy control has no `bi-copy` glyph — the sprite needs `svg`/`use` in the sanitizer profile                                                        | US-603 (P4)                                 | nothing planned; revisit only if the profile widens for another reason                                                               |
 | A code block that overflows its column scrolls by pointer only — the `<pre>` has no `tabindex`, so keyboard users cannot reach the rest of the line (WCAG 2.1.1) | pre-dates US-603, which now owns the chrome | US-1401 (P7), which owns keyboard operability and the axe gate; it needs `tabindex` in `CHAT_ALLOWED_ATTR` and a name for the region |
-| Replayed history carries no activity timeline, since the stream is never persisted | US-410 (P4) | nothing planned — a server-side turn record would be a new enabler |
-| Conversation and project sort disabled with a stated reason | US-705 (P5) | US-706 (P8) |
-| 500-item drain ceiling with a visible notice | US-908 (P5) | US-907, started in P3 |
-| Device-local project pins that do not sync | US-910's predecessor | US-909 (P8) |
-| Export control absent rather than an `UnavailablePanel` | pre-US-1501 | US-1501 (P8) |
+| Replayed history carries no activity timeline, since the stream is never persisted                                                                               | US-410 (P4)                                 | nothing planned — a server-side turn record would be a new enabler                                                                   |
+| Conversation and project sort disabled with a stated reason                                                                                                      | US-705 (P5)                                 | US-706 (P8)                                                                                                                          |
+| 500-item drain ceiling with a visible notice                                                                                                                     | US-908 (P5)                                 | US-907, started in P3                                                                                                                |
+| Device-local project pins that do not sync                                                                                                                       | US-910's predecessor                        | US-909 (P8)                                                                                                                          |
+| Export control absent rather than an `UnavailablePanel`                                                                                                          | pre-US-1501                                 | US-1501 (P8)                                                                                                                         |

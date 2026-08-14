@@ -7,6 +7,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { COPY_CONFIRMATION_MS, copyText } from '@core/clipboard/copy-text';
 import { Icon } from '@shared/icon/icon';
 
 /**
@@ -30,7 +31,7 @@ export class StoppedCard {
   readonly text = input.required<string>();
   readonly retried = output<void>();
 
-  /** Two seconds of "Copied", the kit's confirmation span; the focused button's label change announces it. */
+  /** The kit's confirmation span; the focused button's label change announces it. */
   protected readonly copied = signal(false);
 
   private _copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -42,11 +43,9 @@ export class StoppedCard {
   }
 
   protected async copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(this.text());
-    } catch {
-      // Denied clipboard permission leaves the button as it was; there is
-      // nothing actionable to tell the user beyond "it did not happen".
+    // A refused clipboard leaves the button as it was; there is nothing
+    // actionable to tell the user beyond "it did not happen".
+    if (!(await copyText(this.text()))) {
       return;
     }
 
@@ -54,7 +53,7 @@ export class StoppedCard {
     // Re-copying restarts the window rather than letting the first timer cut
     // the second confirmation short.
     this._clearTimer();
-    this._copiedTimer = setTimeout(() => this.copied.set(false), 2000);
+    this._copiedTimer = setTimeout(() => this.copied.set(false), COPY_CONFIRMATION_MS);
   }
 
   private _clearTimer(): void {

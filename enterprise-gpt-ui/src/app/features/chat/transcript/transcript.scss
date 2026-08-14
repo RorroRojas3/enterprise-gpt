@@ -9,9 +9,42 @@
   line-height: 1.55;
 }
 
+// A column since US-607: the bubble, then its footer beneath and aligned with its
+// right edge. The 6px is the board's gap between a message and its metadata row.
 .transcript__user-row {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+// Revealed on hover and on focus, exactly as the assistant footer is and for the
+// same reasons — opacity keeps the control focusable, and a footer that changed
+// height on hover would move the geometry US-606's ResizeObserver follows.
+//
+// The height is stated rather than left to the content, and the row beneath the
+// optimistic bubble renders an empty one, so a prompt occupies the same box before
+// and after its turn settles. Otherwise the whole column below it shifts down at
+// the moment the answer completes.
+.transcript__user-footer {
+  display: flex;
+  align-items: center;
+  min-height: 17px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+
+.transcript__user-row:hover .transcript__user-footer,
+.transcript__user-row:focus-within .transcript__user-footer,
+.transcript__user-footer:has(.message-copy--copied) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .transcript__user-footer {
+    opacity: 1;
+  }
 }
 
 // US-410: stands in for the stored messages, laid out as one of them would be

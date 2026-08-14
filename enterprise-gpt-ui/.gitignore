@@ -12,6 +12,7 @@
 # bundle and committed, so neither sharp nor ../docs is on the build's critical path.
 /public/fonts
 /public/icons
+/public/vendor
 
 # Node
 /node_modules

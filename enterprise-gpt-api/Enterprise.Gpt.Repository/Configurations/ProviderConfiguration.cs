@@ -19,6 +19,12 @@ namespace Enterprise.Gpt.Repository.Configurations
                 },
                 new Provider
                 {
+                    Id = Providers.AzureAIFoundry,
+                    Name = nameof(Providers.AzureAIFoundry),
+                    DateCreated = date,
+                },
+                new Provider
+                {
                     Id = Providers.AmazonBedrock,
                     Name = nameof(Providers.AmazonBedrock),
                     DateCreated = date,
