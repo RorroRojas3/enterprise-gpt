@@ -18,6 +18,8 @@ namespace Enterprise.Gpt.Dto
 
         public bool IsToolEnabled { get; init; }
 
+        public bool IsReasoningEnabled { get; init; }
+
         public bool IsDefault { get; init; }
 
         public DateTimeOffset? DateDeactivated { get; init; }

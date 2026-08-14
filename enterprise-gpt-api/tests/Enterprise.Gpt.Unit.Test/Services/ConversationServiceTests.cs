@@ -9,9 +9,12 @@ using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Settings;
+using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using System.Runtime.CompilerServices;
@@ -76,8 +79,31 @@ public sealed class ConversationServiceTests : IDisposable
             new CreateConversationStreamActionDtoValidator(),
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
+            Options.Create(new WeatherToolOptions()),
             _fixture.Context);
     }
+
+    /// <summary>
+    /// Builds a second service over the same fixture with the weather tool switched on. The tool's
+    /// settings are captured at construction, so a test that wants it cannot reuse the shared
+    /// instance. Zero delay: the tool's own latency exists to make the running card visible on
+    /// screen, and here it would only make the suite slower.
+    /// </summary>
+    private ConversationService CreateServiceWithWeatherTool() =>
+        new(NullLogger<ConversationService>.Instance,
+            _modelService,
+            _chatClientResolver,
+            _mcpToolProvider,
+            _documentRetrievalService,
+            _lockService,
+            _tokenService,
+            _cosmosService,
+            new CreateConversationActionDtoValidator(),
+            new CreateConversationStreamActionDtoValidator(),
+            new DeactivateConversationsBulkActionDtoValidator(),
+            new UpdateConversationActionDtoValidator(),
+            Options.Create(new WeatherToolOptions { Enabled = true, DelayMilliseconds = 0 }),
+            _fixture.Context);
 
     public void Dispose()
     {
@@ -177,10 +203,11 @@ public sealed class ConversationServiceTests : IDisposable
     /// Substitutes the model on <c>IModelService</c> and seeds the matching catalog row, which the
     /// usage audit row's foreign key requires.
     /// </summary>
-    private ModelDto SetUpModel(bool isToolEnabled)
+    private ModelDto SetUpModel(bool isToolEnabled, bool isReasoningEnabled = false)
     {
         var model = new ModelDto
         {
+            IsReasoningEnabled = isReasoningEnabled,
             Id = Guid.NewGuid(),
             ProviderId = KnownIds.SeedProviderId,
             Name = "GPT Test",
@@ -204,6 +231,7 @@ public sealed class ConversationServiceTests : IDisposable
             ContextWindowSize = model.ContextWindowSize,
             MaxOutputTokens = model.MaxOutputTokens,
             IsToolEnabled = model.IsToolEnabled,
+            IsReasoningEnabled = model.IsReasoningEnabled,
             DateCreated = date,
             DateModified = date,
             CreatedById = KnownIds.SeedUserId,
@@ -327,11 +355,14 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     private async Task<List<AssistantUiEvent>> StreamEventsToEndAsync(
-        Guid conversationId, CreateConversationStreamActionDto request, CancellationToken? cancellationToken = null)
+        Guid conversationId,
+        CreateConversationStreamActionDto request,
+        CancellationToken? cancellationToken = null,
+        ConversationService? service = null)
     {
         var token = cancellationToken ?? TestContext.Current.CancellationToken;
         var events = new List<AssistantUiEvent>();
-        await foreach (var uiEvent in _service.StreamConversationAsync(conversationId, request, token))
+        await foreach (var uiEvent in (service ?? _service).StreamConversationAsync(conversationId, request, token))
         {
             events.Add(uiEvent);
         }
@@ -751,6 +782,78 @@ public sealed class ConversationServiceTests : IDisposable
         await StreamToEndAsync(conversation.Id, request);
 
         // A tool that is always present and always returns nothing teaches the model to stop calling it.
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StreamConversationAsync_CarriesTheCatalogsReasoningFlagOntoTheRequest(bool isReasoningEnabled)
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true, isReasoningEnabled: isReasoningEnabled);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        // This project cannot express a reasoning request — it holds no provider SDK — so the flag
+        // travels as a plain property and the provider's own client turns it into one. Written even
+        // when false, so the reading end can tell "does not reason" from "nobody said".
+        var captured = _chatClient.CapturedOptions;
+        var properties = captured?.AdditionalProperties;
+        Assert.NotNull(properties);
+        Assert.True(properties.TryGetValue(ChatRequestProperties.IsReasoningEnabled, out var value));
+        Assert.Equal(isReasoningEnabled, value);
+
+        // The provider-agnostic request is what carries the flag to Bedrock and Anthropic, and it
+        // is conditional: the OpenAI Responses adapter fills its raw reasoning options from this
+        // when they are empty, so setting it for a model that cannot reason would put reasoning on
+        // the wire for a deployment that rejects the whole request for it.
+        Assert.Equal(isReasoningEnabled, captured?.Reasoning is not null);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WithTheWeatherToolOff_AttachesNothing()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WithTheWeatherToolOn_AttachesIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithWeatherTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Contains(tools, tool => tool.Name == WeatherTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WeatherToolOnANonToolModel_RunsTheTurnWithoutIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpCosmosConversation(conversation.Id);
+        var model = SetUpModel(isToolEnabled: false);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        // It stands down for the same reason retrieval does: nothing about a diagnostic tool is
+        // worth failing a turn over.
+        var events = await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithWeatherTool());
+
+        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
         Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 

@@ -127,7 +127,8 @@ dotnet user-secrets init
 Add your AI service configurations:
 
 ```bash
-# For Azure AI Foundry
+# For Azure AI Foundry — Url is the resource ROOT, with no /openai/v1 path;
+# the chat client appends it, and a URL that already carries it fails at startup.
 dotnet user-secrets set "AzureAIFoundry:Url" "https://your-endpoint.openai.azure.com/"
 dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-azure-api-key"
 dotnet user-secrets set "AzureAIFoundry:DefaultModel" "your-chat-deployment-name"
@@ -148,6 +149,23 @@ dotnet user-secrets set "Anthropic:DefaultModelId" "claude-opus-5"
 Model ids differ between the two Claude providers: Anthropic takes a **bare** id (`claude-opus-5`),
 Bedrock takes the `anthropic.`-prefixed inference-profile id. Startup validation rejects the prefixed
 form in the `Anthropic` section.
+
+Optionally, switch on the **fabricated weather tool** — a fake `get_weather` function attached to
+every turn, whose only purpose is to drive the assistant's activity timeline (running cards,
+sub-statuses, durations, the failed state) without standing up an MCP server or uploading a
+document:
+
+```bash
+# Local development only. Every value it returns is invented, and the model reports it as fact.
+dotnet user-secrets set "Tools:Weather:Enabled" "true"
+dotnet user-secrets set "Tools:Weather:DelayMilliseconds" "600"
+```
+
+Ask the assistant about the weather anywhere to see a completed card; ask about a place whose name
+contains `fail` (`"weather in Failtown"`) to see a failed one. The delay is artificial and exists so
+the running state is visible at all — an instant tool call finishes inside a single stream flush and
+the card appears already completed. Leave it off in any shared environment; enabling it in
+Production is allowed but prints a warning to standard error at startup.
 
 Enabling Bedrock also needs two database changes that are not applied automatically and fail
 silently if skipped — see [docs/models/amazon-bedrock.md](docs/models/amazon-bedrock.md). Enabling
@@ -231,10 +249,12 @@ export const environment = {
 
 | Variable                              | Description                                                   | Required | Default                |
 | ------------------------------------- | ------------------------------------------------------------- | -------- | ---------------------- |
-| `AzureAIFoundry:Url`                  | Azure OpenAI endpoint URL                                     | Yes      | -                      |
+| `AzureAIFoundry:Url`                  | Foundry resource **root**, without `/openai/v1`               | Yes      | -                      |
 | `AzureAIFoundry:ApiKey`               | Azure OpenAI API key                                          | Yes      | -                      |
 | `AzureAIFoundry:DefaultModel`         | Chat deployment used when a request names none                | Yes      | -                      |
 | `AzureAIFoundry:EmbeddingModel`       | Embedding model name                                          | Yes      | -                      |
+| `AzureAIFoundry:ReasoningSummary`     | `auto`, `concise`, `detailed`, or `none`                      | No       | `auto`                 |
+| `AzureAIFoundry:ReasoningEffort`      | `minimal`, `low`, `medium`, or `high`                         | No       | `medium`               |
 | `AmazonBedrock:Enabled`               | Registers the Bedrock chat client                             | No       | false                  |
 | `AmazonBedrock:Region`                | AWS region system name, e.g. `us-east-1`                      | If enabled | -                    |
 | `AmazonBedrock:ApiKey`                | Bedrock API key, sent as an HTTP bearer token                 | If enabled | -                    |
@@ -247,6 +267,8 @@ export const environment = {
 | `Anthropic:Effort`                    | `low`, `medium`, `high`, `xhigh`, or `max`                    | No       | `high`                 |
 | `Anthropic:Timeout`                   | Per-request timeout                                           | No       | 10 minutes             |
 | `Anthropic:MaxRetries`                | SDK retries per failed request                                | No       | 2                      |
+| `Tools:Weather:Enabled`               | Attaches the fabricated `get_weather` tool to every turn      | No       | false                  |
+| `Tools:Weather:DelayMilliseconds`     | Artificial latency per lookup, 0–10000                        | No       | 600                    |
 | `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
 
 Azure AI Foundry is required — it also backs document-embedding generation. Amazon Bedrock is optional
@@ -258,6 +280,11 @@ at startup, including the rule that `disabled` thinking is not accepted above `h
 `Anthropic:DefaultMaxOutputTokens` is the ceiling on **every** Anthropic turn, not a fallback — the
 catalog model's `maxOutputTokens` is never sent — and with thinking on it covers reasoning and answer
 text together. Size it generously; see [docs/models/anthropic.md](docs/models/anthropic.md).
+
+The two `AzureAIFoundry:Reasoning*` settings only take effect on a model whose catalog row sets
+`isReasoningEnabled`, which is **off by default** — a deployment that does not support reasoning
+rejects the whole request rather than ignoring the option. Turn it on per model through the admin
+model API; see [docs/models/azure-ai-foundry.md](docs/models/azure-ai-foundry.md).
 
 ## 🧪 Database Setup
 

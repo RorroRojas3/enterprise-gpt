@@ -266,6 +266,31 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         Assert.Equal(request.ContextWindowSize, fetched.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, fetched.MaxOutputTokens);
         Assert.Equal(request.IsToolEnabled, fetched.IsToolEnabled);
+        Assert.Equal(request.IsReasoningEnabled, fetched.IsReasoningEnabled);
+    }
+
+    [Fact]
+    public async Task UpdateModel_TogglingReasoning_RoundTripsThroughEveryLayer()
+    {
+        // The flag crosses five layers between the request and the wire — action DTO, mapper,
+        // entity, column, read DTO — and it was threaded through all five on unit-test evidence
+        // alone. This is the only test that proves the column actually stores and returns it.
+        using var client = _fixture.Factory.CreateAdminClient();
+        var id = await _fixture.AddModelAsync("it-reasoning", cancellationToken: TestContext.Current.CancellationToken);
+
+        var created = await client.GetFromJsonAsync<ModelDto>($"api/models/{id}", TestContext.Current.CancellationToken);
+        Assert.NotNull(created);
+        Assert.False(created.IsReasoningEnabled);
+
+        var response = await client.PutAsJsonAsync(
+            $"api/models/{id}",
+            UpdateRequest() with { IsReasoningEnabled = true },
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var fetched = await client.GetFromJsonAsync<ModelDto>($"api/models/{id}", TestContext.Current.CancellationToken);
+        Assert.NotNull(fetched);
+        Assert.True(fetched.IsReasoningEnabled);
     }
 
     [Fact]

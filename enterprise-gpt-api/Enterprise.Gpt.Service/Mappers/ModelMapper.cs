@@ -24,6 +24,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 ContextWindowSize = model.ContextWindowSize,
                 MaxOutputTokens = model.MaxOutputTokens,
                 IsToolEnabled = model.IsToolEnabled,
+                IsReasoningEnabled = model.IsReasoningEnabled,
                 IsDefault = model.IsDefault,
                 DateDeactivated = model.DateDeactivated
             };
@@ -44,6 +45,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 ContextWindowSize = model.ContextWindowSize,
                 MaxOutputTokens = model.MaxOutputTokens,
                 IsToolEnabled = model.IsToolEnabled,
+                IsReasoningEnabled = model.IsReasoningEnabled,
                 IsDefault = model.IsDefault,
                 DateDeactivated = model.DateDeactivated
             };
@@ -66,6 +68,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 ContextWindowSize = dto.ContextWindowSize,
                 MaxOutputTokens = dto.MaxOutputTokens,
                 IsToolEnabled = dto.IsToolEnabled,
+                IsReasoningEnabled = dto.IsReasoningEnabled,
                 IsDefault = dto.IsDefault
             };
         }
@@ -86,6 +89,7 @@ namespace Enterprise.Gpt.Service.Mappers
             model.ContextWindowSize = dto.ContextWindowSize;
             model.MaxOutputTokens = dto.MaxOutputTokens;
             model.IsToolEnabled = dto.IsToolEnabled;
+            model.IsReasoningEnabled = dto.IsReasoningEnabled;
             model.IsDefault = dto.IsDefault;
         }
     }

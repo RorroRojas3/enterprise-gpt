@@ -16,6 +16,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
+using OpenAI;
 using Enterprise.Gpt.Api.Chat;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.ExceptionHandlers;
@@ -112,15 +113,55 @@ static void ConfigureToolTracking(ToolTrackingOptions options)
     options.UseAgentToolClassification();
 }
 
-// 1) Azure AI Foundry under key "azureaifoundry"
-var azureAIFoundryUrl = builder.Configuration.GetValue<string>("AzureAIFoundry:Url") ?? string.Empty;
-var azureAIFoundryKey = builder.Configuration.GetValue<string>("AzureAIFoundry:ApiKey") ?? string.Empty;
-var azureAIFoundryDefaultModel = builder.Configuration.GetValue<string>("AzureAIFoundry:DefaultModel") ?? string.Empty;
+// 1) Azure AI Foundry under key "azureaifoundry". Unlike the other two providers this one has no
+// Enabled flag — it always serves the default model, so missing settings are a broken deployment
+// rather than an opted-out one, and the validators run unconditionally.
+builder.Services.AddOptions<AzureAIFoundryOptions>()
+    .Bind(builder.Configuration.GetSection(AzureAIFoundryOptions.SectionName))
+    .Validate(options => options.IsUrlAbsolute,
+        "AzureAIFoundry:Url must be an absolute http or https URI, for example https://my-resource.services.ai.azure.com/.")
+    // The client appends the v1 path itself. Configuring it here would send every request to
+    // /openai/v1/openai/v1/…, and the 404 that produces names neither the setting nor the cause.
+    .Validate(options => options.IsUrlResourceRoot,
+        "AzureAIFoundry:Url must be the resource root, without /openai/v1 — the client appends it.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ApiKey),
+        "AzureAIFoundry:ApiKey is required.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.DefaultModel),
+        "AzureAIFoundry:DefaultModel is required.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.EmbeddingModel),
+        "AzureAIFoundry:EmbeddingModel is required.")
+    // Null-guarded before the lookup: the sets compare case-insensitively, and that comparer throws
+    // on a null rather than reporting a miss, which would surface as a startup crash instead of the
+    // message below.
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ReasoningSummary)
+        && AzureAIFoundryOptions.ReasoningSummaries.Contains(options.ReasoningSummary),
+        "AzureAIFoundry:ReasoningSummary must be one of auto, concise, detailed, none.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ReasoningEffort)
+        && AzureAIFoundryOptions.ReasoningEfforts.Contains(options.ReasoningEffort),
+        "AzureAIFoundry:ReasoningEffort must be one of minimal, low, medium, high.")
+    .ValidateOnStart();
+
+// The Responses API rather than Chat Completions, and the plain OpenAI client rather than
+// AzureOpenAIClient, because reasoning summaries exist only on that surface: Azure returns no
+// reasoning content over Chat Completions, so the activity timeline's reasoning region had nothing
+// to render. The v1 endpoint is OpenAI-compatible and takes the deployment name in `model`.
 builder.Services.AddKeyedChatClient(
         ChatClientKeys.AzureAIFoundry,
-        sp => new AzureOpenAIClient(new Uri(azureAIFoundryUrl), new ApiKeyCredential(azureAIFoundryKey))
-                  .GetChatClient(azureAIFoundryDefaultModel)
-                  .AsIChatClient()
+        sp =>
+        {
+            var settings = sp.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value;
+
+            // MEAI001: the Responses adapter is still marked experimental in
+            // Microsoft.Extensions.AI.OpenAI 10.8.3. Suppressed at the one call site rather than
+            // project-wide, so a second experimental API cannot slip in unnoticed behind it.
+#pragma warning disable OPENAI001, MEAI001
+            return new OpenAIClient(
+                    new ApiKeyCredential(settings.ApiKey),
+                    new OpenAIClientOptions { Endpoint = settings.V1Endpoint })
+                .GetResponsesClient()
+                .AsIChatClient(settings.DefaultModel);
+#pragma warning restore OPENAI001, MEAI001
+        }
     )
     // Named source rather than the library's default: TelemetryRegistration has to register the same
     // name for these spans to be exported, and a default that changes with a package bump would take
@@ -130,7 +171,13 @@ builder.Services.AddKeyedChatClient(
     // function-invoking client executes them; reversed, that client runs the unwrapped tools and
     // the tracker sees nothing but text — no scopes, no per-tool usage, no progress.
     .UseToolTracking(ConfigureToolTracking)
-    .UseFunctionInvocation(null, ConfigureFunctionInvocation);
+    .UseFunctionInvocation(null, ConfigureFunctionInvocation)
+    // Last in the chain, which is innermost — see the Anthropic registration below for why that
+    // matters. It is also what makes clearing ConversationId safe: the telemetry client above has
+    // already read it by the time this runs.
+    .Use((innerClient, services) => new ConfigureOptionsChatClient(
+        innerClient,
+        AzureFoundryChatDefaults.Create(services.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value)));
 
 // 2) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
 // gated on the same flag, so an environment that does not use Bedrock needs no Bedrock settings and a
@@ -265,13 +312,42 @@ if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enable
 
 builder.Services.AddSingleton<IChatClientResolver, ChatClientResolver>();
 
-// AI Embedding Generators
-var embeddingModel = builder.Configuration.GetValue<string>("AzureAIFoundry:EmbeddingModel") ?? string.Empty;
-IEmbeddingGenerator<string, Embedding<float>> ollamaGenerator =
-    new AzureOpenAIClient(new Uri(azureAIFoundryUrl), new ApiKeyCredential(azureAIFoundryKey))
-        .GetEmbeddingClient(embeddingModel)
+// AI Embedding Generators. Still AzureOpenAIClient, and deliberately: embeddings have no Responses
+// equivalent, so the chat client's move to the v1 endpoint has nothing to offer them, and every
+// stored vector in the database depends on this client behaving exactly as it did.
+//
+// Built from a factory rather than eagerly, so the validated options are the only source of the URL.
+// Constructing it here would run `new Uri(...)` during service configuration — before Build(), and
+// so before ValidateOnStart — and a blank AzureAIFoundry:Url would surface as a bare
+// UriFormatException from this line instead of the validator's message.
+builder.Services.AddEmbeddingGenerator(sp =>
+{
+    var settings = sp.GetRequiredService<IOptions<AzureAIFoundryOptions>>().Value;
+
+    return new AzureOpenAIClient(new Uri(settings.Url), new ApiKeyCredential(settings.ApiKey))
+        .GetEmbeddingClient(settings.EmbeddingModel)
         .AsIEmbeddingGenerator();
-builder.Services.AddEmbeddingGenerator(ollamaGenerator);
+});
+
+// The fabricated weather tool. Off unless a deployment asks for it: it answers with invented data,
+// and attached to every production turn it is a tool the model would call and then answer from.
+builder.Services.AddOptions<WeatherToolOptions>()
+    .Bind(builder.Configuration.GetSection(WeatherToolOptions.SectionName))
+    .ValidateDataAnnotations()
+    // Not an error, because a staging environment turning it on is legitimate — but a deployment
+    // answering users from invented data should have said so out loud at least once.
+    .Validate(options =>
+    {
+        if (options.Enabled && builder.Environment.IsProduction())
+        {
+            Console.Error.WriteLine(
+                "WARNING: Tools:Weather:Enabled is set in Production. The weather tool answers with " +
+                "fabricated data and the model will report it to users as fact.");
+        }
+
+        return true;
+    })
+    .ValidateOnStart();
 
 // Document ingestion options, validated at startup so a bad chunk size or size limit fails the app
 // rather than every upload.

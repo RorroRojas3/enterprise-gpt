@@ -33,6 +33,18 @@ namespace Enterprise.Gpt.Entity
 
         public bool IsToolEnabled { get; set; } = true;
 
+        /// <summary>
+        /// Gets or sets a value indicating whether this deployment is asked for a reasoning
+        /// summary on every turn.
+        /// </summary>
+        /// <remarks>
+        /// Off by default because it is not a free capability: only reasoning models accept the
+        /// option, and a deployment that does not support it rejects the whole request rather
+        /// than ignoring the flag. It also costs — reasoning tokens are billed as output tokens.
+        /// Provider-specific in effect, since only the Azure AI Foundry client reads it today.
+        /// </remarks>
+        public bool IsReasoningEnabled { get; set; } = false;
+
         public bool IsDefault { get; set; } = false;
 
         public Provider Provider { get; set; } = null!;
