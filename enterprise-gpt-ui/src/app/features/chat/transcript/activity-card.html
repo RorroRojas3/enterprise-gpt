@@ -1,4 +1,8 @@
-<div class="activity-card">
+<div
+  class="activity-card"
+  [class.activity-card--depth-1]="level() === 1"
+  [class.activity-card--depth-2]="level() === 2"
+>
   <div class="activity-card__header">
     @switch (activity().state) {
       @case ('Running') {
@@ -25,8 +29,26 @@
       >{{ activity().displayName }}</span
     >
     <app-kind-badge [kind]="activity().kind" />
-    @if (duration(); as duration) {
-      <span class="activity-card__duration font-mono">{{ duration }}</span>
+    @if (duration() || expandable()) {
+      <!-- Duration and chevron share one auto margin, so the duration does not
+           drift to the middle of the header when the chevron joins it. -->
+      <div class="activity-card__meta">
+        @if (duration(); as duration) {
+          <span class="activity-card__duration font-mono">{{ duration }}</span>
+        }
+        @if (expandable()) {
+          <button
+            type="button"
+            class="activity-card__toggle"
+            [attr.aria-expanded]="expanded()"
+            [attr.aria-controls]="expanded() ? detailId : null"
+            (click)="toggle()"
+          >
+            <app-icon [name]="expanded() ? 'bi-chevron-up' : 'bi-chevron-down'" />
+            <span class="visually-hidden">{{ toggleLabel() }}</span>
+          </button>
+        }
+      </div>
     }
   </div>
 
@@ -40,5 +62,27 @@
         <li class="activity-card__substatus">{{ status.message }}</li>
       }
     </ul>
+  }
+
+  @if (expanded()) {
+    <!-- US-504: what this activity cost. The token columns are absent until a
+         server attributes usage per activity; the duration is what it can
+         answer today, and the frame prints it here as well as in the header. -->
+    <div class="activity-card__usage font-mono" [id]="detailId">
+      @for (part of usageEntries(); track part) {
+        <span>{{ part }}</span>
+      }
+    </div>
+  }
+
+  <!-- US-502: the work this activity invoked, behind the frame's indent rail.
+       The component recurses into itself — a standalone component is in scope
+       of its own template, so it needs no entry in its own `imports`. -->
+  @if (activity().children.length > 0) {
+    <div class="activity-card__children">
+      @for (child of activity().children; track child.scopeId || $index) {
+        <app-activity-card [activity]="child" [depth]="depth() + 1" />
+      }
+    </div>
   }
 </div>

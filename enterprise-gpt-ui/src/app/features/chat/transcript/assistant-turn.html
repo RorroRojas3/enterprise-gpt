@@ -4,6 +4,15 @@
   </div>
 
   <div class="assistant-turn__content">
+    @if (reasoningText()) {
+      <!-- US-503: reasoning has no place in the arrival-order index — it is not
+           a block of the answer and never interleaves with one — so it opens
+           the turn rather than taking a timeline node. Absent entirely for a
+           turn whose only reasoning was the server's seed, and for every
+           replayed one, which stores none at all. -->
+      <app-reasoning-region [text]="reasoningText()" [durationSeconds]="reasoningSeconds()" />
+    }
+
     <!-- Keyed on where a block starts and on the activity's own scope, both of
          which are fixed once the node exists. The index fallback covers an
          activity that arrived without a scope id, where two nodes would
@@ -50,6 +59,17 @@
           <app-activity-card [activity]="node.activity" />
         }
       }
+    }
+
+    @if (usageLine(); as usage) {
+      <!-- Frames 1f/1g: the completed turn's footer. It carries the token
+           counts today and gains the Copy control beside them in US-607, which
+           is also when the design's hover reveal arrives — a footer revealed
+           only on hover is unreachable by keyboard and touch until there is
+           something in it to focus. -->
+      <div class="assistant-turn__footer">
+        <span class="assistant-turn__usage font-mono">{{ usage }}</span>
+      </div>
     }
   </div>
 </div>

@@ -99,6 +99,12 @@ $dark: (
 // on every light surface in the kit. The darker light-theme value clears 3:1 on all
 // three while staying on the brand ramp; dark theme keeps the accent, which is already
 // 6.09:1 there.
+// The two code-head text colours are transcribed from the Transcript board,
+// where they are literals rather than tokens (#B9CBDC for the Copy control,
+// #8FA9C0 for the language label). They sit in both maps unchanged for the same
+// reason the Prism palette does: --code-head is dark in both themes, so text on
+// it never flips. Both clear 4.5:1 on --code-head in either theme.
+//
 // The provider dots (frame 2b) are pinned rather than aliased to --accent/--ok:
 // a provider's colour is its identity across themes and must not silently
 // rebrand when the palette moves. Azure and Anthropic come from the frame;
@@ -109,6 +115,8 @@ $extra-light: (
   'focus-ring': #0e7fa8,
   'tooltip-bg': #0b1f33,
   'tooltip-fg': #ffffff,
+  'code-head-fg': #b9cbdc,
+  'code-head-muted': #8fa9c0,
   'code-comment': #7b93aa,
   'code-keyword': #cc99cd,
   'code-string': #7ec699,
@@ -124,6 +132,8 @@ $extra-dark: (
   'focus-ring': #21a8d8,
   'tooltip-bg': #e6edf4,
   'tooltip-fg': #0b1f33,
+  'code-head-fg': #b9cbdc,
+  'code-head-muted': #8fa9c0,
   'code-comment': #7b93aa,
   'code-keyword': #cc99cd,
   'code-string': #7ec699,

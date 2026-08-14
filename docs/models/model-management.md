@@ -4,9 +4,9 @@ End-to-end reference for the model catalog feature: how models are listed, creat
 
 ## 1. Overview
 
-Models are the LLM deployments users can chat with (an Azure OpenAI deployment, or an Amazon Bedrock model or inference profile). Each model belongs to a [`Provider`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Provider.cs) and carries routing/limit metadata (`ContextWindowSize`, `MaxOutputTokens`, `IsToolEnabled`) plus a single-default flag (`IsDefault`).
+Models are the LLM deployments users can chat with (an Azure OpenAI deployment, or an Amazon Bedrock model or inference profile). Each model belongs to a [`Provider`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Provider.cs) and carries routing/limit metadata (`ContextWindowSize`, `MaxOutputTokens`, `IsToolEnabled`, `IsReasoningEnabled`) plus a single-default flag (`IsDefault`).
 
-`ProviderId` is not decoration: it selects the chat client that serves every turn on the model. See [Amazon Bedrock Provider](amazon-bedrock.md) for how that routing works and what happens when a model names a provider this deployment cannot serve.
+`ProviderId` is not decoration: it selects the chat client that serves every turn on the model. See [Amazon Bedrock Provider](amazon-bedrock.md) for how that routing works and what happens when a model names a provider this deployment cannot serve; [Azure AI Foundry Provider](azure-ai-foundry.md) and [Anthropic Provider](anthropic.md) cover the other two.
 
 Endpoints live in [`ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs) as a `MapGroup("api/models")` group; the former `ModelsController` was removed. `ModelEndpoints` is the template the other minimal-API modules follow (see [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md)). The public URL surface for the frontend (`GET /api/models`) is unchanged.
 
@@ -70,6 +70,7 @@ Response DTO — [`ModelDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelD
   "contextWindowSize": 200000,
   "maxOutputTokens": 16384,
   "isToolEnabled": true,
+  "isReasoningEnabled": false,
   "isDefault": false,
   "dateDeactivated": null
 }
@@ -77,7 +78,9 @@ Response DTO — [`ModelDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ModelD
 
 `dateDeactivated` is always `null` on user-facing endpoints (they filter to active rows); the admin listing uses it to distinguish toggled-off models.
 
-Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs). `CreateModelActionDto` and `UpdateModelActionDto` share the same shape (`providerId`, `name`, `deploymentName`, `description`, `contextWindowSize`, `maxOutputTokens`, `isToolEnabled`, `isDefault`). The update DTO carries **no id** — it comes from the route.
+Request DTOs — [`ModelActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Model/ModelActions.cs). `CreateModelActionDto` and `UpdateModelActionDto` share the same shape (`providerId`, `name`, `deploymentName`, `description`, `contextWindowSize`, `maxOutputTokens`, `isToolEnabled`, `isReasoningEnabled`, `isDefault`). The update DTO carries **no id** — it comes from the route.
+
+`isReasoningEnabled` is additive and defaults to `false`, so a client that omits it keeps the old behaviour on create — but remember that `PUT` replaces the whole model, so an update that omits it turns reasoning **off** (§2.3).
 
 ### 2.2 `name` and `deploymentName`
 
@@ -96,6 +99,16 @@ Two knock-on effects worth knowing:
 
 - **Listing order changed.** Both listings still `OrderBy(x => x.Name)`, but `Name` is now the label rather than the deployment id, so models sort the way a user would expect instead of by provider naming convention.
 - **The Cosmos DB message transcript records `deploymentName`**, not the label. The transcript is append-only, so the recorded value has to stay meaningful after a catalog rename, and it is the deployment that identifies which model actually served and billed the turn.
+
+### 2.3 `isReasoningEnabled`
+
+A per-model switch for whether the deployment is asked for a **reasoning summary** on every turn — the text the client shows in the assistant's reasoning region while it thinks. Column: `Core.Ref.Model.IsReasoningEnabled`, `bit NOT NULL DEFAULT 0`, added by migration `20260813233326_AddModelIsReasoningEnabled`.
+
+Three things about it are deliberate:
+
+- **It is opt-in, and existing rows are not back-filled.** A deployment that does not support reasoning **rejects the whole request** rather than ignoring the option, so the failure mode is total: guessing "yes" for the wrong model breaks every turn on it. Reasoning also costs — reasoning tokens are billed as output tokens.
+- **It carries no validation rule.** There is nothing to validate: it is a `bool`, and whether the named deployment honours it is a fact only the provider knows. The consequence is that a wrong value fails at chat time, not at create time — the same shape as `deploymentName` naming a deployment that does not exist.
+- **Its effect is provider-specific today.** Only the Azure AI Foundry client reads it, because reasoning reaches that provider as a per-request option; the Bedrock and Anthropic clients take their reasoning settings from their own configuration, so the flag changes nothing on a model they serve. See [Azure AI Foundry §5](azure-ai-foundry.md#5-reasoning) for how the flag travels from this row to the wire, and [Anthropic §5](anthropic.md#5-thinking-and-effort) for the deployment-wide alternative.
 
 ## 3. Request flow
 
@@ -169,7 +182,8 @@ At most one model has `IsDefault = 1`. When create/update sets `isDefault: true`
 | Entity | [`Enterprise.Gpt.Entity/Model.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs) |
 | EF configuration + seed | [`Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) |
 | Provider ids + provider seed | [`Enterprise.Gpt.Dto/Enums/Providers.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs), [`Configurations/ProviderConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProviderConfiguration.cs) |
-| Provider → chat client routing | [`Enterprise.Gpt.Service/Chat/ChatClientResolver.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatClientResolver.cs) — see [Amazon Bedrock Provider](amazon-bedrock.md) |
+| Provider → chat client routing | [`Enterprise.Gpt.Service/Chat/ChatClientResolver.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatClientResolver.cs) — see [Azure AI Foundry](azure-ai-foundry.md), [Amazon Bedrock](amazon-bedrock.md), [Anthropic](anthropic.md) |
+| Reasoning column and migration | [`Enterprise.Gpt.Entity/Model.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs), [`Migrations/20260813233326_AddModelIsReasoningEnabled.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260813233326_AddModelIsReasoningEnabled.cs) |
 | Frontend consumer | [`enterprise-ui/src/app/services/model.service.ts`](../../enterprise-ui/src/app/services/model.service.ts) (`GET /api/models` only) |
 
 ## 9. Known gaps and extension points
@@ -177,7 +191,7 @@ At most one model has `IsDefault = 1`. When create/update sets `isDefault: true`
 - **Reactivation endpoint:** `PUT` targets active rows only, so a deactivated model currently has no "toggle back on" path; add e.g. `POST /api/models/{id}/activate` (admin) that clears `DateDeactivated`.
 - **Concurrent default races (two distinct gaps):** (a) racing updates that demote the same row hit the rowversion check and surface as `DbUpdateConcurrencyException` → 500; a 409 `IExceptionHandler` arm would make that honest. (b) Two concurrent *creates* with `isDefault: true` can each miss the other's uncommitted row and both succeed, leaving **two defaults with no error** — only a filtered unique index (`WHERE IsDefault = 1`) closes this at the DB level (add when regenerating migrations; note EF must order the demotion before the insert within the transaction).
 - **Seed data:** the seed in [`ModelConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs) now sets both name columns — `Name = "RR GPT 5.6 Luna"`, `DeploymentName = "rr-gpt-5.6-luna"` — but still leaves `ContextWindowSize`/`MaxOutputTokens` at `0`, which the validators reject, so the seeded model cannot round-trip through `PUT` until real values are seeded.
-- **No schema management:** `Repository/Migrations/` is declared as an empty `<Folder Include>` in [`Enterprise.Gpt.Repository.csproj`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Enterprise.Gpt.Repository.csproj) and **does not exist on disk**, yet `Database.Migrate()` runs at startup (skipped in the `Testing` environment) — so it applies nothing, and `HasData` seeds reach only databases built by `EnsureCreated()`, which in practice means the test databases. Every schema and seed change is therefore an out-of-band operation today, including this release's `DisplayName` → `DeploymentName` swap and the new Bedrock provider row ([Amazon Bedrock Provider §10](amazon-bedrock.md#10-operational-notes--the-schema-is-not-migrated)). Adding the first real migration changes startup behavior — flag it before doing so.
+- **Schema management is now half-migrated.** `Repository/Migrations/` holds two migrations — `20260811024339_InitialCreate` (the whole schema plus the `HasData` seeds, including all three provider rows) and `20260813233326_AddModelIsReasoningEnabled` — and `Database.Migrate()` runs at startup outside the `Testing` environment, so a database this application creates from empty is now built and seeded by migrations rather than by hand. What has **not** changed is the fate of a database that predates them: it carries no `__EFMigrationsHistory` entries, so `Migrate()` will try to create tables that already exist. Bringing an out-of-band database under migrations means baselining it (mark `InitialCreate` as applied, then let the rest run). Several docs still describe the pre-migration world — the two provider references' "insert the provider row by hand" steps ([Amazon Bedrock §10](amazon-bedrock.md#10-operational-notes--the-schema-is-not-migrated), [Anthropic §10.1](anthropic.md#101-the-anthropic-provider-row-does-not-reach-a-migrated-database)) apply only to a database built before `InitialCreate` existed.
 - **Missing-OID tokens:** a principal that passes `RequireAuthorization()` but carries no OID claim (e.g. an app-only token) makes `TokenService.GetOid()` throw `UnauthorizedAccessException`, which the fallback handler maps to 500; a 401 arm in `GlobalExceptionHandler` would make that honest (pre-existing behavior, also reachable via `PermissionEndpointFilter`).
 - **Admin UI:** the frontend only consumes `GET /api/models`; the admin CRUD surface has no UI yet. Reuse `PermissionEndpointFilter.Require(PermissionIds.Administrator)` for any future admin-only endpoints (provider CRUD, user permission management).
 - **Frontend field drift:** `enterprise-ui`'s [`ModelDto`](../../enterprise-ui/src/app/dtos/ModelDto.ts) still declares a stale `aiServiceId`; the backend returns `providerId`. Because that field never binds, `prompt-box.component.ts`'s `getServiceIcon` falls through to its default for every model — including the new Bedrock ones, which have no icon case of their own. The frontend does not consume `deploymentName` at all, so the rename cost it nothing; the model picker now shows the human label because `name` is one. Align the field and add a Bedrock icon when building the admin UI.

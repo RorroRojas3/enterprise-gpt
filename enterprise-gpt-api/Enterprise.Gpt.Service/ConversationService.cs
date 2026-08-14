@@ -4,9 +4,11 @@ using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Microsoft.Azure.Cosmos;
@@ -17,6 +19,7 @@ using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tool;
 
 namespace Enterprise.Gpt.Service
@@ -98,6 +101,7 @@ namespace Enterprise.Gpt.Service
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
         IValidator<UpdateConversationActionDto> updateSessionValidator,
+        IOptions<WeatherToolOptions> weatherToolOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
@@ -112,6 +116,7 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<CreateConversationStreamActionDto> _createChatStreamActionValidator = createChatStreamActionValidator;
         private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
+        private readonly WeatherToolOptions _weatherToolOptions = weatherToolOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
         // The synthetic pair every turn's stream opens with, ahead of the first model event.
@@ -1096,6 +1101,32 @@ namespace Enterprise.Gpt.Service
                 ConversationId = sessionId.ToString()
             };
 
+            // The catalog's per-model reasoning flag, on two channels because they reach different
+            // providers.
+            //
+            // The property is the gate the Azure AI Foundry client reads, and it is set even when
+            // false so that client can tell "this model does not reason" from "nobody said".
+            //
+            // `Reasoning` is Microsoft.Extensions.AI's own provider-agnostic request, which the
+            // Bedrock and Anthropic bridges understand and which is the only reason this flag means
+            // anything outside Azure. It is **conditional**, and that is load-bearing: the OpenAI
+            // Responses adapter applies it with `??=`, so on a turn where the Azure client has
+            // deliberately left the raw reasoning options empty — the non-reasoning path — an
+            // unconditional value here fills them back in and the deployment rejects the whole
+            // request. On a reasoning turn the Azure client sets its raw options first, so its
+            // configured effort and summary win over these values.
+            if (model.IsReasoningEnabled)
+            {
+                chatOptions.Reasoning = new()
+                {
+                    Effort = ReasoningEffort.High,
+                    Output = ReasoningOutput.Full
+                };
+            }
+
+            chatOptions.AdditionalProperties ??= [];
+            chatOptions.AdditionalProperties[ChatRequestProperties.IsReasoningEnabled] = model.IsReasoningEnabled;
+
             // Both blocks of instructions are derived context carried on the request rather than injected
             // into the message list: that is the channel each provider maps to its own instruction slot,
             // and it keeps the messages equal to the transcript instead of transcript-plus-derived-context.
@@ -1173,6 +1204,25 @@ namespace Enterprise.Gpt.Service
             {
                 tools.Add(DocumentTool.Create(documentScope!, _documentRetrievalService, _logger));
                 instructions.Add(ConversationPrompts.BuildDocumentRetrievalPrompt(DocumentTool.ToolName, documentScope!.DocumentNames));
+            }
+
+            // A fabricated tool, off in every environment that has not asked for it. It exists so the
+            // activity timeline can be driven from a real turn — cards, sub-statuses, durations, and
+            // the failed state — without standing up an MCP server. It stands down on a model that
+            // cannot call tools for the same reason retrieval does: nothing about it is worth failing
+            // a turn over.
+            if (_weatherToolOptions.Enabled)
+            {
+                if (model.IsToolEnabled)
+                {
+                    tools.Add(WeatherTool.Create(_weatherToolOptions, _logger));
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "The weather tool is enabled but model {ModelId} does not support tools; it is unavailable for this turn.",
+                        model.Id);
+                }
             }
 
             if (instructions.Count > 0)

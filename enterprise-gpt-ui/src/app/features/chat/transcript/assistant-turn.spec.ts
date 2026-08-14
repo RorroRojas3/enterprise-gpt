@@ -146,7 +146,9 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     it('highlights the same block once the turn settles', async () => {
       await show('Intro\n\n```ts\nconst a = 1;\n```', false);
 
-      const code = host.querySelector('code');
+      // `pre > code`, not any `code`: US-603's head bar names the language in a
+      // `<code>` of its own, which comes first in document order.
+      const code = host.querySelector('pre > code');
       expect(code?.className).toContain('language-ts');
       expect(host.querySelector('.token')).not.toBeNull();
     });

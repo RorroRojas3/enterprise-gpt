@@ -18,6 +18,8 @@ namespace Enterprise.Gpt.Dto.Actions.Model
 
         public bool IsToolEnabled { get; init; }
 
+        public bool IsReasoningEnabled { get; init; }
+
         public bool IsDefault { get; init; }
     }
 
@@ -58,6 +60,8 @@ namespace Enterprise.Gpt.Dto.Actions.Model
         public decimal MaxOutputTokens { get; init; }
 
         public bool IsToolEnabled { get; init; }
+
+        public bool IsReasoningEnabled { get; init; }
 
         public bool IsDefault { get; init; }
     }

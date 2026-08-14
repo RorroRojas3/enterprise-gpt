@@ -624,7 +624,8 @@ The security-relevant MSAL settings are fixed in `buildMsalConfig` and deliberat
 | End of US-203 | 629.33 kB | 151.96 kB | 650 kB / 720 kB |
 | **End of EP-2 (US-205)** | **637.10 kB** | **153.38 kB** | **650 kB / 720 kB** |
 | End of EP-3 (US-303) | 643.62 kB | 158.05 kB | 660 kB / 720 kB |
-| Current, after EP-6's US-601/602/606 | 660.24 kB | 161.01 kB | 665 kB / 720 kB |
+| After EP-6's US-601/602/606 | 660.24 kB | 161.01 kB | 665 kB / 720 kB |
+| Current, after EP-5 and US-603 | 661.36 kB | 161.19 kB | 665 kB / 720 kB |
 
 US-204 and US-205 cost 7.77 kB between them — the drop directive and overlay, the session channel, the storage allowlist, the navigation seam, and three components — so the budget set at US-203 still holds and **no re-baseline was needed**. None of the MSAL cost is deferrable: `main.ts` must create and initialize the instance before bootstrap, so it is unavoidably initial. The `styles` bundle budget is unchanged at 65 kB warn / 80 kB error, and the global stylesheet still compiles to 60.32 kB — the new components carry their own scoped styles.
 

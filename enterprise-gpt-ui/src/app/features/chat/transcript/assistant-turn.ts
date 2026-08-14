@@ -8,10 +8,12 @@ import {
   splitStreamingMarkdown,
   stripFenceInfo,
 } from '@domain/markdown/streaming-split';
-import { TurnTimeline, findActivity } from '@domain/stream/turn-timeline';
+import { TurnTimeline } from '@domain/stream/turn-timeline';
 import { MarkdownComponent } from 'ngx-markdown';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { ActivityCard } from './activity-card';
+import { ReasoningRegion } from './reasoning-region';
+import { formatTurnUsage } from './turn-usage';
 
 type RenderedNode =
   // `start` is carried through only as a stable identity for the template's
@@ -21,7 +23,7 @@ type RenderedNode =
 
 /**
  * One assistant turn: the avatar column and, in arrival order, the turn's text
- * blocks and activity cards (US-406, US-501).
+ * blocks and activity cards (US-406, US-501, US-502).
  *
  * The order comes from the timeline index and every datum on a card comes from
  * the folded snapshot — the render-time join of the two structures the store
@@ -36,7 +38,7 @@ type RenderedNode =
 @Component({
   selector: 'app-assistant-turn',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ActivityCard, BrandLogo, MarkdownComponent],
+  imports: [ActivityCard, BrandLogo, MarkdownComponent, ReasoningRegion],
   templateUrl: './assistant-turn.html',
   styleUrl: './assistant-turn.scss',
 })
@@ -45,23 +47,56 @@ export class AssistantTurn {
   readonly timeline = input.required<TurnTimeline>();
   /** Draws frame `1b`'s blinking caret at the end of the growing text. */
   readonly streaming = input<boolean>(false);
+  /**
+   * The model's own reasoning summary (US-503), which is *not* read off the
+   * snapshot: `snapshot.reasoningText` also carries the server's seeded first
+   * delta, and only the store knows how long that was.
+   */
+  readonly reasoningText = input('');
+  /** The measured reasoning window for frame `1f`'s pill (US-503). */
+  readonly reasoningSeconds = input<number | null>(null);
 
   /**
-   * The join, derived once per flush rather than per node in the template. An
-   * activity node whose scope the snapshot cannot resolve is dropped here —
-   * defensive only, since both structures are fed the same events.
+   * The join, derived once per flush rather than per node in the template.
+   *
+   * An activity node opens a top-level card only when its scope is a **root**
+   * of the folded snapshot; anything else is nested work, which `ActivityCard`
+   * renders inside its parent (US-502). Root membership is the test, not
+   * `node.parentScopeId !== undefined`: the fold promotes a child whose parent
+   * scope it has never seen to a root, and that card has to stay visible —
+   * an unattached card is a rendering imperfection, a dropped one is a lost
+   * tool call. It is also what survives a parent that arrives after its child.
+   *
+   * Roots are **consumed** rather than looked up: each scope id owns a queue of
+   * the roots that arrived under it, and a node takes the next one. A plain
+   * lookup keyed on `scopeId` would render one activity twice if two roots
+   * arrived without a scope id, which the fold allows — it defaults a missing
+   * id to the empty string rather than dropping the event. A single pointer
+   * along `activities` would fix that too, but the invariant it rests on lives
+   * in the vendored contract, and one mismatch would stall it and drop every
+   * later card; a per-id queue costs one card instead.
    */
   protected readonly renderedNodes = computed<readonly RenderedNode[]>(() => {
     const snapshot = this.snapshot();
     const text = snapshot.text ?? '';
     const nodes: RenderedNode[] = [];
+    const roots = new Map<string, AssistantActivity[]>();
+
+    for (const root of snapshot.activities) {
+      const queued = roots.get(root.scopeId);
+      if (queued === undefined) {
+        roots.set(root.scopeId, [root]);
+      } else {
+        queued.push(root);
+      }
+    }
 
     for (const node of this.timeline().nodes) {
       if (node.kind === 'text') {
         nodes.push({ kind: 'text', text: text.slice(node.start, node.end), start: node.start });
       } else {
-        const activity = findActivity(snapshot.activities, node.scopeId);
-        if (activity !== null) {
+        const activity = roots.get(node.scopeId)?.shift();
+        if (activity !== undefined) {
           nodes.push({ kind: 'activity', activity });
         }
       }
@@ -69,6 +104,14 @@ export class AssistantTurn {
 
     return nodes;
   });
+
+  /**
+   * The turn's token counts for the message footer (US-504), or null when the
+   * turn claims none. Null is the honest answer for every turn that never
+   * folded a `Finished`: stopped, cut off, or replayed from the transcript,
+   * where the stream that carried the counts is long gone.
+   */
+  protected readonly usageLine = computed(() => formatTurnUsage(this.snapshot().usage));
 
   /** The caret belongs to the last node, and only when it is a text block. */
   protected readonly caretIndex = computed(() => {

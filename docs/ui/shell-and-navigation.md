@@ -460,11 +460,14 @@ It is backed by the same exhaustive `as const satisfies Record<AppErrorKind, boo
 | End of EP-2 (US-205) | 637.10 kB | 153.38 kB | 650 kB / 720 kB |
 | End of EP-3 (US-303) | 643.62 kB | 158.05 kB | 660 kB / 720 kB |
 | End of EP-4/EP-5 (US-501) | 648.75 kB | 157.96 kB | 660 kB / 720 kB |
-| **After EP-6's US-601/602/606** | **660.24 kB** | **161.01 kB** | **665 kB / 720 kB** |
+| After EP-6's US-601/602/606 | 660.24 kB | 161.01 kB | **665 kB / 720 kB** |
+| **After EP-5 and US-603** | **661.36 kB** | **161.19 kB** | 665 kB / 720 kB |
 
 EP-3 cost **6.52 kB** of initial graph — the two root stores, the conversation DTOs and `canRetry` — because the chrome itself is behind the lazy shell route and the chat screen behind its own. The warning threshold moved 650 → 660 kB to keep headroom above the new baseline; the **failure** threshold is unchanged at 720 kB, which is the number that matters. The `styles` budget is unchanged at 65 / 80 kB.
 
 **The gate at US-601 is closed, and both routes being lazy is what closed it.** The transcript renderer went behind the lazy chat route rather than into the initial graph: the whole 124.8 kB markdown stack rides the `chat` chunk (48.60 → 179.47 kB) and none of it is initial. The ~11.5 kB the initial graph did grow by is Angular's own `DomSanitizerImpl`, which `ngx-markdown`'s `MarkdownService` drags into a chunk shared with initial code, plus ~1.6 kB of global CSS — which is why the **warning** line moved 660 → 665 kB while the ceiling stayed at 720 kB. Full accounting in [Answer Rendering §6](answer-rendering.md#6-the-bundle-gate-resolved).
+
+EP-5's four stories and US-603 then cost **1.12 kB** of initial graph between them, and **no threshold moved**. All of it is global CSS for the code-block chrome — `_markdown.scss` is in the `styles.scss` chain, so it is initial however lazy the renderer is, and the `styles` bundle went 62.08 → 63.19 kB against its unchanged 65 / 80 kB budget. Every component and reducer those five stories added rides the `chat` chunk, which grew 179.47 → 198.51 kB.
 
 ## 10. Testing
 

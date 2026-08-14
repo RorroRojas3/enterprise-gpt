@@ -46,6 +46,25 @@ export const CHAT_ALLOWED_TAGS: readonly string[] = [
   'em',
   'del',
   'input',
+  // US-603's code-block chrome, and the only two entries here that markdown
+  // syntax does not produce: `renderer.code` emits them. Model text cannot,
+  // because raw HTML never becomes markup at all — `renderer.html` drops it at
+  // the parser.
+  //
+  // Note what that costs: these two are the one place the layers stop being
+  // independent. Everything else here is safe whether or not the parser layer
+  // holds; `div` and `button` are safe *because* it holds. A regression there —
+  // a marked upgrade routing a token kind past `renderer.html`, or someone
+  // relaxing the override — would let model text mint a `.md-code` wrapper that
+  // the transcript's delegated copy listener would then serve. The
+  // markdown-security spec drives a raw `<button>` through the real pipeline for
+  // exactly that reason, so the regression fails a test rather than shipping.
+  //
+  // `span` stays out for the reason it always was: Prism highlights the DOM
+  // *after* sanitizing, so it needs no allowance and a `<span>` in the source has
+  // no business surviving.
+  'div',
+  'button',
 ];
 
 /**
@@ -99,6 +118,13 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * What a fence's info string may contribute to a `language-*` class. Anything
+ * else — including the rest of an info string after the first token — is not a
+ * language and is dropped rather than escaped into an attribute.
+ */
+const LANGUAGE = /^[\w+#.-]+/;
+
+/**
  * The first of the two layers, and the reason the second is never asked to carry
  * the boundary alone.
  *
@@ -146,6 +172,35 @@ export function chatMarkedOptionsFactory(): MarkedOptions {
   // that text is raw source, so it is escaped here rather than handed to the
   // sanitizer as markup to judge.
   renderer.image = ({ text, title }) => escapeHtml(text || title || '');
+
+  // A fenced block becomes frame 1b's chrome — a `--code-head` bar carrying the
+  // language and a Copy control — rather than a bare `<pre>` (US-603). It is
+  // emitted *here* rather than grafted onto the rendered DOM afterwards, which
+  // is what keeps it out of the streaming tail's per-flush re-render path and
+  // is what the story's first criterion requires.
+  //
+  // The `language-*` class goes on the `<pre>` as well as the `<code>`: that is
+  // Prism's canonical markup, and `_prism.scss` matches on it.
+  renderer.code = ({ text, lang, escaped }) => {
+    // A language identifier, or nothing. Restricting the character set rather
+    // than escaping it means the info string can never reach an attribute at
+    // all — ` ```a"onload=… ` is simply not a language.
+    const language = LANGUAGE.exec(lang ?? '')?.[0] ?? '';
+    const marker = language === '' ? '' : ` class="language-${language}"`;
+    const body = escaped ? text : escapeHtml(text);
+    const label = language === '' ? '' : `<code class="md-code__lang">${language}</code>`;
+    // An answer with six code blocks otherwise offers six controls all called
+    // "Copy" — indistinguishable in a screen reader's list of buttons. The
+    // language is the only thing that tells them apart, and ARIA attributes
+    // survive the sanitizer through its `ALLOW_ARIA_ATTR` default.
+    const name = language === '' ? 'Copy code block' : `Copy ${language} code block`;
+
+    return (
+      `<div class="md-code"><div class="md-code__head">${label}` +
+      `<button class="md-code__copy" type="button" aria-label="${name}">Copy</button></div>` +
+      `<pre${marker}><code${marker}>${body}\n</code></pre></div>\n`
+    );
+  };
 
   return {
     renderer,

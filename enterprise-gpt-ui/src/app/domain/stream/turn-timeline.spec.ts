@@ -5,7 +5,7 @@ import {
   createInitialSnapshot,
   foldAssistantEvents,
 } from './andes/assistant-ui.contract';
-import { TurnTimeline, createInitialTimeline, findActivity, foldTimeline } from './turn-timeline';
+import { TurnTimeline, createInitialTimeline, foldTimeline } from './turn-timeline';
 
 /**
  * US-501: the ordering index beside the vendored fold. The fold owns activity
@@ -95,24 +95,5 @@ describe('foldTimeline', () => {
 
     expect(before.nodes).toEqual(nodesBefore);
     expect(before.textLength).toBe(2);
-  });
-});
-
-describe('findActivity', () => {
-  it('resolves a scope at any depth of the folded tree', () => {
-    const snapshot = fullTurnEvents().reduce(foldAssistantEvents, createInitialSnapshot());
-
-    const nested = findActivity(snapshot.activities, 'agent-1');
-    expect(nested?.displayName).toBe('Forecast Agent');
-    expect(nested?.state).toBe('Completed');
-
-    const root = findActivity(snapshot.activities, 'fn-1');
-    expect(root?.state).toBe('Failed');
-  });
-
-  it('returns null for an unknown scope', () => {
-    const snapshot = fullTurnEvents().reduce(foldAssistantEvents, createInitialSnapshot());
-
-    expect(findActivity(snapshot.activities, 'missing')).toBeNull();
   });
 });

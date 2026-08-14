@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 37 / 94 done.** Current position: P4, `US-502` — EP-4 is complete; EP-5's nesting and EP-6's code-block stories are what remain of the phase.
+**Progress: 42 / 94 done.** Current position: P4, `US-604` — EP-5 is complete; what remains of the phase is EP-6's code theming, deferred loading, and message-level copy.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -81,11 +81,11 @@ Also fixed here, per the risk table: the coalescing and head/tail split in US-40
 | 35 | US-410 Resume a conversation with the settings it last used | US-402, US-403 | P1 | ✅ 2026-08-13 — ⚠ re-sized S → M: history replay shipped here |
 | 36 | US-412 Understand an MCP consent requirement | US-403, US-103 | P1 | ✅ 2026-08-13 — interim variant; consent action still waits on US-411 |
 | 37 | US-413 Dictate a prompt | US-401 | P2 | ✅ 2026-08-13 |
-| 38 | US-502 See nested work inside the activity that caused it | US-501 | P1 | |
-| 39 | US-503 Read the model's reasoning as it streams | US-501 | P1 | |
-| 40 | US-504 See what a turn cost | US-501 | P1 | |
-| 41 | US-505 Understand an activity that failed | US-501 | P1 | |
-| 42 | US-603 Copy a code block | US-601 | P1 | |
+| 38 | US-502 See nested work inside the activity that caused it | US-501 | P1 | ✅ 2026-08-13 — render-side only; the filter is root membership, not `parentScopeId` |
+| 39 | US-503 Read the model's reasoning as it streams | US-501 | P1 | ✅ 2026-08-13 — the duration is measured client-side; the wire carries none |
+| 40 | US-504 See what a turn cost | US-501 | P1 | ✅ 2026-08-13 — footer always visible until US-607; the activity strip shows what is known |
+| 41 | US-505 Understand an activity that failed | US-501 | P1 | ✅ 2026-08-13 — mostly already structural; taken after US-502, which made it observable |
+| 42 | US-603 Copy a code block | US-601 | P1 | ✅ 2026-08-13 — custom renderer + one delegated listener; `div`/`button` join the profile |
 | 43 | US-604 Read code in a theme that matches the page | US-105, US-603 | P1 | → US-603 |
 | 44 | US-605 Render diagrams and math without paying for them upfront | US-601, US-108 | P2 | |
 | 45 | US-607 Copy a prompt or a response | US-601 | P1 | |
@@ -95,6 +95,12 @@ US-305 was pulled forward and landed with P3, which is what unblocked the header
 **EP-4 completed 2026-08-13, in two lanes rather than the numbered order.** US-408 and US-412 are two variants of one component and were taken together; US-410 preceded US-409 because both extend `TurnStore` and `ConversationStore`, and US-409's "was this the conversation's first turn" reads cleanest once replayed history exists to answer it. US-413 touches only the composer and was independent of all four.
 
 ⚠ **US-410 was an S that turned out to be an M.** Its third criterion is about a *refetched* transcript, and nothing in the client had ever fetched one — reopening a conversation showed a blank screen. History replay shipped inside the story rather than becoming a new one, agreed with the product owner before implementation.
+
+**EP-5 completed 2026-08-13, in the order US-502 → US-505 → US-504 → US-503, not the numbered one.** The three card stories share `ActivityCard`, so they are strictly sequential whatever order they take; US-505 follows US-502 because nesting is what makes "a failed child does not fail its parent" something a spec can see, and US-504's chevron is easier to place once the card's header is final. US-603 shares no code with any of them, but it adds a delegated listener to `Transcript` and cases to `transcript.spec.ts`, which is why it ran after rather than beside them — the only two files a parallel worktree would have collided on.
+
+**Three of the five had no data behind part of their design**, and each resolved differently rather than by one rule: US-503 measures the reasoning duration client-side because a plausible number exists to measure; US-504 renders the activity strip with the duration alone, because that keeps the chevron live and the token columns arrive with the field; US-505 leaves frame `1f`'s failure-reason line unbuilt, because nothing on the wire could fill it and inventing copy is the fabricated status line US-406 refuses.
+
+**The review round changed US-503 twice over.** Its first cut opened the timing window on the turn's *first* `ReasoningDelta` — which is the server's seed, so the pill reported stream latency as thinking time — and hung the region inside a component that `showLiveTurn` keeps off screen until the first token, so a story called "read the model's reasoning **as it streams**" showed it only once streaming was over. Both are fixed, and the fix that resolved them together was to treat the seeded delta as what it is: a request-level status line, which US-406 already decided this app does not render. It is now measured out of the text by length and skipped by the clock, and the ridgeline hands the gap to the region exactly when the model starts reasoning in its own words.
 
 ## P5 — Library, files, projects
 
@@ -187,6 +193,11 @@ Each of these ships deliberately incomplete and is closed later. Kept here so no
 | Chat header does not collapse into frame `1d`'s 54px mobile navbar below 768px | US-308 (P2) | US-1403 (P7) |
 | Upload gating verified against a test host, not the composer | US-204 (P2) | US-801 (P5) |
 | MCP consent card with no action, because the scope to request one is not on the wire | US-412 (P4) | US-411 (P8) |
+| Failed activity cards carry no reason, because `ActivityFailed` sends none | US-505 (P4) | a backend enabler putting failure text on the event, if ever prioritized |
+| The activity cost strip shows `duration` only — no server attributes tokens per activity | US-504 (P4) | a contract upgrade populating `AssistantActivity.usage` |
+| The message footer is always visible rather than revealed on hover and focus | US-504 (P4) | US-607 (P4), which gives it something focusable to reveal |
+| The code-head Copy control has no `bi-copy` glyph — the sprite needs `svg`/`use` in the sanitizer profile | US-603 (P4) | nothing planned; revisit only if the profile widens for another reason |
+| A code block that overflows its column scrolls by pointer only — the `<pre>` has no `tabindex`, so keyboard users cannot reach the rest of the line (WCAG 2.1.1) | pre-dates US-603, which now owns the chrome | US-1401 (P7), which owns keyboard operability and the axe gate; it needs `tabindex` in `CHAT_ALLOWED_ATTR` and a name for the region |
 | Replayed history carries no activity timeline, since the stream is never persisted | US-410 (P4) | nothing planned — a server-side turn record would be a new enabler |
 | Conversation and project sort disabled with a stated reason | US-705 (P5) | US-706 (P8) |
 | 500-item drain ceiling with a visible notice | US-908 (P5) | US-907, started in P3 |

@@ -28,7 +28,12 @@
       </div>
     }
     @case ('assistant') {
-      <app-assistant-turn [snapshot]="entry.snapshot" [timeline]="entry.timeline" />
+      <app-assistant-turn
+        [snapshot]="entry.snapshot"
+        [timeline]="entry.timeline"
+        [reasoningText]="entry.reasoningText"
+        [reasoningSeconds]="entry.reasoningSeconds"
+      />
     }
     @case ('cutOff') {
       <!-- The warning precedes the partial answer: "the answer below may be incomplete". -->
@@ -37,7 +42,12 @@
         [retryable]="true"
         (retried)="turn.retryTurn(entry.retry)"
       />
-      <app-assistant-turn [snapshot]="entry.snapshot" [timeline]="entry.timeline" />
+      <app-assistant-turn
+        [snapshot]="entry.snapshot"
+        [timeline]="entry.timeline"
+        [reasoningText]="entry.reasoningText"
+        [reasoningSeconds]="entry.reasoningSeconds"
+      />
     }
   }
 }
@@ -63,6 +73,8 @@
   <app-assistant-turn
     [snapshot]="turn.snapshot()"
     [timeline]="turn.timeline()"
+    [reasoningText]="turn.liveReasoningText()"
+    [reasoningSeconds]="turn.liveReasoningSeconds()"
     [streaming]="true"
   />
 }
@@ -83,3 +95,9 @@
 <!-- Exists from first render; only its content changes when a turn ends
      abnormally, so the announcement is reliable. -->
 <p class="visually-hidden" role="status">{{ announcement() }}</p>
+
+<!-- US-603's copy confirmation. Separate from the region above, which is
+     deliberately emptied for the length of a turn — a copy can happen mid-turn,
+     and sharing the region would either be swallowed by that or break its own
+     rule. -->
+<p class="visually-hidden transcript__copy-status" role="status">{{ copyAnnouncement() }}</p>

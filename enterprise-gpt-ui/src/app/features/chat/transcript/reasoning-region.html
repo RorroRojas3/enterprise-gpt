@@ -1,0 +1,22 @@
+<div class="reasoning" [class.reasoning--expanded]="expanded()">
+  <button
+    type="button"
+    class="reasoning__toggle"
+    [attr.aria-expanded]="expanded()"
+    [attr.aria-controls]="expanded() ? bodyId : null"
+    (click)="toggle()"
+  >
+    <app-icon
+      class="reasoning__chevron"
+      [name]="expanded() ? 'bi-chevron-down' : 'bi-chevron-right'"
+    />
+    <span class="reasoning__label">Reasoning</span>
+    @if (duration(); as duration) {
+      <span class="reasoning__duration font-mono">{{ duration }}</span>
+    }
+  </button>
+
+  @if (expanded()) {
+    <div class="reasoning__body" [id]="bodyId">{{ text() }}</div>
+  }
+</div>
