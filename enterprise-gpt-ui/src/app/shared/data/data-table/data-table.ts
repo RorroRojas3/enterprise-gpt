@@ -55,11 +55,31 @@ export class DataTable<T> {
   readonly loading = input<boolean>(false);
   readonly skeletonRows = input<number>(8);
 
+  /**
+   * Overrides the row count announced to assistive technology and used as the table's
+   * description.
+   *
+   * A paginated caller knows something this component cannot: how many rows exist
+   * beyond the ones it was handed. Left empty, the default "N results" stands; set,
+   * it replaces it entirely, so a screen showing a visible "Showing 25 of 312" is not
+   * also announcing "25 results" from here.
+   */
+  readonly summary = input<string>('');
+
   /** From `withPendingIds`: these rows are busy; every other row stays interactive. */
   readonly pendingIds = input<ReadonlySet<string>>(new Set<string>());
 
   readonly selectable = input<boolean>(false);
   readonly selectedIds = model<ReadonlySet<string>>(new Set<string>());
+
+  /**
+   * Whether the header row carries the select-all checkbox.
+   *
+   * Off for a caller whose board draws select-all in its own toolbar: two controls
+   * bound to one state is a defect, and below the breakpoint there is no header row
+   * to hold this one at all.
+   */
+  readonly headerSelectAll = input<boolean>(true);
 
   protected readonly summaryId = `data-table-summary-${nextId++}`;
 
@@ -146,6 +166,11 @@ export class DataTable<T> {
   );
 
   protected readonly resultSummary = computed(() => {
+    const supplied = this.summary();
+    if (supplied !== '') {
+      return supplied;
+    }
+
     const count = this.rows().length;
     return count === 1 ? '1 result' : `${count} results`;
   });

@@ -40,6 +40,8 @@ const COLUMNS: readonly TableColumn<Row>[] = [
       [loading]="loading()"
       [pendingIds]="pendingIds()"
       [selectable]="selectable()"
+      [headerSelectAll]="headerSelectAll()"
+      [summary]="summary()"
       [(selectedIds)]="selectedIds"
     >
       <ng-template appTableCell="name" [appTableCellFor]="rows()" let-row>
@@ -61,6 +63,8 @@ class TableHost {
   readonly loading = signal(false);
   readonly pendingIds = signal<ReadonlySet<string>>(new Set<string>());
   readonly selectable = signal(false);
+  readonly headerSelectAll = signal(true);
+  readonly summary = signal('');
   readonly selectedIds = signal<ReadonlySet<string>>(new Set<string>());
 }
 
@@ -176,6 +180,39 @@ describe('DataTable', () => {
     expect([...component.selectedIds()]).toEqual(['a']);
   });
 
+  it('drops the header select-all on request, keeping the track it sits in', async () => {
+    const { fixture, host, component } = await render();
+    component.selectable.set(true);
+    component.headerSelectAll.set(false);
+    await fixture.whenStable();
+
+    // The caller draws select-all in its own toolbar; two controls bound to one
+    // state is the defect this input exists to avoid.
+    expect(host.querySelector('thead input[type="checkbox"]')).toBeNull();
+    // The header cell stays, or the body rows lose the 40px track they line up on.
+    expect(host.querySelectorAll('thead [role="columnheader"]')).toHaveLength(3);
+    expect(host.querySelectorAll('tbody input[type="checkbox"]')).toHaveLength(2);
+  });
+
+  it('keeps selection working below the breakpoint, where there is no header', async () => {
+    const { fixture, host, component } = await render();
+    component.selectable.set(true);
+    await fixture.whenStable();
+
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await fixture.whenStable();
+
+    // Without a checkbox on the card, a caller that set `selectable` would get a
+    // selectable table on a laptop and an unselectable list on a phone.
+    const boxes = [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    expect(boxes).toHaveLength(2);
+    expect(boxes[0]?.getAttribute('aria-label')).toBe('Select Helios release status');
+
+    boxes[0]?.click();
+    await fixture.whenStable();
+    expect([...component.selectedIds()]).toEqual(['a']);
+  });
+
   it('shows the projected empty state instead of an empty table', async () => {
     const { fixture, host, component } = await render();
 
@@ -213,6 +250,19 @@ describe('DataTable', () => {
 
     const live = host.querySelector('[aria-live="polite"]');
     expect(live?.textContent).toContain('2 results');
+  });
+
+  it('lets a paginated caller replace the count with one that knows the total', async () => {
+    const { fixture, host, component } = await render();
+
+    component.summary.set('Showing 2 of 312 conversations');
+    await fixture.whenStable();
+
+    // Replaced, not appended: a screen showing its own visible counter would
+    // otherwise have two disagreeing numbers announced.
+    const live = host.querySelector('[aria-live="polite"]');
+    expect(live?.textContent?.trim()).toBe('Showing 2 of 312 conversations');
+    expect(live?.textContent).not.toContain('2 results');
   });
 });
 

@@ -296,13 +296,16 @@ The PRD's last open question and [the build order's ⛔ gate at US-601](../prd/e
 | Before EP-6 (end of US-501) | 648.75 kB     | 157.96 kB        | 48.60 kB      | 60.50 kB     | 660 kB / 720 kB       |
 | After US-601/602/606        | 660.24 kB     | 161.01 kB        | 179.47 kB     | 62.08 kB     | **665 kB / 720 kB**   |
 | After EP-5 and US-603       | 661.36 kB     | 161.19 kB        | 198.51 kB     | 63.19 kB     | 665 kB / 720 kB       |
-| **After EP-6 and US-701**   | **663.46 kB** | **163.36 kB**    | **179.04 kB** | **63.96 kB** | **670 kB / 720 kB**   |
+| After EP-6 and US-701       | 663.46 kB     | 163.36 kB        | 179.04 kB     | 63.96 kB     | **670 kB / 720 kB**   |
+| **After EP-7**              | **663.45 kB** | **163.11 kB**    | 179.04 kB     | 63.96 kB     | 670 kB / 720 kB       |
 
 The whole **124.8 kB** markdown stack is in the lazy chat chunk and none of it is in the initial graph — marked 42.5 kB, Prism 40.8 kB, DOMPurify 29.0 kB, `ngx-markdown` 12.5 kB.
 
 **The ~11.5 kB the initial graph grew by at US-601 is not the markdown libraries.** It is Angular's own `DomSanitizerImpl` — `ngx-markdown`'s `MarkdownService` injects `DomSanitizer`, which lands in a chunk shared between initial and lazy code — plus ~1.6 kB of global CSS for the rendered output. Unavoidable without dropping `ngx-markdown`, and the reason the **warning** line moved 660 → 665 kB. The **error ceiling has never moved from 720 kB**, which is the number that matters.
 
 **Nothing in EP-6's closing three is in the initial graph either.** The `chat` chunk _fell_ from 198.51 to 179.04 kB, because esbuild moved shared code into chunks the route now pulls in beside it rather than into the route's own; the initial figure grew 2.1 kB, which is US-701's screen and the global CSS for the diagram frame, the math and the message footer. The warning line was re-stated 665 → **670 kB** at US-701 and the `styles` budget is unchanged at 65 / 80 kB.
+
+**EP-7's four remaining stories cost nothing initial**, which is what a lazy route is for: paging, the favourites filter, bulk delete and the order statement are all inside the `conversations` chunk, and the one new component among them (`DeleteConversationsDialog`) rides it too. The initial figure is level at 663.45 kB raw, and transfer fell 0.25 kB on compression noise. No re-baseline, no threshold change.
 
 **Mermaid and KaTeX are in the build and in neither of those numbers.** KaTeX is one 267.72 kB chunk plus a 23.3 kB stylesheet and 20 woff2 faces served from `public/vendor/katex`; Mermaid is a family of chunks — a core plus one per diagram type, roughly 1.5 MB in total — because its own build loads each diagram grammar on demand. A reader fetches the core and the types their answer actually uses, and only when the flag is on and matching content appears. §8.7 is the gate that keeps that true.
 
@@ -481,7 +484,7 @@ The assistant control copies `snapshot.text`, **not** a re-join of `renderedNode
 
 ## 10. Testing
 
-The suite is **1099 specs across 90 files**, green alongside `npm run lint` and `npm run build`.
+The suite stood at **1099 specs across 90 files** when EP-6 closed, green alongside `npm run lint` and `npm run build`. (EP-7 took it to 1153 — [Conversation Library §7](conversation-library.md#7-testing).)
 
 | Area                             | Spec                            | Notable cases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | -------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

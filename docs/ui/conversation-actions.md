@@ -8,7 +8,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority f
 
 ## 1. Overview
 
-Three stories landed together and closed phase P2 of the rebuild; **US-305 joined them later** (with EP-6), through the same seams and without changing any of them:
+Three stories landed together and closed phase P2 of the rebuild; **US-305 joined them later** (with EP-6), and **US-704 later still** (with EP-7) — both through the same seams, and US-704 is the first flow whose _invoker_ lives outside the shell:
 
 | Story | What it delivers |
 | --- | --- |
@@ -16,10 +16,11 @@ Three stories landed together and closed phase P2 of the rebuild; **US-305 joine
 | **US-306** | Delete, from the same kebab (the only red item): frame `3d`'s confirmation naming the conversation, optimistic removal with position-faithful restore, navigation off a deleted open conversation |
 | **US-308** | The 52 px conversation header gains a kebab routing Rename and Delete through the same flows — nothing reimplemented |
 | **US-305** | Favourite, from the row kebab's new item **and** the header's star: an idempotent `PUT`, an optimistic flag with rollback, no dialog and no `dateModified` bump — and the retirement of US-308's deferred star (§6) |
+| **US-704** | `deleteMany`: one `DELETE api/conversations/bulk` for a set of rows selected on the conversations library, with the sidebar's copies removed here, a **LIFO** restore on failure, and the caller's own rollback taken as a callback (§5.3) |
 
 Seven decisions shape everything here, and each looks removable until you know what it prevents:
 
-1. **One root store owns every flow.** `ConversationActionsStore` is `providedIn: 'root'` because its invokers live in two features that must not import each other — the sidebar row (`features/shell`) and the chat header (`features/chat`). Everyone talks to the store; nobody talks to a dialog (§3).
+1. **One root store owns every flow.** `ConversationActionsStore` is `providedIn: 'root'` because its invokers live in three features that must not import each other — the sidebar row (`features/shell`), the chat header (`features/chat`) and the conversations library (`features/conversations`). Everyone talks to the store; nobody talks to a dialog (§3). US-704 added a second reason with teeth: **`rxMethod` binds its subscription to the injector that declares it**, so a request invoked from a route-scoped store would be torn down the moment the reader navigates away (§5.3).
 2. **The dialogs are mounted once, in the shell.** The shell wraps both invokers, so one `<app-rename-conversation-dialog>` and one `<app-delete-conversation-dialog>` serve every surface (§3.1).
 3. **Entity writes go through `ConversationListStore` methods.** Its state is protected, so no other store can `patchState` it — and should not, because *how* a row is patched is the list's decision. The actions store decides *when* (§3.2).
 4. **Server-confirmed outcomes travel as events.** `conversationEvents.updated` and `.deleted` are the second `@ngrx/signals/events` group, and they exist for a reachability reason, not a stylistic one: a root store cannot inject the route-scoped `ConversationStore` (§6).
@@ -39,6 +40,7 @@ Seven decisions shape everything here, and each looks removable until you know w
 | Per-row in-flight tracking | [`core/state/with-pending-ids.ts`](../../enterprise-gpt-ui/src/app/core/state/with-pending-ids.ts) |
 | The rename dialog (the first Signal Form) | [`features/shell/conversation-actions/rename-conversation-dialog.ts`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/rename-conversation-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/rename-conversation-dialog.html) |
 | The delete confirmation | [`features/shell/conversation-actions/delete-conversation-dialog.ts`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/delete-conversation-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/delete-conversation-dialog.html) |
+| The **bulk** delete confirmation (not in the shell: one invoker, and inputs rather than a store) | [`features/conversations/delete-conversations-dialog.ts`](../../enterprise-gpt-ui/src/app/features/conversations/delete-conversations-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/conversations/delete-conversations-dialog.html) |
 | The sidebar row kebab | [`features/shell/sidebar/conversation-row.ts`](../../enterprise-gpt-ui/src/app/features/shell/sidebar/conversation-row.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/shell/sidebar/conversation-row.html) |
 | The header star and kebab, and navigating off a deleted conversation | [`features/chat/chat.ts`](../../enterprise-gpt-ui/src/app/features/chat/chat.ts), [`chat.html`](../../enterprise-gpt-ui/src/app/features/chat/chat.html) |
 | The header's `current` DTO, `isFavorite`, and `updated` handling | [`features/chat/conversation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/conversation-store.ts) |
@@ -159,6 +161,29 @@ Deleting the conversation that is open must land the user on the empty chat scre
 
 Both close paths repair focus, because confirming a delete destroys the element focus would return to. The dialog falls back to `#main-content` (the always-present programmatic focus target that already serves the skip link) when focus fell through to `<body>` or was stranded in the closed dialog; `Chat` does the same after the navigation, inside `afterNextRender`, because the router's promise resolves before zoneless change detection has removed the header — an immediate check would still find the kebab connected and skip the fixup. In both places only a fall-through is corrected; a user who clicked elsewhere mid-flight is not yanked back.
 
+### 5.3 Bulk delete (US-704), and why the request lives here
+
+`deleteMany(ids, onRollback)` deletes a set of conversations in one `DELETE api/conversations/bulk`. Its invoker is the conversations library's table ([Conversation Library §4.6](conversation-library.md#46-bulk-delete-why-the-request-is-not-in-this-store)), and the story could have declared the `rxMethod` there — the rows it removes are that screen's, after all. It must not, and the reason is lifetime rather than layering: **`rxMethod` binds its subscription to the declaring injector**, and `ConversationLibraryStore` is provided on a route component. A reader who confirmed a delete and then clicked a sidebar row would have had the request torn down mid-flight, with nothing deleted, nothing restored and nothing said.
+
+So the flow splits along what each side can see:
+
+| Here (`core/`) | There (`features/conversations/`) |
+| --- | --- |
+| The request, and one success/error toast for the **batch** | The library's own optimistic removal (`takeRows`) |
+| `setRowPending` per id, released in `finalize` | Its own `restoreRows`, handed over as `onRollback` |
+| `removeRow` / `restoreRow` on the **sidebar's** list | Re-selecting the restored rows, so Retry is one press |
+| `conversationEvents.deleted` per id, on the 204 | — |
+
+`onRollback` is a callback rather than an injected dependency because `features → core` is the permitted direction and not the reverse: a store in `core/` cannot reach a route-scoped one.
+
+Three details are load-bearing:
+
+- **`mergeMap`, as with the single delete.** Two batches are two independent sets of rows; overlap on an id cannot happen, because the caller's rows leave its selection the moment the first batch goes out.
+- **The sidebar restore runs LIFO.** `removeRow` captures each index against the list _as it stands at that moment_, so a batch shrinks it one row at a time and only a reversed restore is their inverse. Front-to-back splices each row against a list that has already grown, turning `[A, B, C]` minus `[A, B]` back into `[B, A, C]`.
+- **The body goes inside the options object** — `delete(url, { body })`. `HttpClient.delete` drops a body passed any other way and the endpoint binds `[FromBody]`, so the server would see an empty id list and answer 400.
+
+The server filters ids that are missing, foreign or already deleted and answers 204 either way, so there is no partial outcome to model — and no per-row error state to render.
+
 ## 6. Favourite (US-305)
 
 The simplest flow here, and the one to copy when the next action needs no dialog: `toggleFavorite(conversation)` → refused if the row's own action is in flight → optimistic `favoriteRow` → `PUT api/conversations/{id}/favorite` with `{ isFavorite }` → on the 204, re-assert the flag and dispatch `conversationEvents.updated`; on failure, put the old flag back and toast.
@@ -208,8 +233,8 @@ Two events, both carrying **server-confirmed facts only**:
 
 | Event | Payload | Dispatched | Observers |
 | --- | --- | --- | --- |
-| `updated` | The `ConversationDto` the server returned — or, for a favourite, the target with the accepted flag applied | On a rename's 200 (US-304) and a favourite's 204 (US-305); project moves (US-307) will follow | `ConversationStore` patches its detail copy so the header name and star stay fresh — this covers the deep-link case `refreshRow` ignores, and the spread keeps `mcpServerIds`, which `ConversationDto` does not carry |
-| `deleted` | The conversation id | Only on the DELETE's 204 (US-306) | `Chat` navigates off the deleted open conversation (§5.2) |
+| `updated` | The `ConversationDto` the server returned — or, for a favourite, the target with the accepted flag applied | On a rename's 200 (US-304) and a favourite's 204 (US-305); project moves (US-307) will follow | `ConversationStore` patches its detail copy so the header name and star stay fresh — this covers the deep-link case `refreshRow` ignores, and the spread keeps `mcpServerIds`, which `ConversationDto` does not carry. `ConversationLibraryStore` patches the row it holds, or **evicts** it when the favourites filter is on and the flag came back false ([Conversation Library §4.7](conversation-library.md#47-staying-in-step-with-the-sidebar)) |
+| `deleted` | The conversation id | Only on the DELETE's 204 — once for a single delete (US-306), once **per id** for a bulk one (US-704) | `Chat` navigates off the deleted open conversation (§5.2); `ConversationLibraryStore` drops the row and shifts its counters |
 
 The favourite payload is the group's **one synthesis**, and it is bounded: the request is an idempotent SET of `isFavorite` that touches no other field, so the event claims nothing the server did not accept. Any future 204 that changes more than one field does not get the same treatment — it refetches.
 
@@ -226,13 +251,15 @@ US-304 is the first per-row action, and with it `withPendingIds` — built in US
 
 One trap, inherited from the feature itself: the pending-id updaters replace the `Set` rather than mutating it, and that is load-bearing — `patchState` compares by reference, so a mutated set produces no signal write at all. Nothing re-renders, nothing fails; the list just stops updating.
 
+**`ConversationActionsStore` re-exports the set as `pendingIds`, and `isRowPending(id)` beside it** (US-704). A surface that only _invokes_ these flows — the conversations library's table, which holds rows the 50-item sidebar may not — has no other business reaching into `ConversationListStore`, and the set is keyed by id whether or not that list holds the row. That is what lets the library bind `DataTable`'s `pendingIds` and its own row star without importing the sidebar's store.
+
 ## 9. Deliberately not here
 
 Recorded in the PRD and the build order, not omissions:
 
 - **The project move/remove items** in both kebabs — US-307, whose `projectId` invariant `toUpdateBody` already enforces (§4.1).
 - **The sub-768 px collapse** of the header into frame `1d`'s mobile navbar — US-1403, which builds the responsive shell it collapses into.
-- **Filtering the list to favourites** — US-703. The `isFavorite` parameter is already on the search endpoint and the client does not send it yet ([Shell and Navigation §3.1](shell-and-navigation.md#31-get-apiconversationssearch)).
+- **A favourites filter on the _sidebar_.** US-703 shipped one on the conversations library, and deliberately not here: the sidebar has no control to undo such a filter, so a narrowed sidebar would be a dead end ([Conversation Library §4.1](conversation-library.md#41-why-it-is-not-the-root-conversationliststore)).
 
 ## 10. Troubleshooting
 
@@ -245,6 +272,8 @@ Recorded in the PRD and the build order, not omissions:
 | The inline server message never clears | The field still holds the exact rejected value — the `validate` rule compares the *trimmed* field value against `renameRejectedName`. If a new form copies the pattern, make sure it compares what the store actually submitted (§4.3). |
 | The server message never *appears* | The key did not match the field. `serverMessagesFor` handles flat keys only; a nested or indexed key falls through to `unmatchedServerMessages`, so bind an error-summary region or the message is silently lost (§4.3). |
 | A failed delete did not restore the row | The user searched while the delete was in flight: `restoreRow` refuses a restore into a different query generation, on purpose. The error toast still reported the failure; the row returns with the next refetch (§5.1). |
+| A failed bulk delete put the sidebar's rows back in the wrong order | The restore ran front-to-back. `removeRow` captures each index against a list that is one row shorter each time, so only a LIFO restore is their inverse (§5.3). |
+| A bulk delete deleted nothing, silently, after the user navigated | The `rxMethod` was declared on a route-scoped store, so leaving the route tore its subscription down mid-flight. The request belongs here (§5.3). |
 | A reopened rename dialog will not submit | `renameBusy` is still true: the previous request is still on the wire (a force-closed dialog does not cancel it) and `exhaustMap` is still occupied. It clears when the request settles (§3). |
 | The row's pending flag sticks forever | A request path bypassed `tapResponse`'s `finalize`. Both flags — `setRowPending` and `renameBusy` — must clear there and only there (§8). |
 | The header shows the old name after a rename via deep link | The `updated` event handler in `ConversationStore` is what covers that case — `refreshRow` ignores rows the list does not hold. Check the event is dispatched on the server's response, not optimistically (§7). |
