@@ -1,0 +1,132 @@
+<app-modal
+  [heading]="heading()"
+  size="md"
+  [open]="open()"
+  [busy]="actions.formBusy() || actions.formLoading()"
+  (closed)="actions.cancelForm()"
+>
+  <!--
+    novalidate: the schema rules own validation, and the browser's own required bubble
+    would fight frame 4h's inline message.
+  -->
+  <form id="project-form" class="project-form" novalidate (submit)="submit($event)">
+    <div class="project-form__field">
+      <label class="form-label" for="project-form-name">Name</label>
+      <!--
+        No literal maxlength: NG8022 — the [formField] directive owns the constraint
+        attributes and derives this one from the schema's maxLength rule.
+      -->
+      <input
+        id="project-form-name"
+        class="form-control"
+        type="text"
+        data-modal-autofocus
+        [formField]="f.name"
+        [class.is-invalid]="showNameErrors()"
+        [attr.aria-describedby]="
+          'project-form-name-counter' + (showNameRegion() ? ' project-form-name-errors' : '')
+        "
+      />
+
+      <div class="project-form__meta">
+        @if (showNameRegion()) {
+          <!--
+            role="alert": the region is inserted together with its content, so the
+            rejection is announced — without it a screen-reader user presses Create,
+            focus does not move, and the refusal is silent. track $index, not the
+            message: two rules can emit identical text.
+          -->
+          <div class="project-form__errors" id="project-form-name-errors" role="alert">
+            @if (showNameErrors()) {
+              @for (message of nameErrors(); track $index) {
+                <p class="project-form__error">{{ message }}</p>
+              }
+            }
+            @for (message of unmatched(); track $index) {
+              <p class="project-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+        <p class="project-form__counter font-mono" id="project-form-name-counter">
+          {{ nameCount() }} / {{ lengths.name }}
+        </p>
+      </div>
+    </div>
+
+    <div class="project-form__field">
+      <label class="form-label" for="project-form-description">Description</label>
+      <input
+        id="project-form-description"
+        class="form-control"
+        type="text"
+        placeholder="What is this project for?"
+        [formField]="f.description"
+        [class.is-invalid]="showDescriptionErrors()"
+        [attr.aria-describedby]="showDescriptionErrors() ? 'project-form-description-errors' : null"
+      />
+      @if (showDescriptionErrors()) {
+        <div class="project-form__errors" id="project-form-description-errors" role="alert">
+          @for (message of descriptionErrors(); track $index) {
+            <p class="project-form__error">{{ message }}</p>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="project-form__field">
+      <label class="form-label" for="project-form-instructions">
+        Instructions <span class="project-form__optional">(optional)</span>
+      </label>
+      <textarea
+        id="project-form-instructions"
+        class="form-control"
+        rows="3"
+        placeholder="Applied to every conversation in this project"
+        [formField]="f.instructions"
+        [class.is-invalid]="showInstructionsErrors()"
+        [attr.aria-describedby]="
+          showInstructionsErrors() ? 'project-form-instructions-errors' : null
+        "
+      ></textarea>
+      @if (showInstructionsErrors()) {
+        <div class="project-form__errors" id="project-form-instructions-errors" role="alert">
+          @for (message of instructionsErrors(); track $index) {
+            <p class="project-form__error">{{ message }}</p>
+          }
+        </div>
+      }
+    </div>
+  </form>
+
+  <!--
+    modalFooter on each button, never on a wrapper div: the kit's footer is the flex
+    row, and a wrapper would collapse its gap once Angular strips the inter-element
+    whitespace.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    [disabled]="actions.formBusy()"
+    (click)="actions.cancelForm()"
+  >
+    Cancel
+  </button>
+  <!--
+    Outside the <form> element (the footer projects into the modal's slot), so the
+    native `form` attribute is what ties it back — and what makes Enter in a field
+    perform this button's submit.
+  -->
+  <button
+    modalFooter
+    class="btn btn-primary"
+    type="submit"
+    form="project-form"
+    [disabled]="!canSubmit()"
+  >
+    @if (actions.formBusy()) {
+      <span class="kit-spinner" aria-hidden="true"></span>
+    }
+    {{ submitLabel() }}
+  </button>
+</app-modal>

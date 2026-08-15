@@ -1,0 +1,8 @@
+// Frame 3d's body copy, which frame 4c's confirmation reuses: 13.5px on the muted
+// tone, 1.5 line height.
+.delete-project__body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}

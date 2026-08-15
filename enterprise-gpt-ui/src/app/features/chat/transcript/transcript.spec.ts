@@ -20,7 +20,7 @@ import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client'
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { provideChatMarkdown } from '../markdown/markdown-providers';
 import { TurnStore } from '../turn-store';
-import { UploadStore } from '../upload-store';
+import { UploadStore } from '@core/documents/upload-store';
 import { Transcript } from './transcript';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';

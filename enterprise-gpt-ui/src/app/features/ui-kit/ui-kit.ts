@@ -8,7 +8,7 @@ import { SourceBadge } from '@shared/badge/source-badge/source-badge';
 import { StatusDot } from '@shared/badge/status-dot/status-dot';
 import { ProjectCard } from '@shared/card/project-card/project-card';
 import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
-import { Attachment } from '@shared/chip/attachment-chip/attachment.model';
+import { Attachment } from '@domain/documents/attachment';
 import { BulkActionBar } from '@shared/data/bulk-action-bar/bulk-action-bar';
 import { CardRow } from '@shared/data/card-row/card-row';
 import { DataTable } from '@shared/data/data-table/data-table';

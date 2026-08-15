@@ -1,0 +1,331 @@
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { computed, inject } from '@angular/core';
+import {
+  PartialStateUpdater,
+  patchState,
+  signalStore,
+  withComputed,
+  withHooks,
+  withMethods,
+  withProps,
+  withState,
+} from '@ngrx/signals';
+import {
+  addEntities,
+  removeEntity,
+  setAllEntities,
+  updateEntity,
+  withEntities,
+} from '@ngrx/signals/entities';
+import { Events, withEventHandlers } from '@ngrx/signals/events';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { tapResponse } from '@ngrx/operators';
+import { EMPTY, Observable, Subject, expand, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
+import { PaginatedResponseDto } from '@domain/api/paginated-response';
+import { ProjectSummaryDto, toProjectSummary } from '@domain/api/project';
+import { toAppError } from '@core/errors/to-app-error';
+import { projectEvents } from '@core/events/project-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { ApiUrl } from '@core/http/api-url';
+import {
+  OffsetPaginationState,
+  setFirstPage,
+  setPage,
+  withOffsetPagination,
+} from '@core/state/with-offset-pagination';
+import {
+  setError,
+  setFulfilled,
+  setPending,
+  withRequestStatus,
+} from '@core/state/with-request-status';
+import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+
+/**
+ * How many projects each request asks for — the server's own clamp ceiling, so the
+ * drain below costs the fewest possible round trips.
+ */
+export const PROJECT_PAGE_SIZE = 100;
+
+/**
+ * How many projects the drain loads before it stops.
+ *
+ * The PRD's regime **A**: a fully materialised set, so US-902 can offer a sort that is
+ * correct rather than one that reorders whichever page happened to be in hand. Five
+ * requests at most. Past it the screen states what it is showing rather than letting
+ * the shortfall pass for a complete list.
+ */
+export const PROJECT_LOAD_CEILING = 500;
+
+/** What the URL says about which projects to fetch (US-901). */
+export interface ProjectListQuery {
+  readonly name: string;
+}
+
+interface ProjectListState {
+  /**
+   * The `name=` filter the cards on screen belong to.
+   *
+   * Written when the request starts, not when it commits, so the empty state can name
+   * the term that produced it rather than the one still being typed.
+   */
+  readonly name: string;
+  /** The drain stopped at {@link PROJECT_LOAD_CEILING} with more still on the server. */
+  readonly truncated: boolean;
+}
+
+/**
+ * Moves the offset and the total together, for a row that joined or left the set.
+ *
+ * Both, for the reason the conversations library documents: the total because the
+ * ceiling notice would otherwise count rows that are gone, and the **offset** because
+ * it is how many rows are held — and `hasMore` compares the two.
+ */
+function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState> {
+  return ({ skip, totalCount }) => ({
+    skip: Math.max(skip + delta, 0),
+    totalCount: Math.max(totalCount + delta, 0),
+  });
+}
+
+/**
+ * The projects grid's list, from `GET api/projects` (US-901, frame `4c`).
+ *
+ * It copies `ConversationLibraryStore` — route-scoped, URL-driven, `rxMethod` +
+ * `switchMap` so a slow `"data"` cannot paint over a fast `"data platform"`, no
+ * `debounceTime` because `SearchInput` already debounces and emits only committed
+ * values, and `takeUntil(signedOut$)` on the request because `withResetOnSignOut`
+ * clears state and does not cancel work — with one structural difference: **it drains
+ * rather than pages.**
+ *
+ * There is no Load more here and there never will be. `GET api/projects` accepts no
+ * sort parameter, so US-902's sort is only ever honest over a set the client holds in
+ * full; a grid that sorted its first page would put a second sorted run underneath it
+ * on the next fetch. So each query walks the pages itself, up to a stated ceiling, and
+ * {@link ProjectListState.truncated} is what stops the shortfall being silent.
+ *
+ * **`withClientQuery` is deliberately not composed yet.** Search here is server-side —
+ * US-901's second criterion sends `name=` — and no sort control ships until US-902.
+ * That story is the feature's consumer and wires it as its own doc example shows, over
+ * `entities` with `isAuthoritative: isFulfilled() && isFullyLoaded()`.
+ */
+export const ProjectListStore = signalStore(
+  withState<ProjectListState>({ name: '', truncated: false }),
+  withEntities<ProjectSummaryDto>(),
+  withRequestStatus(),
+  withOffsetPagination(PROJECT_PAGE_SIZE),
+  withProps(() => ({
+    _http: inject(HttpClient),
+    _url: inject(ApiUrl).build('projects'),
+    _signedOut$: injectSignedOut(),
+    /**
+     * Cancels a drain whose result set no longer exists.
+     *
+     * `switchMap` cancels the one request in flight when a new query arrives, but the
+     * drain is a *chain* of them: without this, a page fetched against the old term
+     * lands after the new query's `setAllEntities` and appends rows from a list that
+     * is gone.
+     */
+    _querySuperseded$: new Subject<void>(),
+  })),
+  withComputed(({ entities, isFulfilled, isPending, name, totalCount }) => {
+    const isEmpty = computed(() => isFulfilled() && entities().length === 0);
+    const hasTerm = computed(() => name().trim() !== '');
+
+    return {
+      isEmpty,
+      hasTerm,
+      /** Loaded, nothing matched, and a term is why — frame `4b`'s shape. */
+      hasNoMatches: computed(() => isEmpty() && hasTerm()),
+      /** Loaded, nothing matched, nothing filtering: this user has no projects at all. */
+      hasNoProjects: computed(() => isEmpty() && !hasTerm()),
+      /**
+       * Nothing on screen yet, so skeletons are the honest thing to show. A search that
+       * narrows an existing grid keeps its cards and marks the field busy instead — the
+       * distinction `Sidebar` and the conversations library both draw.
+       */
+      isFirstLoad: computed(() => isPending() && entities().length === 0),
+      /**
+       * Frame `4g`'s neutral wording rather than frame `4d`'s, which names sorting: with
+       * no sort control on screen until US-902, a sentence about sorting would explain
+       * a control the reader cannot see.
+       */
+      ceilingNotice: computed(
+        () => `Showing the ${entities().length} most recent of ${totalCount()} projects.`,
+      ),
+    };
+  }),
+  withMethods((store) => {
+    function pageParams(query: ProjectListQuery, skip: number): HttpParams {
+      const trimmed = query.name.trim();
+      let params = new HttpParams().set('skip', String(skip)).set('take', String(store.take()));
+
+      // Omitted rather than sent empty: a blank `name=` still takes the server down its
+      // LIKE branch, and US-901's second criterion is about a term that exists.
+      if (trimmed !== '') {
+        params = params.set('name', trimmed);
+      }
+
+      return params;
+    }
+
+    function fetchPage(
+      query: ProjectListQuery,
+      skip: number,
+    ): Observable<PaginatedResponseDto<ProjectSummaryDto>> {
+      return store._http.get<PaginatedResponseDto<ProjectSummaryDto>>(store._url, {
+        params: pageParams(query, skip),
+      });
+    }
+
+    /**
+     * The next step of the drain, or its end.
+     *
+     * The ceiling is recorded here rather than in a `finalize`, so it is written only
+     * when the drain genuinely stopped short — a `finalize` would also run on the
+     * cancellation a new query or a sign-out causes, and stamp a partial load as a
+     * truncated one.
+     */
+    function nextPage(
+      query: ProjectListQuery,
+    ): Observable<PaginatedResponseDto<ProjectSummaryDto>> {
+      if (!store.hasMore()) {
+        return EMPTY;
+      }
+
+      if (store.skip() >= PROJECT_LOAD_CEILING) {
+        patchState(store, { truncated: true });
+
+        return EMPTY;
+      }
+
+      return fetchPage(query, store.skip()).pipe(
+        tap((page) => patchState(store, addEntities(page.items), setPage(page))),
+      );
+    }
+
+    // No `distinctUntilChanged`: the signal source only emits on a real change, and
+    // `retry()` pushes the same query again on purpose.
+    const _runQuery = rxMethod<ProjectListQuery>(
+      pipe(
+        tap(({ name }) => {
+          store._querySuperseded$.next();
+          patchState(store, { name, truncated: false }, setPending());
+        }),
+        switchMap((query) =>
+          fetchPage(query, 0).pipe(
+            tap((first) =>
+              patchState(store, setAllEntities(first.items), setFirstPage(first), setFulfilled()),
+            ),
+            // `expand` rather than a self-referential `concat`: each iteration completes
+            // and is dropped, so a five-page drain does not retain five nested
+            // subscribers — the same reason `UploadStatusClient.follow` uses it.
+            expand(() => nextPage(query)),
+            // On the whole chain, not the first request: `switchMap` cancels only what
+            // is in flight when the next query arrives, and the drain is a sequence.
+            takeUntil(merge(store._signedOut$, store._querySuperseded$)),
+            tapResponse({
+              // Each page is written by the taps above; this arm exists so that a
+              // failure mid-drain does not tear down the rxMethod's own subscription.
+              next: () => undefined,
+              // Whichever page failed, the panel replaces the grid: a half-drained set
+              // sorted or counted as if it were whole is the failure regime A exists to
+              // avoid, and Retry re-runs the query from the first page.
+              error: (cause: unknown) =>
+                patchState(store, setError(toAppError(cause, { url: store._url }))),
+            }),
+          ),
+        ),
+      ),
+    );
+
+    return {
+      /**
+       * Binds the screen's `?name=` to the query, once, from its constructor.
+       *
+       * Taking a computation rather than a value is what makes a deep link one drain:
+       * `rxMethod` subscribes through an effect, so it reads the parameter the router
+       * has already bound instead of firing unfiltered first and filtered second.
+       */
+      bindQuery: _runQuery,
+
+      /** Re-runs the query the cards on screen belong to, after a failure. */
+      retry(): void {
+        _runQuery({ name: store.name() });
+      },
+    };
+  }),
+  withEventHandlers((store, events = inject(Events)) => [
+    // Server-confirmed facts only, which is the whole contract of this event group.
+    // A project created or renamed from its own detail screen has to land here too, or
+    // the grid disagrees with the row the user just changed.
+    events.on(projectEvents.created).pipe(
+      tap(({ payload }) => {
+        // Only when it belongs to what is on screen. The server filters by a substring
+        // of `name`, so a project created under an active search that does not match it
+        // would be a row the very next refetch removes.
+        if (!matchesTerm(payload.name, store.name())) {
+          return;
+        }
+
+        // The head of the list, because the server orders by `dateCreated` descending
+        // and a project created now is the newest there is — so this is where a refetch
+        // would put it.
+        patchState(
+          store,
+          setAllEntities([toProjectSummary(payload), ...store.entities()]),
+          shiftCounters(1),
+        );
+      }),
+    ),
+
+    events.on(projectEvents.updated).pipe(
+      tap(({ payload }) => {
+        if (store.entityMap()[payload.id] === undefined) {
+          return;
+        }
+
+        // Renamed out of the active search: the card no longer belongs to the query
+        // that produced it, so it leaves rather than sitting in a filtered grid it does
+        // not match — the rule US-703 applies to an unstarred conversation.
+        if (!matchesTerm(payload.name, store.name())) {
+          patchState(store, removeEntity(payload.id), shiftCounters(-1));
+
+          return;
+        }
+
+        patchState(store, updateEntity({ id: payload.id, changes: toProjectSummary(payload) }));
+      }),
+    ),
+
+    events.on(projectEvents.deleted).pipe(
+      tap(({ payload: id }) => {
+        if (store.entityMap()[id] === undefined) {
+          return;
+        }
+
+        patchState(store, removeEntity(id), shiftCounters(-1));
+      }),
+    ),
+  ]),
+  withHooks({
+    onDestroy(store) {
+      store._querySuperseded$.complete();
+    },
+  }),
+  // Last, as the feature requires.
+  withResetOnSignOut(),
+);
+
+/**
+ * Whether a name still matches the active search, the way the server matches it.
+ *
+ * `EF.Functions.Like(name, '%term%')` under a case-insensitive collation, which is a
+ * case-insensitive substring test. An empty term matches everything, because the client
+ * omits the parameter entirely there.
+ */
+function matchesTerm(name: string, term: string): boolean {
+  const needle = term.trim().toLocaleLowerCase();
+
+  return needle === '' || name.toLocaleLowerCase().includes(needle);
+}

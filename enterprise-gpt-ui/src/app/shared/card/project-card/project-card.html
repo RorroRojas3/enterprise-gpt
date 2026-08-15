@@ -3,16 +3,18 @@
     <a class="project-card__name" [id]="headingId" [routerLink]="link()">{{ name() }}</a>
 
     <div class="project-card__actions">
-      <button
-        class="project-card__favorite"
-        type="button"
-        [class.project-card__favorite--on]="favorite()"
-        [attr.aria-label]="favoriteLabel()"
-        [disabled]="pending()"
-        (click)="favoriteToggled.emit()"
-      >
-        <app-icon [name]="favorite() ? 'bi-star-fill' : 'bi-star'" />
-      </button>
+      @if (showFavorite()) {
+        <button
+          class="project-card__favorite"
+          type="button"
+          [class.project-card__favorite--on]="favorite()"
+          [attr.aria-label]="favoriteLabel()"
+          [disabled]="pending()"
+          (click)="favoriteToggled.emit()"
+        >
+          <app-icon [name]="favorite() ? 'bi-star-fill' : 'bi-star'" />
+        </button>
+      }
 
       <ng-content select="[cardMenu]" />
     </div>

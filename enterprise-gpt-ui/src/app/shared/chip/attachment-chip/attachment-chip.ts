@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { Icon } from '@shared/icon/icon';
-import { Attachment, AttachmentRemoveAction, fileGlyph } from './attachment.model';
+import { Attachment, AttachmentRemoveAction } from '@domain/documents/attachment';
+import { fileGlyph } from './attachment.model';
 
 /**
  * One attached file, in the composer or a project's files panel — frame `4l`.

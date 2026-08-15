@@ -1,0 +1,101 @@
+// Frame 4e's column: header, composer, tab strip, panel.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 26px 34px;
+}
+
+@media (max-width: 767px) {
+  :host {
+    padding: 18px 14px;
+  }
+}
+
+.detail__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.detail__identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail__name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.detail__folder {
+  flex: 0 0 auto;
+  font-size: 18px;
+  color: var(--brand);
+}
+
+// A button that reads as the board's heading: no chrome until it is hovered or
+// focused, at which point it has to be visibly a control (WCAG SC 1.4.11 is met by the
+// focus ring the kit sets globally).
+.detail__name {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.detail__description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+// The board's `--bs-nav-tabs-link-active-color` override, applied here rather than
+// inline so the strip themes with the rest of the app.
+.detail__tabs {
+  .nav-tabs {
+    --bs-nav-tabs-link-active-color: var(--brand);
+    font-size: 13.5px;
+  }
+
+  .nav-link {
+    color: var(--muted);
+
+    &.active {
+      font-weight: 600;
+    }
+  }
+}
+
+.detail__panel {
+  min-width: 0;
+}
+
+// The board's count: a smaller run beside the tab label, not a badge.
+.detail__tab-count {
+  margin-inline-start: 4px;
+  font-size: 11px;
+}
+
+// Frame 4e caps the composer at the same 900px as the panels below it.
+.detail__composer {
+  max-width: 900px;
+}

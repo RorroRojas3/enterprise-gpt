@@ -5,6 +5,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { projectEvents } from '@core/events/project-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
 import { Dispatcher } from '@ngrx/signals/events';
@@ -498,6 +499,21 @@ describe('ConversationListStore', () => {
     expect(store.entities()).toHaveLength(0);
     expect(store.name()).toBe('');
     expect(store.isIdle()).toBe(true);
+  });
+
+  it('releases held rows when their project is deleted (US-903)', () => {
+    const held = conversationFixture({ projectId: 'p-1' });
+    const other = conversationFixture({ projectId: 'p-2' });
+    load([held, other]);
+
+    TestBed.inject(Dispatcher).dispatch(projectEvents.deleted('p-1'));
+    flush();
+
+    // Not cosmetic: `toUpdateBody` echoes `projectId` on every rename, so a row left
+    // holding a deleted project id would PUT it and take a 404 on the next rename —
+    // a failure with nothing to do with projects.
+    expect(store.entities().find((c) => c.id === held.id)?.projectId).toBeNull();
+    expect(store.entities().find((c) => c.id === other.id)?.projectId).toBe('p-2');
   });
 
   it('reloads for the next user after a sign-out', () => {

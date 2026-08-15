@@ -21,6 +21,22 @@ const NO_BYPASS =
   'internally; there is no permitted call site. Render through the markdown ' +
   'pipeline instead.';
 
+/**
+ * One `no-restricted-imports` pattern banning a set of layers.
+ *
+ * Two spellings per alias: the path alias a source file actually uses, and a
+ * globstar-prefixed form that also catches a relative import a refactor left behind.
+ *
+ * @param aliases The path aliases this layer may not import.
+ */
+function layerBan(aliases) {
+  return {
+    group: aliases.flatMap((alias) => [alias, `**/${alias.replace('@', '')}`]),
+    message:
+      'Dependencies run one way: features → shared → core → domain. Move the shared piece down a layer, or invert it with an injection token (see COMPOSER_HOST).',
+  };
+}
+
 export default defineConfig([
   globalIgnores([
     'dist/',
@@ -110,6 +126,49 @@ export default defineConfig([
             "MemberExpression[computed=true] > TemplateLiteral > TemplateElement[value.cooked='bypassSecurityTrustHtml']",
           message: NO_BYPASS,
         },
+      ],
+    },
+  },
+
+  {
+    // The layering rule, made machine-checkable.
+    //
+    // Dependencies run one way — `features → shared → core → domain` — and until now
+    // nothing enforced it. US-906 is what made that expensive: the composer had to be
+    // reachable from two features, and the fix was to move it into `shared/` behind a
+    // token. A single `@features/…` import from `shared/` or `core/` would undo that
+    // silently, because it type-checks, builds, and only shows up as a lazy chunk the
+    // whole app suddenly downloads.
+    //
+    // Three blocks, not one, because the rule has three edges: `domain/` is meant to be
+    // framework-free so the SSE codec and the activity fold test in Node with no
+    // `TestBed`, and a `core → shared` import is as much a break as the one this was
+    // written for.
+    //
+    // Specs are exempt on purpose: `shared/composer/composer.spec.ts` drives the real
+    // `TurnStore`, because what it verifies — the Send/Stop morph, the seed handoff and
+    // the focus fixups — are reactions to state a stub would have to fake into
+    // existence. A test file is not part of the application graph.
+    files: ['src/app/shared/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [layerBan(['@features/*'])] }] },
+  },
+
+  {
+    files: ['src/app/core/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [layerBan(['@features/*', '@shared/*'])] }],
+    },
+  },
+
+  {
+    files: ['src/app/domain/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [layerBan(['@features/*', '@shared/*', '@core/*'])] },
       ],
     },
   },

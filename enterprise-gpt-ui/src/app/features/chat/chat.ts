@@ -10,6 +10,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Events } from '@ngrx/signals/events';
+import { provideComposerHost } from '@core/chat/composer-host';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { canRetry } from '@core/errors/error-message';
 import { conversationEvents } from '@core/events/conversation-events';
@@ -20,13 +21,13 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ChatEmptyState } from './chat-empty-state';
-import { Composer } from './composer/composer';
+import { Composer } from '@shared/composer/composer';
 import { ConversationStore } from './conversation-store';
 import { provideChatMarkdown } from './markdown/markdown-providers';
 import { TranscriptPinning } from './transcript-pinning';
 import { Transcript } from './transcript/transcript';
 import { TurnStore } from './turn-store';
-import { UploadStore } from './upload-store';
+import { UploadStore } from '@core/documents/upload-store';
 
 /**
  * The chat screen, served for both `/chat` and `/chat/{conversationId}` by the single
@@ -58,7 +59,17 @@ import { UploadStore } from './upload-store';
   // initial bundle.
   // UploadStore is listed before TurnStore only for readability; TurnStore injects it,
   // and Angular resolves both from this injector regardless of order.
-  providers: [ConversationStore, UploadStore, TurnStore, provideChatMarkdown()],
+  //
+  // `provideComposerHost` is what makes the shared composer stream in place here: on
+  // the project detail screen the same component is pointed at a host that creates a
+  // conversation and navigates instead (US-906).
+  providers: [
+    ConversationStore,
+    UploadStore,
+    TurnStore,
+    provideComposerHost(TurnStore),
+    provideChatMarkdown(),
+  ],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })

@@ -29,20 +29,10 @@ export const ORDER_EXPLANATION =
   "Conversations are listed newest first. This list can't be reordered.";
 
 /**
- * Whether a search term change should replace the history entry rather than push one.
+ * Re-exported so this screen's route contract still reads from one file.
  *
- * Refining a term replaces; adding or removing one pushes. Both extremes fail the
- * criterion in their own way: always replacing means the back button leaves the screen
- * instead of restoring the unfiltered list, and always pushing walks the user back
- * through their own typing one debounce at a time. Pushing at exactly the two
- * transitions a reader thinks of as a state change — filter on, filter off — makes
- * `/conversations` → `?name=quarterly` → back → `/conversations`, and makes clearing a
- * search undoable too.
- *
- * US-703's favourites toggle reuses this by passing its own before and after. Both of
- * its transitions are an add or a remove, so both push — which is what makes turning
- * the filter on undoable with the back button.
+ * The function itself moved to `core/navigation/` when US-901's projects grid needed
+ * the same rule: `features → features` is not a direction this app has, and a second
+ * copy is a second thing to get wrong.
  */
-export function shouldReplaceHistory(previous: string, next: string): boolean {
-  return previous !== '' && next !== '';
-}
+export { shouldReplaceHistory } from '@core/navigation/search-history';

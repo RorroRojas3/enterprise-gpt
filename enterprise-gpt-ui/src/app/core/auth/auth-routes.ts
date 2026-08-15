@@ -32,5 +32,8 @@ export const SIGNED_OUT_ROUTE = '/signed-out';
 /** EP-7's conversation library, frame `4a`. */
 export const CONVERSATIONS_ROUTE = '/conversations';
 
+/** EP-9's projects grid, frame `4c`. A project's detail screen is a child of it. */
+export const PROJECTS_ROUTE = '/projects';
+
 /** The administration area. Behind `adminCanMatch`, so its chunk is withheld, not hidden. */
 export const ADMIN_ROUTE = '/admin';
