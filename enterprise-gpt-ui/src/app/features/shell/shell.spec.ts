@@ -324,7 +324,7 @@ describe('Shell', () => {
       );
 
       // US-203: absent, not shown-and-disabled.
-      expect(labels).toEqual(['Chat', 'Conversations']);
+      expect(labels).toEqual(['Chat', 'Conversations', 'Projects']);
     });
 
     it('links Conversations at the library route', async () => {
@@ -339,6 +339,18 @@ describe('Shell', () => {
       expect(link?.getAttribute('href')).toBe('/conversations');
     });
 
+    it('links Projects at the projects route', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+
+      // US-901 built the route, so the entry the board draws can finally exist — the
+      // sidebar renders only the ones that do.
+      const link = [...host(fixture).querySelectorAll('a')].find(
+        (anchor) => anchor.querySelector('.sidebar__nav-label')?.textContent === 'Projects',
+      );
+      expect(link?.getAttribute('href')).toBe('/projects');
+    });
+
     it('offers Admin to an administrator', async () => {
       const fixture = await render(true);
       await loadConversations(fixture);
@@ -347,7 +359,7 @@ describe('Shell', () => {
         (n) => n.textContent,
       );
 
-      expect(labels).toEqual(['Chat', 'Conversations', 'Admin']);
+      expect(labels).toEqual(['Chat', 'Conversations', 'Projects', 'Admin']);
     });
 
     it('links New conversation at the chat route without creating anything', async () => {

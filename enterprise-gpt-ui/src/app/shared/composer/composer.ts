@@ -11,15 +11,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { COMPOSER_HOST } from '@core/chat/composer-host';
 import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
+import { UploadStore } from '@core/documents/upload-store';
 import { SessionStore } from '@core/session/session-store';
 import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
 import { Icon } from '@shared/icon/icon';
 import { DropOverlay } from '@shared/upload/drop-overlay';
 import { FileDropTarget } from '@shared/upload/file-drop-target';
-import { TurnStore } from '../turn-store';
-import { UploadStore } from '../upload-store';
 import { DictationStore } from './dictation-store';
 import { ModelMenu } from './model-menu';
 import { ToolsMenu } from './tools-menu';
@@ -28,6 +28,13 @@ import { ToolsMenu } from './tools-menu';
  * The prompt box (frames `2a`–`2j`): attachment chips, textarea, warning line, and
  * the control row — attach, model pill, tools pill, microphone, send. While a turn is
  * in flight the send button gives way to the Stop control (frames `1b`, `2g`).
+ *
+ * **What executes the prompt is injected, not assumed.** `COMPOSER_HOST` is `TurnStore`
+ * on the chat route and `ProjectComposerHost` on the project detail screen (US-906),
+ * which creates a conversation inside the project and hands the prompt to the chat
+ * route rather than streaming in place. That token is also why this component sits in
+ * `shared/` rather than beside the chat feature: `features/projects` may not import
+ * `features/chat`, and frame `4e` draws this exact control on the project screen.
  *
  * The project and download controls are **absent, not disabled**, until their stories
  * land (US-307, US-1502) — the repo's pattern for unshipped affordances. When they
@@ -45,7 +52,7 @@ import { ToolsMenu } from './tools-menu';
 export class Composer {
   protected readonly settings = inject(TurnSettingsStore);
   protected readonly models = inject(ModelCatalogStore);
-  protected readonly turn = inject(TurnStore);
+  protected readonly turn = inject(COMPOSER_HOST);
   protected readonly uploads = inject(UploadStore);
   protected readonly extensions = inject(SupportedExtensionsStore);
   protected readonly session = inject(SessionStore);

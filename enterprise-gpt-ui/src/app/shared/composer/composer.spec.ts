@@ -21,8 +21,9 @@ import { SupportedExtensionsStore } from '@core/documents/supported-extensions-s
 import { SessionStore } from '@core/session/session-store';
 import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
-import { TurnStore } from '../turn-store';
-import { UploadStore } from '../upload-store';
+import { provideComposerHost } from '@core/chat/composer-host';
+import { TurnStore } from '@features/chat/turn-store';
+import { UploadStore } from '@core/documents/upload-store';
 import { Composer } from './composer';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -63,7 +64,11 @@ describe('Composer', () => {
         { provide: SPEECH_RECOGNITION, useFactory: () => speech },
         provideFakeUploadXhr(uploadXhr),
         UploadStore,
+        // The real streaming host, deliberately: what this spec checks is the Send/Stop
+        // morph, the seed handoff and the focus fixups, and every one of them is a
+        // reaction to state a stub would have to fake into existence.
         TurnStore,
+        provideComposerHost(TurnStore),
       ],
     });
     backend = TestBed.inject(HttpTestingController);

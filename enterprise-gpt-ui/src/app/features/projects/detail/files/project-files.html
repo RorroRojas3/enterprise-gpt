@@ -1,0 +1,163 @@
+<!--
+  The drop zone is bound to the permission on both counts, which US-204 requires as two
+  separate mechanisms: `@if` removes the visible affordance, and the directive's own
+  input is what makes a drag-and-drop inert — an `@if` cannot express that, because a
+  drop target that is not rendered is still a page the browser will happily navigate to
+  the dropped file on.
+-->
+@if (session.canUploadFiles()) {
+  <div
+    class="files__dropzone"
+    [appFileDropTarget]="true"
+    (filesDropped)="onFilesChosen($event)"
+    #drop="appFileDropTarget"
+  >
+    @if (drop.isDragOver()) {
+      <app-drop-overlay label="Drop files to add them to this project" />
+    }
+
+    <app-icon class="files__dropzone-icon" name="bi-file-earmark-arrow-up" />
+    <span>
+      Drop files here or
+      <button class="files__browse" type="button" (click)="openFilePicker()">browse</button>
+    </span>
+  </div>
+
+  <!--
+    Off-screen rather than `display: none`: a hidden input is not focusable, and the
+    button above is the accessible control that opens it. `accept` narrows the picker to
+    what this deployment can read, and is empty — meaning "any file" — until that list
+    loads.
+  -->
+  <input
+    #filePicker
+    class="files__file-input"
+    type="file"
+    multiple
+    tabindex="-1"
+    aria-hidden="true"
+    [attr.accept]="extensions.accept() || null"
+    (change)="onFileInputChange($event)"
+  />
+}
+
+<!--
+  The chips carry their own live region and their own per-file controls; this only has
+  to exist from first render so an appearing chip is announced.
+-->
+<p class="visually-hidden" role="status">{{ uploads.attachmentSummary() }}</p>
+
+@if (uploads.hasAttachments()) {
+  <ul class="files__chips" role="list" aria-label="Files being added">
+    @for (attachment of uploads.attachments(); track attachment.id) {
+      <li>
+        <app-attachment-chip
+          [attachment]="attachment"
+          [removeAction]="attachment.removeAction"
+          [downloadable]="false"
+          (removed)="uploads.remove($event)"
+          (retried)="uploads.retry($event)"
+        />
+      </li>
+    }
+  </ul>
+}
+
+@if (documents.error(); as error) {
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="This project’s files couldn’t load"
+    (retried)="documents.refresh()"
+  />
+} @else if (documents.isFirstLoad()) {
+  <div class="files__list" aria-busy="true">
+    @for (row of skeletonRows; track $index) {
+      <div class="files__row">
+        <app-skeleton variant="circle" width="16px" height="16px" />
+        <app-skeleton width="60%" />
+        <app-skeleton width="50px" />
+        <app-skeleton width="50px" />
+      </div>
+    }
+  </div>
+} @else if (documents.isEmpty()) {
+  <!-- Frame `4f` draws no empty state, so this is the plainest honest one: a sentence,
+       not a ridgeline illustration competing with the drop zone right above it. -->
+  <p class="files__empty">
+    @if (session.canUploadFiles()) {
+      No files yet. Files added here are shared by every conversation in this project.
+    } @else {
+      No files yet.
+    }
+  </p>
+} @else {
+  <ul class="files__list" role="list">
+    @for (document of documents.documents(); track trackId(document)) {
+      <li class="files__row" [attr.aria-busy]="documents.isRowPending(document.id)">
+        <app-icon
+          class="files__glyph"
+          [class]="'files__glyph--' + glyph(document.name).tone"
+          [name]="glyph(document.name).icon"
+        />
+        <span class="files__name">{{ document.name }}</span>
+        <span class="files__size">{{ sizeLabel(document) }}</span>
+        <span class="files__date">{{ dateLabel(document) }}</span>
+
+        <!--
+          Real buttons with accessible names, not the prototype's clickable `<i>`: the
+          board's own caption defers to this document on accessibility, and an icon-only
+          control with no name is one of the gaps EP-14 corrects rather than reproduces.
+        -->
+        <button
+          class="files__action"
+          type="button"
+          [attr.aria-label]="'Download ' + document.name"
+          [attr.aria-busy]="isDownloading(document)"
+          [disabled]="isDownloading(document)"
+          (click)="download(document)"
+        >
+          @if (isDownloading(document)) {
+            <span class="kit-spinner" aria-hidden="true"></span>
+          } @else {
+            <app-icon name="bi-download" />
+          }
+        </button>
+
+        @if (session.canUploadFiles()) {
+          <!-- Removing is an upload-permission action; without it the files stay listed
+               and downloadable, which is frame `4f`'s own caption. -->
+          <button
+            class="files__action files__action--danger"
+            type="button"
+            [attr.aria-label]="'Remove ' + document.name"
+            [attr.aria-disabled]="documents.isRowPending(document.id) ? 'true' : null"
+            (click)="removeTarget.set(document)"
+          >
+            <app-icon name="bi-trash3" />
+          </button>
+        }
+      </li>
+    }
+  </ul>
+}
+
+<app-modal heading="Remove file?" size="sm" [open]="removeOpen()" (closed)="removeTarget.set(null)">
+  @if (removeTarget(); as target) {
+    <p class="files__confirm">
+      “{{ target.name }}” will be removed from this project and its conversations will stop being
+      able to use it.
+    </p>
+  }
+
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    data-modal-autofocus
+    (click)="removeTarget.set(null)"
+  >
+    Cancel
+  </button>
+  <button modalFooter class="btn btn-danger" type="button" (click)="confirmRemove()">Remove</button>
+</app-modal>

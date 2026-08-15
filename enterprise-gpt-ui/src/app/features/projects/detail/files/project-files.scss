@@ -1,0 +1,181 @@
+// Frame 4f's panel: drop zone, then the file list.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 900px;
+}
+
+// The dashed border is the resting state; `--accent` dashed is the drag-over one, which
+// `DropOverlay` draws over the top.
+.files__dropzone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+  border: 2px dashed var(--bs-border-color);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.files__dropzone-icon {
+  font-size: 17px;
+  color: var(--accent);
+}
+
+// Reads as the board's inline link but is a real button, so it is reachable by keyboard
+// and announced as a control.
+.files__browse {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+// Off-screen rather than display:none — see the template.
+.files__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.files__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.files__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+// The board's grid: glyph, name, size, date, download, remove.
+.files__row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 90px 90px 32px 32px;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--bs-border-color);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:hover {
+    background: var(--surface-2);
+  }
+
+  &[aria-busy='true'] {
+    opacity: 0.6;
+  }
+}
+
+// Below the board's width the two metadata columns are what has to give: the name and
+// both controls are the row's reason for existing.
+@media (max-width: 575px) {
+  .files__row {
+    grid-template-columns: 30px minmax(0, 1fr) 32px 32px;
+  }
+
+  .files__size,
+  .files__date {
+    display: none;
+  }
+}
+
+.files__glyph {
+  font-size: 16px;
+
+  &--fail {
+    color: var(--fail);
+  }
+  &--ok {
+    color: var(--ok);
+  }
+  &--accent {
+    color: var(--accent);
+  }
+  &--warn {
+    color: var(--warn);
+  }
+  &--muted {
+    color: var(--muted);
+  }
+}
+
+.files__name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__size,
+.files__date {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.files__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover:not([disabled]):not([aria-disabled='true']) {
+    background: var(--surface-2);
+    color: var(--bs-body-color);
+  }
+
+  &--danger:hover:not([aria-disabled='true']) {
+    color: var(--fail);
+  }
+
+  &[aria-disabled='true'] {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+.files__empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.files__confirm {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}

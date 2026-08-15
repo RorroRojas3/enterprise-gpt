@@ -50,6 +50,7 @@ import {
   modelReasoningText,
   reasoningSeconds,
 } from '@domain/stream/reasoning-timing';
+import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { AppError } from '@core/errors/app-error';
@@ -60,7 +61,7 @@ import { ApiUrl } from '@core/http/api-url';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { ConversationStreamClient } from '@core/stream/conversation-stream-client';
 import { Router } from '@angular/router';
-import { UploadStore } from './upload-store';
+import { UploadStore } from '@core/documents/upload-store';
 
 /** What Retry re-sends: the turn's own prompt and selection, as sent, even if the pickers moved since. */
 export interface TurnRetry {
@@ -479,6 +480,11 @@ export const TurnStore = signalStore(
      * would be a cycle.
      */
     _uploads: inject(UploadStore),
+    /**
+     * The first prompt of a conversation created somewhere else (US-906). Read once,
+     * on the route binding that opens it, and cleared by the read.
+     */
+    _pending: inject(PendingPromptStore),
     _signedOut$: injectSignedOut(),
     /**
      * The in-flight turn's abort controller. A mutable prop rather than state:
@@ -851,6 +857,24 @@ export const TurnStore = signalStore(
         // from — cannot trigger a read of a conversation whose first turn is
         // still streaming and therefore not persisted yet.
         loadHistory({ id, keepLive: true });
+
+        // US-906: a conversation created on the project screen arrives here with
+        // its first prompt waiting. Claimed after the reset, so the send lands on
+        // the binding it belongs to, and single-shot inside the store, so a
+        // refresh of the same URL does not send the prompt twice.
+        const pending = id === null ? null : store._pending.claim(id);
+        const pendingText = pending?.trim() ?? '';
+        if (pendingText !== '') {
+          const selection = store._settings.streamSelection();
+          if (selection === null) {
+            // No model to send with — the catalogue failed, or the reader landed
+            // here before it resolved. The prompt goes to the composer rather than
+            // being dropped, so the work is still theirs to send.
+            patchState(store, seedComposer(pendingText));
+          } else {
+            run({ prompt: pendingText, selection });
+          }
+        }
       }),
     };
   }),

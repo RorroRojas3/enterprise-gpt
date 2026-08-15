@@ -15,20 +15,16 @@ import { Observable, Subject, Subscription, of, take, takeUntil } from 'rxjs';
 import { JOB_STATE, UploadTarget } from '@domain/api/document';
 import { subStatusOf } from '@domain/documents/upload-schedule';
 import { formatBytes } from '@domain/format/bytes';
-import { DocumentDownloadStore } from '@core/documents/document-download-store';
-import { DocumentUploadClient } from '@core/documents/document-upload-client';
-import { SupportedExtensionsStore, extensionOf } from '@core/documents/supported-extensions-store';
-import { UploadStatusClient } from '@core/documents/upload-status-client';
-import { describeUploadRejection } from '@core/documents/upload-rejection';
 import { AppError } from '@core/errors/app-error';
 import { injectSignedOut } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import {
-  Attachment,
-  AttachmentRemoveAction,
-  AttachmentState,
-} from '@shared/chip/attachment-chip/attachment.model';
+import { Attachment, AttachmentRemoveAction, AttachmentState } from '@domain/documents/attachment';
+import { DocumentDownloadStore } from './document-download-store';
+import { DocumentUploadClient } from './document-upload-client';
+import { describeUploadRejection } from './upload-rejection';
+import { UploadStatusClient } from './upload-status-client';
+import { SupportedExtensionsStore, extensionOf } from './supported-extensions-store';
 
 /**
  * One attached file, as the store tracks it.
@@ -77,9 +73,11 @@ const MAX_CONCURRENT_UPLOADS = 3;
 /**
  * The files attached to the composer, and their journey to being usable (EP-8).
  *
- * **Component-scoped, provided by `Chat`.** Root scope would be wrong twice over: the
- * chips belong to one draft turn on one screen, and US-905's project files panel needs
- * a second, independently-targeted instance alongside this one.
+ * **Component-scoped, provided by `Chat` and by the project files panel.** Root scope
+ * would be wrong twice over: the chips belong to one draft on one screen, and US-905's
+ * project files panel runs a second, independently-targeted instance alongside the
+ * chat one. It lives in `core/` rather than beside the chat feature for the same
+ * reason — `features/projects` may not import `features/chat`.
  *
  * Three decisions shape it.
  *
@@ -451,42 +449,67 @@ export const UploadStore = signalStore(
       }
     }
 
+    /**
+     * Points the store at the parent its files hang off, draining anything attached
+     * before one existed.
+     *
+     * Idempotent for the same target, because both the create path and the route call
+     * it. A **different** target is a different draft, so its chips go: they describe
+     * files that belong to whatever the user just left. Comparing `kind` as well as
+     * `id` is not pedantry — a conversation and a project are separate id spaces, so
+     * only the pair identifies a parent.
+     */
+    function bindTarget(target: UploadTarget | null): void {
+      const current = store.target();
+      if (current?.kind === target?.kind && current?.id === target?.id) {
+        return;
+      }
+
+      if (current !== null || target === null) {
+        clearAll();
+      }
+
+      patchState(store, { target });
+
+      if (target === null) {
+        return;
+      }
+
+      for (const item of store.items()) {
+        if (item.jobId === null && item.attachment.state.kind === 'uploading') {
+          start(item.attachment.id);
+        }
+      }
+    }
+
     return {
       /**
-       * Points the store at a conversation, draining anything attached before one
-       * existed.
+       * Points the store at a conversation (US-801).
        *
-       * Idempotent for the same id, because both the create path and the route call
-       * it. A **different** id is a different draft, so its chips go: they describe
-       * files that belong to the conversation the user just left.
+       * A `signalMethod` because the chat route binds it to the route parameter, which
+       * is `undefined` on `/chat` — an unsaved conversation whose uploads defer until
+       * US-401's create hands over an id.
        *
-       * @param conversationId The open conversation, or null for an unsaved one.
+       * @param conversationId The open conversation, or `undefined` for an unsaved one.
        */
-      bindConversation: signalMethod<string | undefined>((incoming) => {
-        const conversationId = incoming ?? null;
-        const current = store.target();
-        if (current?.id === conversationId) {
-          return;
-        }
-
-        if (current !== null || conversationId === null) {
-          clearAll();
-        }
-
-        if (conversationId === null) {
-          patchState(store, { target: null });
-
-          return;
-        }
-
-        patchState(store, { target: { kind: 'conversation', id: conversationId } });
-
-        for (const item of store.items()) {
-          if (item.jobId === null && item.attachment.state.kind === 'uploading') {
-            start(item.attachment.id);
-          }
-        }
+      bindConversation: signalMethod<string | undefined>((conversationId) => {
+        bindTarget(
+          conversationId === undefined ? null : { kind: 'conversation', id: conversationId },
+        );
       }),
+
+      /**
+       * Points the store at a project (US-905).
+       *
+       * A plain method rather than a `signalMethod`: the files panel only renders under
+       * an already-resolved `:id`, so there is no absent state to model and no signal
+       * to track.
+       *
+       * @param projectId The project whose files this panel manages.
+       */
+      bindProject(projectId: string): void {
+        bindTarget({ kind: 'project', id: projectId });
+      },
 
       /**
        * Takes files from the picker or a drop, refusing what this deployment cannot

@@ -28,6 +28,16 @@ export class ProjectCard {
   readonly link = input.required<readonly unknown[] | string>();
   readonly favorite = input<boolean>(false);
 
+  /**
+   * Whether to render the star at all.
+   *
+   * False until US-909 puts a favourite flag on `ProjectSummaryDto`: the board draws
+   * the star, but nothing on the wire can persist a press, and a control that silently
+   * forgets is worse than one that is not there — the same call US-308 made about this
+   * star's conversation counterpart.
+   */
+  readonly showFavorite = input<boolean>(true);
+
   /** From `withPendingIds`: this row alone is busy, the rest stay interactive. */
   readonly pending = input<boolean>(false);
 

@@ -17,6 +17,7 @@ import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
+import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { turnEvents } from '@core/events/turn-events';
 import { ApiUrl } from '@core/http/api-url';
@@ -253,6 +254,20 @@ export const ConversationStore = signalStore(
         if (current !== null && current.id === payload.id) {
           // The spread keeps `mcpServerIds`, which `ConversationDto` does not carry.
           patchState(store, { conversation: { ...current, ...payload } });
+        }
+      }),
+    ),
+
+    // The open conversation's project was deleted somewhere else (US-903). The server
+    // released it to standalone, so the id this store holds is dead — and `toUpdateBody`
+    // echoes `projectId` on every rename, which would then PUT a deleted project and
+    // take a 404. `ConversationListStore` clears its own rows; this is the detail copy
+    // the header prefers, and it outlives the row on a deep link.
+    events.on(projectEvents.deleted).pipe(
+      tap(({ payload: projectId }) => {
+        const current = store.conversation();
+        if (current !== null && current.projectId === projectId) {
+          patchState(store, { conversation: { ...current, projectId: null } });
         }
       }),
     ),

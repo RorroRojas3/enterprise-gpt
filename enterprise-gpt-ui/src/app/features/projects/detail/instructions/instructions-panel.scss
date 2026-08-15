@@ -1,0 +1,43 @@
+// Frame 4e's instructions body: the field, then a row of help text and actions.
+.instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 900px;
+}
+
+.instructions__field {
+  font-size: 13.5px;
+  line-height: 1.6;
+  border-radius: 12px;
+  resize: vertical;
+}
+
+// Wraps rather than overflowing: the help line and two buttons do not fit a 360px
+// viewport in one row (WCAG SC 1.4.10 Reflow).
+.instructions__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.instructions__help {
+  flex: 1 1 200px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.instructions__counter {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.instructions__confirm {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}

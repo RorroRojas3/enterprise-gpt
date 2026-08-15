@@ -1,0 +1,23 @@
+<app-modal heading="Delete project?" size="sm" [open]="open()" (closed)="onClosed()">
+  @if (actions.deleteTarget(); as target) {
+    <p class="delete-project__body">
+      “{{ target.name }}” and its files will be permanently deleted. Its conversations are kept and
+      move out of the project.
+    </p>
+  }
+
+  <!--
+    data-modal-autofocus on Cancel, never on the destructive button: opening a
+    confirmation with focus already on Delete makes a stray Enter destructive.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    data-modal-autofocus
+    (click)="actions.cancelDelete()"
+  >
+    Cancel
+  </button>
+  <button modalFooter class="btn btn-danger" type="button" (click)="confirm()">Delete</button>
+</app-modal>

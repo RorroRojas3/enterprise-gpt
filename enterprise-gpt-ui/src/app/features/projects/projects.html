@@ -1,0 +1,155 @@
+<h1 class="projects__title font-display">Projects</h1>
+
+<div class="projects__toolbar">
+  <app-search-input
+    class="projects__search"
+    label="Search projects by name"
+    placeholder="Search projects"
+    [value]="name()"
+    [busy]="projects.isPending()"
+    (searched)="onSearched($event)"
+  />
+
+  <!--
+    Frame `4c` puts a sort select between the field and this button. It is US-902's,
+    and it is absent rather than disabled: no endpoint here accepts a sort parameter,
+    so the control only becomes honest once the drain below has materialised the set it
+    would reorder — which is the whole reason that story exists.
+  -->
+  <button
+    class="btn btn-primary btn-sm projects__new"
+    type="button"
+    (click)="actions.beginCreate()"
+  >
+    <app-icon name="bi-plus-lg" />
+    New project
+  </button>
+</div>
+
+@if (projects.error(); as error) {
+  <!-- Instead of the grid rather than beside it: a drain that failed part-way holds a
+       set that is neither complete nor knowably incomplete, and showing it would be
+       the silently-partial list regime A exists to avoid. -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="Projects couldn’t load"
+    (retried)="projects.retry()"
+  />
+} @else if (projects.isFirstLoad()) {
+  <div class="projects__grid row g-3" aria-busy="true">
+    @for (card of skeletonCards; track $index) {
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="projects__skeleton">
+          <app-skeleton width="60%" />
+          <app-skeleton [lines]="2" />
+          <app-skeleton width="35%" />
+        </div>
+      </div>
+    }
+  </div>
+} @else if (projects.hasNoMatches()) {
+  <!-- Frame `4b`'s treatment: the ridgeline motif, the term named, one clear action. -->
+  <app-empty-state
+    [heading]="noMatchHeading()"
+    [headingLevel]="2"
+    message="Search covers project names only."
+  >
+    <button
+      emptyStateAction
+      type="button"
+      class="btn btn-outline-secondary btn-sm"
+      (click)="clearSearch()"
+    >
+      Clear search
+    </button>
+  </app-empty-state>
+} @else if (projects.hasNoProjects()) {
+  <app-empty-state
+    heading="No projects yet"
+    [headingLevel]="2"
+    message="A project keeps related conversations, files and instructions together."
+  >
+    <button
+      emptyStateAction
+      type="button"
+      class="btn btn-primary btn-sm"
+      (click)="actions.beginCreate()"
+    >
+      <app-icon name="bi-plus-lg" />
+      New project
+    </button>
+  </app-empty-state>
+} @else {
+  <!--
+    Stated rather than left to be inferred from a grid that simply stops. The board
+    words it around sorting (frame `4d`); with no sort control on screen that sentence
+    would explain a control the reader cannot see, so this is frame `4g`'s neutral
+    shape instead — and US-902 replaces it with `4d`'s when the select arrives.
+  -->
+  @if (projects.truncated()) {
+    <p class="projects__ceiling">
+      <app-icon name="bi-info-circle" />
+      {{ projects.ceilingNotice() }}
+    </p>
+  }
+
+  <!-- The board draws three columns at 1440; its own caption gives the responsive
+       rule, which is what this follows. -->
+  <div class="projects__grid row g-3">
+    @for (project of projects.entities(); track trackId(project)) {
+      <div class="col-12 col-md-6 col-xl-4">
+        <!--
+          The star is withheld rather than left inert. `ProjectCard` offers the one
+          frame `4c` draws, but no project favourite exists on the wire until US-909 —
+          a control that can be pressed and never persisted is worse than one that is
+          not there.
+
+          An absolute link, not a relative one: a relative `[project.id]` would resolve
+          against whichever route happens to host the card, and this component's own
+          route is a path-less child.
+        -->
+        <app-project-card
+          [name]="project.name"
+          [description]="project.description ?? ''"
+          [updatedLabel]="updatedLabel(project)"
+          [link]="linkFor(project)"
+          [showFavorite]="false"
+          [pending]="actions.isRowPending(project.id)"
+        >
+          <!-- Frame `4c`'s caption: Rename, Delete. Both route through
+               `ProjectActionsStore` and its shared dialogs rather than being
+               reimplemented here, so the detail screen's own header offers the same
+               two without a second copy of either flow.
+
+               `aria-disabled`, not `disabled`: the native attribute blurs the item the
+               instant it is pressed, so a keyboard reader would land on `<body>` for
+               the whole round trip. Both `beginEdit` and `beginDelete` refuse on the
+               pending id, so the guard is real either way. -->
+          <app-menu cardMenu [label]="'Actions for ' + project.name">
+            <button
+              appMenuItem
+              type="button"
+              [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
+              (click)="beginEdit(project)"
+            >
+              <app-icon name="bi-pencil" />
+              Rename
+            </button>
+            <hr appMenuSeparator />
+            <button
+              appMenuItem
+              type="button"
+              class="menu__item--danger"
+              [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
+              (click)="beginDelete(project)"
+            >
+              <app-icon name="bi-trash3" />
+              Delete
+            </button>
+          </app-menu>
+        </app-project-card>
+      </div>
+    }
+  </div>
+}

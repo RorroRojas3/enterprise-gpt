@@ -1,0 +1,106 @@
+<!--
+  The header renders only once there is a project. A bar carrying a folder glyph, an
+  empty name and a kebab whose items act on nothing is worse than a skeleton, and the
+  same call US-308 makes about the chat header on an empty conversation.
+-->
+@if (project.project(); as current) {
+  <header class="detail__header">
+    <div class="detail__identity">
+      <p class="detail__name-row">
+        <app-icon class="detail__folder" name="bi-folder-fill" />
+        <!--
+          A button, not the board's bare text with a pointer cursor: it opens the edit
+          dialog, and a control that only a mouse can find is not one.
+        -->
+        <button class="detail__name font-display" type="button" (click)="beginEdit()">
+          {{ current.name }}
+        </button>
+      </p>
+      @if (current.description) {
+        <p class="detail__description">{{ current.description }}</p>
+      }
+    </div>
+
+    <!--
+      The same two items the grid's card kebab offers, routed through the same store and
+      the same dialogs. Frame `4e` also draws a star; it waits on US-909.
+    -->
+    <app-menu [label]="'Actions for ' + current.name">
+      <button
+        appMenuItem
+        type="button"
+        [attr.aria-disabled]="actions.isRowPending(current.id) ? 'true' : null"
+        (click)="beginEdit()"
+      >
+        <app-icon name="bi-pencil" />
+        Rename
+      </button>
+      <hr appMenuSeparator />
+      <button
+        appMenuItem
+        type="button"
+        class="menu__item--danger"
+        [attr.aria-disabled]="actions.isRowPending(current.id) ? 'true' : null"
+        (click)="beginDelete()"
+      >
+        <app-icon name="bi-trash3" />
+        Delete
+      </button>
+    </app-menu>
+  </header>
+
+  <!--
+    Above the tabs, because a prompt sent from it belongs to the project rather than to
+    whichever panel is open (frame `4e`). It is the same component the chat route
+    renders; what differs is `COMPOSER_HOST`, which here creates a conversation inside
+    the project and navigates to it rather than streaming in place.
+  -->
+  <div class="detail__composer">
+    <app-composer />
+  </div>
+
+  <nav class="detail__tabs" aria-label="Project sections">
+    <ul class="nav nav-tabs">
+      <li class="nav-item">
+        <a
+          class="nav-link"
+          routerLink="instructions"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+        >
+          Instructions
+        </a>
+      </li>
+      <li class="nav-item">
+        <a
+          class="nav-link"
+          routerLink="files"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+        >
+          Files
+          <!-- The board renders the count as a smaller run beside the label. It is
+               withheld until the panel has actually read the list, because "Files 0"
+               on a project that has four is worse than no count at all. -->
+          @if (filesCount() !== null) {
+            <span class="detail__tab-count">{{ filesCount() }}</span>
+          }
+        </a>
+      </li>
+      <!-- Conversations (US-908) joins this strip with its panel. -->
+    </ul>
+  </nav>
+} @else if (project.isFirstLoad()) {
+  <div class="detail__header" aria-busy="true">
+    <div class="detail__identity">
+      <app-skeleton width="240px" height="24px" />
+      <app-skeleton width="360px" />
+    </div>
+  </div>
+}
+
+<!-- Outside the @if: the panel renders its own error state, and a failed detail
+     request must not leave the screen blank. -->
+<div class="detail__panel">
+  <router-outlet />
+</div>

@@ -17,12 +17,14 @@ import {
   updateEntity,
   withEntities,
 } from '@ngrx/signals/entities';
+import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
 import { Subject, exhaustMap, filter, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
 import { ConversationDto } from '@domain/api/conversation';
 import { PaginatedResponseDto } from '@domain/api/paginated-response';
 import { toAppError } from '@core/errors/to-app-error';
+import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import { ToastStore } from '@core/notifications/toast-store';
@@ -341,6 +343,29 @@ export const ConversationListStore = signalStore(
       },
 
       /**
+       * Clears `projectId` on every held row that belonged to a deleted project
+       * (US-903).
+       *
+       * Not cosmetic, and not optional. `DeactivateProjectAsync` soft-deletes the
+       * project but **releases** its conversations, setting their `ProjectId` to null —
+       * so a held row still carrying that id is carrying a dead one, and `toUpdateBody`
+       * echoes `projectId` on every rename. Left alone, the next rename of such a
+       * conversation would PUT a project the server has deleted and take a 404 for a
+       * request that has nothing to do with projects.
+       *
+       * Nothing renders `projectId` yet, which is exactly why this is easy to forget
+       * and worth stating: the defect it prevents is invisible until US-307 or a
+       * rename, whichever comes first.
+       */
+      releaseProject(projectId: string): void {
+        for (const conversation of store.entities()) {
+          if (conversation.projectId === projectId) {
+            patchState(store, updateEntity({ id: conversation.id, changes: { projectId: null } }));
+          }
+        }
+      },
+
+      /**
        * Marks or clears a row's own in-flight action (US-304 rename; US-306 delete).
        *
        * Driven by `ConversationActionsStore` around its requests — always through
@@ -434,6 +459,12 @@ export const ConversationListStore = signalStore(
       },
     };
   }),
+  withEventHandlers((store, events = inject(Events)) => [
+    // A project delete reaches across two features, which is what puts it on the event
+    // bus rather than on a method call: `ProjectActionsStore` is root-scoped and knows
+    // nothing about conversations, and this list is the only holder of the stale ids.
+    events.on(projectEvents.deleted).pipe(tap(({ payload: id }) => store.releaseProject(id))),
+  ]),
   withHooks({
     onInit(store) {
       // An injection context, which a signal-valued rxMethod argument requires — and

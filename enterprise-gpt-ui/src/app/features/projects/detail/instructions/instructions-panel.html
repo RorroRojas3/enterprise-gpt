@@ -1,0 +1,89 @@
+@if (project.error(); as error) {
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="This project couldn’t load"
+    (retried)="project.retry()"
+  />
+} @else if (project.isFirstLoad()) {
+  <div class="instructions" aria-busy="true">
+    <app-skeleton variant="block" height="168px" />
+  </div>
+} @else if (project.project()) {
+  <div class="instructions">
+    <label class="visually-hidden" for="project-instructions">Standing instructions</label>
+    <!--
+      A native `maxlength`, unlike the Signal Forms dialog next door: there is no schema
+      here to derive it from, one field with one rule does not earn a form, and the
+      attribute stops the over-long value from being typed rather than reporting it
+      afterwards. The counter carries the limit for anyone pasting.
+    -->
+    <textarea
+      id="project-instructions"
+      class="form-control instructions__field"
+      rows="7"
+      [attr.maxlength]="maxLength"
+      [value]="draft()"
+      [disabled]="saving()"
+      aria-describedby="project-instructions-help project-instructions-counter"
+      (input)="onDraftInput($event)"
+    ></textarea>
+
+    <div class="instructions__actions">
+      <p class="instructions__help" id="project-instructions-help">
+        Applies to every conversation in this project.
+      </p>
+      <p class="instructions__counter font-mono" id="project-instructions-counter">
+        {{ charCount() }} / {{ maxLength }}
+      </p>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        [disabled]="!isDirty() || saving()"
+        (click)="revert()"
+      >
+        Cancel
+      </button>
+      <!--
+        The saved state renders only once the server confirms (US-904's second
+        criterion), so this stays busy for the whole round trip rather than clearing
+        the moment the request goes out.
+      -->
+      <button class="btn btn-primary btn-sm" type="button" [disabled]="!canSave()" (click)="save()">
+        @if (saving()) {
+          <span class="kit-spinner" aria-hidden="true"></span>
+          <span>Saving…</span>
+        } @else {
+          <span>Save</span>
+        }
+      </button>
+    </div>
+  </div>
+}
+
+<!--
+  Not dismissible: this modal exists to force a decision, and Escape closing it would
+  answer the guard "keep editing" — which is defensible, and is exactly what (closed)
+  does, so dismissal stays available while the copy makes the two real options explicit.
+-->
+<app-modal
+  heading="Discard unsaved instructions?"
+  size="sm"
+  [(open)]="confirmOpen"
+  (closed)="keepEditing()"
+>
+  <p class="instructions__confirm">
+    Your changes to this project’s instructions haven’t been saved. Leaving now discards them.
+  </p>
+
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    data-modal-autofocus
+    (click)="keepEditing()"
+  >
+    Keep editing
+  </button>
+  <button modalFooter class="btn btn-danger" type="button" (click)="discard()">Discard</button>
+</app-modal>

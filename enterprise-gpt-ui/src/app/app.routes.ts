@@ -99,6 +99,13 @@ export const routes: Routes = [
                 title: 'Conversations — Enterprise GPT',
               },
               {
+                // loadChildren rather than loadComponent: EP-9 is two screens sharing
+                // one layout — the grid and a project's detail — and the layout is
+                // where US-903's dialogs mount, so both invokers reach one instance.
+                path: 'projects',
+                loadChildren: () => import('@features/projects/projects.routes'),
+              },
+              {
                 // canMatch belongs on the route that owns loadChildren: a parent's runs
                 // before the child config is resolved, a child's runs after. It still
                 // runs during URL recognition from inside the shell, so a non-admin's
