@@ -190,10 +190,11 @@ The `errors` key is the **property name**, identical on the create and update DT
 | `POST /api/conversations` | `projectId` (optional) | Creates the conversation inside the project. Omitted ⇒ standalone |
 | `PUT /api/conversations` | `projectId` (optional) | **Replaces** the value — see §4.1 |
 | `GET /api/conversations/{id}`, `GET /api/conversations/search` | `projectId` on `ConversationDto` | Reports which project the conversation is in, or `null` |
+| `GET /api/conversations/search?projectId=` | query parameter | Lists **one project's** conversations — see §4.2 |
 
 Both action DTOs validate `ProjectId` with `NotEmpty().When(x => x.ProjectId.HasValue)`: only "omitted" and "a real id" are meaningful shapes, and an explicit all-zeros guid is a client bug that would otherwise reach the ownership check and come back as a confusing `404`.
 
-Ownership is verified on **both** create and update by `ConversationService.EnsureProjectExistsAsync`, which requires an active project with the caller's `UserId` and throws `NotFoundException` otherwise — again `404`, not `403`, for the reason in §3.3. On create the check runs *before* the transaction opens, so a bad `projectId` creates nothing at all.
+Ownership is verified by `ConversationService.EnsureProjectExistsAsync` on create, on update **and on the listing filter**, which requires an active project with the caller's `UserId` and throws `NotFoundException` otherwise — again `404`, not `403`, for the reason in §3.3. On create the check runs *before* the transaction opens, so a bad `projectId` creates nothing at all.
 
 ### 4.1 `PUT /api/conversations` is a full-representation replace
 
@@ -210,7 +211,17 @@ Ownership is verified on **both** create and update by `ConversationService.Ensu
 
 Removal is the *only* way this is expressed, which is why it is not an accident: sending `{ "id": …, "name": …, "projectId": null }` is how a client takes a conversation out of a project. The alternative — treating `null` as "leave unchanged" — would leave no way to express removal at all without a second route.
 
-**This is the trap the rebuilt client is written against.** The deleted `enterprise-ui/` had two rename call sites that passed only the id and the new name, either of which would have silently ejected a conversation from its project the moment a project UI shipped. Nothing was migrated, so the defect went with it — and the replacement at `enterprise-gpt-ui/` turns the rule into an acceptance criterion instead: US-304 requires a rename to echo the current `projectId`, and US-307 requires **every** update path to build its body through one `toUpdateBody()` helper, so no caller can omit it by accident. Neither story has landed yet; see [the rebuild PRD](../prd/enterprise-ui-rebuild.md) and [Shell and Navigation](../ui/shell-and-navigation.md#22-adding-a-per-row-action--what-us-304-does-next).
+**This is the trap the rebuilt client is written against.** The deleted `enterprise-ui/` had two rename call sites that passed only the id and the new name, either of which would have silently ejected a conversation from its project the moment a project UI shipped. Nothing was migrated, so the defect went with it — and the replacement at `enterprise-gpt-ui/` turned the rule into an acceptance criterion instead: US-304 requires a rename to echo the current `projectId`, and US-307 requires **every** update path to build its body through one `toUpdateBody()` helper, so no caller can omit it by accident. **Both have now landed**, and the helper is what the move flow itself goes through — the one path that legitimately sends `null`, and therefore the one that must never let an `undefined` reach the body ([Conversation Actions §4.1](../ui/conversation-actions.md#41-toupdatebody-and-the-full-representation-put)).
+
+### 4.2 Listing one project's conversations — `?projectId=`
+
+`GET /api/conversations/search` takes an optional `projectId` that narrows the caller's own active conversations to one project, in the same envelope, alongside the existing `name`, `isFavorite` and paging parameters. A project that is unknown, deactivated or another user's answers **`404`, not an empty page** — the same posture as the single-project route (§3.3), so the listing cannot be used to probe for project ids.
+
+That check matters most for a **deactivated** project. The cascade in §7 sets `ProjectId = NULL` on every conversation the project held, so a filter with no existence check would answer a perfectly cheerful empty page for a project that had rows before it was deleted.
+
+There is deliberately **no** `GET /api/projects/{id}/conversations`. The story allowed either shape, and one filter on the existing route means one paging contract, one ordering rule and one place the ownership check lives, rather than a second listing to keep in step with the first.
+
+Full reference, including why no new index was needed: [Conversation Usage and Favourites §5.4](../conversations/usage-and-favorites.md#54-filtering-the-search--projectid-us-907).
 
 ## 5. Instructions at chat time
 
@@ -342,7 +353,7 @@ Indexes: `IX_Project_UserId_DateDeactivated` (`UserId`, `DateDeactivated`) — p
 
 The vector width is fixed by the column, exactly as for conversation chunks: the deployment behind `AzureOpenAI:EmbeddingModel` **must** return 1536-dimension vectors. Moving to a model of a different width is a schema change, not a config change.
 
-**`Core.Conversation.ProjectId`** — new nullable `uniqueidentifier`, FK → `Core.Project(Id)`, with `IX_Conversation_ProjectId_DateDeactivated`. That index serves both the per-project conversation listing and the cascade in §7.
+**`Core.Conversation.ProjectId`** — new nullable `uniqueidentifier`, FK → `Core.Project(Id)`, with `IX_Conversation_ProjectId_DateDeactivated`. That index is the one the cascade in §7 reads. It was **not** extended with `DateCreated` when §4.2's filter arrived: that query is owner-scoped too, so the engine seeks the `(UserId, DateDeactivated, DateCreated DESC)` listing index and gets the ordering off it for free, leaving `ProjectId` a residual predicate over one user's conversations. A second ordered path would cost every conversation write and buy a listing that already has one.
 
 ### 8.2 `ConversationConfiguration` — the first one
 
@@ -372,7 +383,7 @@ The `Upload File` permission's seeded description also changed — it now reads 
 
 ## 9. Testing
 
-`dotnet test --filter "Category!=Integration"` currently reports **601 passing unit tests**; the integration project holds **183** and needs Docker.
+`dotnet test --filter "Category!=Integration"` currently reports **1017 passing unit tests**; the integration project holds **250** and needs Docker.
 
 Unit tests — xUnit v3 with NSubstitute; services taking a `DbContext` run on SQLite in-memory via `SqliteDbContextFixture`:
 
@@ -382,7 +393,7 @@ Unit tests — xUnit v3 with NSubstitute; services taking a `DbContext` run on S
 | [`Endpoints/ProjectEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/ProjectEndpointsTests.cs) | Each handler's `TypedResults` shape — `Ok`, `Created` with the `Location`, `NoContent` — and the default page when no query string is supplied |
 | [`Mappers/ProjectMapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Mappers/ProjectMapperTests.cs), [`Mappers/ProjectDocumentMapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Mappers/ProjectDocumentMapperTests.cs) | Materialized and expression forms agreeing (the compiled expression is asserted against the hand-written map), and the summary projection carrying everything **but** instructions |
 | [`Services/DocumentServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/DocumentServiceTests.cs) | Project queue path (ownership, deactivated/unknown project, validation before the queue is touched, failed enqueue marking the job `Failed`) and ingestion (document + chunks persisted, project-scoped blob key, `projectId` blob metadata, every stage reported, blob removed when ingestion fails) — plus both directions of the isolation check, that a project upload never writes conversation documents and vice versa |
-| [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs) | Create/update with and without `projectId`, foreign and deactivated projects throwing `NotFound` and changing nothing, and the streaming path: instructions sent **after** the platform prompt, a deactivated project sending none, an edit taking effect on the next turn, a standalone conversation and an instruction-less project adding no message, and instructions never reaching the transcript |
+| [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs) | Create/update with and without `projectId`, foreign and deactivated projects throwing `NotFound` and changing nothing, and the streaming path: instructions sent **after** the platform prompt, a deactivated project sending none, an edit taking effect on the next turn, a standalone conversation and an instruction-less project adding no message, and instructions never reaching the transcript. §4.2's filter adds six: only that project's conversations, its **deactivated** ones excluded, `projectId` and `name` applied together, a foreign project and a deactivated one each throwing `NotFound`, and an omitted filter returning standalone and project conversations alike |
 | [`Endpoints/DocumentEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/DocumentEndpointsTests.cs) | `202` pointing at the shared status route, and the buffered file reaching the service |
 
 Integration tests ([`ProjectEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/ProjectEndpointsIntegrationTests.cs) and the project half of [`DocumentEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/DocumentEndpointsIntegrationTests.cs)) run against `WebApplicationFactory<Program>` plus a Testcontainers **SQL Server 2025** instance, so the filtered unique indexes, the `vector` column and the transaction are exercised for real. They cover: 401 anonymous; cross-user isolation on read, update and delete; clamped paging; instructions absent from listings; duplicate names within a user and allowed across users; the full replace on `PUT`; moving a conversation into a project and the omitted-`projectId` removal; the delete cascade keeping conversations; recreating a project with a deleted project's name; and the project upload path end to end — 403 without the grant, 404 for unknown/foreign projects, 400 for unsupported and oversize files, the pipeline persisting chunks, the project-scoped blob key, the document appearing in the listing, both delete paths deactivating chunks, same-name uploads not colliding, and a text-free file failing the job with an explanation.
@@ -404,9 +415,13 @@ Two caveats worth knowing before promising users the feature: retrieval needs a 
 
 It returns a `List<ProjectDocumentDto>` for every active document in the project. That is fine for the tens-of-documents case and wrong for the thousands-of-documents case, and there is no per-project document cap to stop the latter. Add `skip`/`take` and a `PaginatedResponseDto<T>` wrapper before that becomes real; the endpoint is the only consumer of the projection, so the change is local.
 
-### 10.3 No frontend
+### 10.3 The frontend, and what it still does not cover
 
-The old `enterprise-ui/` client is deleted, and its project scaffolding — a stray `projectId` signal, a menu item routing to a `/projects` path that had no route, and an `UpsertProjectActionDto` that did not match this API — went with it. The rebuilt client at `enterprise-gpt-ui/` has no project UI either: **EP-9 owns it** (US-901 through US-908), and US-307 is the story that puts a conversation into one. Nothing was migrated, so the DTOs are written fresh against the shapes in §2 rather than corrected.
+The old `enterprise-ui/` client is deleted, and its project scaffolding — a stray `projectId` signal, a menu item routing to a `/projects` path that had no route, and an `UpsertProjectActionDto` that did not match this API — went with it. Nothing was migrated, so the rebuilt client's DTOs are written fresh against the shapes in §2 rather than corrected.
+
+**EP-9 has since shipped the whole area** in `enterprise-gpt-ui/` — the grid, the lifecycle dialogs, the detail screen with its standing instructions and files panel, a composer that creates conversations inside a project, US-307's move flow, and US-908's conversations panel on §4.2's filter. See [Projects (UI)](../ui/projects.md).
+
+Two API-side gaps the client works around rather than closes: `GET api/projects` accepts no sort parameter, so both the grid and the root lookup **drain** to a 500-project ceiling and say so when they hit it (US-902 waits on US-706); and `ProjectSummaryDto` carries no favourite flag, so no star is offered anywhere (US-909).
 
 ### 10.4 Everything else
 
@@ -434,4 +449,4 @@ The old `enterprise-ui/` client is deleted, and its project scaffolding — a st
 | Entities | [`Project.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Project.cs), [`ProjectDocument.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ProjectDocument.cs), [`ProjectDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ProjectDocumentChunk.cs), [`Conversation.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Conversation.cs) |
 | EF configuration | [`ProjectConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProjectConfiguration.cs), [`ProjectDocumentConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProjectDocumentConfiguration.cs), [`ProjectDocumentChunkConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProjectDocumentChunkConfiguration.cs), [`ConversationConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationConfiguration.cs) |
 | DI + route mapping | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
-| Related reference | [Document Upload and Ingestion](../documents/upload-workflow.md), [Model Management](../models/model-management.md), [Permission Cache](../permissions/permission-cache.md) |
+| Related reference | [Document Upload and Ingestion](../documents/upload-workflow.md), [Conversation Usage and Favourites](../conversations/usage-and-favorites.md) (the search route §4.2 extends), [Projects (UI)](../ui/projects.md), [Model Management](../models/model-management.md), [Permission Cache](../permissions/permission-cache.md) |

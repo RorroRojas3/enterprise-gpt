@@ -343,6 +343,23 @@ export const ConversationListStore = signalStore(
       },
 
       /**
+       * Optimistically moves a held row into a project, or out of every project when
+       * `projectId` is null (US-307). The caller rolls a failure back by calling it
+       * again with the previous value.
+       *
+       * A row the list does not hold is ignored for the same reason as
+       * {@link refreshRow}. `dateModified` is left alone here even though the server
+       * *does* bump it for a move: the server's value arrives via `refreshRow` on the
+       * 200, and a local guess would diverge from it in the meantime — the same
+       * bargain {@link renameRow} makes.
+       */
+      moveRow(id: string, projectId: string | null): void {
+        if (store.entityMap()[id] !== undefined) {
+          patchState(store, updateEntity({ id, changes: { projectId } }));
+        }
+      },
+
+      /**
        * Clears `projectId` on every held row that belonged to a deleted project
        * (US-903).
        *

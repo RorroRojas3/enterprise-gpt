@@ -12,7 +12,9 @@ import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { UploadStore } from '@core/documents/upload-store';
 import { projectEvents } from '@core/events/project-events';
 import { SessionStore } from '@core/session/session-store';
+import { ConversationDto } from '@domain/api/conversation';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { projectDetailFixture, projectDocumentFixture } from '@testing/projects';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
@@ -21,6 +23,7 @@ import projectDetailRoutes from './project-detail.routes';
 const PROJECT = projectDetailFixture({ name: 'Helios', instructions: 'Cite Jira keys.' });
 const PROJECT_URL = `${TEST_API_BASE_URL}/api/projects/${PROJECT.id}`;
 const DOCUMENTS_URL = `${PROJECT_URL}/documents`;
+const CONVERSATIONS_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 
 describe('ProjectDetail (US-904, US-905, US-906)', () => {
   let backend: HttpTestingController;
@@ -120,10 +123,15 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     await harness.fixture.whenStable();
   }
 
-  async function open(path = ''): Promise<void> {
+  async function open(path = '', conversations: ConversationDto[] = []): Promise<void> {
     await harness.navigateByUrl(`/projects/${PROJECT.id}${path}`);
     backend.expectOne(PROJECT_URL).flush(PROJECT);
     backend.expectOne(DOCUMENTS_URL).flush([projectDocumentFixture({ name: 'plan.pdf' })]);
+    // US-908's filtered request, issued from the detail screen rather than its panel so
+    // the tab strip's count is right from whichever tab the reader lands on.
+    backend
+      .expectOne((request) => request.url === CONVERSATIONS_URL)
+      .flush(conversationPage(conversations, { pageSize: 25 }));
     await harness.fixture.whenStable();
 
     // The composer's own lazy read of the deployment's supported extensions, memoized
@@ -134,13 +142,30 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     await harness.fixture.whenStable();
   }
 
-  it('renders the header, the composer and a tab strip carrying the file count', async () => {
-    await open();
+  it('renders the header, the composer and a tab strip carrying both counts', async () => {
+    await open('', [conversationFixture(), conversationFixture()]);
 
     expect(host().querySelector('.detail__name')?.textContent?.trim()).toBe('Helios');
     // The composer is the shared component; what differs is the host it sends into.
     expect(host().querySelector('app-composer')).not.toBeNull();
-    expect(host().querySelector('.detail__tab-count')?.textContent?.trim()).toBe('1');
+
+    const tabs = [...host().querySelectorAll('.nav-link')].map((tab) =>
+      tab.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+    // Frame 4e's three tabs, in the board's order, each carrying its own count.
+    expect(tabs).toEqual(['Instructions', 'Files 1', 'Conversations 2']);
+  });
+
+  it('counts a project’s conversations from whichever tab the reader is on (US-908)', async () => {
+    // The store is provided on the route rather than on the panel, so the strip is
+    // right while the reader stands on Instructions and the panel does not exist.
+    await open('/instructions', [conversationFixture()]);
+
+    expect(host().querySelector('app-project-conversations')).toBeNull();
+    const counts = [...host().querySelectorAll('.detail__tab-count')].map((span) =>
+      span.textContent?.trim(),
+    );
+    expect(counts).toEqual(['1', '1']);
   });
 
   it('resolves the upload store through the outlet, so the files panel shares one', async () => {

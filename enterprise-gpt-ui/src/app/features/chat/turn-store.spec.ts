@@ -24,6 +24,7 @@ import { TurnCompleted, turnEvents } from '@core/events/turn-events';
 import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
+import { ConversationStore } from './conversation-store';
 import { TranscriptEntry, TurnStore } from './turn-store';
 import { UploadStore } from '@core/documents/upload-store';
 
@@ -80,6 +81,7 @@ describe('TurnStore', () => {
         // every test outside "the attachment gate" takes.
         provideFakeUploadXhr(uploadXhr),
         UploadStore,
+        ConversationStore,
         TurnStore,
       ],
     });

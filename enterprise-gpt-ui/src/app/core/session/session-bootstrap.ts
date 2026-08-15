@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from './session-store';
 
 /**
@@ -18,8 +19,10 @@ import { SessionStore } from './session-store';
  * empty state and an error panel of its own — and holding the startup shell on screen
  * for them would trade a rendered app for a spinner.
  *
- * A guard calls this rather than reaching into four stores itself, so EP-9 has one
- * obvious place to add the project load.
+ * A guard calls this rather than reaching into five stores itself. The project load
+ * joined the others with US-307, which is the first surface to need a root project list:
+ * the picker's searchable panel and the project chip both read it, and a chip cannot
+ * name a project from `ConversationDto`'s bare `projectId` without it.
  */
 @Injectable({ providedIn: 'root' })
 export class SessionBootstrap {
@@ -27,6 +30,7 @@ export class SessionBootstrap {
   private readonly _models = inject(ModelCatalogStore);
   private readonly _mcps = inject(McpCatalogStore);
   private readonly _conversations = inject(ConversationListStore);
+  private readonly _projects = inject(ProjectLookupStore);
 
   /**
    * Ensures the session is loaded and the catalog loads are under way.
@@ -45,6 +49,7 @@ export class SessionBootstrap {
     void this._models.ensureLoaded();
     void this._mcps.ensureLoaded();
     this._conversations.ensureLoaded();
+    this._projects.ensureLoaded();
 
     return true;
   }

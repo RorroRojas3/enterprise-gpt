@@ -50,6 +50,7 @@ The edges from `ConversationUsage` to `Model`, `Provider` and `McpServer` are fo
 | Writing a naming call's usage row | `ConversationService.UpdateConversationNameAsync` (§4.2) |
 | Restoring model + MCP selection | `ConversationService.GetConversationAsync` (§5.1) |
 | Favourites | `ConversationService.SetConversationFavoriteAsync`, `SearchConversationsAsync` (§5.2, §5.3) |
+| Filtering the listing by project | `ConversationService.SearchConversationsAsync` + the private `EnsureProjectExistsAsync` (§5.4) |
 | Entities and mapping | [`ConversationUsage.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsage.cs), [`ConversationUsageMcpServer.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageMcpServer.cs), [`ConversationUsageToolCall.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageToolCall.cs), [`Conversation.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Conversation.cs) |
 | Schema | The EF model only — no migration, no DDL script (§6.5) |
 
@@ -72,6 +73,14 @@ Content-Type: application/json
 ```http
 GET /api/conversations/search?isFavorite=true&take=20
 → 200 PaginatedResponseDto<ConversationDto>   (each item carries modelId and isFavorite)
+```
+
+Or list one project's conversations, which is the same route with one more filter (§5.4):
+
+```http
+GET /api/conversations/search?projectId=9c1f1c8e-6a1e-4c1a-9f7a-2b3c4d5e6f70&take=25
+→ 200 PaginatedResponseDto<ConversationDto>
+→ 404 if that project is unknown, deactivated, or someone else's
 ```
 
 Reopen a conversation with the model and tools it was last run with:
@@ -281,7 +290,7 @@ All routes are in the authenticated `api/conversations` group and are scoped to 
 |---|---|---|---|
 | GET | `/api/conversations/{id:guid}` | `200 ConversationDetailDto` | 404 unknown, deactivated, or another user's |
 | PUT | `/api/conversations/{id:guid}/favorite` | `204` | 400 malformed body, 404 unknown, deactivated, or another user's |
-| GET | `/api/conversations/search?name=&skip=&take=&isFavorite=` | `200 PaginatedResponseDto<ConversationDto>` | — (paging is clamped, not rejected) |
+| GET | `/api/conversations/search?name=&skip=&take=&isFavorite=&projectId=` | `200 PaginatedResponseDto<ConversationDto>` | 400 a query parameter that will not bind, 404 `projectId` is not an active project of the caller (§5.4) — paging itself is clamped, not rejected |
 
 ### 5.1 The resume shape — `ConversationDetailDto`
 
@@ -330,7 +339,24 @@ The request has no FluentValidation validator — `isFavorite` is a `bool`, so t
 
 `GET /api/conversations/search` takes an optional `isFavorite`: `true` returns only favourites, `false` only non-favourites, and **omitting it applies no filter at all** (it is a `bool?`, not a defaulted `bool`). The name filter, paging and newest-first ordering are unchanged.
 
-### 5.4 `ConversationDto` gains two fields
+### 5.4 Filtering the search — `?projectId=` (US-907)
+
+The same route takes an optional `projectId`, so a client can list one project's conversations without draining the whole list and filtering locally. It narrows the existing predicate rather than replacing it: the results are still the caller's own **active** conversations, newest first, in the same `PaginatedResponseDto` envelope, and `name` and `isFavorite` still apply alongside it.
+
+```http
+GET /api/conversations/search?projectId=9c1f1c8e-6a1e-4c1a-9f7a-2b3c4d5e6f70&name=pricing&take=25
+→ 200 PaginatedResponseDto<ConversationDto>
+```
+
+**An unknown, deactivated or foreign project answers `404`, not an empty page.** `SearchConversationsAsync` calls the same private `EnsureProjectExistsAsync` the create and update paths use, and it runs **before** the page is read, so the route cannot be used to probe for other users' project ids — the posture §3.3 of [Projects](../projects/project-management.md) describes, applied here rather than exempted from. The deactivated case is the one that needs the check most: deleting a project releases its conversations (`ProjectId = NULL`), so without it the route would answer a cheerful empty page for a project that had rows an hour ago.
+
+**Omitting the parameter leaves behaviour byte-for-byte unchanged**, and that is a property of the code rather than a claim about it: the filter and the ownership check both sit behind one `projectId.HasValue` guard, so an absent value executes nothing new.
+
+The route declares `.ProducesProblem(400)` alongside the 404. The 400 is a **binding** failure on one of the four typed query parameters — `skip`, `take`, `isFavorite`, `projectId`; a `string? name` always binds — so `?projectId=banana` carries no `errors` dictionary and is not a validation problem. There is no validator on this route, exactly as there is none on the favourite route (§5.2), which is why it is `.ProducesProblem(400)` and not `.ProducesValidationProblem()`.
+
+No index was added for it, and that is deliberate. `(ProjectId, DateDeactivated)` already exists on `Core.Conversation` for the delete cascade, but the filtered listing is **owner-scoped too**, so the engine seeks `(UserId, DateDeactivated, DateCreated DESC)` and gets the ordering off it for free, leaving `ProjectId` a residual predicate over one user's conversations — a bounded set. Folding `DateCreated` into the project index would buy a second ordered path for a query that already has one, and cost every conversation write for it.
+
+### 5.5 `ConversationDto` gains two fields
 
 `modelId` (nullable) and `isFavorite` are now on `ConversationDto`, so they appear on the search listing, on `POST`, and on `PUT` as well as on the detail read. Both the materialized mapper and the `MapToChatDtoExpression` projection carry them; a new conversation returns `"modelId": null` until its first turn runs.
 
@@ -685,7 +711,7 @@ HAVING   c.InputTokens  <> ISNULL(SUM(u.InputTokens  + u.ToolInputTokens), 0)
 
 ## 8. Testing
 
-`dotnet test --filter "Category!=Integration"` reports **853 passing unit tests**; the full run adds **224 integration tests** and needs Docker.
+`dotnet test --filter "Category!=Integration"` reports **1017 passing unit tests**; the full run adds **250 integration tests** and needs Docker.
 
 Unit coverage lives in [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs) and [`Chat/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/) — xUnit v3, NSubstitute, and a SQLite in-memory `DbContext` via `SqliteDbContextFixture`:
 
@@ -699,13 +725,13 @@ Unit coverage lives in [`Services/ConversationServiceTests.cs`](../../enterprise
 | Report translation ([`UsageReportTranslatorTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/UsageReportTranslatorTests.cs)) | the rollup-to-own-tokens reduction and the `SubtreeTotalTokens` invariant at two levels of nesting; pre-order flattening; sibling numbering; every `ToolKind` mapping; MCP attribution by prefix, by sanitized prefix, longest-prefix-wins, source-name fallback, and null when nothing matches; a function named like an MCP tool is not attributed; names clipped to their column widths |
 | Resume shape | the newest turn's model and servers are returned; a server that is no longer permitted is omitted; a conversation with no turns returns neither |
 | Favourites | setting and clearing persists without touching the transcript; another user's conversation throws `NotFound` |
-| Search | the favourite filter returns only favourites, and omitting it returns everything |
+| Search | the favourite filter returns only favourites, and omitting it returns everything; the project filter returns only that project's conversations and **excludes its deactivated ones** — the "active" half of the criterion is pinned separately, because a refactor that rebuilt the query for the filtered case would drop the soft-delete clause with nothing else failing; `projectId` and `name` applying together; a foreign or deactivated project throwing `NotFound`; and an omitted `projectId` returning standalone and project conversations alike |
 
 The tool-call tests are not built on a stubbed report. `ConversationServiceTests` wires the **real middleware in the real order** — `UseToolTracking()` then `UseFunctionInvocation()` — over a fake provider that scripts a two-iteration tool loop, because token accounting is a property of that pipeline rather than of the service; a test that stubbed the report would only be asserting its own arrangement.
 
 Integration coverage runs against real SQL Server 2025 in Testcontainers, where the indexes and foreign keys actually exist:
 
-- [`Endpoints/ConversationEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/ConversationEndpointsIntegrationTests.cs) — the newest turn's selection wins over an older one, a newer `Naming` row does not blank it, and a revoked server is filtered out of the response.
+- [`Endpoints/ConversationEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/ConversationEndpointsIntegrationTests.cs) — the newest turn's selection wins over an older one, a newer `Naming` row does not blank it, a revoked server is filtered out of the response, and (§5.4) `?projectId=` returns only that project's active conversations while another user's project answers **404 rather than an empty page**.
 - [`Persistence/ConversationUsageToolCallIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/ConversationUsageToolCallIntegrationTests.cs) — a nested tree saved as one graph gets its parent links and sequential keys from EF, every row carries the owning `ConversationUsageId`, the subtree invariant holds against what the database stored, and the self-referencing key can actually be cleared (§6.3). With no migrations, the model configuration is the only thing that creates this table, and this is the only place that proves it can.
 
 ## 9. Known limits and gaps

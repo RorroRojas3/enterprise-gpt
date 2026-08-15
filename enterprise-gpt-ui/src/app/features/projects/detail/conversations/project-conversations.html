@@ -1,0 +1,169 @@
+@if (conversations.error(); as error) {
+  <!-- The panel replaces the list rather than sitting beside it: the rows on screen
+       belong to a query that failed, so leaving them up would present a stale set as
+       the answer. -->
+  <app-error-panel
+    heading="Conversations could not be loaded"
+    [headingLevel]="null"
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    (retried)="conversations.retry()"
+  />
+} @else {
+  <app-data-table
+    label="Conversations in this project"
+    [rows]="conversations.entities()"
+    [columns]="columns"
+    [trackKey]="trackKey"
+    [rowLabel]="rowLabel"
+    [loading]="conversations.isFirstLoad()"
+    [summary]="conversations.countSummary()"
+    [pendingIds]="actions.pendingIds()"
+  >
+    <ng-template appTableCell="name" [appTableCellFor]="conversations.entities()" let-row>
+      <a class="project-conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
+    </ng-template>
+
+    <ng-template appTableCell="updated" [appTableCellFor]="conversations.entities()" let-row>
+      <span class="project-conversations__updated">{{ updatedLabel(row) }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="favorite" [appTableCellFor]="conversations.entities()" let-row>
+      <!--
+        `aria-disabled`, never the native attribute, and no `aria-pressed`: the label
+        already carries the direction, and a control that both names its action and
+        reports a pressed state is announced twice over. Confirm-then-render, as on the
+        library: this store owns its own entities and `ConversationActionsStore` cannot
+        patch them, so an optimistic flip here would have no rollback behind it.
+      -->
+      <button
+        class="project-conversations__star"
+        type="button"
+        [class.project-conversations__star--on]="row.isFavorite"
+        [attr.aria-label]="favoriteLabel(row)"
+        [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+        (click)="actions.toggleFavorite(row)"
+      >
+        <app-icon [name]="row.isFavorite ? 'bi-star-fill' : 'bi-star'" />
+      </button>
+    </ng-template>
+
+    <ng-template appTableCell="actions" [appTableCellFor]="conversations.entities()" let-row>
+      <app-menu #rowMenu [label]="'Actions for ' + row.name">
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.beginRename(row)"
+        >
+          <app-icon name="bi-pencil" />
+          Rename
+        </button>
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.toggleFavorite(row)"
+        >
+          <app-icon [name]="row.isFavorite ? 'bi-star-fill' : 'bi-star'" />
+          {{ row.isFavorite ? 'Unfavourite' : 'Favourite' }}
+        </button>
+        <button
+          appMenuItem
+          type="button"
+          aria-haspopup="dialog"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="openPicker(row, rowMenu)"
+        >
+          <app-icon name="bi-folder-symlink" />
+          <span class="project-conversations__menu-label">Move to another project</span>
+          <app-icon class="project-conversations__menu-chevron" name="bi-chevron-right" />
+        </button>
+        <!--
+          Always present here, unlike the sidebar and the library: every row on this
+          panel is in a project by construction, so the action always has something to
+          act on.
+        -->
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="removeFromProject(row)"
+        >
+          <app-icon name="bi-folder-minus" />
+          Remove from project
+        </button>
+        <hr appMenuSeparator />
+        <button
+          appMenuItem
+          type="button"
+          class="menu__item--danger"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.beginDelete(row)"
+        >
+          <app-icon name="bi-trash3" />
+          Delete
+        </button>
+      </app-menu>
+    </ng-template>
+
+    <div tableEmpty>
+      <!--
+        Frame 4g's caption: the empty state points at the project composer above. No
+        projected action, unlike every other empty state in the app — the call to action
+        is a control that is already on screen and *earlier in reading order*, so a
+        button here would be a second way to reach something one Shift+Tab away rather
+        than the only way. Level 2, because this screen's header renders the project name
+        as a button rather than a heading, so there is no level-2 ancestor to sit under.
+      -->
+      <app-empty-state
+        heading="No conversations in this project yet"
+        [headingLevel]="2"
+        message="Send a prompt from the composer above and the conversation will appear here."
+      />
+    </div>
+
+    <!--
+      The `@if` sits *inside* the projected div, never around it: content projection
+      matches static nodes, and an `@if` around this element compiles to an `ng-template`
+      carrying no `tableFooter` attribute, which `DataTable` drops silently.
+    -->
+    <div tableFooter class="project-conversations__more">
+      @if (conversations.hasMore()) {
+        <!--
+          Both halves of `loadMore`'s own guard, so the control cannot look operable
+          while a press would be a silent no-op: `isPending()` covers the window where a
+          project switch is on the wire and this list still holds the previous one's rows.
+          The label swaps rather than only the spinner appearing, because the spinner is
+          aria-hidden and a screen reader would otherwise hear nothing change.
+        -->
+        <button
+          type="button"
+          class="btn btn-outline-secondary btn-sm"
+          [attr.aria-disabled]="
+            conversations.loadingMore() || conversations.isPending() ? 'true' : null
+          "
+          (click)="onLoadMore()"
+        >
+          @if (conversations.loadingMore()) {
+            <span class="kit-spinner" aria-hidden="true"></span>
+            Loading…
+          } @else {
+            Load more
+          }
+        </button>
+      }
+    </div>
+  </app-data-table>
+}
+
+@if (pickerOpen() && pickerRow(); as row) {
+  @if (pickerAnchor(); as anchor) {
+    <app-project-picker
+      [conversation]="row"
+      [anchor]="anchor"
+      [open]="pickerOpen()"
+      (openChange)="onPickerClosed($event)"
+    />
+  }
+}

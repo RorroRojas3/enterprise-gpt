@@ -22,6 +22,10 @@ import { SessionStore } from '@core/session/session-store';
 import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { provideComposerHost } from '@core/chat/composer-host';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
+import { projectFixture, projectPage } from '@testing/projects';
+import { ConversationStore } from '@features/chat/conversation-store';
 import { TurnStore } from '@features/chat/turn-store';
 import { UploadStore } from '@core/documents/upload-store';
 import { Composer } from './composer';
@@ -67,6 +71,7 @@ describe('Composer', () => {
         // The real streaming host, deliberately: what this spec checks is the Send/Stop
         // morph, the seed handoff and the focus fixups, and every one of them is a
         // reaction to state a stub would have to fake into existence.
+        ConversationStore,
         TurnStore,
         provideComposerHost(TurnStore),
       ],
@@ -176,17 +181,119 @@ describe('Composer', () => {
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.fixture.whenStable();
 
-    // Project (US-307) and download (US-1502). Attach shipped with US-801 and is
-    // absent here for the other reason the repo allows: this session holds no
-    // `Upload File` grant. The microphone is absent because this TestBed provides
-    // no speech recognition.
+    // Download (US-1502). Attach shipped with US-801 and is absent here for the other
+    // reason the repo allows: this session holds no `Upload File` grant. The microphone
+    // is absent because this TestBed provides no speech recognition. US-307's project
+    // pill is absent for a third reason again, asserted separately below: there is no
+    // conversation open, so the host has nothing for it to act on.
     const buttons = [...composer.host.querySelectorAll('button')];
     const labels = buttons.map(
       (button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '',
     );
-    expect(labels.some((label) => /project|download/i.test(label))).toBe(false);
+    expect(labels.some((label) => /download/i.test(label))).toBe(false);
     expect(composer.host.querySelector('.model-menu__pill')).not.toBeNull();
     expect(composer.send()).not.toBeNull();
+  });
+
+  it('withholds the project pill until there is a conversation to move (US-307)', async () => {
+    // Absent, not disabled: on empty `/chat` there is no conversation to assign, and
+    // pre-selecting a project for one that does not exist yet is not this story.
+    const composer = await render();
+    await loadModels([modelFixture({ isDefault: true })]);
+    await composer.fixture.whenStable();
+
+    expect(TestBed.inject(TurnStore).projectTarget()).toBeNull();
+    expect(composer.host.querySelector('.composer__project')).toBeNull();
+  });
+
+  describe('project pill (US-307)', () => {
+    /** Puts a conversation on the route and in the sidebar list, as the chat route does. */
+    async function openConversation(projectId: string | null = null): Promise<void> {
+      TestBed.inject(ConversationListStore).prependNewest(
+        conversationFixture({ id: CONVERSATION_ID, name: 'Helios', projectId }),
+      );
+      TestBed.inject(TurnStore).bindRoute(CONVERSATION_ID);
+      backend.expectOne(`${CREATE_URL}/${CONVERSATION_ID}/messages`).flush([]);
+    }
+
+    /** Drains the root lookup store the pill reads its label from. */
+    function loadProjects(projects: { id: string; name: string }[]): void {
+      const lookup = TestBed.inject(ProjectLookupStore);
+      lookup.ensureLoaded();
+      TestBed.tick();
+      backend
+        .expectOne((request) => request.url === `${TEST_API_BASE_URL}/api/projects`)
+        .flush(projectPage(projects.map((p) => projectFixture(p))));
+      TestBed.tick();
+    }
+
+    it('names the assigned project and opens the picker upward', async () => {
+      const project = projectFixture({ name: 'Data Platform Migration' });
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      loadProjects([{ id: project.id, name: project.name }]);
+      await openConversation(project.id);
+      await composer.fixture.whenStable();
+
+      const pill = composer.host.querySelector<HTMLButtonElement>('.composer__project');
+      expect(pill?.textContent?.trim()).toBe('Data Platform Migration');
+      expect(pill?.getAttribute('aria-expanded')).toBe('false');
+      expect(pill?.getAttribute('aria-label')).toContain('Data Platform Migration');
+
+      pill?.click();
+      await composer.fixture.whenStable();
+
+      expect(composer.host.querySelector('.picker')).not.toBeNull();
+      expect(pill?.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('reads "No project" for a standalone conversation', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation(null);
+      await composer.fixture.whenStable();
+
+      expect(composer.host.querySelector('.composer__project')?.textContent?.trim()).toBe(
+        'No project',
+      );
+    });
+
+    it('closes the picker when the pill is pressed again', async () => {
+      // The `anchorToggles` / `insideAlso` path. Without it the outside-press handler
+      // closes the panel on pointerdown and the pill's own click reopens it, so the
+      // control that opened the panel could never dismiss it.
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation(null);
+      await composer.fixture.whenStable();
+
+      const pill = composer.host.querySelector<HTMLButtonElement>('.composer__project');
+      pill?.click();
+      await composer.fixture.whenStable();
+      expect(composer.host.querySelector('.picker')).not.toBeNull();
+
+      // The real sequence: pointerdown reaches the document handler first, then click.
+      pill?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+      pill?.click();
+      await composer.fixture.whenStable();
+
+      expect(composer.host.querySelector('.picker')).toBeNull();
+    });
+
+    it('is disabled while a turn is streaming', async () => {
+      // It carries `composer__aux`, so it is dimmed to 40% — a control that looks
+      // unavailable and still opens a popover reads as broken.
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation(null);
+      await composer.type('Hello');
+      composer.send()?.click();
+      await composer.fixture.whenStable();
+
+      expect(composer.host.querySelector<HTMLButtonElement>('.composer__project')?.disabled).toBe(
+        true,
+      );
+    });
   });
 
   describe('attachments (US-801)', () => {

@@ -15,7 +15,7 @@ import { tapResponse } from '@ngrx/operators';
 import { Subject, exhaustMap, merge, takeUntil } from 'rxjs';
 import { ConversationDto } from '@domain/api/conversation';
 import { CHAT_ROUTE, PROJECTS_ROUTE } from '@core/auth/auth-routes';
-import { ComposerHost } from '@core/chat/composer-host';
+import { ComposerHost, ComposerProjectTarget } from '@core/chat/composer-host';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { toAppError } from '@core/errors/to-app-error';
@@ -68,7 +68,7 @@ export const ProjectComposerHost = signalStore(
     /** The prompt the in-flight create carries, so Stop can hand it back. */
     _inFlightPrompt: { current: '' },
   })),
-  withComputed(({ creating }) => ({
+  withComputed(({ creating, _project }) => ({
     inFlight: computed(() => creating()),
     /**
      * Never a notice. The chat route puts a failed turn in the transcript with a Retry
@@ -76,6 +76,16 @@ export const ProjectComposerHost = signalStore(
      * stays null so the composer's focus fixups behave exactly as they do there.
      */
     turnError: computed<object | null>(() => null),
+    /**
+     * The route's own project (US-307). The `project` arm makes the composer render a
+     * static chip rather than a picker: a conversation created here is created *inside*
+     * this project by definition, and there is nothing yet to move.
+     */
+    projectTarget: computed<ComposerProjectTarget | null>(() => {
+      const projectId = _project.projectId();
+
+      return projectId === null ? null : { kind: 'project', projectId };
+    }),
   })),
   withMethods((store) => {
     const _create = rxMethod<string>(

@@ -124,6 +124,20 @@
       <a class="conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
     </ng-template>
 
+    <!--
+      US-307's project chip. Absent rather than an em dash for a standalone
+      conversation: "no project" is a real state, not missing data, and the model
+      column's dash means "the catalogue does not know this id".
+    -->
+    <ng-template appTableCell="project" [appTableCellFor]="library.entities()" let-row>
+      @if (projectName(row); as project) {
+        <span class="conversations__project">
+          <app-icon name="bi-folder-fill" />
+          <span class="conversations__project-name">{{ project }}</span>
+        </span>
+      }
+    </ng-template>
+
     <ng-template appTableCell="model" [appTableCellFor]="library.entities()" let-row>
       <span class="conversations__model">{{ modelName(row) }}</span>
     </ng-template>
@@ -154,6 +168,67 @@
       >
         <app-icon [name]="row.isFavorite ? 'bi-star-fill' : 'bi-star'" />
       </button>
+    </ng-template>
+
+    <!--
+      US-307's per-row kebab, offering the same five actions the sidebar row does and
+      routed through the same `ConversationActionsStore` flows — nothing reimplemented.
+      `aria-disabled`, never the native attribute, for the reason the star above states.
+    -->
+    <ng-template appTableCell="actions" [appTableCellFor]="library.entities()" let-row>
+      <app-menu #rowMenu [label]="'Actions for ' + row.name">
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.beginRename(row)"
+        >
+          <app-icon name="bi-pencil" />
+          Rename
+        </button>
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="onToggleFavorite(row)"
+        >
+          <app-icon [name]="row.isFavorite ? 'bi-star-fill' : 'bi-star'" />
+          {{ row.isFavorite ? 'Unfavourite' : 'Favourite' }}
+        </button>
+        <button
+          appMenuItem
+          type="button"
+          aria-haspopup="dialog"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="openPicker(row, rowMenu)"
+        >
+          <app-icon name="bi-folder-symlink" />
+          <span class="conversations__menu-label">Move to project</span>
+          <app-icon class="conversations__menu-chevron" name="bi-chevron-right" />
+        </button>
+        @if (row.projectId !== null) {
+          <button
+            appMenuItem
+            type="button"
+            [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+            (click)="actions.moveToProject(row, null)"
+          >
+            <app-icon name="bi-folder-minus" />
+            Remove from project
+          </button>
+        }
+        <hr appMenuSeparator />
+        <button
+          appMenuItem
+          type="button"
+          class="menu__item--danger"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.beginDelete(row)"
+        >
+          <app-icon name="bi-trash3" />
+          Delete
+        </button>
+      </app-menu>
     </ng-template>
 
     <div tableEmpty>
@@ -263,3 +338,13 @@
   [count]="library.selectedCount()"
   (confirmed)="library.deleteSelected()"
 />
+
+<!--
+  One picker for the whole table, mounted outside it so a row re-render cannot destroy
+  the panel the reader is using. It is fed the row and the kebab captured at the gesture.
+-->
+@if (pickerOpen() && pickerRow(); as row) {
+  @if (pickerAnchor(); as anchor) {
+    <app-project-picker [conversation]="row" [anchor]="anchor" [(open)]="pickerOpen" />
+  }
+}

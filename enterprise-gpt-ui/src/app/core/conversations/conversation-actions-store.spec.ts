@@ -587,4 +587,132 @@ describe('ConversationActionsStore', () => {
       expect(toasts.assertiveToasts()).toHaveLength(0);
     });
   });
+
+  describe('move to project (US-307)', () => {
+    const PROJECT_A = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const PROJECT_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+
+    it('sends the target project with the unchanged name echoed', () => {
+      const target = conversationFixture({ name: 'Cutover comms', projectId: null });
+      loadList([target]);
+
+      store.moveToProject(target, PROJECT_A);
+
+      const request = expectPut();
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({
+        id: target.id,
+        name: 'Cutover comms',
+        projectId: PROJECT_A,
+      });
+      request.flush({ ...target, projectId: PROJECT_A });
+    });
+
+    it('sends an explicit null when the conversation is removed from its project', () => {
+      // The criterion `toUpdateBody` exists for: an undefined here would echo the
+      // current project, and "remove from project" would silently do nothing.
+      const target = conversationFixture({ projectId: PROJECT_A });
+      loadList([target]);
+
+      store.moveToProject(target, null);
+
+      const request = expectPut();
+      expect(request.request.body.projectId).toBeNull();
+      expect('projectId' in request.request.body).toBe(true);
+      request.flush({ ...target, projectId: null });
+
+      expect(list.entityMap()[target.id]?.projectId).toBeNull();
+    });
+
+    it('leaves A and appears under B in one round trip', () => {
+      // US-307's third criterion, verbatim: no unlink-then-link pair.
+      const target = conversationFixture({ projectId: PROJECT_A });
+      loadList([target]);
+
+      store.moveToProject(target, PROJECT_B);
+
+      // Optimistic, and already B before the server answers.
+      expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_B);
+      expect(list.isRowPending(target.id)).toBe(true);
+
+      const request = expectPut();
+      expect(request.request.body.projectId).toBe(PROJECT_B);
+      request.flush({ ...target, projectId: PROJECT_B, dateModified: '2026-08-15T10:00:00+00:00' });
+
+      backend.expectNone(PUT_URL);
+      expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_B);
+      // The server's DTO is adopted, not the local guess — a move bumps dateModified.
+      expect(list.entityMap()[target.id]?.dateModified).toBe('2026-08-15T10:00:00+00:00');
+      expect(list.isRowPending(target.id)).toBe(false);
+      expect(updates).toEqual([expect.objectContaining({ id: target.id, projectId: PROJECT_B })]);
+    });
+
+    it('rolls the row back to its previous project and toasts on failure', () => {
+      const target = conversationFixture({ projectId: PROJECT_A });
+      loadList([target]);
+      const toasts = TestBed.inject(ToastStore);
+
+      store.moveToProject(target, PROJECT_B);
+      expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_B);
+
+      expectPut().flush(PROBLEM_FIXTURES.resourceNotFound, {
+        status: 404,
+        statusText: 'Not Found',
+      });
+
+      expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_A);
+      expect(list.isRowPending(target.id)).toBe(false);
+      expect(toasts.assertiveToasts()).toHaveLength(1);
+      expect(updates).toHaveLength(0);
+    });
+
+    it('refuses a second move while the row’s own action is in flight', () => {
+      // No dialog in front of it, so this guard is the whole re-entry story: two
+      // opposite moves racing would decide the final project by arrival order.
+      const target = conversationFixture({ projectId: null });
+      loadList([target]);
+
+      store.moveToProject(target, PROJECT_A);
+      store.moveToProject(target, PROJECT_B);
+
+      expectPut().flush({ ...target, projectId: PROJECT_A });
+      expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_A);
+    });
+
+    it('is a no-op when the conversation is already in that project', () => {
+      const target = conversationFixture({ projectId: PROJECT_A });
+      loadList([target]);
+
+      store.moveToProject(target, PROJECT_A);
+
+      backend.expectNone(PUT_URL);
+      expect(list.isRowPending(target.id)).toBe(false);
+    });
+
+    it('moves a row the sidebar does not hold, with nothing to patch', () => {
+      // A deep link past the first 50: the request still goes out, and the event is
+      // what carries the change to the open conversation.
+      const target = conversationFixture({ projectId: null });
+      loadList([]);
+
+      store.moveToProject(target, PROJECT_A);
+
+      expectPut().flush({ ...target, projectId: PROJECT_A });
+      expect(updates).toEqual([expect.objectContaining({ id: target.id, projectId: PROJECT_A })]);
+    });
+
+    it('drops the response and clears pending when the user signs out mid-move', () => {
+      const target = conversationFixture({ projectId: null });
+      loadList([target]);
+
+      store.moveToProject(target, PROJECT_A);
+      const request = expectPut();
+
+      signOut();
+
+      expect(request.cancelled).toBe(true);
+      expect(list.isRowPending(target.id)).toBe(false);
+      expect(updates).toHaveLength(0);
+    });
+  });
 });

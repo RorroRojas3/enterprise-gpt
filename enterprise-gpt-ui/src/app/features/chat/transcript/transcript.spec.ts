@@ -19,6 +19,7 @@ import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { provideChatMarkdown } from '../markdown/markdown-providers';
+import { ConversationStore } from '../conversation-store';
 import { TurnStore } from '../turn-store';
 import { UploadStore } from '@core/documents/upload-store';
 import { Transcript } from './transcript';
@@ -64,6 +65,7 @@ describe('Transcript', () => {
           useValue: { streamSelection: () => SELECTION, applyConversationSettings },
         },
         UploadStore,
+        ConversationStore,
         TurnStore,
         // US-601: the transcript renders markdown, so its specs need the same
         // sanitized pipeline the lazy chat route provides in the application.

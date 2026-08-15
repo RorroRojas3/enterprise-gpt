@@ -28,6 +28,11 @@ import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import {
+  PROJECT_LOAD_CEILING,
+  PROJECT_PAGE_SIZE,
+  matchesProjectTerm,
+} from '@core/projects/project-load';
+import {
   OffsetPaginationState,
   setFirstPage,
   setPage,
@@ -41,21 +46,10 @@ import {
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
-/**
- * How many projects each request asks for — the server's own clamp ceiling, so the
- * drain below costs the fewest possible round trips.
- */
-export const PROJECT_PAGE_SIZE = 100;
-
-/**
- * How many projects the drain loads before it stops.
- *
- * The PRD's regime **A**: a fully materialised set, so US-902 can offer a sort that is
- * correct rather than one that reorders whichever page happened to be in hand. Five
- * requests at most. Past it the screen states what it is showing rather than letting
- * the shortfall pass for a complete list.
- */
-export const PROJECT_LOAD_CEILING = 500;
+// Re-exported so this screen's own module still reads as one contract; they moved to
+// `core/projects/` when US-307's root lookup store needed them, and `core` may not
+// import `features`.
+export { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from '@core/projects/project-load';
 
 /** What the URL says about which projects to fetch (US-901). */
 export interface ProjectListQuery {
@@ -264,7 +258,7 @@ export const ProjectListStore = signalStore(
         // Only when it belongs to what is on screen. The server filters by a substring
         // of `name`, so a project created under an active search that does not match it
         // would be a row the very next refetch removes.
-        if (!matchesTerm(payload.name, store.name())) {
+        if (!matchesProjectTerm(payload.name, store.name())) {
           return;
         }
 
@@ -288,7 +282,7 @@ export const ProjectListStore = signalStore(
         // Renamed out of the active search: the card no longer belongs to the query
         // that produced it, so it leaves rather than sitting in a filtered grid it does
         // not match — the rule US-703 applies to an unstarred conversation.
-        if (!matchesTerm(payload.name, store.name())) {
+        if (!matchesProjectTerm(payload.name, store.name())) {
           patchState(store, removeEntity(payload.id), shiftCounters(-1));
 
           return;
@@ -316,16 +310,3 @@ export const ProjectListStore = signalStore(
   // Last, as the feature requires.
   withResetOnSignOut(),
 );
-
-/**
- * Whether a name still matches the active search, the way the server matches it.
- *
- * `EF.Functions.Like(name, '%term%')` under a case-insensitive collation, which is a
- * case-insensitive substring test. An empty term matches everything, because the client
- * omits the parameter entirely there.
- */
-function matchesTerm(name: string, term: string): boolean {
-  const needle = term.trim().toLocaleLowerCase();
-
-  return needle === '' || name.toLocaleLowerCase().includes(needle);
-}

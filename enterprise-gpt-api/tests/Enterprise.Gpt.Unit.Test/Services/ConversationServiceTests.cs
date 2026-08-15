@@ -111,7 +111,8 @@ public sealed class ConversationServiceTests : IDisposable
         _fixture.Dispose();
     }
 
-    private async Task<Conversation> AddConversationAsync(Guid? projectId = null)
+    private async Task<Conversation> AddConversationAsync(
+        Guid? projectId = null, string? name = null, bool deactivated = false)
     {
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
@@ -119,9 +120,10 @@ public sealed class ConversationServiceTests : IDisposable
             Id = Guid.NewGuid(),
             UserId = KnownIds.SeedUserId,
             ProjectId = projectId,
-            Name = "Test Conversation",
+            Name = name ?? "Test Conversation",
             DateCreated = date,
-            DateModified = date
+            DateModified = date,
+            DateDeactivated = deactivated ? date : null
         };
 
         using var ctx = _fixture.CreateContext();
@@ -1853,6 +1855,89 @@ public sealed class ConversationServiceTests : IDisposable
         await AddConversationAsync();
         await _service.SetConversationFavoriteAsync(
             favorite.Id, new SetConversationFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+    }
+    #endregion
+
+    #region Project filter
+    [Fact]
+    public async Task SearchConversationsAsync_FilteringOnAProject_ReturnsOnlyThatProjectsConversations()
+    {
+        var project = await AddProjectAsync();
+        var inProject = await AddConversationAsync(project.Id);
+        await AddConversationAsync();
+        await AddConversationAsync((await AddProjectAsync()).Id);
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, projectId: project.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(inProject.Id, Assert.Single(result.Items).Id);
+    }
+
+    // The project filter is appended to the base predicate rather than replacing it. A refactor
+    // that rebuilt the query for the filtered case would drop the soft-delete clause with nothing
+    // else failing, so the "active" half of the criterion is pinned here.
+    [Fact]
+    public async Task SearchConversationsAsync_FilteringOnAProject_ExcludesItsDeactivatedConversations()
+    {
+        var project = await AddProjectAsync();
+        var live = await AddConversationAsync(project.Id);
+        await AddConversationAsync(project.Id, deactivated: true);
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, projectId: project.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(live.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_ProjectAndNameSupplied_AppliesBothFilters()
+    {
+        var project = await AddProjectAsync();
+        var match = await AddConversationAsync(project.Id, "Cutover comms plan");
+        await AddConversationAsync(project.Id, "Warehouse sync triage");
+        await AddConversationAsync(name: "Cutover comms plan");
+
+        var result = await _service.SearchConversationsAsync(
+            name: "Cutover", skip: 0, take: 20, projectId: project.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(match.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_ProjectOwnedByAnotherUser_ThrowsNotFound()
+    {
+        var otherUser = await AddUserAsync();
+        var project = await AddProjectAsync(userId: otherUser.Id);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.SearchConversationsAsync(
+                name: null, skip: 0, take: 20, projectId: project.Id, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_ProjectDeactivated_ThrowsNotFound()
+    {
+        var project = await AddProjectAsync(deactivated: DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.SearchConversationsAsync(
+                name: null, skip: 0, take: 20, projectId: project.Id, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_WithoutAProjectFilter_ReturnsStandaloneAndProjectConversationsAlike()
+    {
+        var project = await AddProjectAsync();
+        await AddConversationAsync(project.Id);
+        await AddConversationAsync();
 
         var result = await _service.SearchConversationsAsync(
             name: null, skip: 0, take: 20, cancellationToken: TestContext.Current.CancellationToken);

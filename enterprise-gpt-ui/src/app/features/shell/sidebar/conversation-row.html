@@ -31,8 +31,7 @@
 
   <!--
     Frame 3a: revealed on hover, focus, and the selected row; always on touch.
-    Delete is the only red item. The project moves (US-307) join this menu, between
-    Favourite and the separator, when their story lands.
+    Delete is the only red item.
   -->
   <app-menu class="row__menu" [label]="'Actions for ' + conversation().name">
     <!--
@@ -58,6 +57,38 @@
       <app-icon [name]="conversation().isFavorite ? 'bi-star-fill' : 'bi-star'" />
       {{ conversation().isFavorite ? 'Unfavourite' : 'Favourite' }}
     </button>
+    <!--
+      Frame 3a draws these two between Favourite and the separator. The chevron is the
+      board's submenu affordance; the panel it opens is a dialog rather than a nested
+      menu, which is what aria-haspopup announces.
+    -->
+    <button
+      appMenuItem
+      type="button"
+      aria-haspopup="dialog"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="openPicker()"
+    >
+      <app-icon name="bi-folder-symlink" />
+      <span class="row__menu-label">Move to project</span>
+      <app-icon class="row__menu-chevron" name="bi-chevron-right" />
+    </button>
+    <!--
+      Absent for a standalone conversation rather than rendered inert: the repo's rule
+      for an action with nothing to act on. The picker carries the same action for a
+      reader who opens it instead.
+    -->
+    @if (conversation().projectId !== null) {
+      <button
+        appMenuItem
+        type="button"
+        [attr.aria-disabled]="pending() ? 'true' : null"
+        (click)="actions.moveToProject(conversation(), null)"
+      >
+        <app-icon name="bi-folder-minus" />
+        Remove from project
+      </button>
+    }
     <hr appMenuSeparator />
     <button
       appMenuItem
@@ -70,4 +101,12 @@
       Delete
     </button>
   </app-menu>
+
+  <!--
+    Mounted only while open, so the anchor is read after the menu's view exists and no
+    closed row carries a panel component it never shows.
+  -->
+  @if (pickerOpen() && pickerAnchor(); as anchor) {
+    <app-project-picker [conversation]="conversation()" [anchor]="anchor" [(open)]="pickerOpen" />
+  }
 </div>

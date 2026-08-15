@@ -1,0 +1,152 @@
+// Frame 2e. The panel is fixed for the reason `Menu`'s is: the sidebar's conversation
+// list is a scroll container, and an absolutely-positioned panel would be clipped by it.
+.picker {
+  position: fixed;
+  z-index: 1070;
+  width: 320px;
+  padding: 6px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 14px 40px rgba(11, 31, 51, 0.18);
+}
+
+.picker__search {
+  position: relative;
+  margin: 4px 4px 6px;
+}
+
+.picker__search-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.picker__field {
+  height: 32px;
+  padding-left: 30px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+
+  &:focus-visible,
+  &:focus {
+    border-color: transparent;
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+    box-shadow: none;
+  }
+}
+
+// Capped so a long list scrolls inside the panel rather than off the viewport. The
+// lookup store drains to 500 projects, and every one of them can match an empty term.
+.picker__list {
+  max-height: 264px;
+  overflow-y: auto;
+}
+
+.picker__option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bs-body-color);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--surface-2);
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--focus-ring);
+  }
+
+  app-icon {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  &--selected {
+    background: var(--surface-2);
+    font-weight: 600;
+
+    app-icon {
+      color: var(--brand);
+    }
+  }
+
+  // "Remove from project": the whole row on the muted tone, as the board draws it.
+  &--muted {
+    color: var(--muted);
+  }
+
+  // The pinned "New project".
+  &--brand {
+    padding: 8px 10px;
+    color: var(--brand);
+    font-weight: 600;
+
+    app-icon {
+      color: inherit;
+    }
+  }
+}
+
+.picker__option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker__check {
+  flex: 0 0 auto;
+}
+
+.picker__status {
+  margin: 0;
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+
+  &--error {
+    color: var(--bs-body-color);
+  }
+}
+
+.picker__retry {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+.picker__separator {
+  height: 1px;
+  margin: 5px 4px;
+  border: 0;
+  background: var(--bs-border-color);
+  opacity: 1;
+}

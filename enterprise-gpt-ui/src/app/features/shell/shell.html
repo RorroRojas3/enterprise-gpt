@@ -28,3 +28,14 @@
 -->
 <app-rename-conversation-dialog />
 <app-delete-conversation-dialog />
+
+<!--
+  The project dialogs joined them with US-307. They mounted on `ProjectsLayout` while
+  every invoker was inside that feature; the picker's "New project" is the first one
+  outside it, and it opens from the sidebar, the chat header and the composer — none of
+  which the projects layout renders. Mounting here also retires that layout's
+  destroy-time cancel: `Shell` is not unmounted while signed in, so root form state can
+  no longer be stranded by a navigation.
+-->
+<app-project-form-dialog />
+<app-delete-project-dialog />

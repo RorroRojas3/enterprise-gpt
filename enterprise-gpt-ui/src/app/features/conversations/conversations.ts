@@ -19,6 +19,7 @@ import { CHAT_ROUTE } from '@core/auth/auth-routes';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { canRetry } from '@core/errors/error-message';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { EmptyState } from '@shared/feedback/empty-state/empty-state';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { SearchInput } from '@shared/form/search-input/search-input';
@@ -27,7 +28,11 @@ import { DataTable } from '@shared/data/data-table/data-table';
 import { TableCell } from '@shared/data/data-table/table-cell';
 import { TableColumn } from '@shared/data/data-table/table-column';
 import { Icon } from '@shared/icon/icon';
+import { Menu } from '@shared/overlay/menu/menu';
+import { MenuItem } from '@shared/overlay/menu/menu-item';
+import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { Tooltip } from '@shared/overlay/tooltip/tooltip';
+import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 import { ConversationLibraryStore } from './conversation-library-store';
 import { DeleteConversationsDialog } from './delete-conversations-dialog';
 import {
@@ -54,9 +59,9 @@ import {
  * true: bind `[value]` one-way, never `[(value)]`, and never navigate from an effect
  * over `name()` — only from the user's own gesture.
  *
- * Frame `4a` also draws a project chip and a per-row kebab, which arrive with US-307.
- * What the frame deliberately does *not* draw is a sort control, and that stays absent
- * until US-706 gives the server one to honour — US-705's whole subject.
+ * Frame `4a`'s project chip and per-row kebab arrived with US-307. What the frame
+ * deliberately does *not* draw is a sort control, and that stays absent until US-706
+ * gives the server one to honour — US-705's whole subject.
  */
 @Component({
   selector: 'app-conversations',
@@ -68,6 +73,10 @@ import {
     EmptyState,
     ErrorPanel,
     Icon,
+    Menu,
+    MenuItem,
+    MenuSeparator,
+    ProjectPicker,
     RouterLink,
     SearchInput,
     TableCell,
@@ -102,6 +111,7 @@ export class Conversations {
   protected readonly actions = inject(ConversationActionsStore);
 
   private readonly _models = inject(ModelCatalogStore);
+  private readonly _projects = inject(ProjectLookupStore);
   private readonly _router = inject(Router);
   private readonly _route = inject(ActivatedRoute);
   private readonly _injector = inject(Injector);
@@ -143,12 +153,24 @@ export class Conversations {
    */
   protected readonly columns: readonly TableColumn<ConversationDto>[] = [
     { key: 'name', header: 'Name', width: 'minmax(0, 1fr)', mobile: 'title' },
+    // US-307's project chip. `badges` rather than `meta` on the card branch because the
+    // chip is a labelled token, which is what that slot is styled for — the model, a
+    // bare secondary string, is what `meta` is for. A slot takes any number of columns.
+    { key: 'project', header: 'Project', width: '180px', mobile: 'badges' },
     { key: 'model', header: 'Model', width: '160px', mobile: 'meta' },
     // headerHidden rather than an empty header: the column still needs a name for a
     // screen reader listing the table's columns, and the board draws no label here.
     {
       key: 'favorite',
       header: 'Favourite',
+      headerHidden: true,
+      width: '36px',
+      align: 'center',
+      mobile: 'actions',
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
       headerHidden: true,
       width: '36px',
       align: 'center',
@@ -168,6 +190,49 @@ export class Conversations {
   protected readonly modelName = (conversation: ConversationDto): string =>
     (conversation.modelId === null ? undefined : this._modelNames().get(conversation.modelId)) ??
     '—';
+
+  /**
+   * The project's name, or null for a standalone conversation (US-307).
+   *
+   * The same shape as {@link modelName} and for the same reason — `ConversationDto`
+   * carries only `projectId` — but null rather than an em dash, because the chip is
+   * absent when there is no project rather than rendered empty. A project past the
+   * lookup store's drain ceiling is also null: naming it is impossible, and a dash says
+   * "none", which would be wrong.
+   */
+  protected readonly projectName = (conversation: ConversationDto): string | null =>
+    this._projects.nameOf()(conversation.projectId);
+
+  /**
+   * The picker is mounted **once for the table**, not once per row: only one can be
+   * open, and a copy inside the row template would be destroyed by a re-render of the
+   * rows underneath it.
+   *
+   * The **id** is captured at the gesture and the DTO derived from it, never the other
+   * way round. `toUpdateBody` echoes the target's name, so a frozen snapshot would send
+   * back a stale one and silently revert a rename that landed — from the chat header, or
+   * from US-409's server-assigned title — while the panel was open.
+   */
+  protected readonly pickerOpen = signal(false);
+  private readonly _pickerRowId = signal<string | null>(null);
+  protected readonly pickerAnchor = signal<HTMLElement | null>(null);
+
+  protected readonly pickerRow = computed(() => {
+    const id = this._pickerRowId();
+
+    return id === null ? null : (this.library.entityMap()[id] ?? null);
+  });
+
+  /** Opens the picker for one row, anchored to the kebab that opened it. */
+  protected openPicker(conversation: ConversationDto, trigger: Menu): void {
+    if (this.actions.isRowPending(conversation.id)) {
+      return;
+    }
+
+    this.pickerAnchor.set(trigger.triggerElement());
+    this._pickerRowId.set(conversation.id);
+    this.pickerOpen.set(true);
+  }
 
   constructor() {
     // The constructor is an injection context, which a signal-valued reactive method

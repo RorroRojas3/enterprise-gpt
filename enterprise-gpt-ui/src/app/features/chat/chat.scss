@@ -53,6 +53,16 @@
   margin-left: auto;
 }
 
+// Frame 3a's submenu affordance: the label takes the free space so the chevron sits
+// hard right. Tag-qualified so it outranks menu.scss's `::ng-deep .menu__item app-icon`.
+.chat__menu-label {
+  flex: 1;
+}
+
+app-icon.chat__menu-chevron {
+  font-size: 11px;
+}
+
 // `overflow-anchor: none` because US-606 does its own pinning: the browser's
 // scroll anchoring would fight it, holding position against content the reader
 // asked to follow. `overscroll-behavior: contain` keeps a flick at either end

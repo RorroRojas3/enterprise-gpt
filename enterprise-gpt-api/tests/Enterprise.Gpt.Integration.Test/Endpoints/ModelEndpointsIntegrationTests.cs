@@ -122,7 +122,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         Assert.NotNull(model);
         Assert.Equal(KnownIds.SeedModelId, model.Id);
-        Assert.Equal("rr-gpt-5.6-luna", model.Name);
+        Assert.Equal("RR GPT 5.6 Luna", model.Name);
+        Assert.Equal("rr-gpt-5.6-luna", model.DeploymentName);
         Assert.Equal(KnownIds.SeedProviderId, model.ProviderId);
     }
 

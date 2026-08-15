@@ -87,7 +87,20 @@
           }
         </a>
       </li>
-      <!-- Conversations (US-908) joins this strip with its panel. -->
+      <li class="nav-item">
+        <a
+          class="nav-link"
+          routerLink="conversations"
+          routerLinkActive="active"
+          ariaCurrentWhenActive="page"
+        >
+          Conversations
+          <!-- Withheld until read, for the reason the file count above is. -->
+          @if (conversationsCount() !== null) {
+            <span class="detail__tab-count">{{ conversationsCount() }}</span>
+          }
+        </a>
+      </li>
     </ul>
   </nav>
 } @else if (project.isFirstLoad()) {

@@ -105,36 +105,67 @@ public class ConversationEndpointsTests
             PageSize = 20,
             CurrentPage = 1
         };
-        _conversationService.SearchConversationsAsync("plan", 0, 20, null, Arg.Any<CancellationToken>()).Returns(expected);
+        // Named arguments throughout: the call takes four optional filters in a row, three of them
+        // commonly null, and a fifth added later would otherwise shift a value into the wrong slot
+        // with nothing failing to compile.
+        _conversationService.SearchConversationsAsync(
+            name: "plan", skip: 0, take: 20, isFavorite: null, projectId: null,
+            cancellationToken: Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await ConversationEndpoints.SearchConversationsAsync(
-            _conversationService, "plan", 0, 20, null, TestContext.Current.CancellationToken);
+            _conversationService, name: "plan", skip: 0, take: 20, isFavorite: null, projectId: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
     }
 
     [Fact]
-    public async Task SearchConversationsAsync_NoQueryString_UsesTheDefaultPageAndNoFavoriteFilter()
+    public async Task SearchConversationsAsync_NoQueryString_UsesTheDefaultPageAndNoFilters()
     {
-        _conversationService.SearchConversationsAsync(null, 0, 20, null, Arg.Any<CancellationToken>())
+        _conversationService.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, projectId: null,
+            cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new PaginatedResponseDto<ConversationDto>());
 
         await ConversationEndpoints.SearchConversationsAsync(
             _conversationService, cancellationToken: TestContext.Current.CancellationToken);
 
-        await _conversationService.Received(1).SearchConversationsAsync(null, 0, 20, null, Arg.Any<CancellationToken>());
+        await _conversationService.Received(1).SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, projectId: null,
+            cancellationToken: Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task SearchConversationsAsync_FavoritesRequested_PassesTheFilterThrough()
     {
-        _conversationService.SearchConversationsAsync(null, 0, 20, true, Arg.Any<CancellationToken>())
+        _conversationService.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: true, projectId: null,
+            cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new PaginatedResponseDto<ConversationDto>());
 
         await ConversationEndpoints.SearchConversationsAsync(
             _conversationService, isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
 
-        await _conversationService.Received(1).SearchConversationsAsync(null, 0, 20, true, Arg.Any<CancellationToken>());
+        await _conversationService.Received(1).SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: true, projectId: null,
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_ProjectRequested_PassesTheFilterThrough()
+    {
+        var projectId = Guid.NewGuid();
+        _conversationService.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, projectId: projectId,
+            cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<ConversationDto>());
+
+        await ConversationEndpoints.SearchConversationsAsync(
+            _conversationService, projectId: projectId, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _conversationService.Received(1).SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, projectId: projectId,
+            cancellationToken: Arg.Any<CancellationToken>());
     }
 
     // Not-found paths throw NotFoundException in the service and surface as 404 through the
