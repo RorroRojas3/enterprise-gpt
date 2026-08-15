@@ -13,12 +13,14 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@domain/api/model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ToastStore } from '@core/notifications/toast-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { projectFixture, projectPage } from '@testing/projects';
 import { LIBRARY_PAGE_SIZE } from './conversation-library-store';
 import { Conversations } from './conversations';
 import { ORDER_EXPLANATION, shouldReplaceHistory } from './conversations-route';
@@ -940,6 +942,71 @@ describe('Conversations (US-701)', () => {
       // The panel replaces the table precisely so a stale result set is not shown as
       // the answer; a counter still describing it would undo that.
       expect(element().querySelector('.conversations__count')).toBeNull();
+    });
+  });
+
+  describe('project chip and row kebab (US-307)', () => {
+    const project = projectFixture({ name: 'Data Platform Migration' });
+
+    /** Drains the root lookup store, which is what turns a projectId into a name. */
+    function loadProjects(items = [project]): void {
+      const lookup = TestBed.inject(ProjectLookupStore);
+      lookup.ensureLoaded();
+      TestBed.tick();
+      backend
+        .expectOne((request) => request.url === `${TEST_API_BASE_URL}/api/projects`)
+        .flush(projectPage(items));
+      TestBed.tick();
+    }
+
+    it('names the row’s project, and shows no chip for a standalone one', async () => {
+      loadProjects();
+      await open('/conversations', [
+        conversationFixture({ projectId: project.id }),
+        conversationFixture({ projectId: null }),
+      ]);
+
+      const chips = [...element().querySelectorAll('.conversations__project')];
+      // One chip, not two: "no project" is a real state and renders nothing, unlike the
+      // model column's em dash, which means "the catalogue does not know this id".
+      expect(chips).toHaveLength(1);
+      expect(chips[0]?.textContent?.trim()).toBe('Data Platform Migration');
+    });
+
+    it('shows no chip for a project past the lookup ceiling', async () => {
+      // Naming it is impossible, and an em dash would read as "none" — which is wrong.
+      loadProjects([]);
+      await open('/conversations', [conversationFixture({ projectId: project.id })]);
+
+      expect(element().querySelector('.conversations__project')).toBeNull();
+    });
+
+    it('offers the five row actions, routed through the shared store', async () => {
+      loadProjects();
+      const row = conversationFixture({ projectId: project.id });
+      await open('/conversations', [row]);
+
+      element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
+      await harness.fixture.whenStable();
+
+      const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+      expect(items.map((item) => item.textContent?.trim())).toEqual([
+        'Rename',
+        'Favourite',
+        'Move to project',
+        'Remove from project',
+        'Delete',
+      ]);
+      // Never natively disabled: the attribute blurs the item the instant it is pressed
+      // and strands the panel's roving focus.
+      expect(items.some((item) => item.hasAttribute('disabled'))).toBe(false);
+
+      items.find((item) => item.textContent?.includes('Remove from project'))?.click();
+      await harness.fixture.whenStable();
+
+      const request = backend.expectOne(`${TEST_API_BASE_URL}/api/conversations`);
+      expect(request.request.body).toEqual({ id: row.id, name: row.name, projectId: null });
+      request.flush({ ...row, projectId: null });
     });
   });
 });

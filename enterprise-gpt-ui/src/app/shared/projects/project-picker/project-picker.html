@@ -1,0 +1,120 @@
+@if (open()) {
+  <!--
+    role="dialog", not role="menu": the panel holds a text field, which is not a valid
+    child of a menu and which the menu kit's arrow/Tab handling would fight. Non-modal —
+    aria-modal is deliberately absent — because the page behind it stays live, exactly
+    as it does behind a kebab.
+  -->
+  <div
+    #panel
+    class="picker"
+    role="dialog"
+    [id]="panelId"
+    [attr.aria-label]="'Move ' + conversation().name + ' to a project'"
+    [style.top.px]="position().top"
+    [style.bottom.px]="position().bottom"
+    [style.left.px]="position().left"
+    (keydown)="onKeydown($event)"
+    (focusout)="onFocusOut($event)"
+  >
+    <div class="picker__search">
+      <app-icon class="picker__search-icon" name="bi-search" />
+      <!--
+        aria-controls only while the listbox exists: it is not rendered in the loading,
+        error or empty branches, and a dangling idref is an accessibility defect of its
+        own. Arrow keys move focus from here into the rows (see `onKeydown`), which is
+        what makes the field the panel's single tab stop.
+      -->
+      <input
+        #field
+        type="text"
+        class="form-control picker__field"
+        placeholder="Search projects"
+        autocomplete="off"
+        aria-label="Search projects"
+        [attr.aria-controls]="hasOptions() ? listId : null"
+        [value]="term()"
+        (input)="onTerm($event)"
+      />
+    </div>
+
+    @if (projects.isFirstLoad()) {
+      <p class="picker__status">Loading projects…</p>
+    } @else if (projects.error() !== null) {
+      <p class="picker__status picker__status--error">
+        Projects could not be loaded.
+        <button type="button" class="picker__retry" (click)="projects.retry()">Try again</button>
+      </p>
+    } @else {
+      <!--
+        A listbox rather than a list of buttons: the rows are a single-select choice
+        over the conversation's project, and aria-selected is what carries the check
+        mark's meaning to a screen reader.
+
+        Rendered only when it has options, and the empty message sits *outside* it:
+        `listbox` owns `option` and `group` and nothing else, so a paragraph inside it
+        is an `aria-required-children` violation — and the message is precisely what
+        should be announced rather than swallowed by a malformed list.
+      -->
+      @if (hasOptions()) {
+        <div class="picker__list" role="listbox" [id]="listId" aria-label="Projects">
+          @for (project of matches(); track project.id) {
+            <button
+              type="button"
+              class="picker__option"
+              role="option"
+              tabindex="-1"
+              [class.picker__option--selected]="project.id === conversation().projectId"
+              [attr.aria-selected]="project.id === conversation().projectId"
+              (click)="select(project.id)"
+            >
+              <app-icon
+                [name]="project.id === conversation().projectId ? 'bi-folder-fill' : 'bi-folder'"
+              />
+              <span class="picker__option-name">{{ project.name }}</span>
+              @if (project.id === conversation().projectId) {
+                <app-icon class="picker__check" name="bi-check-lg" />
+              }
+            </button>
+          }
+        </div>
+      } @else if (hasNoMatches()) {
+        <p class="picker__status">No projects match “{{ term() }}”.</p>
+      } @else {
+        <p class="picker__status">No projects yet.</p>
+      }
+
+      <!--
+        Absent rather than inert for a standalone conversation: the repo's rule for an
+        action that cannot do anything. The board draws it unconditionally.
+      -->
+      @if (isAssigned()) {
+        <button
+          type="button"
+          class="picker__option picker__option--muted"
+          tabindex="-1"
+          (click)="select(null)"
+        >
+          <app-icon name="bi-folder-minus" />
+          <span class="picker__option-name">Remove from project</span>
+        </button>
+      }
+
+      @if (projects.truncated()) {
+        <p class="picker__status picker__status--ceiling">{{ projects.ceilingNotice() }}</p>
+      }
+    }
+
+    <hr class="picker__separator" />
+
+    <button
+      type="button"
+      class="picker__option picker__option--brand"
+      tabindex="-1"
+      (click)="createProject()"
+    >
+      <app-icon name="bi-plus-lg" />
+      <span class="picker__option-name">New project</span>
+    </button>
+  </div>
+}

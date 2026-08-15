@@ -297,6 +297,43 @@ export const ConversationActionsStore = signalStore(
       }),
     );
 
+    const _move = rxMethod<{ target: ConversationDto; projectId: string | null }>(
+      // mergeMap, as with favourite and delete: moves of different conversations are
+      // independent. Same-id overlap cannot happen — moveToProject refuses while the
+      // row's pending id is set.
+      mergeMap(({ target, projectId }) => {
+        // In the projection, for the reason favourite's writes are: the guard must see
+        // the pending id on a double-click's second call.
+        store._list.setRowPending(target.id, true);
+        store._list.moveRow(target.id, projectId);
+        const url = store._api.build('conversations');
+
+        // `projectId` is handed to the builder verbatim, never through `??`: only an
+        // explicit null unlinks, and an `undefined` slipping in here would echo the
+        // current project and turn "remove from project" into a silent no-op.
+        return store._http.put<ConversationDto>(url, toUpdateBody(target, { projectId })).pipe(
+          takeUntil(store._signedOut$),
+          tapResponse({
+            next: (updated) => {
+              // The server's DTO, not the local guess: a move bumps `dateModified`,
+              // which only the response carries.
+              store._list.refreshRow(updated);
+              store._dispatcher.dispatch(conversationEvents.updated(updated));
+            },
+            // No validation arm. The name is echoed unchanged from a conversation the
+            // server already accepted, so a 400 is not reachable through this path;
+            // a 404 for a deleted conversation or a project that is gone rolls back
+            // and toasts like any other failure.
+            error: (cause: unknown) => {
+              store._list.moveRow(target.id, target.projectId);
+              store._toasts.fromError(toAppError(cause, { url }));
+            },
+            finalize: () => store._list.setRowPending(target.id, false),
+          }),
+        );
+      }),
+    );
+
     return {
       /** Whether one of this store's requests is in flight for a given row. */
       isRowPending(id: string): boolean {
@@ -427,6 +464,33 @@ export const ConversationActionsStore = signalStore(
         }
 
         _favorite({ target: conversation, isFavorite: !conversation.isFavorite });
+      },
+
+      /**
+       * Moves a conversation into a project, between projects, or out of every project
+       * when `projectId` is null (US-307).
+       *
+       * One request covers all three: `PUT api/conversations` is a full representation,
+       * so leaving project A for project B is a single write of the new id rather than
+       * an unlink followed by a link. The row updates optimistically and rolls back
+       * behind an error toast.
+       *
+       * Like favourite, this opens nothing, so the pending-id guard is the whole
+       * re-entry story: a second call while the first is in flight would race it to
+       * decide which project the conversation ends up in.
+       */
+      moveToProject(conversation: ConversationDto, projectId: string | null): void {
+        if (store._list.isRowPending(conversation.id)) {
+          return;
+        }
+
+        // A move to the project it is already in is not a request. The picker marks the
+        // current project as selected, so this is a re-click, not a change.
+        if (conversation.projectId === projectId) {
+          return;
+        }
+
+        _move({ target: conversation, projectId });
       },
     };
   }),

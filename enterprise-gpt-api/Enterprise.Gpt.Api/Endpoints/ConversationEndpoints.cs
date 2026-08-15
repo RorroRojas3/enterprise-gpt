@@ -33,7 +33,13 @@ public static class ConversationEndpoints
             // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        group.MapGet("search", SearchConversationsAsync);
+        // 404 rather than an empty page when ?projectId= names a project the caller does not own.
+        // The 400 is a binding failure on one of the four typed query parameters, so it carries no
+        // errors dictionary — ProducesProblem(400), not ProducesValidationProblem(), for the reason
+        // spelled out on the favorite route below.
+        group.MapGet("search", SearchConversationsAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("{id:guid}", GetConversationAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("{id:guid}/messages", GetConversationMessagesAsync)
@@ -76,9 +82,9 @@ public static class ConversationEndpoints
     // parameters last. Without defaults an absent ?skip= would fail binding with a 400.
     internal static async Task<Ok<PaginatedResponseDto<ConversationDto>>> SearchConversationsAsync(
         IConversationService conversationService, string? name = null, int skip = 0, int take = 20,
-        bool? isFavorite = null, CancellationToken cancellationToken = default)
+        bool? isFavorite = null, Guid? projectId = null, CancellationToken cancellationToken = default)
     {
-        var response = await conversationService.SearchConversationsAsync(name, skip, take, isFavorite, cancellationToken);
+        var response = await conversationService.SearchConversationsAsync(name, skip, take, isFavorite, projectId, cancellationToken);
         return TypedResults.Ok(response);
     }
 

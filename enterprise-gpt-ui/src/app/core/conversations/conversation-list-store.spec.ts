@@ -516,6 +516,31 @@ describe('ConversationListStore', () => {
     expect(store.entities().find((c) => c.id === other.id)?.projectId).toBe('p-2');
   });
 
+  it('moves a held row into a project and back out again (US-307)', () => {
+    const held = conversationFixture({ projectId: null });
+    const other = conversationFixture({ projectId: 'p-2' });
+    load([held, other]);
+
+    store.moveRow(held.id, 'p-1');
+    expect(store.entities().find((c) => c.id === held.id)?.projectId).toBe('p-1');
+
+    // Null is a value here, not an absence: it is how a removal is expressed, and it
+    // must reach the entity rather than being read as "leave it alone".
+    store.moveRow(held.id, null);
+    expect(store.entities().find((c) => c.id === held.id)?.projectId).toBeNull();
+    expect(store.entities().find((c) => c.id === other.id)?.projectId).toBe('p-2');
+  });
+
+  it('ignores a move for a row it does not hold', () => {
+    // The deep-link case: the actions store still sends the PUT, and the `updated`
+    // event is what carries the change to whoever is showing that conversation.
+    load([conversationFixture({ projectId: null })]);
+
+    store.moveRow('not-in-the-list', 'p-1');
+
+    expect(store.entities().some((c) => c.projectId === 'p-1')).toBe(false);
+  });
+
   it('reloads for the next user after a sign-out', () => {
     load();
     signOut();

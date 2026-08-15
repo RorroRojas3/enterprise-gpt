@@ -33,8 +33,11 @@ public sealed class ConversationConfiguration : IEntityTypeConfiguration<Convers
             .HasForeignKey(x => x.ModelId)
             .IsRequired(false);
 
-        // Conversations are listed for one project at a time, filtered to the active ones. Also the
-        // index the project cascade reads when it clears ProjectId.
+        // The index the project cascade reads when it clears ProjectId. Deliberately not extended
+        // with DateCreated for US-907's ?projectId= listing: that query is owner-scoped too, so the
+        // engine seeks the user index below and gets the ordering off it for free, leaving ProjectId
+        // as a residual predicate over one user's conversations — a bounded set. Folding DateCreated
+        // in here would buy a second ordered path for a listing that already has one.
         builder.HasIndex(x => new { x.ProjectId, x.DateDeactivated });
 
         // The sidebar listing: always the owner's active conversations, newest first, paged. The

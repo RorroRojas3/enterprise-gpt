@@ -5,6 +5,19 @@ export interface DismissHandlers {
   readonly onOutside?: () => void;
   /** An ancestor scrolled. Menus close rather than reposition. */
   readonly onScroll?: () => void;
+  /**
+   * An element outside the overlay that still counts as *inside* it for the
+   * outside-press test.
+   *
+   * For a trigger nested in the overlay's own host — every `Menu` — this is not needed.
+   * It exists for a trigger that sits elsewhere and toggles the overlay itself, like
+   * US-307's composer pill: without it, the press closes the panel on `pointerdown` and
+   * the trigger's own `click` reopens it, so the control can never be used to dismiss.
+   *
+   * A callback rather than an element, because the trigger may not exist when the
+   * listener is registered.
+   */
+  readonly insideAlso?: () => HTMLElement | null;
 }
 
 /**
@@ -44,7 +57,9 @@ export function onDismiss(
     document.addEventListener(
       'pointerdown',
       (event) => {
-        if (!event.composedPath().includes(element)) {
+        const path = event.composedPath();
+        const alsoInside = handlers.insideAlso?.() ?? null;
+        if (!path.includes(element) && !(alsoInside !== null && path.includes(alsoInside))) {
           handlers.onOutside?.();
         }
       },

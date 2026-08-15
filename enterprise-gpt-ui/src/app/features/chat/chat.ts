@@ -6,6 +6,8 @@ import {
   afterNextRender,
   inject,
   input,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
@@ -20,6 +22,7 @@ import { Icon } from '@shared/icon/icon';
 import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
+import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 import { ChatEmptyState } from './chat-empty-state';
 import { Composer } from '@shared/composer/composer';
 import { ConversationStore } from './conversation-store';
@@ -50,6 +53,7 @@ import { UploadStore } from '@core/documents/upload-store';
     Menu,
     MenuItem,
     MenuSeparator,
+    ProjectPicker,
     Skeleton,
     Transcript,
     TranscriptPinning,
@@ -85,6 +89,11 @@ export class Chat {
   protected readonly actions = inject(ConversationActionsStore);
   protected readonly turn = inject(TurnStore);
   private readonly uploads = inject(UploadStore);
+  private readonly menu = viewChild(Menu);
+
+  /** Frame `2e`'s panel, opened from the header kebab and anchored where the kebab was. */
+  protected readonly pickerOpen = signal(false);
+  protected readonly pickerAnchor = signal<HTMLElement | null>(null);
 
   /**
    * A 404 here means the conversation does not exist *or* belongs to someone else, and
@@ -146,5 +155,22 @@ export class Chat {
           );
         });
       });
+  }
+
+  /**
+   * Opens the project picker where the header kebab is (US-307).
+   *
+   * The anchor is captured at the gesture for the reason the sidebar row's is: the menu
+   * closes on this same click, and a template binding would read its trigger on the
+   * first change-detection pass, before the menu's view exists.
+   */
+  protected openPicker(): void {
+    const menu = this.menu();
+    if (menu === undefined || this.conversation.actionPending()) {
+      return;
+    }
+
+    this.pickerAnchor.set(menu.triggerElement());
+    this.pickerOpen.set(true);
   }
 }

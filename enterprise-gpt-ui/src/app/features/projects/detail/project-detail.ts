@@ -19,6 +19,7 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ProjectComposerHost } from './project-composer-host';
+import { ProjectConversationsStore } from './conversations/project-conversations-store';
 import { ProjectDocumentsStore } from './files/project-documents-store';
 import { ProjectStore } from './project-store';
 
@@ -64,6 +65,7 @@ export class ProjectDetail {
   protected readonly actions = inject(ProjectActionsStore);
 
   private readonly _documents = inject(ProjectDocumentsStore);
+  private readonly _conversations = inject(ProjectConversationsStore);
   private readonly _uploads = inject(UploadStore);
   private readonly _router = inject(Router);
 
@@ -77,6 +79,9 @@ export class ProjectDetail {
     this._documents.isFulfilled() ? this._documents.count() : null,
   );
 
+  /** Frame `4e`'s count beside the Conversations tab (US-908), withheld the same way. */
+  protected readonly conversationsCount = computed(() => this._conversations.count());
+
   constructor() {
     // A computation, not a value: navigating from one project to another reuses this
     // component, and `switchMap` inside each store cancels the request left behind.
@@ -84,6 +89,9 @@ export class ProjectDetail {
     // Here rather than in the files panel, because the count belongs to the tab strip
     // and has to be right while the reader is standing on Instructions.
     this._documents.bindProject(this.projectId);
+    // Bound here for the same reason, and it is what makes the Conversations count
+    // right while the reader is standing on another tab (US-908).
+    this._conversations.bindProject(this.projectId);
 
     // Bound the moment the id is known. Unlike the chat composer's, this target is
     // never absent — the screen only renders under a resolved `:projectId` — so a

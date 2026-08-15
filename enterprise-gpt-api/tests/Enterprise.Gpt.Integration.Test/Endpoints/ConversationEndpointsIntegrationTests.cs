@@ -75,6 +75,43 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
     #endregion
 
+    #region Project filter
+    [Fact]
+    public async Task SearchConversations_FilteredByProject_ReturnsOnlyThatProjectsConversations()
+    {
+        var projectId = await _fixture.AddProjectAsync(
+            $"Filter {Guid.NewGuid():N}", cancellationToken: TestContext.Current.CancellationToken);
+        var inProject = await _fixture.AddConversationAsync(
+            projectId: projectId, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        // Active only: the project filter narrows the base predicate rather than replacing it.
+        await _fixture.AddConversationAsync(
+            projectId: projectId, deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ConversationDto>>(
+            $"api/conversations/search?projectId={projectId}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(inProject, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchConversations_ProjectBelongingToAnotherUser_ReturnsNotFound()
+    {
+        var projectId = await _fixture.AddProjectAsync(
+            $"Foreign {Guid.NewGuid():N}", TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/search?projectId={projectId}", TestContext.Current.CancellationToken);
+
+        // 404, not an empty page: the route must not double as a probe for project ids.
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+    #endregion
+
     #region Reads
     [Fact]
     public async Task GetConversation_OwnConversation_ReturnsIt()

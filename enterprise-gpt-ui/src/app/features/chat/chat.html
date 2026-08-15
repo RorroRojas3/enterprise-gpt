@@ -23,9 +23,9 @@
       flows as the sidebar row — nothing reimplemented. Both wait for a full DTO
       (`current`) because rename must echo the fresh projectId and every action names
       the conversation, so a deep link shows neither for one round trip rather than
-      acting on a guess. Deliberately absent until their stories land: the
-      move/remove-project items (US-307), and the sub-768px collapse into frame 1d's
-      mobile navbar (US-1403, which builds the responsive shell it collapses into).
+      acting on a guess. Deliberately absent until its story lands: the sub-768px
+      collapse into frame 1d's mobile navbar (US-1403, which builds the responsive
+      shell it collapses into).
     -->
     @if (conversation.current(); as current) {
       <!--
@@ -64,6 +64,34 @@
           <app-icon name="bi-pencil" />
           Rename
         </button>
+        <!--
+          US-307, in the order frame 3a's kebab draws them. The chevron is the board's
+          submenu affordance; what opens is a dialog rather than a nested menu, which is
+          what aria-haspopup announces. Remove is absent for a standalone conversation
+          rather than rendered inert.
+        -->
+        <button
+          appMenuItem
+          type="button"
+          aria-haspopup="dialog"
+          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+          (click)="openPicker()"
+        >
+          <app-icon name="bi-folder-symlink" />
+          <span class="chat__menu-label">Move to project</span>
+          <app-icon class="chat__menu-chevron" name="bi-chevron-right" />
+        </button>
+        @if (current.projectId !== null) {
+          <button
+            appMenuItem
+            type="button"
+            [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+            (click)="actions.moveToProject(current, null)"
+          >
+            <app-icon name="bi-folder-minus" />
+            Remove from project
+          </button>
+        }
         <hr appMenuSeparator />
         <button
           appMenuItem
@@ -76,6 +104,10 @@
           Delete
         </button>
       </app-menu>
+
+      @if (pickerOpen() && pickerAnchor(); as anchor) {
+        <app-project-picker [conversation]="current" [anchor]="anchor" [(open)]="pickerOpen" />
+      }
     }
   </header>
 }

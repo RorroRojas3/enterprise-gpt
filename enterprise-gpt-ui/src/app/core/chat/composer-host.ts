@@ -1,4 +1,16 @@
 import { InjectionToken, Provider, Signal, Type } from '@angular/core';
+import { ConversationDto } from '@domain/api/conversation';
+
+/**
+ * What the composer's project control is acting on (US-307).
+ *
+ * Two arms because the two screens differ in kind, not in degree: on the chat route the
+ * project is a property of the open conversation and the reader may change it, while on
+ * a project's detail screen the project *is* the route and there is nothing to pick.
+ */
+export type ComposerProjectTarget =
+  | { readonly kind: 'conversation'; readonly conversation: ConversationDto }
+  | { readonly kind: 'project'; readonly projectId: string };
 
 /**
  * What the composer needs from whatever executes its prompt.
@@ -10,7 +22,7 @@ import { InjectionToken, Provider, Signal, Type } from '@angular/core';
  * live in `shared/` at all — `shared → core` is the permitted direction, and
  * `shared → features/chat` is not.
  *
- * The surface is deliberately the six members the composer actually reads, not
+ * The surface is deliberately the members the composer actually reads, not
  * `TurnStore`'s whole API. A host that cannot stream simply reports `inFlight` for its
  * own request, seeds nothing, and has nothing to stop.
  */
@@ -33,6 +45,16 @@ export interface ComposerHost {
    * would drag `features/chat` types into `core/`.
    */
   readonly turnError: Signal<object | null>;
+
+  /**
+   * What the project control acts on, or null when there is nothing to act on — empty
+   * `/chat` before a conversation exists, and a deep link for the one round trip before
+   * its row lands, which is the same rule the chat header's kebab already follows.
+   *
+   * The composer renders the control **absent** for a null rather than disabled, which
+   * is this repo's pattern for an affordance with nothing behind it.
+   */
+  readonly projectTarget: Signal<ComposerProjectTarget | null>;
 
   consumeComposerSeed(): void;
   send(prompt: string): void;

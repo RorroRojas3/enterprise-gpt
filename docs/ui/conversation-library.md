@@ -2,7 +2,7 @@
 
 The `/conversations` screen: a searchable, paged, filterable table of everything a user has asked, the app's **second** conversation list store, and the URL contract that makes a filtered list shareable, the back button meaningful, and a deep link one request rather than two.
 
-Audience: a developer adding the two controls EP-7 still owes this screen (US-307's project chip and kebab, US-706's sort control), adding a second route-scoped list anywhere in the app, or debugging a search that will not stick, a page that leaves a hole, or a bulk delete that half-happens. Read [Shell and Navigation](shell-and-navigation.md) first for `ConversationListStore` — the reference store this one copies — [Conversation Actions](conversation-actions.md) for the shared favourite and delete flows it invokes, and [Frontend Foundation](frontend-foundation.md) for the composable features all of them compose. Bare `§` references below are to sections of _this_ page.
+Audience: a developer adding the one control this screen still owes (US-706's sort), adding a second route-scoped list anywhere in the app, or debugging a search that will not stick, a page that leaves a hole, or a bulk delete that half-happens. Read [Shell and Navigation](shell-and-navigation.md) first for `ConversationListStore` — the reference store this one copies — [Conversation Actions](conversation-actions.md) for the shared favourite, move and delete flows it invokes, and [Frontend Foundation](frontend-foundation.md) for the composable features all of them compose. Bare `§` references below are to sections of _this_ page.
 
 Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority for every `US-xxx` reference.
 
@@ -17,6 +17,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority f
 | **US-703** | The favourites filter, as a second URL parameter (`?favorites=1`), a toolbar toggle and a per-row star — plus the eviction rule that takes an unstarred row out of a favourites-only list |
 | **US-704** | Row selection, toolbar select-all, the floating bulk bar and `DELETE api/conversations/bulk` behind a confirmation, with an optimistic removal that restores on failure |
 | **US-705** | The order **stated** rather than inferred: a muted "Newest first" carrying its explanation, and tests that lock the absence of any sort control |
+| **US-307** | Not an EP-7 story, and the one that finished frame `4a`: the project chip on a row and the per-row kebab, both waiting on a project surface that did not exist until EP-9 (§5.2) |
 
 Six decisions shape everything here, and each looks removable until you know what it prevents:
 
@@ -35,7 +36,8 @@ Six decisions shape everything here, and each looks removable until you know wha
 | The route-scoped store | [`features/conversations/conversation-library-store.ts`](../../enterprise-gpt-ui/src/app/features/conversations/conversation-library-store.ts) |
 | The bulk-delete confirmation | [`features/conversations/delete-conversations-dialog.ts`](../../enterprise-gpt-ui/src/app/features/conversations/delete-conversations-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/conversations/delete-conversations-dialog.html) |
 | The two parameter names, the history rule, the order statement | [`features/conversations/conversations-route.ts`](../../enterprise-gpt-ui/src/app/features/conversations/conversations-route.ts) |
-| The bulk delete request, the favourite toggle, `pendingIds` | [`core/conversations/conversation-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-actions-store.ts) — [Conversation Actions](conversation-actions.md) |
+| The bulk delete request, the favourite toggle, the project move, `pendingIds` | [`core/conversations/conversation-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-actions-store.ts) — [Conversation Actions](conversation-actions.md) |
+| The name behind a row's `projectId`, and the picker its kebab opens | [`core/projects/project-lookup-store.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-lookup-store.ts), [`shared/projects/project-picker/`](../../enterprise-gpt-ui/src/app/shared/projects/project-picker/) — [Projects §9](projects.md#9-the-project-picker-us-307) |
 | The lazy route and its title | [`src/app/app.routes.ts`](../../enterprise-gpt-ui/src/app/app.routes.ts) |
 | `CONVERSATIONS_ROUTE` | [`core/auth/auth-routes.ts`](../../enterprise-gpt-ui/src/app/core/auth/auth-routes.ts) |
 | The nav entry | [`features/shell/sidebar/sidebar.ts`](../../enterprise-gpt-ui/src/app/features/shell/sidebar/sidebar.ts) |
@@ -246,16 +248,19 @@ Five controls, left to right: the search field, the **Favourites** toggle, **Sel
 
 ### 5.2 The table
 
-Three columns: the name (a link into the chat), the model, and the star.
+Five columns: the name (a link into the chat), the project chip, the model, the star, and the row kebab. The name and the model are US-701's and the star is US-703's; the **chip and the kebab are US-307's**, and they are what completes frame `4a`.
 
-- **The star renders on the server's confirmation, not optimistically.** This store owns its own entities and `ConversationActionsStore` cannot patch them; a row past the sidebar's first 50 is not in the list it _can_ patch, so an optimistic flip here would have no rollback behind it. `actions.pendingIds()` goes to `DataTable`'s `pendingIds` and to the button, and the busy state carries the feedback for the round trip.
+- **The project chip is absent for a standalone conversation, not an em dash.** "No project" is a real state rather than missing data, which is what the model column's dash means — "the catalogue does not know this id". A project past `ProjectLookupStore`'s drain ceiling is absent too: naming it is impossible, and a dash would say "none", which would be wrong ([Projects §9.1](projects.md#91-the-lookup-behind-it-and-why-a-failed-drain-keeps-its-pages)).
+- **The chip takes the card branch's `badges` slot, not `meta`.** It is a labelled token, which is what that slot is styled for; the model is a bare secondary string, which is what `meta` is for. A slot takes any number of columns, so this cost nothing structurally.
+- **The kebab offers the same five actions the sidebar row does**, routed through the same `ConversationActionsStore` flows — nothing here reimplements a flow. "Remove from project" is absent rather than inert on a standalone row, and "Move to project" opens one picker mounted **outside** the table, fed the row's id and the kebab captured at the gesture, so a re-render of the rows underneath cannot destroy the panel the reader is using ([Conversation Actions §7](conversation-actions.md#7-move-into-or-out-of-a-project-us-307)).
+- **The star renders on the server's confirmation, not optimistically.** This store owns its own entities and `ConversationActionsStore` cannot patch them; a row past the sidebar's first 50 is not in the list it _can_ patch, so an optimistic flip here would have no rollback behind it. `actions.pendingIds()` goes to `DataTable`'s `pendingIds` and to the button, and the busy state carries the feedback for the round trip. The kebab's items ride the same flag, and `openPicker` refuses a pending row outright rather than opening a panel whose every choice would be refused.
 - **The star is `aria-disabled`, never natively `disabled`.** The native attribute blurs the button the instant it is pressed, dropping a keyboard reader onto `<body>` for the whole request. `toggleFavorite` already refuses re-entry on the pending id, so the guard is real either way.
 - **No `aria-pressed` on the star.** Its label already carries the direction ("Unfavourite Helios"), and a control that both names its action and reports a pressed state is announced twice over. The toolbar toggle is the opposite case, and gets `aria-pressed` for it.
 - **Selection exists below the breakpoint too.** `DataTable`'s card branch puts the row checkbox in `CardRow`'s `[cardRowLead]` slot, so a caller that sets `selectable` does not get a table on a laptop and an unselectable list on a phone.
 - **The error panel replaces the table**, rather than sitting beside it. The rows on screen belong to a query that failed, so leaving them up would present a stale result set as if it were the answer.
 - **The skeleton is for a first load only.** `isFirstLoad` is pending _with nothing on screen_; a search that narrows an existing list keeps its rows and marks the field busy instead — the same distinction the sidebar draws.
 - **Row columns are fields, not template literals.** `provideCheckNoChangesConfig({ exhaustive: true })` compares bindings between passes, and an array or an arrow allocated in the template is a new value on every check.
-- **A model with no catalogue entry renders an em dash.** `ConversationDto` carries only `modelId`, so the name is looked up in a `Map` built once per catalogue change rather than scanned per row, per check.
+- **A model with no catalogue entry renders an em dash.** `ConversationDto` carries only `modelId`, so the name is looked up in a `Map` built once per catalogue change rather than scanned per row, per check. `projectName` is the same shape against `ProjectLookupStore.nameOf`, differing only in what it returns for a miss.
 
 ### 5.3 Load more, and the projection trap
 
@@ -319,7 +324,7 @@ EP-7's four remaining stories added nothing to the initial graph — every line 
 
 ## 7. Testing
 
-**79 specs across the screen's two files** — 46 in `conversations.spec.ts`, 33 in `conversation-library-store.spec.ts` — plus three added to `shared/data/data.spec.ts` for the kit's new inputs, inside the suite's 1153.
+**79 specs across the screen's two files** — 46 in `conversations.spec.ts`, 33 in `conversation-library-store.spec.ts` — plus three added to `shared/data/data.spec.ts` for the kit's new inputs, inside the suite's 1153 as EP-7 closed. US-307 later added three more to `conversations.spec.ts`: the project chip named from the lookup store, **no chip for a project past the drain ceiling**, and the row kebab offering the five shared actions.
 
 | Area | Spec | Notable cases |
 | --- | --- | --- |
@@ -350,12 +355,14 @@ npm run build   # budgets, then check-initial-chunk.mjs
 
 ## 8. Deliberately not here
 
-Both are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table and marked in the source with a comment naming the story — so neither quietly becomes permanent.
+Recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table and marked in the source with a comment naming the story — so it does not quietly become permanent.
 
 | Missing from frame `4a` | Owner | Notes |
 | --- | --- | --- |
-| The **project chip** on a row, and the **per-row kebab** | US-307 | Also the last outstanding row action in EP-3. The kebab's flows already exist in `ConversationActionsStore` ([Conversation Actions](conversation-actions.md)); what is missing is the project surface the chip names |
+| ~~The **project chip** on a row, and the **per-row kebab**~~ | US-307 | Shipped (§5.2). It waited on the project surface the chip names — `ConversationDto` carries a `projectId` and no name, so there was nothing to render until a root project list existed |
 | **Any sort control** | US-706 | Not an omission but the subject of a shipped story: US-705 _states_ the order instead, because no endpoint in this API accepts a sort parameter and a control that reordered one loaded page would put a second sorted run under the first at the next Load more. US-706 replaces `ORDER_EXPLANATION` and its two toolbar elements with the control |
+
+The screen's **row selection and the project moves deliberately do not meet.** There is no "move the selected rows into a project" bulk action, because `PUT api/conversations` is per-conversation and the only bulk route the API has is the delete; offering one would be N requests behind a control that looks like one.
 
 ## 9. Troubleshooting
 
@@ -382,6 +389,8 @@ Both are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.
 | **Focus falls to `<body>` after Load more, or after a star evicts its own row** | One of the two focus effects was removed or its fall-through check was dropped. Both move focus only when it actually fell through, and the paging one waits until `hasMore()` is false (§5.5) |
 | The order explanation is unavailable on a phone | The mobile rule used `display: none` on `.conversations__order`. It must **clip**: `display: none` takes the visually-hidden explanation out of the accessibility tree with it (§5.1) |
 | A star flips only after the round trip | By design. The library owns its own entities, `ConversationActionsStore` cannot patch them, and an optimistic flip would have no rollback behind it; the busy state carries the feedback (§5.2) |
+| A row's project cell is empty for a conversation that is in a project | `ProjectLookupStore` could not name it — past the 500-project drain ceiling, or the drain failed before reaching it. Rendering nothing is correct; an em dash would claim "no project" (§5.2) |
+| The project picker vanishes while it is open | It was mounted inside the row template, so a re-render of the rows destroyed it. One picker for the table, mounted outside it, fed a captured row id (§5.2) |
 | An unstarred row stays in a favourites-only list, wearing a hollow star | The `updated` handler patched in place instead of evicting. Under the filter the row no longer matches the query that produced it (§4.7) |
 | The bulk bar counts rows that are not on screen | The selection was moved off `withLinkedState`, so nothing prunes it when rows leave (§4.5) |
 | A checkbox looks dead — clicking changes nothing | A selection updater mutated the `Set` and wrote the same reference back. `patchState` compares by reference, so there is no signal write at all (§4.5) |

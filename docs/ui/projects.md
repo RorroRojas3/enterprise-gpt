@@ -1,8 +1,8 @@
 # Projects
 
-The `/projects` area: a grid that drains rather than pages, a lifecycle store whose one modal serves three entry points, standing instructions guarded against a navigation that would lose them, a files panel that added no upload code at all, and a composer that deliberately refuses to stream — plus the structural move that made the last of those possible, which is the largest thing EP-9 shipped and the least visible.
+The `/projects` area: a grid that drains rather than pages, a lifecycle store whose one modal serves four entry points, standing instructions guarded against a navigation that would lose them, a files panel that added no upload code at all, a composer that deliberately refuses to stream, a searchable picker that puts a conversation into a project from anywhere in the app, and the project's own conversations panel — plus the structural move that made the composer possible, which is the largest thing EP-9 shipped and the least visible.
 
-Audience: a developer adding US-307's project picker or US-908's conversations tab, putting the shared composer on a third surface, or debugging a project write that clears a field nobody edited. Read [Conversation Library](conversation-library.md) first for the list-screen conventions this grid copies — the URL contract, the route-scoped store, the empty states — [File Attachments](file-attachments.md) for the upload machinery §7 reuses wholesale, and [Frontend Foundation](frontend-foundation.md) for the composable store features and `core/errors` conventions everything here composes. Bare `§` references below are to sections of _this_ page.
+Audience: a developer putting the shared composer on a fourth surface, adding a control that has to name a project it only holds an id for, or debugging a project write that clears a field nobody edited. Read [Conversation Library](conversation-library.md) first for the list-screen conventions this grid copies — the URL contract, the route-scoped store, the empty states — [Conversation Actions](conversation-actions.md) for the move flow §9's picker invokes, [File Attachments](file-attachments.md) for the upload machinery §7 reuses wholesale, and [Frontend Foundation](frontend-foundation.md) for the composable store features and `core/errors` conventions everything here composes. Bare `§` references below are to sections of _this_ page.
 
 The server side is the authority on everything past the request: [Projects](../projects/project-management.md), and [Document Upload and Ingestion](../documents/upload-workflow.md) for the pipeline a project file goes through.
 
@@ -10,7 +10,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority f
 
 ## 1. Overview
 
-Five stories and one prep step, which is where the surprise is: the prep step is bigger than any of the stories.
+Seven stories and one prep step, which is where the surprise is: the prep step is bigger than any of the stories. The last two closed EP-9 and, with it, the last of EP-3.
 
 | Story                | What it delivers                                                                                                                                                                                             |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -20,8 +20,10 @@ Five stories and one prep step, which is where the surprise is: the prep step is
 | **US-904**           | The project detail screen the rest of the epic hangs off — header, composer slot, tab strip — with tabs as **real child routes**, and standing instructions behind a `canDeactivate` warning                   |
 | **US-905**           | A files panel that binds `{ kind: 'project', id }` and reuses EP-8's transport, staged poll, refusals and download unchanged                                                                                    |
 | **US-906**           | A prompt typed on a project creating the conversation **inside** it — and then handing the turn to the chat route, because that is where the transcript is                                                     |
+| **US-307**           | Frame `2e`'s searchable picker, a root `ProjectLookupStore` behind it, the composer's project pill, the project chip and kebab on the conversations library — and the dialogs' move into `Shell` (§9)          |
+| **US-908**           | Frame `4g`'s Conversations tab: **one filtered request**, because US-907 landed with it, and an `updated` handler that is asymmetric on purpose (§10)                                                          |
 
-Nine decisions shape everything here, and each looks removable until you know what it prevents:
+Eleven decisions shape everything here, and each looks removable until you know what it prevents:
 
 1. **The composer moved to `shared/` behind an injection token.** Frame `4e` puts the shared composer on the project screen, but it lived in `features/chat/` and injected the route-scoped `TurnStore`, and dependencies run one way. `Chat` provides `TurnStore` as the host; the project screen provides `ProjectComposerHost` (§3).
 2. **The project screen does not stream.** US-906's criterion is that the turn streams _as it does on the chat route_ — and the transcript is there. So a send creates the conversation, holds the prompt in a root `PendingPromptStore`, and navigates (§8).
@@ -32,6 +34,8 @@ Nine decisions shape everything here, and each looks removable until you know wh
 7. **The duplicate-name message is the client's.** The server sends `A project named 'X' already exists.`; the board and the criterion require "You already have a project with this name." One message is swapped; every other `Name` failure renders verbatim (§5.4).
 8. **A project delete releases its conversations, and the client must mirror that.** The server sets `ProjectId = null` on them, and `toUpdateBody` echoes `projectId` on every rename — so a client row still holding the dead id takes a 404 on its next rename, a failure with nothing to do with projects (§5.5).
 9. **US-905 added no upload code.** `UploadTarget` was already a discriminated `conversation | project` pair, so the panel binds the project arm and reuses the lot. The one change was generalising `bindConversation` into a private `bindTarget` (§7.1).
+10. **The picker is not a `Menu`.** `Menu` renders its own trigger, its panel is `role="menu"` — whose only valid children are `menuitem*` — and its keyboard handling swallows the arrows and closes on Tab. A search field inside that is three collisions, so the picker is a non-modal `role="dialog"` holding a listbox, borrowing only the placement and dismissal that genuinely are shared (§9.2).
+11. **A root lookup keeps its pages when a drain fails; the grid throws its away.** They read the same endpoint and make opposite calls, because a chip that can still name 200 of 500 projects is better than one that names none, while a grid sorted or counted over a half-drained set is exactly the silently-partial list regime A exists to avoid (§9.1).
 
 ### 1.1 Where each piece lives
 
@@ -41,17 +45,22 @@ Nine decisions shape everything here, and each looks removable until you know wh
 | "2h ago" / "Yesterday" / "Aug 5"                                     | [`domain/format/relative-time.ts`](../../enterprise-gpt-ui/src/app/domain/format/relative-time.ts) — framework-free                                                                                                                               |
 | The one place an update body is built                                | [`core/projects/project-update.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-update.ts)                                                                                                                                              |
 | The duplicate-name swap                                              | [`core/projects/duplicate-name.ts`](../../enterprise-gpt-ui/src/app/core/projects/duplicate-name.ts)                                                                                                                                              |
+| The page size, the drain ceiling, and the client's copy of the server's `LIKE` | [`core/projects/project-load.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-load.ts) — shared by the grid and the lookup, which is why it is in `core/`                                                                     |
+| Every project the user owns, held once at the root                   | [`core/projects/project-lookup-store.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-lookup-store.ts) — the picker's list and `nameOf(projectId)` (§9.1)                                                                               |
 | Create, rename, describe, delete, and the dialogs' state             | [`core/projects/project-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-actions-store.ts) — root-scoped                                                                                                                  |
 | The four events three scopes listen on                               | [`core/events/project-events.ts`](../../enterprise-gpt-ui/src/app/core/events/project-events.ts)                                                                                                                                                  |
 | What executes a prompt, as a token                                   | [`core/chat/composer-host.ts`](../../enterprise-gpt-ui/src/app/core/chat/composer-host.ts)                                                                                                                                                        |
 | The prompt handed from one screen to another                         | [`core/chat/pending-prompt-store.ts`](../../enterprise-gpt-ui/src/app/core/chat/pending-prompt-store.ts) — root-scoped, single-shot                                                                                                               |
 | The history rule both search screens share                           | [`core/navigation/search-history.ts`](../../enterprise-gpt-ui/src/app/core/navigation/search-history.ts)                                                                                                                                          |
-| The composer, model menu, tools menu, dictation                      | [`shared/composer/`](../../enterprise-gpt-ui/src/app/shared/composer/)                                                                                                                                                                            |
+| The composer, model menu, tools menu, dictation                      | [`shared/composer/`](../../enterprise-gpt-ui/src/app/shared/composer/) — including US-307's project pill (§9.4)                                                                                                                                   |
+| Frame `2e`'s picker                                                  | [`shared/projects/project-picker/`](../../enterprise-gpt-ui/src/app/shared/projects/project-picker/) — in `shared/`, injecting only `core/` stores, exactly as `Composer` does                                                                    |
+| Where a fixed overlay panel sits, shared by `Menu` and the picker    | [`shared/overlay/anchored-panel.ts`](../../enterprise-gpt-ui/src/app/shared/overlay/anchored-panel.ts)                                                                                                                                            |
 | The upload transport's store                                         | [`core/documents/upload-store.ts`](../../enterprise-gpt-ui/src/app/core/documents/upload-store.ts) — [File Attachments](file-attachments.md)                                                                                                      |
-| The area's route table and the layout that mounts its dialogs        | [`features/projects/projects.routes.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects.routes.ts), [`projects-layout.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects-layout.ts)                                     |
+| The area's route table and its layout                                | [`features/projects/projects.routes.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects.routes.ts), [`projects-layout.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects-layout.ts)                                     |
 | The grid and its drained list                                        | [`features/projects/projects.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects.ts), [`project-list-store.ts`](../../enterprise-gpt-ui/src/app/features/projects/project-list-store.ts)                                             |
-| The two dialogs                                                      | [`features/projects/dialogs/`](../../enterprise-gpt-ui/src/app/features/projects/dialogs/)                                                                                                                                                        |
+| The two dialogs, mounted in the shell since US-307                   | [`features/shell/project-actions/`](../../enterprise-gpt-ui/src/app/features/shell/project-actions/) (§5.6)                                                                                                                                       |
 | The detail screen, its route table and its stores                    | [`features/projects/detail/`](../../enterprise-gpt-ui/src/app/features/projects/detail/)                                                                                                                                                          |
+| The Conversations tab and its store                                  | [`features/projects/detail/conversations/`](../../enterprise-gpt-ui/src/app/features/projects/detail/conversations/) (§10)                                                                                                                        |
 | The composer host that does not stream                               | [`features/projects/detail/project-composer-host.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/project-composer-host.ts)                                                                                                          |
 | The unsaved-instructions guard                                       | [`features/projects/detail/instructions/unsaved-instructions.guard.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/instructions/unsaved-instructions.guard.ts)                                                                     |
 | Fixtures for specs                                                   | [`src/testing/projects.ts`](../../enterprise-gpt-ui/src/testing/projects.ts)                                                                                                                                                                      |
@@ -73,7 +82,17 @@ export class MySurface {}
 
 `provideComposerHost` is a function rather than a `{ provide, useExisting }` literal on purpose: `useExisting` is typed `any`, so a store that quietly stopped satisfying the contract would fail at runtime. The function's `Type<ComposerHost>` parameter makes it a compile error instead.
 
-`ComposerHost` is six members — `composerSeed`, `inFlight`, `turnError`, `consumeComposerSeed()`, `send()`, `stop()` — deliberately not `TurnStore`'s whole API. A host that cannot stream reports `inFlight` for its own request, keeps `turnError` null, and has nothing to stop.
+`ComposerHost` is seven members — `composerSeed`, `inFlight`, `turnError`, `projectTarget`, `consumeComposerSeed()`, `send()`, `stop()` — deliberately not `TurnStore`'s whole API. A host that cannot stream reports `inFlight` for its own request, keeps `turnError` null, and has nothing to stop.
+
+`projectTarget` is US-307's, and it is the one member with two arms rather than one value:
+
+```ts
+type ComposerProjectTarget =
+  | { kind: 'conversation'; conversation: ConversationDto } // the pill opens the picker
+  | { kind: 'project'; projectId: string }; // the pill is a static chip
+```
+
+Two arms because the two screens differ in kind, not in degree: on the chat route the project is a property of the open conversation and the reader may change it; on a project's own screen the project **is** the route and there is nothing to pick. A host with nothing to act on returns `null`, and the composer renders the control **absent** rather than disabled (§9.4).
 
 `UploadStore` must be provided on the same injector or above it; the composer injects it directly for the paperclip and the drop zone.
 
@@ -110,6 +129,8 @@ this._uploads.attach(files);
 - **Never put a prompt in a query parameter.** `PendingPromptStore` exists for exactly this (§8.2).
 - **Never remove `releaseProject` from the project-delete path.** The defect it prevents is invisible until a rename (§5.5).
 - **Never add a Load more to the projects grid.** It drains on purpose, and the ceiling is stated (§4.1).
+- **Never render a project id when `nameOf` answers null.** It means the project is unknown or past the drain ceiling; the chip and the pill both render nothing there, because a guid is not a name and "No project" would be a lie (§9.1).
+- **Never compose `withClientQuery` on `ProjectLookupStore` for the picker's search term.** Three pickers can be open across the app at once, and a term in root state would narrow all of them from whichever one is being typed in (§9.2).
 
 ## 3. The prep step: the composer moved down a layer
 
@@ -174,6 +195,8 @@ export const PROJECT_PAGE_SIZE = 100; // the server's own clamp ceiling
 export const PROJECT_LOAD_CEILING = 500; // the PRD's regime A — five requests at most
 ```
 
+Both constants, and `matchesProjectTerm` — the client's copy of the server's case-insensitive `LIKE '%term%'` — live in `core/projects/project-load.ts` since US-307, because the root lookup store needs them too and `core` may not import `features`. `project-list-store.ts` re-exports them so this screen's own module still reads as one contract.
+
 `GET api/projects` accepts **no sort parameter**. US-902's sort is therefore only honest over a set the client holds in full: a grid that sorted its first page would put a second sorted run underneath it the moment another page arrived. So each query walks the pages itself with `expand`, up to a stated ceiling.
 
 Four details in the drain are load-bearing:
@@ -211,12 +234,12 @@ export { shouldReplaceHistory } from '@core/navigation/search-history';
 - **"Updated …" labels are computed once per result set**, from a `Date.now()` sampled inside a `computed`. A clock read from a template binding is a fresh value on every change-detection pass, which `provideCheckNoChangesConfig({ exhaustive: true })` compares between passes — and would recompute every label on every unrelated render. Labels are minute-granular at their finest, so nothing visible is lost.
 - **The card's link is a string, not a commands array.** `ProjectCard.link` is a signal `input()`, so a fresh `[route, id]` literal fails `Object.is` every pass, writing the input, marking every card dirty and re-running `RouterLink`'s href update. At the 500-project ceiling this store deliberately materialises, that is OnPush defeated across the whole grid. It is also **absolute**, because this component's own route is a path-less child and a relative `[project.id]` would resolve against whichever route happened to host the card.
 - **The kebab items are `aria-disabled`, never natively `disabled`.** The native attribute blurs the item the instant it is pressed, dropping a keyboard reader onto `<body>` for the whole round trip. `beginEdit` and `beginDelete` both refuse on the pending id, so the guard is real either way.
-- **The star is withheld** — `[showFavorite]="false"` — because `ProjectSummaryDto` carries no flag until US-909 and a control that can be pressed and never persisted is worse than one that is not there. The **sort select** is absent for the same reason at one remove (§11).
+- **The star is withheld** — `[showFavorite]="false"` — because `ProjectSummaryDto` carries no flag until US-909 and a control that can be pressed and never persisted is worse than one that is not there. The **sort select** is absent for the same reason at one remove (§13).
 - **Focus is repaired when the last card leaves.** `beginDelete` arms the fixup at the gesture rather than inferring it from the grid emptying — the removal is confirmed elsewhere, so by the time the card goes there is nothing left to tell the screen the reader caused it. The search field is the target, because it is the only control outside every branch of the template. Only when focus actually fell through.
 
 ## 5. Lifecycle (US-903)
 
-### 5.1 One root store, one modal, three entry points
+### 5.1 One root store, one modal, four entry points
 
 `ProjectActionsStore` is root-scoped for the reason `ConversationActionsStore` is: `rxMethod` binds its subscription to the injector that created it, and a delete **navigates away from** `/projects/{id}` — a route-scoped store would have the request torn down mid-flight, leaving nothing deleted and nothing said.
 
@@ -234,7 +257,7 @@ Concurrency is chosen per flow and each choice means something:
 | load-for-edit          | `switchMap`  | A second kebab opened on another card replaces the first; the in-flight response would otherwise fill the dialog with the project the user navigated away from |
 | delete                 | `mergeMap`   | Deletes of different projects are independent and may overlap; `exhaustMap` would silently drop the second              |
 
-`beginCreate(afterCreate?)` takes a callback rather than raising an event, because US-903's third criterion is that the composer's invoker returns the user _exactly where they were_ with the new project selected. That answer belongs to one caller; `projectEvents.created` is already carrying the fact to everyone else. It fires **after** the dispatch, so a caller that navigates finds the lists already holding the row it is navigating to.
+`beginCreate(afterCreate?)` takes a callback rather than raising an event, because US-903's third criterion is that the composer's invoker returns the user _exactly where they were_ with the new project selected. That answer belongs to one caller; `projectEvents.created` is already carrying the fact to everyone else. It fires **after** the dispatch, so a caller that navigates finds the lists already holding the row it is navigating to. **US-307 is that caller**, and the continuation had been sitting unused since US-903 waiting for it: the picker's pinned "New project" creates the project and moves the conversation into it in one gesture (§9.3).
 
 Two flags are easy to conflate and are deliberately separate:
 
@@ -306,19 +329,21 @@ The `errors` dictionary uses **one key for every name failure** — required, to
 | `ConversationListStore` | `releaseProject(id)` clears `projectId` on every held row             |
 | `ConversationStore`     | Clears it on the open conversation, which outlives the row on a deep link |
 
-Nothing renders `projectId` yet, which is exactly why this is easy to forget and worth stating: **the defect is invisible until US-307 or a rename, whichever comes first.**
+When this was written nothing rendered `projectId` at all, which is what made the defect worth stating in advance. US-307 changed that in both directions: the library's project chip and the composer's pill now **show** a stale id as a name that stops resolving, and the move flow is a second `toUpdateBody` caller that would echo the dead one. `releaseProject` is what keeps both honest.
 
 That third-feature reach is also what puts this on the event bus rather than on a method call. `ProjectActionsStore` is root-scoped and knows nothing about conversations; `ProjectListStore` and `ProjectStore` are scoped to their routes. Four observers across three scopes is exactly the case a method call cannot serve.
 
 Removal is **not** optimistic here, unlike a conversation delete: the same event releases conversations across two stores, and undoing _that_ on a failure would mean re-guessing which rows the server had reached.
 
-### 5.6 Where the dialogs mount, and why not the shell
+### 5.6 Where the dialogs mount
 
-`ProjectsLayout` is to this area what `Shell` is to the signed-in app — it exists so `ProjectFormDialog` and `DeleteProjectDialog` mount **once**, driven by the root store, and both the grid's cards and a project's own header reach the same instance. A native `<dialog>` renders in the top layer, so their position in the template carries no visual meaning.
+`ProjectFormDialog` and `DeleteProjectDialog` mount **once**, driven by the root store, so every invoker reaches the same instance. A native `<dialog>` renders in the top layer, so their position in the template carries no visual meaning.
 
-They are not in `Shell` itself, even though that is where the conversation dialogs live, because every invoker is still inside this feature. US-307 adds the first one outside it and is the story that should move them and pay the shell-chunk cost (§11).
+**They moved from `ProjectsLayout` to `Shell` with US-307**, which is the story that was always going to do it. They sat on the layout while every invoker — the grid's cards, a project's own header — was inside this feature; the picker's "New project" is the first one outside it, and it opens from the sidebar, the chat header and the composer, none of which the projects layout renders. `ProjectsLayout` is now a bare `<router-outlet />` that exists only because both screens hang off one lazy `loadChildren`.
 
-The layout carries one non-obvious piece of housekeeping. The store is root-scoped and the dialogs are not; `Modal` closes its native element on destroy **without** emitting `closed`. A reader who leaves `/projects` with the create dialog open would leave `formMode` set in root state, and coming back would re-mount the dialog already open, holding the previous attempt. So `ProjectsLayout` cancels both on destroy. The conversation dialogs never hit this because `Shell` is not unmounted while signed in.
+The move also **retired a piece of housekeeping rather than relocating it.** The layout used to cancel both dialogs on destroy: the store is root-scoped and the dialogs were not, `Modal` closes its native element on destroy **without** emitting `closed`, so a reader who left `/projects` with the create dialog open would leave `formMode` set in root state and find it re-mounted already open on the way back. `Shell` is not unmounted while signed in, so root form state can no longer be stranded by a navigation, and the `DestroyRef` block went with the dialogs.
+
+One consequence is **accepted rather than overlooked**: a project dialog dismissed with the browser's Back button now stays open over the next route, because nothing unmounts it. That is exactly how the conversation dialogs have always behaved, so US-307 makes the two consistent instead of leaving one of them special. A route-independent cancel belongs to whichever story decides to fix both.
 
 ## 6. The detail screen and standing instructions (US-904)
 
@@ -328,20 +353,21 @@ Frame `4e`, in the board's own order, which is load-bearing: **header, then comp
 
 ```text
 /projects
- └─ ''            ProjectsLayout           ← mounts both dialogs
+ └─ ''            ProjectsLayout           ← a bare outlet since US-307 (§5.6)
       ├─ ''       Projects                 ← the grid
-      └─ :projectId   providers: [ProjectStore, ProjectDocumentsStore]
+      └─ :projectId   providers: [ProjectStore, ProjectDocumentsStore, ProjectConversationsStore]
            └─ ''  ProjectDetail
                 ├─ ''             → redirect to 'instructions'
                 ├─ 'instructions' canDeactivate: [unsavedInstructionsGuard]
-                └─ 'files'
+                ├─ 'files'
+                └─ 'conversations'          ← US-908
 ```
 
 Two things follow from real routes that a signal holding a tab name cannot give: the panel a reader is on **survives a refresh and can be linked to**, and **`canDeactivate` has something to attach to** — which is how the unsaved-instructions warning fires on a move to the Files tab as well as on a move out of the project.
 
-**Both stores are provided on the route, not on their panels.** The parent and every tab share one instance of each, `ProjectStore` is torn down when the reader leaves the project rather than when one panel unmounts, and the file count frame `4e` puts on the tab strip stays readable from the Instructions tab, where the files panel does not exist.
+**Every store is provided on the route, not on its panel.** The parent and every tab share one instance of each, `ProjectStore` is torn down when the reader leaves the project rather than when one panel unmounts, and the two counts frame `4e` puts on the tab strip stay readable from the Instructions tab, where neither panel exists. `ProjectConversationsStore` joined the other two for exactly that reason and no other (§10).
 
-The count is `null` until the list has actually been read. "Files 0" on a project that has four is a worse answer than no count, and the strip renders before the panel it counts.
+A count is `null` until its list has actually been read. "Files 0" on a project that has four is a worse answer than no count, and the strip renders before the panels it counts.
 
 `ProjectStore` is the **only** source of `instructions`, which is why a detail request is not optional (§5.3). It is route-scoped so a second project's screen starts empty rather than showing the previous one's instructions while its own request flies, and both it and `ProjectDocumentsStore` bind a **computation** rather than a value, so navigating between two projects re-runs them and `switchMap` cancels what the reader left behind.
 
@@ -476,24 +502,124 @@ The navigation destroys the composer holding the text, so the text has to surviv
 | `resource-not-found` (404)  | "This project no longer exists" / "It was deleted, so the conversation could not be created." — and back to the grid, because this URL now names nothing. The server reports a foreign or deactivated project exactly as it reports one that never existed |
 | Anything else               | The text goes **back to the composer** through `composerSeed` and the error is toasted — the same bargain `TurnStore` makes when a create is stopped |
 
-## 9. Route, nav entry and bundle
+## 9. The project picker (US-307)
 
-`/projects` is a lazy `loadChildren` under the shell, and `loadChildren` rather than two sibling `loadComponent`s because both screens invoke the same dialogs and a shared parent is what lets those mount once. No guard of its own: the tree already sits behind `authGuard` and `sessionGuard`, and projects are scoped to their owner server-side, so there is nothing here a permission could gate.
+Frame `2e`: a 320 px panel with a search field, the reader's projects as a single-select list, "Remove from project", and a pinned "New project". It is **one control with five invokers** — the board says so itself, in a note on the frame reading "same control as the conversation header's Move to project" — and they differ only in what the panel anchors to. The move it performs belongs to [Conversation Actions §7](conversation-actions.md#7-move-into-or-out-of-a-project-us-307); this section is the panel and the data behind it.
+
+It lives in `shared/projects/` and injects only `core/` stores, exactly as `Composer` does and for the same reason: `features/chat`, `features/conversations`, `features/shell` and `features/projects` all render it, and none of them may import another.
+
+### 9.1 The lookup behind it, and why a failed drain keeps its pages
+
+`ProjectLookupStore` (`core/projects/`) holds every project the signed-in user owns, once, at the root. It is the root project list **US-202's fourth criterion asked for and nothing had a use for until now** — `SessionBootstrap` releases it beside the model catalogue, the MCP catalogue and the conversation list, which is what closes the last interim behaviour on that row.
+
+It serves two things, and both need the *whole* set rather than a page:
+
+- **The picker's list**, filtered client-side as the reader types. A server round trip per keystroke is the wrong shape for a 320 px popover, and `GET api/projects` accepts no sort parameter, so a page in hand is not a stable window to filter either.
+- **`nameOf(projectId)`**, which is the only way any project chip can be rendered at all: `ConversationDto` carries the id and no name. This mirrors exactly how the conversations library resolves a `modelId` against `ModelCatalogStore`, down to rendering nothing rather than a guess when the id is unknown.
+
+It drains the way the grid does (§4.1) and keeps three of the same load-bearing details — `expand` rather than a self-referential `concat`, `_querySuperseded$` cancelling the whole chain, and `truncated` written where the drain stops and never in a `finalize`. What it does not have is a term: this list is never filtered on the server, so a page can only be superseded by a retry or a sign-out.
+
+**It differs from the grid on one thing, and the difference is the decision worth keeping.** A failure mid-drain leaves the grid showing an error panel instead of its cards, because a half-drained set sorted or counted as if it were whole is the failure regime A exists to avoid. Here the pages already loaded are **kept** alongside the error: `setError` writes only `requestStatus`, `nameOf` keeps answering for the rows it does hold, and a chip that can still name 200 of 500 projects is strictly better than one that names none. The picker is what renders the error, and it hides the list behind it.
+
+Three `projectEvents` handlers keep it honest — server-confirmed facts only, which is that group's whole contract. Without them the picker would offer a project that has been deleted, or omit the one the reader just created from the panel they created it in. A creation goes to the **head**, because the server orders by `dateCreated` descending and that is where a refetch would put it; a rename never evicts a row here, unlike in the grid, because no term filters this list.
+
+Being root-scoped puts it on the initial bundle graph, which is the same cost `ConversationListStore` already pays for the same reason (§11).
+
+### 9.2 Not a `Menu`, and what it borrows from one
+
+Every other panel of this shape in the app is a `Menu`. This one cannot be, and the reasons are structural rather than stylistic — a search field inside a menu is three separate collisions:
+
+| `Menu` does | Which breaks |
+| --- | --- |
+| Renders its own trigger | The composer pill and four kebab items are the triggers, and one of them is not even in the same component |
+| Marks its panel `role="menu"` | `menu` owns `menuitem*` and nothing else, so a text input in it is an `aria-required-children` violation |
+| Owns the arrow keys and closes on Tab | The arrows have to move focus **from** the field into the rows, and Tab has to leave |
+
+So the picker is a non-modal `role="dialog"` — `aria-modal` deliberately absent, because the page behind it stays live exactly as it does behind a kebab — holding a `role="listbox"` of `role="option"` rows. What it borrows from `Menu` is the part that genuinely is shared: `onDismiss` for outside-press and scroll, and placement, which was extracted into `shared/overlay/anchored-panel.ts` and is now used by both. Two details in `anchoredPosition` are easy to lose and are commented where they live: an `up` panel anchors by its **bottom** edge, because these panels swap content while open and a top-anchored one would grow *downward* over the trigger it is supposed to sit above; and the viewport height is `window.innerHeight`, not `documentElement.clientHeight`, which differ by the horizontal scrollbar when one exists.
+
+**The search field is the panel's only tab stop.** Every row carries `tabindex="-1"` and is reached with the arrows, because the drain ceiling is 500 projects and an empty term matches all of them — 500 tab stops inside one popover is not a navigable control. Tab therefore leaves the panel and closes it on the way out, which is what keeps a 320 px overlay from floating over a page whose Escape handler it no longer owns. Home and End move to the ends of the list **only from a row**: inside the field, Home means "start of the text".
+
+The term is a plain signal on the component, not `withClientQuery` on the lookup store. Three pickers can exist at once — a sidebar row, the chat header, the composer — and a term shared through root state would narrow all of them from whichever one is being typed in; it is also transient UI state that must not survive the panel closing.
+
+The filter itself is `matchesProjectTerm`, the same function the grid uses to decide whether a created or renamed project still belongs to its active search, so a typed term narrows the panel exactly as `?name=` would narrow a request.
+
+### 9.3 What the picker says that the board does not
+
+Two departures from frame `2e`, both deliberate:
+
+- **"Remove from project" is absent for a standalone conversation**, where the board draws it unconditionally. That is the repo's rule for an action with nothing to act on, and the same call US-901 made about the project card's star.
+- **The drain ceiling is stated.** The board draws no such line, but a list that silently omits projects is the failure the grid's own ceiling notice exists to prevent — and here it would silently omit the project the reader is looking for. The wording is the lookup store's own `ceilingNotice`, counting what is loaded against what the server says exists.
+
+The pinned **New project** action is `beginCreate`'s continuation, which has existed unused since US-903 for exactly this: the picker opens the shared create modal and moves the conversation into whatever it creates. The panel closes first — the dialog is where the reader is now, and a popover left open behind a modal is a second dismissal target.
+
+### 9.4 The composer's project pill
+
+The pill sits between the paperclip and the model pill, and it is the reason `ComposerHost` grew a seventh member (§2.1). Its two arms come straight off `projectTarget`: on the chat route it is a button that opens the picker upward; on a project's own screen it is a **static chip**, because a conversation created there is created inside that project by definition and there is nothing yet to move.
+
+`TurnStore` resolves the target with **the list copy first and the detail DTO behind it** — the same precedence `ConversationStore.isFavorite` uses, and the reverse of its `current`. The list row is the one `moveRow` patches optimistically, so the pill flips on the click rather than a round trip later; the detail DTO is the fallback for a conversation the 50-row sidebar never held, which is every deep link past its first page and every row opened from the library. Reading only the list would leave the pill permanently absent there, while the header kebab beside it offered the move.
+
+Three smaller calls on the control:
+
+- **Absent on empty `/chat`**, and for the one round trip a deep link spends with neither copy in hand — the rule the header kebab already follows, because acting on a guess would move the conversation somewhere nobody asked for. A conversation that does not exist yet has nothing to move, and giving the empty state a project target is a deliberate scope boundary rather than an oversight.
+- **Natively `disabled` while a turn runs**, like the attach control beside it and unlike the microphone, whose Stop must stay reachable. `composer__aux` already dims it to 40 %, and a control that looks unavailable and still opens a popover reads as broken. The native attribute is safe here because the pill sits outside any roving-focus panel.
+- **It is the picker's own toggle**, which is the case `onDismiss`'s `insideAlso` handler and the picker's `anchorToggles` input exist for ([Conversation Actions §7.3](conversation-actions.md#73-handing-a-kebab-off-to-the-picker)).
+
+## 10. A project's conversations (US-908)
+
+Frame `4g`, on the detail screen's third tab: name, relative updated time, star, kebab. Four columns and **none of the library's toolbar** — no search field, no favourites filter, no selection — because the board draws none of them, and the row actions are US-307's five routed through `ConversationActionsStore` exactly as the sidebar row and the library table are.
+
+### 10.1 One filtered request, and the criterion that never shipped
+
+US-908's first acceptance criterion describes an interim behaviour: drain conversation search at `take=100` to a 500-item ceiling, filter by `projectId` on the client, and state "Showing the 500 most recent conversations" when the ceiling is hit. That criterion applied **only while US-907 was outstanding**, and US-907 landed with this story — so the panel ships the second criterion instead, and the interim behaviour never existed in any build.
+
+What it ships is one request per query: `GET api/conversations/search?projectId=…&skip=&take=25`. There is no drain, no client-side filter and no ceiling notice, and a spec pins the absence of the notice so nobody reintroduces it from the criterion.
+
+`ProjectConversationsStore` copies `ConversationLibraryStore` minus the search field and the selection, and keeps the parts that are about correctness rather than about the toolbar: the query/page split (`isPending` replaces rows, `loadingMore` appends to them), `exhaustMap` on the page so a double-click is not a request for the page after it, `_querySuperseded$` on a page whose project the reader has since left, `takeUntil(signedOut$)` on the request because [`withResetOnSignOut` clears state and does not cancel work](frontend-foundation.md#55-withresetonsignout--compose-it-last), and that feature composed last. A failed **page** raises a toast and keeps its rows; a failed **query** replaces the table with the error panel, because those rows belong to a query that failed.
+
+**The store is provided on the detail route, not on the panel** — the same placement, for the same reason, as `ProjectDocumentsStore` (§6.1): the tab strip's count has to be readable from the Instructions tab, where this panel does not exist.
+
+### 10.2 The asymmetric `updated` handler
+
+The panel's `conversationEvents.updated` handler does two different things depending on whether it already holds the row, and **both halves matter**:
+
+| The event says | The store holds the row | The store does not |
+| --- | --- | --- |
+| `projectId` still matches | Patch it in place — a rename or a favourite from anywhere | Ignore it |
+| `projectId` no longer matches | **Drop** it and shift the counters | Ignore it |
+| `projectId` now matches | — | **Re-read the query** |
+
+The drop is what makes a move performed from **this panel's own kebab** remove the row it was invoked from, and it is US-703's rule for an unstarred conversation under the favourites filter applied one predicate over.
+
+The re-read is the half that is easy to leave out. The sidebar row kebab opens the same picker while this screen is up, so a conversation can be moved *into* the project whose screen the reader is standing on, with both surfaces visible. This store's whole predicate is `projectId` and the payload carries it, so — unlike the library, where a rename cannot be known to match a `name=` filter without asking — the membership question is answerable here. It re-reads rather than inserting because the row's slot in `dateCreated desc` is the server's to decide; `setPending` leaves the loaded rows on screen, so the panel does not blank while it happens.
+
+### 10.3 The panel
+
+- **Remove from project is unconditional here**, unlike every other kebab that offers it. Every row on this panel is in a project by construction, so the action always has something to act on.
+- **The star is confirm-then-render**, as on the library and for the same reason: this store owns its own entities, `ConversationActionsStore` cannot patch them, and an optimistic flip would have no rollback behind it.
+- **The empty state projects no action.** Frame `4g`'s caption points at the project composer, which is already on screen and *earlier in reading order* — a button here would be a second way to reach something one Shift+Tab away rather than the only way. It is a level-2 heading, because this screen's header renders the project name as a button rather than a heading.
+- **Focus is repaired twice over.** Load more removes itself when the last page lands, and Remove-from-project or a completed move evicts the row whose kebab the reader is standing in — optimistically, before the server confirms. Both fixups are armed at the gesture rather than inferred from the list shrinking, and the eviction one disarms itself when the row is still present and no request is pending, so it cannot fire against an unrelated later removal. Focus falls to the first surviving row, then to `#main-content`, because this panel — unlike the library, which has a search field — has no control outside every branch of its own template. Only ever when focus actually fell through.
+
+## 11. Route, nav entry and bundle
+
+`/projects` is a lazy `loadChildren` under the shell, and `loadChildren` rather than two sibling `loadComponent`s because it is the shared route both screens hang off. No guard of its own: the tree already sits behind `authGuard` and `sessionGuard`, and projects are scoped to their owner server-side, so there is nothing here a permission could gate.
 
 The sidebar's **Projects** entry (`bi-folder2`) appears now that there is a route to point it at — the sidebar renders only entries whose route exists, and a link that redirects back to `/chat` is worse than no link ([Shell and Navigation §2.3](shell-and-navigation.md#23-adding-a-nav-entry)). Documents is still absent, and belongs to EP-10.
 
-|                | Initial raw   | Initial transfer | Budget (warn / error) |
-| -------------- | ------------- | ---------------- | --------------------- |
-| After EP-8     | 663.92 kB     | 163.32 kB        | 670 kB / 720 kB       |
-| **After EP-9** | **667.05 kB** | **168.02 kB**    | 670 kB / 720 kB       |
+|                          | Initial raw   | Initial transfer | Budget (warn / error) |
+| ------------------------ | ------------- | ---------------- | --------------------- |
+| After EP-8               | 663.92 kB     | 163.32 kB        | 670 kB / 720 kB       |
+| After EP-9               | 667.05 kB     | 168.02 kB        | 670 kB / 720 kB       |
+| **After US-307/US-908**  | **668.90 kB** | **168.23 kB**    | 670 kB / 720 kB       |
 
-**No re-baseline.** The +3.1 kB is the `@ngrx/signals/events` handler API reaching `ConversationListStore`, which is on the initial graph because `SessionBootstrap` — and therefore `sessionGuard`, which is in the root route table — releases it. That store had never composed `withEventHandlers` before §5.5 needed it to. Everything else rides the lazy `projects` chunk or the composer chunk it now shares with `chat`; the styles bundle is unchanged at 63.96 kB against its 65/80 kB budget, and `check-initial-chunk.mjs` still reports 22 chunks reachable from `main.ts` with no markdown, math, diagram or admin code among them.
+**No re-baseline, and 1.1 kB of headroom left.** EP-9's +3.1 kB was the `@ngrx/signals/events` handler API reaching `ConversationListStore`, which is on the initial graph because `SessionBootstrap` — and therefore `sessionGuard`, which is in the root route table — releases it. US-307's +1.85 kB is the same shape: `ProjectLookupStore` is root-scoped and released from the same place, so it is on that graph too. The picker, the project dialogs and every chip they feed ride lazy chunks. The styles bundle is unchanged at 63.96 kB against its 65/80 kB budget, and `check-initial-chunk.mjs` still reports no markdown, math, diagram or admin code reachable from `main.ts`.
+
+**The next root-scoped store trips the warning line**, which is now the number to know before adding one: ask whether the state genuinely has to outlive a route before providing it at the root.
 
 The prep step is bundle-neutral in both directions: moving the composer out of `features/chat/` did not put it in the initial graph, and the chat route did not grow — the composer stack simply moved into a chunk the two lazy routes share.
 
-## 10. Testing
+## 12. Testing
 
-**84 specs across eleven files**, inside the suite's 1315.
+**133 specs across fifteen files**, inside the suite's 1385.
 
 | Area                           | Spec                       | Notable cases                                                                                                                                                                           |
 | ------------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -502,39 +628,43 @@ The prep step is bundle-neutral in both directions: moving the composer out of `
 | The dialog                     | `project-form-dialog` (9)  | Empty for a create; seeded from the project on an edit, **instructions included**; **re-seeded when the project arrives a round trip later**; `maxlength` derived from the schema; the **board's** duplicate copy rather than the server's; and the inline message cleared on the next keystroke with no imperative reset |
 | The lifecycle store            | `project-actions-store` (10) | The whole body posted and nothing applied until the server confirms; a duplicate rendered inline and **never as a toast**, degrading to one only when the dialog was force-closed; the created project handed back to its invoker; **the fetch before opening on a listing row**; the full representation on a rename; instructions saved by echoing the rest; the deletion announced only on the 204; and a reopen refused while a row's action is in flight |
 | The pure helpers               | `project-helpers` (8)      | `toProjectBody` echoing every field, and **"leave it" told apart from "clear it"**; the duplicate message swapped and every other one verbatim; the PascalCase key the server actually sends |
-| The detail screen              | `project-detail` (6)       | The tab strip's file count; **the upload store resolved through the outlet, so the panel shares one**; a finished upload becoming a row **while another tab is open**; leaving for the grid when the project is deleted under the reader; the guard **not trapping** them when it is; and the warning firing on a tab change |
+| The detail screen              | `project-detail` (7)       | The tab strip's file **and** conversation counts; **the conversation count still right while the reader is on Instructions**; the upload store resolved through the outlet, so the panel shares one; a finished upload becoming a row **while another tab is open**; leaving for the grid when the project is deleted under the reader; the guard **not trapping** them when it is; and the warning firing on a tab change |
 | The composer host              | `project-composer-host` (7) | The conversation created inside the project and the prompt handed on; **`turnError` staying null**; a second press dropped rather than making two conversations; Stop cancelling and handing the prompt back; the 404 returning the reader to the grid; and a send refused before the route resolves |
 | Standing instructions          | `instructions-panel` (7)   | Seeded from the only route that carries them; **settling only once the server confirms**; a clean panel left without a modal; a dirty one blocking until the reader decides; Escape read as keep-editing, **never as a silent discard**; and Cancel reverting in place |
 | The files panel                | `project-files` (5)        | Rows with size and date; the drop zone, browse control and picker **with** the grant; **every add affordance withheld without it, files still downloadable**; the removal confirmed and the file named; and an attached file posted to the project's own upload route |
 | The documents store            | `project-documents-store` (6) | **The bare array read with no envelope**; a row removed at once and **put back at its index** on failure; a second removal refused; refresh as the bridge from chip to row; and a previous project's response kept out of the new list |
 | Relative time                  | `relative-time` (6)        | Minutes then hours inside the day; **"Yesterday" by the calendar, not by 24 hours**; the date fallback; a future timestamp read as "Just now"; and an unparseable value answering empty |
+| The root lookup (US-307)       | `project-lookup-store` (13) | **Nothing requested until the bootstrap releases it**, and released only once however often `ensureLoaded` is called; every page of a multi-page set drained; the ceiling stopping it and saying so; an id resolved to its name and an unknown one to null; **the pages already drained kept when a later one fails**, which is where this store and the grid part company; a created project at the head where a refetch would put it; a rename adopted **without** evicting the row; a deleted project dropped so the picker cannot offer it; and sign-out emptying it and cancelling a drain in flight |
+| The picker (US-307)            | `project-picker` (10)      | **A dialog holding a listbox, not a menu**; the assigned project marked selected and every other one not; the list filtered as the reader types **with no request**; the move issued for the project chosen; **Remove offered only for a conversation that is in a project**, and sending an explicit null when it is; a project created from the pinned action handed straight to the move; **the ceiling stated when the drain stopped short**; Escape closing and returning focus to the anchor; and a move refused while the row's own action is in flight |
+| The conversations store (US-908) | `project-conversations-store` (14) | **One filtered request, with no drain and no ceiling**; nothing requested until the route resolves a project; the tab count withheld until the list has been read; a page appended rather than replacing the rows, and **a failed page keeping them**; the rows replaced when the reader moves to another project; **a row dropped when it is moved away — including from this panel's own kebab**; a row dropped when it is removed from every project; a rename or favourite adopted in place; a deletion shifting the counter; **a re-read when a conversation is moved _into_ this project from elsewhere**; a conversation moved between two other projects ignored; and sign-out cancelling the request in flight |
+| The conversations panel (US-908) | `project-conversations` (11) | Frame `4g`'s four columns, **with no search field and no selection**; the five row actions with **Remove always present**; a removal going through `toUpdateBody` and dropping the row; the picker opened from the row menu; the empty state pointing at the composer above it; **no ceiling notice, because US-907 landed with it**; Load more shown only while there is more; the error panel replacing the list; a row left alone while its own action is in flight; a starred row kept, on the app's one synthesized payload; and **focus recovered when a row evicts itself** |
 
-Plus one added to `conversation-list-store.spec.ts` — held rows released when their project is deleted — and the sidebar's nav-entry assertions updated in `shell.spec.ts`.
+Plus twenty-one added to files this epic does not own: eight in `conversation-actions-store.spec.ts` (the move's three transitions, the rollback, the double-click refusal, the same-project no-op, a row the sidebar does not hold, and a sign-out mid-move), five in `composer.spec.ts` (the pill withheld until there is something to move, the project named, "No project", the second press closing the panel, and the pill disabled mid-turn), three in `conversations.spec.ts` (the chip named, **no chip past the lookup ceiling**, and the five row actions), two each in `chat.spec.ts` and `conversation-list-store.spec.ts`, and one in `conversation-row.spec.ts` (the picker anchored where the kebab was).
 
 ```bash
 # from enterprise-gpt-ui/
-npm test        # Vitest, single run — 1315 specs across 109 files
-npm run lint    # ESLint (now including the layering rule) + icon, forbidden-API and token checks
+npm test        # Vitest, single run — 1385 specs
+npm run lint    # ESLint (including the layering rule) + icon, forbidden-API and token checks
 npm run build   # budgets, then check-initial-chunk.mjs
 npm run format  # Prettier
 ```
 
 > **Verification status.** As with every epic before it, none of this has been exercised against a live API. The gates above are green and every behaviour here is asserted against `HttpTestingController` and `RouterTestingHarness`.
 
-## 11. Deliberately not here
+## 13. Deliberately not here
 
-All of these are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table, so none quietly becomes permanent.
+Both are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table, so neither quietly becomes permanent.
 
 | Missing                                                            | Owner   | Notes                                                                                                                                                    |
 | ------------------------------------------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Any sort control** on the grid, and frame `4d`'s ceiling wording | US-902  | No endpoint accepts a sort parameter. The drain exists so that story can be honest; until then the notice uses frame `4g`'s neutral sentence (§4.1)       |
 | **The favourite star** on a card and in the detail header          | US-909  | `ProjectSummaryDto` carries no flag. Absent rather than inert — the call US-308 made about this star's conversation counterpart                          |
-| **The Conversations tab**                                          | US-908  | Which also needs US-307 for its row menu, and US-907 to avoid draining conversation search to filter locally                                              |
-| **A project picker in the composer**                               | US-307  | The project is fixed by the route today. `beginCreate(afterCreate)` already exists for it — that callback is the criterion about returning the user exactly where they were |
-| **The dialogs living in `Shell`**                                  | US-307  | They mount on `ProjectsLayout` while every invoker is inside this feature. US-307 adds the first one outside it and should move them and pay the shell-chunk cost (§5.6) |
-| **`SessionBootstrap` requesting projects** (US-202's fourth criterion) | US-307 | No root project list has a consumer yet. Both project lists here are route-scoped, and a root one with nothing reading it would be a request per sign-in for nothing |
 
-## 12. Troubleshooting
+Four rows left this table with US-307 and US-908, and they are worth naming because each was a forecast that came true as written: the **Conversations tab** (§10), the **composer's project picker** (§9.4), the **dialogs living in `Shell`** (§5.6), and **`SessionBootstrap` requesting projects** — US-202's fourth criterion, which waited until a root project list had a consumer and got one in `ProjectLookupStore` (§9.1). US-908's own interim behaviour, the 500-item drain ceiling, never shipped at all: US-907 landed with the story (§10.1).
+
+One thing the composer still does not offer, and it is a scope boundary rather than an omission: **the pill is absent on empty `/chat`**, because a conversation that does not exist yet has nothing to move (§9.4).
+
+## 14. Troubleshooting
 
 | Symptom                                                                        | Cause                                                                                                                                                                        |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -559,29 +689,40 @@ All of these are recorded in the [build order](../prd/enterprise-ui-rebuild-buil
 | A removed file reappears at the top or bottom of the list                      | The optimistic rollback lost its captured index, or restored into a list a refetch had already replaced (§7.2)                                                                |
 | The unsaved-instructions modal traps a reader on a deleted project             | The `deleted` short-circuit came off `confirmDiscard`. `deleted` is a latch and the navigating effect will not re-run (§6.3)                                                  |
 | The discard modal asks twice, or discards after "Keep editing"                 | `settleDiscard` lost its idempotence — `(closed)` fires after `discard` has already answered (§6.3)                                                                            |
-| Reopening `/projects` shows a dialog already open, holding an old attempt      | `ProjectsLayout`'s `onDestroy` cancel was removed. `Modal` closes on destroy without emitting `closed`, so root state is never told (§5.6)                                    |
+| A project dialog is still open after the browser's Back button                 | Known and accepted since US-307 moved the dialogs into `Shell`, which is not unmounted while signed in. The conversation dialogs have always behaved this way; fixing one means fixing both (§5.6)  |
 | Two projects are created from one double-click                                 | `_create` was moved off `exhaustMap`. Their names then collide with each other (§5.1)                                                                                          |
 | A second project delete is silently dropped                                    | `_delete` was moved onto `exhaustMap`. Deletes of different projects are independent (§5.1)                                                                                   |
+| A project chip or the composer pill shows nothing for a conversation that is in a project | `nameOf` answered null: the project is past the 500-item drain ceiling, or the lookup drain failed before reaching it. Rendering nothing is correct — a guid is not a name (§9.1) |
+| The picker's list is empty, or shows an error, on every surface at once        | One `ProjectLookupStore` serves them all. Check the drain, not the panel — and note that a mid-drain failure deliberately **keeps** the pages already loaded (§9.1)          |
+| Typing in one picker narrows another one on screen                             | The term was moved onto the lookup store. It is per-component state for exactly this reason (§9.2)                                                                            |
+| Arrow keys move the caret instead of the list, or Tab cycles inside the picker | The panel was made a `Menu`, or the roving-focus handler was dropped. The field is the panel's only tab stop and the rows are `tabindex="-1"` (§9.2)                          |
+| A conversation moved into the open project does not appear on its panel        | The `updated` handler's "not held, but now matches" branch was removed. It is asymmetric on purpose (§10.2)                                                                    |
+| A row stays on the panel after being moved out of the project                  | The other half of the same handler. A move from this panel's own kebab is the common case (§10.2)                                                                             |
+| The Conversations tab count reads 0 from the Instructions tab                  | `ProjectConversationsStore` was provided on the panel instead of on the detail route (§10.1)                                                                                   |
 
-## 13. Key files
+## 15. Key files
 
 | Concern                     | File                                                                                                                                                                                                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Wire shapes and field caps  | [`domain/api/project.ts`](../../enterprise-gpt-ui/src/app/domain/api/project.ts)                                                                                                                                                                        |
 | Date labels                 | [`domain/format/relative-time.ts`](../../enterprise-gpt-ui/src/app/domain/format/relative-time.ts)                                                                                                                                                       |
 | Update body, duplicate name | [`core/projects/project-update.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-update.ts), [`duplicate-name.ts`](../../enterprise-gpt-ui/src/app/core/projects/duplicate-name.ts)                                                            |
+| Page size, ceiling, term match | [`core/projects/project-load.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-load.ts)                                                                                                                                                      |
 | Lifecycle store             | [`core/projects/project-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-actions-store.ts)                                                                                                                                       |
+| The root lookup             | [`core/projects/project-lookup-store.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-lookup-store.ts)                                                                                                                                        |
 | Events                      | [`core/events/project-events.ts`](../../enterprise-gpt-ui/src/app/core/events/project-events.ts)                                                                                                                                                         |
 | Composer contract, pending prompt | [`core/chat/composer-host.ts`](../../enterprise-gpt-ui/src/app/core/chat/composer-host.ts), [`pending-prompt-store.ts`](../../enterprise-gpt-ui/src/app/core/chat/pending-prompt-store.ts)                                                        |
 | Shared history rule         | [`core/navigation/search-history.ts`](../../enterprise-gpt-ui/src/app/core/navigation/search-history.ts)                                                                                                                                                 |
-| The composer                | [`shared/composer/composer.ts`](../../enterprise-gpt-ui/src/app/shared/composer/composer.ts)                                                                                                                                                             |
+| The composer, and its project pill | [`shared/composer/composer.ts`](../../enterprise-gpt-ui/src/app/shared/composer/composer.ts)                                                                                                                                                      |
+| The picker, and shared panel placement | [`shared/projects/project-picker/project-picker.ts`](../../enterprise-gpt-ui/src/app/shared/projects/project-picker/project-picker.ts), [`shared/overlay/anchored-panel.ts`](../../enterprise-gpt-ui/src/app/shared/overlay/anchored-panel.ts)  |
 | Routes and layout           | [`features/projects/projects.routes.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects.routes.ts), [`projects-layout.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects-layout.ts), [`detail/project-detail.routes.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/project-detail.routes.ts) |
 | Grid                        | [`features/projects/projects.ts`](../../enterprise-gpt-ui/src/app/features/projects/projects.ts), [`project-list-store.ts`](../../enterprise-gpt-ui/src/app/features/projects/project-list-store.ts)                                                    |
-| Dialogs                     | [`features/projects/dialogs/project-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/projects/dialogs/project-form-dialog.ts), [`delete-project-dialog.ts`](../../enterprise-gpt-ui/src/app/features/projects/dialogs/delete-project-dialog.ts) |
+| Dialogs                     | [`features/shell/project-actions/project-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/shell/project-actions/project-form-dialog.ts), [`delete-project-dialog.ts`](../../enterprise-gpt-ui/src/app/features/shell/project-actions/delete-project-dialog.ts) |
 | Detail screen               | [`features/projects/detail/project-detail.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/project-detail.ts), [`project-store.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/project-store.ts)                             |
 | Instructions                | [`detail/instructions/instructions-panel.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/instructions/instructions-panel.ts), [`unsaved-instructions.guard.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/instructions/unsaved-instructions.guard.ts) |
 | Files                       | [`detail/files/project-files.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/files/project-files.ts), [`project-documents-store.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/files/project-documents-store.ts)           |
 | Compose in a project        | [`detail/project-composer-host.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/project-composer-host.ts)                                                                                                                                   |
+| A project's conversations   | [`detail/conversations/project-conversations.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/conversations/project-conversations.ts), [`project-conversations-store.ts`](../../enterprise-gpt-ui/src/app/features/projects/detail/conversations/project-conversations-store.ts) |
 | The layering rule           | [`eslint.config.mjs`](../../enterprise-gpt-ui/eslint.config.mjs)                                                                                                                                                                                         |
 | The API side                | [`Enterprise.Gpt.Api/Endpoints/ProjectEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ProjectEndpoints.cs), [`ProjectService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ProjectService.cs)                               |
 | Related reference           | [Projects (server)](../projects/project-management.md), [Conversation Library](conversation-library.md), [File Attachments](file-attachments.md), [Conversation Actions](conversation-actions.md), [Frontend Foundation](frontend-foundation.md), [Shell and Navigation](shell-and-navigation.md), [Design System](design-system.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |

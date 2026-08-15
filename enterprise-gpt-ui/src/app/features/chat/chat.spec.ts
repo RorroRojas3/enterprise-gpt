@@ -369,6 +369,60 @@ describe('Chat', () => {
     expect(TestBed.inject(ConversationActionsStore).renameTarget()?.projectId).toBe(projectId);
   });
 
+  it('offers the project moves from the header kebab, and removes in one request (US-307)', async () => {
+    const projectId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(conversationDetailFixture({ ...conversation, projectId }));
+    await harness.fixture.whenStable();
+
+    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
+    await harness.fixture.whenStable();
+
+    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'Rename',
+      'Move to project',
+      'Remove from project',
+      'Delete',
+    ]);
+    // The board's submenu affordance, announced as what it actually opens.
+    const move = items.find((item) => item.textContent?.includes('Move to project'));
+    expect(move?.getAttribute('aria-haspopup')).toBe('dialog');
+
+    items.find((item) => item.textContent?.includes('Remove from project'))?.click();
+    await harness.fixture.whenStable();
+
+    // The detail DTO's projectId is what the body echoes away from, and the removal is
+    // an explicit null rather than an omission.
+    const request = backend.expectOne(`${TEST_API_BASE_URL}/api/conversations`);
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({
+      id: conversation.id,
+      name: conversation.name,
+      projectId: null,
+    });
+    request.flush({ ...conversation, projectId: null });
+  });
+
+  it('withholds Remove from project on a standalone conversation (US-307)', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(conversationDetailFixture({ ...conversation, projectId: null }));
+    await harness.fixture.whenStable();
+
+    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
+    await harness.fixture.whenStable();
+
+    const labels = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')].map((item) =>
+      item.textContent?.trim(),
+    );
+    expect(labels).not.toContain('Remove from project');
+    expect(labels).toContain('Move to project');
+  });
+
   it('disables the header kebab items while the conversation’s own action is in flight', async () => {
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
     backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));

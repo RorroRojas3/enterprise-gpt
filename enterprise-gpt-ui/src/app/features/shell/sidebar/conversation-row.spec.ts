@@ -106,10 +106,12 @@ describe('ConversationRow', () => {
     await fixture.whenStable();
 
     const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
-    // Frame 3a's order: Rename, Favourite, then the separator and Delete.
+    // Frame 3a's order: Rename, Favourite, Move to project, then the separator and
+    // Delete. Remove from project is absent here — this fixture is standalone (US-307).
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       'Rename',
       'Favourite',
+      'Move to project',
       'Delete',
     ]);
     expect(items[1]?.querySelector('use')?.getAttribute('href')).toBe('#bi-star');
@@ -135,5 +137,32 @@ describe('ConversationRow', () => {
     );
     expect(item).toBeDefined();
     expect(item?.querySelector('use')?.getAttribute('href')).toBe('#bi-star-fill');
+  });
+
+  it('opens the picker from the kebab, anchored where the kebab was (US-307)', async () => {
+    // The gesture path the code calls load-bearing: the menu closes on this same click,
+    // so the anchor is captured from `Menu.triggerElement()` at the press rather than
+    // read through a binding that would evaluate before the menu's view exists.
+    const trigger = element().querySelector<HTMLButtonElement>('.menu__trigger');
+    trigger?.click();
+    await fixture.whenStable();
+
+    [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')]
+      .find((item) => item.textContent?.includes('Move to project'))
+      ?.click();
+    await fixture.whenStable();
+
+    // The kebab is gone and the picker is in its place.
+    expect(element().querySelector('.menu__panel')).toBeNull();
+    const picker = element().querySelector('.picker');
+    expect(picker?.getAttribute('role')).toBe('dialog');
+    expect(picker?.getAttribute('aria-label')).toBe(`Move ${conversation.name} to a project`);
+
+    // Escape returns focus to the control the panel was anchored to.
+    picker?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await fixture.whenStable();
+
+    expect(element().querySelector('.picker')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });

@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { ProjectConversationsStore } from './conversations/project-conversations-store';
 import { ProjectDocumentsStore } from './files/project-documents-store';
 import { ProjectStore } from './project-store';
 import { unsavedInstructionsGuard } from './instructions/unsaved-instructions.guard';
@@ -20,11 +21,11 @@ import { unsavedInstructionsGuard } from './instructions/unsaved-instructions.gu
 const routes: Routes = [
   {
     path: '',
-    // Both stores on the route rather than on their panels: the parent and every tab
-    // share one instance of each, and the file count frame `4e` puts on the tab strip
-    // has to be readable from the Instructions tab, where the files panel does not
-    // exist.
-    providers: [ProjectStore, ProjectDocumentsStore],
+    // Every store on the route rather than on its panel: the parent and every tab share
+    // one instance of each, and the file and conversation counts frame `4e` puts on the
+    // tab strip have to be readable from the Instructions tab, where neither panel
+    // exists.
+    providers: [ProjectStore, ProjectDocumentsStore, ProjectConversationsStore],
     loadComponent: () => import('./project-detail').then((m) => m.ProjectDetail),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'instructions' },
@@ -37,6 +38,11 @@ const routes: Routes = [
       {
         path: 'files',
         loadComponent: () => import('./files/project-files').then((m) => m.ProjectFiles),
+      },
+      {
+        path: 'conversations',
+        loadComponent: () =>
+          import('./conversations/project-conversations').then((m) => m.ProjectConversations),
       },
     ],
   },

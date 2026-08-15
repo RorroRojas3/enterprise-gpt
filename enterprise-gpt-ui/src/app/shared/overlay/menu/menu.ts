@@ -18,6 +18,7 @@ import {
 import { onDismiss } from '@shared/a11y/dismiss';
 import { Icon } from '@shared/icon/icon';
 import { IconName } from '@shared/icon/icon-names';
+import { AnchoredPosition, anchoredPosition } from '../anchored-panel';
 import { MenuTriggerContent } from './menu-trigger-content';
 
 let nextId = 0;
@@ -89,15 +90,8 @@ export class Menu {
   protected readonly hasTriggerContent = computed(() => this.triggerContent() !== undefined);
 
   protected readonly panelId = `menu-panel-${nextId++}`;
-  /**
-   * `up` panels anchor by `bottom`, not a measured `top`: the pickers swap
-   * panel content while open (retry → loading → rows), and a top-anchored
-   * panel would grow *downward* over the trigger it is supposed to sit above.
-   * Bottom-anchoring makes growth extend upward with no re-measurement.
-   */
-  protected readonly position = signal<{ top: number | null; bottom: number | null; left: number }>(
-    { top: 0, bottom: null, left: 0 },
-  );
+  /** Placed by `anchoredPosition`, which US-307's project picker shares. */
+  protected readonly position = signal<AnchoredPosition>({ top: 0, bottom: null, left: 0 });
 
   /** Set when opening by keyboard, so focus lands on the right end of the list. */
   private focusLastOnOpen = false;
@@ -147,18 +141,14 @@ export class Menu {
         if (!box || !panel) {
           return;
         }
-        const width = panel.nativeElement.offsetWidth;
-        const up = this.direction() === 'up';
-        // The viewport, not documentElement.clientHeight: a fixed-position
-        // `bottom` resolves against the viewport, and the two differ by the
-        // horizontal scrollbar when one exists.
         const viewportHeight =
           this.document.defaultView?.innerHeight ?? this.document.documentElement.clientHeight;
-        this.position.set({
-          top: up ? null : box.bottom + 4,
-          bottom: up ? viewportHeight - box.top + 4 : null,
-          left: this.align() === 'end' ? box.right - width : box.left,
-        });
+        this.position.set(
+          anchoredPosition(box, panel.nativeElement.offsetWidth, viewportHeight, {
+            direction: this.direction(),
+            align: this.align(),
+          }),
+        );
         if (this.items().length === 0) {
           // No item to rove onto (a pending or empty picker state): focus the
           // panel itself so Escape and the status content stay reachable.
@@ -191,6 +181,18 @@ export class Menu {
     });
 
     this.destroyRef.onDestroy(() => this.close(false));
+  }
+
+  /**
+   * The trigger button, so a surface can anchor its own overlay where this menu was
+   * (US-307: "Move to project" closes the kebab and opens the picker in its place).
+   *
+   * A method rather than a computed, to be called at the gesture: `triggerRef` is a
+   * required `viewChild`, and a template binding would read it during the first change
+   * detection pass, before the view exists.
+   */
+  triggerElement(): HTMLButtonElement {
+    return this.triggerRef().nativeElement;
   }
 
   protected toggle(): void {

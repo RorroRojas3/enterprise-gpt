@@ -140,11 +140,71 @@
   background: var(--brand);
 }
 
-// US-407: the auxiliary controls dim while a turn runs. The microphone (US-413) and
-// the attach control (US-801) carry the class; download (US-1502) adopts it when it
-// lands, and inherits the dimming for free.
+// US-407: the auxiliary controls dim while a turn runs. The microphone (US-413), the
+// attach control (US-801) and the project pill (US-307) carry the class; download
+// (US-1502) adopts it when it lands, and inherits the dimming for free.
 .composer--streaming .composer__aux {
   opacity: 0.4;
+}
+
+// Composer.dc.html's project pill: 30px, fully rounded, between the paperclip and the
+// model pill. The same box serves the static chip the project screen renders, which is
+// a <span> because there is nothing to open there.
+.composer__project {
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  height: 30px;
+  max-width: 200px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--bs-body-color);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+
+  app-icon {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  &:hover {
+    background: var(--active-bg);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  // Assigned: the folder takes the brand tone, as the board draws it.
+  &--assigned app-icon:first-child {
+    color: var(--brand);
+  }
+
+  &--fixed {
+    cursor: default;
+
+    &:hover {
+      background: var(--surface-2);
+    }
+  }
+}
+
+.composer__project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Tag-qualified so it outranks `.composer__project app-icon`'s 13px.
+app-icon.composer__project-caret {
+  font-size: 9px;
 }
 
 // The 34px square every auxiliary control in the row uses — frames 2a and 2i.

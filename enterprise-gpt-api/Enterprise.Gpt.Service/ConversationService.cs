@@ -51,9 +51,11 @@ namespace Enterprise.Gpt.Service
         /// <param name="skip">The number of conversations to skip.</param>
         /// <param name="take">The page size.</param>
         /// <param name="isFavorite">Restricts the results to favourites when <see langword="true"/>, to non-favourites when <see langword="false"/>, and applies no filter when <see langword="null"/>.</param>
+        /// <param name="projectId">Restricts the results to one of the caller's projects, or <see langword="null"/> for no project filter.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A page of conversations.</returns>
-        Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default);
+        /// <exception cref="NotFoundException"><paramref name="projectId"/> is not an active project of the caller.</exception>
+        Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, CancellationToken cancellationToken = default);
 
         Task<ConversationDto> UpdateConversationAsync(UpdateConversationActionDto request, CancellationToken cancellationToken = default);
 
@@ -445,7 +447,7 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default)
+        public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, CancellationToken cancellationToken = default)
         {
             // Clamped rather than validated: the paging arguments come straight off the query
             // string, and take = 0 would divide by zero when computing CurrentPage below.
@@ -457,6 +459,17 @@ namespace Enterprise.Gpt.Service
             var query = _ctx.Conversations
                 .AsNoTracking()
                 .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+
+            // Throws before the page is read, so a project that is missing, deactivated or another
+            // user's answers 404 rather than an empty page — the route cannot be used to probe for
+            // project ids, exactly as the single-project route behaves. A deactivated project is
+            // the case that needs it most: DeactivateProjectAsync releases its conversations, so
+            // without the check this would answer an empty page for a project that once had rows.
+            if (projectId.HasValue)
+            {
+                await EnsureProjectExistsAsync(projectId.Value, userId, cancellationToken);
+                query = query.Where(x => x.ProjectId == projectId.Value);
+            }
 
             if (!string.IsNullOrWhiteSpace(name))
             {

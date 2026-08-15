@@ -50,6 +50,7 @@ import {
   modelReasoningText,
   reasoningSeconds,
 } from '@domain/stream/reasoning-timing';
+import { ComposerProjectTarget } from '@core/chat/composer-host';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -62,6 +63,7 @@ import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { ConversationStreamClient } from '@core/stream/conversation-stream-client';
 import { Router } from '@angular/router';
 import { UploadStore } from '@core/documents/upload-store';
+import { ConversationStore } from './conversation-store';
 
 /** What Retry re-sends: the turn's own prompt and selection, as sent, even if the pickers moved since. */
 export interface TurnRetry {
@@ -475,6 +477,13 @@ export const TurnStore = signalStore(
     _settings: inject(TurnSettingsStore),
     _list: inject(ConversationListStore),
     /**
+     * The open conversation's detail DTO, for `projectTarget`'s fallback (US-307).
+     *
+     * No cycle: `ConversationStore` reaches only root stores, and `Chat` provides both
+     * on one injector. The dependency runs this way only.
+     */
+    _detail: inject(ConversationStore),
+    /**
      * The composer's attachments (EP-8). The dependency runs this way only: the
      * upload store learns its conversation by being told, so injecting it back
      * would be a cycle.
@@ -516,6 +525,34 @@ export const TurnStore = signalStore(
 
     return {
       inFlight,
+      /**
+       * What the composer's project control acts on (US-307).
+       *
+       * **The list copy wins, with the detail DTO behind it** — the same precedence
+       * `ConversationStore.isFavorite` uses, and the reverse of its `current`. The list
+       * row is the one `moveRow` patches optimistically, so the pill flips on the click
+       * rather than a round trip later; the detail DTO is the fallback for a conversation
+       * the 50-row sidebar never held, which is every deep link past its first page and
+       * every row opened from the library. Reading only the list would leave the pill
+       * permanently absent there, while the header kebab beside it offered the move.
+       *
+       * Null before a conversation exists, and null for the one round trip a deep link
+       * spends with neither copy in hand — the rule the header kebab already follows,
+       * because `toUpdateBody` echoes `projectId` and acting on a guess would move the
+       * conversation somewhere nobody asked for.
+       */
+      projectTarget: computed<ComposerProjectTarget | null>(() => {
+        const id = store.boundConversationId();
+        if (id === null) {
+          return null;
+        }
+
+        const conversation = store._list.entityMap()[id] ?? store._detail.conversation();
+
+        return conversation === undefined || conversation === null
+          ? null
+          : { kind: 'conversation', conversation };
+      }),
       /** Frame `1e`: the ridgeline between request-accepted and something to read. */
       showThinking: computed(
         () =>

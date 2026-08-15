@@ -67,8 +67,12 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["AzureOpenAI:ApiKey"] = "test-key",
             ["AzureOpenAI:DefaultModel"] = "test-model",
             ["AzureOpenAI:EmbeddingModel"] = "test-embedding",
-            // AzureAIFoundry is left unset: it is Enabled-gated, and an absent section means no
-            // keyed client, which is exactly the shape the resolver's 503 path expects.
+            // AzureAIFoundry is switched off rather than left unset: no keyed client is exactly
+            // the shape the resolver's 503 path expects. Disabling it explicitly is required
+            // because `appsettings.json` ships `Enabled: true` with an empty Url and no ApiKey,
+            // and WebApplicationFactory loads that file from the test output — leaving the
+            // section alone fails options validation at host startup, before any test runs.
+            ["AzureAIFoundry:Enabled"] = "false",
             // The AccountKey is the well-known public Cosmos DB emulator key, published in
             // Microsoft's docs — not a secret, and nothing ever connects to it under test.
             ["CosmosDb:ConnectionString"] =

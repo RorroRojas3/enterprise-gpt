@@ -1,14 +1,14 @@
 # Conversation Actions
 
-How the rebuilt Angular client at `enterprise-gpt-ui/` renames, favourites and deletes conversations: one root store owning every flow, two dialogs mounted once in the shell, a second event group carrying server-confirmed outcomes to the chat route, and the application's first Signal Form.
+How the rebuilt Angular client at `enterprise-gpt-ui/` renames, favourites, moves and deletes conversations: one root store owning every flow, four dialogs mounted once in the shell, a second event group carrying server-confirmed outcomes to the chat route, and the application's first Signal Form.
 
-Audience: a developer adding the next per-conversation action (US-307's project moves extend exactly these seams), building any of the list stores that will copy the optimistic/rollback semantics, or writing the application's next form. Read [Shell and Navigation](shell-and-navigation.md) first for `ConversationListStore`, the reference list store these flows mutate, and [Frontend Foundation](frontend-foundation.md) for the store features and the `core/errors` conventions everything here composes.
+Audience: a developer adding the next per-conversation action — US-307's project move is the worked example, and it extended these seams without inventing one — building any of the list stores that copy the optimistic/rollback semantics, or writing the application's next form. Read [Shell and Navigation](shell-and-navigation.md) first for `ConversationListStore`, the reference list store these flows mutate, and [Frontend Foundation](frontend-foundation.md) for the store features and the `core/errors` conventions everything here composes. The project picker the move opens is documented where the project surface is, in [Projects §9](projects.md#9-the-project-picker-us-307).
 
 Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority for every `US-xxx` reference.
 
 ## 1. Overview
 
-Three stories landed together and closed phase P2 of the rebuild; **US-305 joined them later** (with EP-6), and **US-704 later still** (with EP-7) — both through the same seams, and US-704 is the first flow whose _invoker_ lives outside the shell:
+Three stories landed together and closed phase P2 of the rebuild; **US-305 joined them later** (with EP-6), **US-704 later still** (with EP-7), and **US-307 last** (after EP-9, because it needed a project surface to move conversations into) — all through the same seams, and US-704 is the first flow whose _invoker_ lives outside the shell:
 
 | Story | What it delivers |
 | --- | --- |
@@ -17,15 +17,16 @@ Three stories landed together and closed phase P2 of the rebuild; **US-305 joine
 | **US-308** | The 52 px conversation header gains a kebab routing Rename and Delete through the same flows — nothing reimplemented |
 | **US-305** | Favourite, from the row kebab's new item **and** the header's star: an idempotent `PUT`, an optimistic flag with rollback, no dialog and no `dateModified` bump — and the retirement of US-308's deferred star (§6) |
 | **US-704** | `deleteMany`: one `DELETE api/conversations/bulk` for a set of rows selected on the conversations library, with the sidebar's copies removed here, a **LIFO** restore on failure, and the caller's own rollback taken as a callback (§5.3) |
+| **US-307** | `moveToProject`: one full-representation `PUT` that covers into, between and out of projects, optimistic with a rollback to the previous project, offered from **four** kebabs and the composer's project pill — and the retirement of US-308's last two deferred items (§7) |
 
 Seven decisions shape everything here, and each looks removable until you know what it prevents:
 
-1. **One root store owns every flow.** `ConversationActionsStore` is `providedIn: 'root'` because its invokers live in three features that must not import each other — the sidebar row (`features/shell`), the chat header (`features/chat`) and the conversations library (`features/conversations`). Everyone talks to the store; nobody talks to a dialog (§3). US-704 added a second reason with teeth: **`rxMethod` binds its subscription to the injector that declares it**, so a request invoked from a route-scoped store would be torn down the moment the reader navigates away (§5.3).
-2. **The dialogs are mounted once, in the shell.** The shell wraps both invokers, so one `<app-rename-conversation-dialog>` and one `<app-delete-conversation-dialog>` serve every surface (§3.1).
+1. **One root store owns every flow.** `ConversationActionsStore` is `providedIn: 'root'` because its invokers live in four features that must not import each other — the sidebar row (`features/shell`), the chat header (`features/chat`), the conversations library (`features/conversations`) and, since US-307, a project's own conversations panel (`features/projects`). Everyone talks to the store; nobody talks to a dialog (§3). US-704 added a second reason with teeth: **`rxMethod` binds its subscription to the injector that declares it**, so a request invoked from a route-scoped store would be torn down the moment the reader navigates away (§5.3).
+2. **The dialogs are mounted once, in the shell.** The shell wraps every invoker, so one `<app-rename-conversation-dialog>` and one `<app-delete-conversation-dialog>` serve every surface (§3.1) — and since US-307 the two *project* dialogs sit beside them for the same reason, because the picker's "New project" invokes one from the composer ([Projects §5.6](projects.md#56-where-the-dialogs-mount)).
 3. **Entity writes go through `ConversationListStore` methods.** Its state is protected, so no other store can `patchState` it — and should not, because *how* a row is patched is the list's decision. The actions store decides *when* (§3.2).
 4. **Server-confirmed outcomes travel as events.** `conversationEvents.updated` and `.deleted` are the second `@ngrx/signals/events` group, and they exist for a reachability reason, not a stylistic one: a root store cannot inject the route-scoped `ConversationStore` (§6).
-5. **Every conversation update goes through `toUpdateBody`.** `PUT api/conversations` is a full-representation PUT — a body that omits `projectId` unlinks the conversation from its project — so one builder echoes it always, and no caller can forget (§4.1).
-6. **Per-row in-flight state comes from `withPendingIds`.** A rename on one conversation disables that conversation's menu items — via `aria-disabled`, never the native attribute — and no one else's (§8).
+5. **Every conversation update goes through `toUpdateBody`.** `PUT api/conversations` is a full-representation PUT — a body that omits `projectId` unlinks the conversation from its project — so one builder echoes it always, and no caller can forget (§4.1). US-307 is the caller it was written for, and the caller that can be bitten by it: `projectId` reaches the builder **verbatim**, never through `??` or an optional chain, because an `undefined` there turns "remove from project" into a silent no-op (§7).
+6. **Per-row in-flight state comes from `withPendingIds`.** A rename on one conversation disables that conversation's menu items — via `aria-disabled`, never the native attribute — and no one else's (§9).
 7. **Events carry the server's own DTO, with one deliberate exception.** The favourite endpoint answers 204 with no body, so its `updated` event is built from the target plus the flag the server just accepted. An idempotent SET confirms exactly that and changes nothing else, so nothing is guessed at (§6.2).
 
 ### 1.1 Where each piece lives
@@ -34,16 +35,20 @@ Seven decisions shape everything here, and each looks removable until you know w
 | --- | --- |
 | Every flow: state, guards, optimistic patches, rollbacks | [`core/conversations/conversation-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-actions-store.ts) |
 | The `PUT api/conversations` body builder | [`core/conversations/conversation-update.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-update.ts) |
-| The entity mutation surface the flows call | [`core/conversations/conversation-list-store.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts) — `renameRow`, `favoriteRow`, `refreshRow`, `setRowPending`, `removeRow`, `restoreRow` |
+| The entity mutation surface the flows call | [`core/conversations/conversation-list-store.ts`](../../enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts) — `renameRow`, `favoriteRow`, `moveRow`, `refreshRow`, `setRowPending`, `removeRow`, `restoreRow` |
 | Server-confirmed conversation events | [`core/events/conversation-events.ts`](../../enterprise-gpt-ui/src/app/core/events/conversation-events.ts) |
 | Server validation → Signal Forms | [`core/errors/server-messages.ts`](../../enterprise-gpt-ui/src/app/core/errors/server-messages.ts) — `serverMessagesFor`, `unmatchedServerMessages` |
 | Per-row in-flight tracking | [`core/state/with-pending-ids.ts`](../../enterprise-gpt-ui/src/app/core/state/with-pending-ids.ts) |
 | The rename dialog (the first Signal Form) | [`features/shell/conversation-actions/rename-conversation-dialog.ts`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/rename-conversation-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/rename-conversation-dialog.html) |
 | The delete confirmation | [`features/shell/conversation-actions/delete-conversation-dialog.ts`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/delete-conversation-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/shell/conversation-actions/delete-conversation-dialog.html) |
 | The **bulk** delete confirmation (not in the shell: one invoker, and inputs rather than a store) | [`features/conversations/delete-conversations-dialog.ts`](../../enterprise-gpt-ui/src/app/features/conversations/delete-conversations-dialog.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/conversations/delete-conversations-dialog.html) |
+| The searchable panel every move opens | [`shared/projects/project-picker/`](../../enterprise-gpt-ui/src/app/shared/projects/project-picker/) — [Projects §9](projects.md#9-the-project-picker-us-307) |
+| The names a project chip renders, and the picker's list | [`core/projects/project-lookup-store.ts`](../../enterprise-gpt-ui/src/app/core/projects/project-lookup-store.ts) — root-scoped, released by `SessionBootstrap` |
 | The sidebar row kebab | [`features/shell/sidebar/conversation-row.ts`](../../enterprise-gpt-ui/src/app/features/shell/sidebar/conversation-row.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/shell/sidebar/conversation-row.html) |
 | The header star and kebab, and navigating off a deleted conversation | [`features/chat/chat.ts`](../../enterprise-gpt-ui/src/app/features/chat/chat.ts), [`chat.html`](../../enterprise-gpt-ui/src/app/features/chat/chat.html) |
 | The header's `current` DTO, `isFavorite`, and `updated` handling | [`features/chat/conversation-store.ts`](../../enterprise-gpt-ui/src/app/features/chat/conversation-store.ts) |
+| The library's per-row kebab and project chip | [`features/conversations/conversations.ts`](../../enterprise-gpt-ui/src/app/features/conversations/conversations.ts) — [Conversation Library §5.2](conversation-library.md#52-the-table) |
+| A project's own conversations panel | [`features/projects/detail/conversations/`](../../enterprise-gpt-ui/src/app/features/projects/detail/conversations/) — [Projects §10](projects.md#10-a-projects-conversations-us-908) |
 | The dialogs' single mount point | [`features/shell/shell.ts`](../../enterprise-gpt-ui/src/app/features/shell/shell.ts) |
 
 ## 2. Quick start
@@ -65,35 +70,44 @@ Inject `ConversationActionsStore` and call a `begin*` method with the row's DTO.
 </app-menu>
 ```
 
-`aria-disabled` rather than the native attribute, because a natively disabled item cannot take focus and strands the menu's roving focus. The `begin*` methods refuse a pending row themselves, so the click is a guarded no-op, not a hole (§8).
+`aria-disabled` rather than the native attribute, because a natively disabled item cannot take focus and strands the menu's roving focus. The `begin*` methods refuse a pending row themselves, so the click is a guarded no-op, not a hole (§9).
 
-### 2.2 Adding the next action (US-307)
+### 2.2 Adding the next action — US-307 as the worked example
 
-The seams the next story extends, in order — US-305 is the worked example, and it added nothing to this list:
+The seams a new per-conversation action extends. US-305 added nothing to this list and **US-307 added nothing either**, which is the point of writing it down: the last action in EP-3 was four store methods and a template, not a new mechanism.
 
-1. A method on `ConversationActionsStore` (a guard on the row's pending id → optimistic patch through a `ConversationListStore` method → request → `conversationEvents.updated` on success, rollback + `ToastStore.fromError` on failure). A flow with a dialog splits that guard into a `begin*`/`confirm*` pair; one without — like favourite — does not (§6).
+1. A method on `ConversationActionsStore` (a guard on the row's pending id → optimistic patch through a `ConversationListStore` method → request → `conversationEvents.updated` on success, rollback + `ToastStore.fromError` on failure). A flow with a dialog splits that guard into a `begin*`/`confirm*` pair; one without — favourite, and now move — does not (§6, §7).
 2. Any update that touches `PUT api/conversations` builds its body with `toUpdateBody(current, changes)` — never by hand (§4.1).
-3. Menu items in *both* kebabs — `conversation-row.html` and `chat.html` — carrying the same `aria-disabled` binding.
+3. A mutation method on `ConversationListStore` if the action changes a field no existing one touches. `moveRow` is US-307's, and it is nine lines: guard on the row being held, `updateEntity`, nothing else (§3.2).
+4. Menu items in **every** kebab that offers the row's actions — `conversation-row.html`, `chat.html`, `conversations.html` and `project-conversations.html` — carrying the same `aria-disabled` binding. Four, not two, since EP-7 and EP-9 each added a table of rows.
 
-## 3. One store, two invokers, dialogs mounted once
+Two rules US-307 discovered rather than inherited, both worth knowing before writing the fifth action:
 
-`ConversationActionsStore` holds five pieces of state: `renameTarget`, `renameBusy`, `renameError`, `renameRejectedName`, and `deleteTarget`. A non-null target *is* the open dialog — `RenameConversationDialog` and `DeleteConversationDialog` are mounted once in `Shell` and each computes `open` from its target. Opening, cancelling and submitting are store methods, so the sidebar row and the chat header share the dialogs without either feature importing the other, and without the dialogs knowing who invoked them.
+- **Capture the row's id, derive the DTO.** Both tables open one picker for the whole table and hold the id of the row it was opened for, never a snapshot of the row. `toUpdateBody` echoes the name, so a frozen DTO would send back a stale one and silently revert a rename that landed — from the chat header, or from US-409's server-assigned title — while the panel was open.
+- **An action with nothing to act on is absent, not inert.** "Remove from project" is simply not rendered for a standalone conversation, the same call US-901 made about the project card's star. The exception proves the rule: on a project's own conversations panel every row is in a project by construction, so the item is unconditional there.
+
+## 3. One store, four invokers, dialogs mounted once
+
+`ConversationActionsStore` holds five pieces of state: `renameTarget`, `renameBusy`, `renameError`, `renameRejectedName`, and `deleteTarget`. A non-null target *is* the open dialog — `RenameConversationDialog` and `DeleteConversationDialog` are mounted once in `Shell` and each computes `open` from its target. Opening, cancelling and submitting are store methods, so all four invokers share the dialogs without any of their features importing another, and without the dialogs knowing who invoked them.
 
 Concurrency differs between the flows, deliberately:
 
 - **Rename runs under `exhaustMap`.** A second submit while one is in flight is a double-click, not a second rename; `renameBusy` disables the buttons and `exhaustMap` closes the race under them. The optimistic patch is made *inside* the projection, so an emission `exhaustMap` drops leaves no patch behind with no request to resolve it.
 - **Delete runs under `mergeMap`.** Deletes of *different* conversations are independent and may overlap — `exhaustMap` would silently drop the second. Same-id overlap cannot happen: the row and its dialog are gone, and `beginDelete` guards on the pending id.
 - **Favourite runs under `mergeMap` too**, for the same reason, and with no dialog in front of it the pending-id guard in `toggleFavorite` is the *whole* re-entry story (§6.1).
+- **Move runs under `mergeMap` as well**, on the same reasoning, and inherits favourite's re-entry story unchanged: two moves of one conversation racing would decide which project it ends up in by arrival order (§7.1).
 
 **`renameBusy` tracks the request, not the dialog.** A dialog force-closed mid-flight (a second Escape is uncancelable in Chromium) leaves it `true` until the request settles, so a reopened dialog honestly reports that `exhaustMap` is still occupied instead of swallowing the next submit silently. It is cleared in exactly one place — `tapResponse`'s `finalize`, which runs on success, failure and sign-out cancellation alike — and `cancelRename` deliberately does not touch it.
 
 ### 3.1 The mount point
 
-`Shell` renders both dialogs beside the routed screen. Do not mount a second copy in a feature: the store's `renameTarget` would open both.
+`Shell` renders both dialogs beside the routed screen. Do not mount a second copy in a feature: the store's `renameTarget` would open both. US-307 put `<app-project-form-dialog>` and `<app-delete-project-dialog>` beside them, for the reason this section exists rather than as a tidy-up — the picker's "New project" is the first invoker of a project dialog outside `features/projects`, and it opens from the sidebar, the chat header and the composer, none of which the projects layout renders ([Projects §5.6](projects.md#56-where-the-dialogs-mount)).
 
 ### 3.2 The mutation surface on `ConversationListStore`
 
-`protectedState` means the list's entities can only be written by the list's own methods, so US-304/306 added a small, deliberate surface: `renameRow` (optimistic; rolled back by calling it again with the previous name), `refreshRow` (adopt the server's DTO — its `dateModified`, not a local guess), `setRowPending`, `removeRow` and `restoreRow` (§5.1). US-305 added `favoriteRow` (optimistic; rolled back the same way, and touching `isFavorite` **only** — §6.2). Rows the list does not hold are ignored by all of them except `removeRow`, which returns `null` — the deep-link case, where the DELETE still goes out and there is nothing to restore.
+`protectedState` means the list's entities can only be written by the list's own methods, so US-304/306 added a small, deliberate surface: `renameRow` (optimistic; rolled back by calling it again with the previous name), `refreshRow` (adopt the server's DTO — its `dateModified`, not a local guess), `setRowPending`, `removeRow` and `restoreRow` (§5.1). US-305 added `favoriteRow` (optimistic; rolled back the same way, and touching `isFavorite` **only** — §6.2); US-307 added `moveRow`, on the same terms and touching `projectId` only. Rows the list does not hold are ignored by all of them except `removeRow`, which returns `null` — the deep-link case, where the DELETE still goes out and there is nothing to restore.
+
+`moveRow` deliberately leaves `dateModified` alone even though the server *does* bump it for a move — the same bargain `renameRow` makes. The server's value arrives through `refreshRow` on the 200; a local guess would diverge from it in the meantime and be overwritten anyway.
 
 ## 4. Rename (US-304)
 
@@ -103,7 +117,7 @@ A validation problem renders inline **only while the dialog is still up**. If th
 
 ### 4.1 `toUpdateBody` and the full-representation PUT
 
-`PUT api/conversations` replaces the whole conversation (the id travels in the body, not the route), so a body that omits `projectId` — or sends `null` — removes the conversation from its project. Every update path goes through one builder so no caller can unlink a project by forgetting to echo the field. This is US-307's stated invariant, in force early because US-304 is the first update path:
+`PUT api/conversations` replaces the whole conversation (the id travels in the body, not the route), so a body that omits `projectId` — or sends `null` — removes the conversation from its project. Every update path goes through one builder so no caller can unlink a project by forgetting to echo the field. This is US-307's stated invariant, in force early because US-304 was the first update path and now exercised by the story it was written for:
 
 ```ts
 toUpdateBody(current, { name });                    // echoes current.projectId
@@ -112,6 +126,8 @@ toUpdateBody(current, { projectId: undefined });    // echoes — "looks omitted
 ```
 
 Only an explicit `null` unlinks. An `undefined` — including one passed explicitly, as `{ projectId: selectedProject()?.id }` naturally produces — echoes the current value, because "looks omitted" behaving as "remove" is exactly the accident the builder exists to prevent.
+
+**That protection cuts both ways, and US-307 is where it bites.** The move flow's whole purpose is sometimes to send `null`, so its `projectId` is handed to the builder **verbatim** — never `?? current.projectId`, never off an optional chain. A single `??` there would make "Remove from project" echo the project the conversation is already in: no error, no toast, no request the server rejects, just a menu item that appears to do nothing.
 
 The header kebab feeds the builder `ConversationStore.current`, which prefers the detail DTO over the sidebar's copy precisely because its `projectId` is the fresh one a rename must echo — and stays `null` for a deep link the list never held, so the kebab waits one round trip rather than acting on a guess.
 
@@ -209,13 +225,13 @@ The optimistic patch is not safe on its own. Two ordinary things can overwrite i
 
 Either one writes the old `isFavorite` back over the row, and without the re-assert the list and the server would disagree permanently — leaving the header star, which reads the list, showing the opposite of what the server holds. Calling `favoriteRow` again on the 204 is idempotent when nothing intervened and the repair when something did.
 
-The dispatched event is the one deliberate synthesis in this group (§7): the 204 carries no DTO, so `updated` is dispatched with the target plus the accepted flag.
+The dispatched event is the one deliberate synthesis in this group (§8): the 204 carries no DTO, so `updated` is dispatched with the target plus the accepted flag.
 
 There is no validation arm. The endpoint has no validator, so every failure — a 404 for a foreign or deleted conversation included — rolls back and toasts.
 
 ### 6.3 The header star, and US-308's retired deferral
 
-Two invokers, one flow: a star on the 52 px conversation header, and a Favourite / Unfavourite item in the sidebar row's kebab (between Rename and the separator above Delete). The header star closes the criterion US-308 deferred — header and sidebar row now reflect the toggle together.
+Two invokers, one flow: a star on the 52 px conversation header, and a Favourite / Unfavourite item in the sidebar row's kebab, directly under Rename — US-307's two project items now sit between it and the separator above Delete, which is the order frame `3a` draws. The header star closes the criterion US-308 deferred — header and sidebar row now reflect the toggle together.
 
 `ConversationStore.isFavorite` prefers the **list's** copy over the detail DTO — the reverse of `current` (§4.1) — because the list copy is the one `favoriteRow` patches optimistically, so both surfaces flip on the click rather than a round trip apart. A deep link the list never held falls back to the detail DTO, whose `isFavorite` is trustworthy, and simply lags a toggle by the round trip until `conversationEvents.updated` lands.
 
@@ -225,7 +241,64 @@ Three smaller choices on the control itself:
 - **Native `[disabled]` is right here**, unlike the kebab's items: the star is not part of a roving-focus panel it would drop out of.
 - **The sidebar row's star stays display-only.** It joins the link's accessible name ("&lt;name&gt;, Favourite"); the toggle is the kebab's item, because a button inside the row's `<a>` would nest an interactive element in a link — the same reason the kebab is a sibling of it.
 
-## 7. `conversationEvents`: the second event group
+## 7. Move into or out of a project (US-307)
+
+`moveToProject(conversation, projectId)` takes a project id or `null`, and **one request covers all three transitions** — into a project, between two projects, out of every project. That falls out of the PUT being a full representation rather than being engineered: leaving project A for project B is a single write of the new id, not an unlink followed by a link, which is why US-307's "it leaves A and appears under B without a second round trip" costs nothing to satisfy.
+
+The flow is favourite's, one field over: refused if the row's own action is in flight → refused again if the conversation is already in that project → optimistic `moveRow` → `PUT api/conversations` with `toUpdateBody(target, { projectId })` → on the 200, `refreshRow(updated)` and `conversationEvents.updated`; on failure, `moveRow(target.id, target.projectId)` puts it back where it was and the error toasts.
+
+Three things differ from favourite, and each is a consequence of the endpoint rather than a choice:
+
+- **The success arm adopts the server's DTO.** A move bumps `dateModified` and only the response carries the new value, so `refreshRow` is right here where §6 explains why it is wrong for a favourite.
+- **There is no validation arm.** The name is echoed unchanged from a conversation the server has already accepted, so a 400 is not reachable through this path. A 404 — a conversation deleted under the reader, or a project that is gone — rolls back and toasts like any other failure.
+- **The event carries the server's own DTO**, with none of the synthesis the favourite's 204 forces (§8).
+
+### 7.1 Re-entry, and the move that is not a request
+
+Like favourite, this opens nothing, so the pending-id guard is the whole re-entry story: a second call while the first is in flight would race it to decide which project the conversation ends up in. It works for the same mechanical reason — both writes happen **inside the `rxMethod` projection**, which runs synchronously with the call, so the pending id is set before a double-click's second event can be handled.
+
+A second guard has no counterpart in the other flows: **a move to the project the conversation is already in is not a request at all.** The picker marks the current project as selected, so pressing it is a re-click rather than a change, and sending the PUT anyway would bump `dateModified` and reorder nothing for no reason.
+
+### 7.2 Where the move is offered
+
+One flow, five entry points, and they differ only in what they anchor to:
+
+| Surface | Move to project | Remove from project |
+| --- | --- | --- |
+| Sidebar row kebab (`3a`) | Opens the picker, anchored where the kebab was | Present only when the row is in a project |
+| Chat header kebab (`3a`) | Same, on `ConversationStore.current` | Same |
+| Conversations library row kebab (`4a`) | Same, on the row's id | Same |
+| A project's conversations panel (`4g`) | "Move to another project" | **Always** present — every row here is in a project |
+| The composer's project pill (`2e`) | Opens the picker upward, and is its own toggle | Inside the picker, as its muted row |
+
+The composer on a *project's* screen is the one place the pill offers neither: it renders as a static chip, because the project is the route ([Projects §9.4](projects.md#94-the-composers-project-pill)).
+
+"Remove from project" is **absent rather than inert** for a standalone conversation, which is one of two deliberate departures from the boards — frame `3a` draws it unconditionally. The other is the picker stating its drain ceiling, which the frame does not draw ([Projects §9.3](projects.md#93-what-the-picker-says-that-the-board-does-not)).
+
+The picker itself — a non-modal `role="dialog"` holding a listbox, deliberately not a `Menu` — is documented with the project surface it reads from, in [Projects §9](projects.md#9-the-project-picker-us-307).
+
+### 7.3 Handing a kebab off to the picker
+
+Four of the six invokers are menu items, and a menu item that opens a panel has a problem the rest of this document does not: **the menu closes on the same click**, taking its trigger out of the layout with it, and the panel still has to be placed somewhere.
+
+So `Menu` gained one member, `triggerElement()`, and the callers capture the anchor **at the gesture**:
+
+```ts
+protected openPicker(): void {
+  if (this.pending()) {
+    return;
+  }
+
+  this.pickerAnchor.set(this.menu().triggerElement());
+  this.pickerOpen.set(true);
+}
+```
+
+A method rather than a `computed`, and read in a handler rather than bound in a template, because `triggerRef` is a required `viewChild`: a template binding would evaluate it during the first change-detection pass, before the menu's view exists.
+
+The composer's pill is the one invoker that is not a menu item, and it needed the opposite accommodation. It is the panel's own toggle, so a press on it must **not** read as an outside press — otherwise `onDismiss` closes the panel on `pointerdown` and the button's own `click` reopens it, and the control can never be used to dismiss. `onDismiss` therefore takes an `insideAlso` callback and the picker an `anchorToggles` input; a kebab trigger deliberately keeps the default, where pressing it closes the picker and opens the menu.
+
+## 8. `conversationEvents`: the second event group
 
 The Events plugin is a deliberate opt-in in this codebase, and `conversationEvents` qualifies for the same reachability reason `sessionEvents` did: `ConversationActionsStore` is root-scoped, while `ConversationStore` is scoped to the chat route — a root store cannot reach a route-scoped one by method, and registering route stores with a root service would invert the dependency. Anything with a single observer stays on plain store methods; these events exist because the sidebar list and the open conversation must both react without knowing each other.
 
@@ -233,39 +306,43 @@ Two events, both carrying **server-confirmed facts only**:
 
 | Event | Payload | Dispatched | Observers |
 | --- | --- | --- | --- |
-| `updated` | The `ConversationDto` the server returned — or, for a favourite, the target with the accepted flag applied | On a rename's 200 (US-304) and a favourite's 204 (US-305); project moves (US-307) will follow | `ConversationStore` patches its detail copy so the header name and star stay fresh — this covers the deep-link case `refreshRow` ignores, and the spread keeps `mcpServerIds`, which `ConversationDto` does not carry. `ConversationLibraryStore` patches the row it holds, or **evicts** it when the favourites filter is on and the flag came back false ([Conversation Library §4.7](conversation-library.md#47-staying-in-step-with-the-sidebar)) |
-| `deleted` | The conversation id | Only on the DELETE's 204 — once for a single delete (US-306), once **per id** for a bulk one (US-704) | `Chat` navigates off the deleted open conversation (§5.2); `ConversationLibraryStore` drops the row and shifts its counters |
+| `updated` | The `ConversationDto` the server returned — or, for a favourite, the target with the accepted flag applied | On a rename's 200 (US-304), a favourite's 204 (US-305), and a move's 200 (US-307) | `ConversationStore` patches its detail copy so the header name and star stay fresh — this covers the deep-link case `refreshRow` ignores, and the spread keeps `mcpServerIds`, which `ConversationDto` does not carry. `ConversationLibraryStore` patches the row it holds, or **evicts** it when the favourites filter is on and the flag came back false ([Conversation Library §4.7](conversation-library.md#47-staying-in-step-with-the-sidebar)). `ProjectConversationsStore` drops a row whose `projectId` stopped matching **and re-reads when one starts matching** ([Projects §10.2](projects.md#102-the-asymmetric-updated-handler)) |
+| `deleted` | The conversation id | Only on the DELETE's 204 — once for a single delete (US-306), once **per id** for a bulk one (US-704) | `Chat` navigates off the deleted open conversation (§5.2); `ConversationLibraryStore` and `ProjectConversationsStore` drop the row and shift their counters |
 
 The favourite payload is the group's **one synthesis**, and it is bounded: the request is an idempotent SET of `isFavorite` that touches no other field, so the event claims nothing the server did not accept. Any future 204 that changes more than one field does not get the same treatment — it refetches.
 
 Optimistic patches and their rollbacks stay inside `ConversationListStore` — an event observer never has to undo one. Keep it that way: the moment an event can describe something the server has not confirmed, every observer inherits the rollback problem.
 
-## 8. Per-row pending: `withPendingIds` in practice
+## 9. Per-row pending: `withPendingIds` in practice
 
 US-304 is the first per-row action, and with it `withPendingIds` — built in US-104 — is composed into `ConversationListStore` for the first time. The contract:
 
 - `ConversationActionsStore` sets the flag around each request via `setRowPending`, **always through `tapResponse`'s `finalize`** to clear it, so it releases on success, failure and sign-out cancellation alike. For a delete, pending is set *before* `removeRow`, so the header kebab stays disabled for the whole flight even though the sidebar row disappears immediately.
-- The store-side guards are the real gate: an action on a pending row is refused in `beginRename`, `beginDelete` and `toggleFavorite`, not merely discouraged in the template.
-- The templates render the flag as `aria-disabled` on the menu items — the sidebar row via its `pending` computed, the header via `ConversationStore.actionPending` — never the native `disabled` attribute, which would make the item unfocusable and break the menu's roving focus and Escape handling. The header star is the one exception, and a native `disabled` is correct there because it sits outside the menu (§6.3).
-- One flag covers all three actions per row, so a favourite in flight disables that row's Rename and Delete too. That is intended: they are alternative writes to one conversation.
+- The store-side guards are the real gate: an action on a pending row is refused in `beginRename`, `beginDelete`, `toggleFavorite` and `moveToProject`, not merely discouraged in the template.
+- The templates render the flag as `aria-disabled` on the menu items — the sidebar row via its `pending` computed, the header via `ConversationStore.actionPending`, both tables via `actions.isRowPending(row.id)` — never the native `disabled` attribute, which would make the item unfocusable and break the menu's roving focus and Escape handling. Two exceptions, both outside a roving-focus panel and both correctly native: the header star (§6.3) and the composer's project pill, which is disabled while a turn streams and would otherwise look unavailable and still open a popover.
+- One flag covers all four actions per row, so a favourite in flight disables that row's Rename, Move and Delete too. That is intended: they are alternative writes to one conversation. The surfaces that *open* something check it before opening — `openPicker` refuses a pending row rather than presenting a panel whose every choice would be refused.
 
 One trap, inherited from the feature itself: the pending-id updaters replace the `Set` rather than mutating it, and that is load-bearing — `patchState` compares by reference, so a mutated set produces no signal write at all. Nothing re-renders, nothing fails; the list just stops updating.
 
 **`ConversationActionsStore` re-exports the set as `pendingIds`, and `isRowPending(id)` beside it** (US-704). A surface that only _invokes_ these flows — the conversations library's table, which holds rows the 50-item sidebar may not — has no other business reaching into `ConversationListStore`, and the set is keyed by id whether or not that list holds the row. That is what lets the library bind `DataTable`'s `pendingIds` and its own row star without importing the sidebar's store.
 
-## 9. Deliberately not here
+## 10. Deliberately not here
 
 Recorded in the PRD and the build order, not omissions:
 
-- **The project move/remove items** in both kebabs — US-307, whose `projectId` invariant `toUpdateBody` already enforces (§4.1).
-- **The sub-768 px collapse** of the header into frame `1d`'s mobile navbar — US-1403, which builds the responsive shell it collapses into.
+- **The sub-768 px collapse** of the header into frame `1d`'s mobile navbar — US-1403, which builds the responsive shell it collapses into. This is the last of US-308's three deferred criteria; the star was retired by US-305 and the two project items by US-307.
 - **A favourites filter on the _sidebar_.** US-703 shipped one on the conversations library, and deliberately not here: the sidebar has no control to undo such a filter, so a narrowed sidebar would be a dead end ([Conversation Library §4.1](conversation-library.md#41-why-it-is-not-the-root-conversationliststore)).
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Cause |
 | --- | --- |
-| A menu item "does nothing" | That conversation's own action is in flight: the store-side guards refuse a pending row. The item is `aria-disabled`, not natively disabled, so it still takes focus and clicks — by design (§8). |
+| A menu item "does nothing" | That conversation's own action is in flight: the store-side guards refuse a pending row. The item is `aria-disabled`, not natively disabled, so it still takes focus and clicks — by design (§9). |
+| **"Remove from project" does nothing, with no error** | The `projectId` reached `toUpdateBody` through a `??` or an optional chain, so the `null` became `undefined` and the builder echoed the current project. Only an explicit `null` unlinks (§4.1). |
+| A move sent two requests, or landed in the wrong project | The optimistic write or `setRowPending` was moved outside the `rxMethod` projection, reopening the double-click race the guard closes (§7.1). |
+| The picker opens in the top-left corner | The anchor was read from a template binding instead of captured at the gesture. The menu closes on the same click, and `triggerRef` does not exist during the first change-detection pass (§7.3). |
+| The composer's project pill closes the picker and immediately reopens it | `anchorToggles`/`insideAlso` came off. The press reads as an outside press, dismisses on `pointerdown`, and the button's own `click` opens it again (§7.3). |
+| A move from a table reverted a rename that had just landed | The picker was fed a frozen DTO rather than the row derived from a captured id. `toUpdateBody` echoes the name (§2.2). |
 | A double-clicked star sent one request | By design: the second click finds the pending id the first set and no-ops. Two opposite SETs racing would decide the final state by arrival order (§6.1). |
 | The star and the sidebar row disagree | Something is reading `isFavorite` off the detail DTO instead of the list row. The list copy is the optimistically patched one and wins wherever the list holds the conversation (§6.3). |
 | A favourite "un-did itself" a moment later | A detail refetch or a search landed mid-flight and wrote the pre-`PUT` value back. The success arm's re-assert is what repairs that — check it was not removed as redundant (§6.2). |
@@ -275,5 +352,5 @@ Recorded in the PRD and the build order, not omissions:
 | A failed bulk delete put the sidebar's rows back in the wrong order | The restore ran front-to-back. `removeRow` captures each index against a list that is one row shorter each time, so only a LIFO restore is their inverse (§5.3). |
 | A bulk delete deleted nothing, silently, after the user navigated | The `rxMethod` was declared on a route-scoped store, so leaving the route tore its subscription down mid-flight. The request belongs here (§5.3). |
 | A reopened rename dialog will not submit | `renameBusy` is still true: the previous request is still on the wire (a force-closed dialog does not cancel it) and `exhaustMap` is still occupied. It clears when the request settles (§3). |
-| The row's pending flag sticks forever | A request path bypassed `tapResponse`'s `finalize`. Both flags — `setRowPending` and `renameBusy` — must clear there and only there (§8). |
-| The header shows the old name after a rename via deep link | The `updated` event handler in `ConversationStore` is what covers that case — `refreshRow` ignores rows the list does not hold. Check the event is dispatched on the server's response, not optimistically (§7). |
+| The row's pending flag sticks forever | A request path bypassed `tapResponse`'s `finalize`. Both flags — `setRowPending` and `renameBusy` — must clear there and only there (§9). |
+| The header shows the old name after a rename via deep link | The `updated` event handler in `ConversationStore` is what covers that case — `refreshRow` ignores rows the list does not hold. Check the event is dispatched on the server's response, not optimistically (§8). |

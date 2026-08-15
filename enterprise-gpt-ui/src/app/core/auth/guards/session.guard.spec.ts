@@ -22,6 +22,7 @@ const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 const CONVERSATIONS_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
+const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
 describe('sessionGuard', () => {
   let backend: HttpTestingController;
@@ -32,13 +33,18 @@ describe('sessionGuard', () => {
     ) as Promise<boolean | UrlTree>;
   }
 
-  /** The three loads the bootstrap starts once the session has resolved. */
+  /** The four loads the bootstrap starts once the session has resolved. */
   function flushPostBootstrapLoads(): void {
     backend.expectOne(MODELS_URL).flush([]);
     backend.expectOne(MCPS_URL).flush([]);
     backend
       .expectOne((request) => request.url === CONVERSATIONS_URL)
       .flush({ items: [], totalCount: 0, pageSize: 50, currentPage: 1, totalPages: 0 });
+    // US-307's root project list, the last of US-202's four post-bootstrap loads. One
+    // page with nothing beyond it, so the drain stops here.
+    backend
+      .expectOne((request) => request.url === PROJECTS_URL)
+      .flush({ items: [], totalCount: 0, pageSize: 100, currentPage: 1, totalPages: 0 });
   }
 
   beforeEach(() => {
@@ -83,6 +89,7 @@ describe('sessionGuard', () => {
     backend.expectNone(MODELS_URL);
     backend.expectNone(MCPS_URL);
     backend.expectNone((request) => request.url === CONVERSATIONS_URL);
+    backend.expectNone((request) => request.url === PROJECTS_URL);
 
     backend.expectOne(ME_URL).flush(userFixture());
     await settle();

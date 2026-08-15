@@ -15,9 +15,11 @@ import { COMPOSER_HOST } from '@core/chat/composer-host';
 import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
 import { UploadStore } from '@core/documents/upload-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
 import { Icon } from '@shared/icon/icon';
+import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 import { DropOverlay } from '@shared/upload/drop-overlay';
 import { FileDropTarget } from '@shared/upload/file-drop-target';
 import { DictationStore } from './dictation-store';
@@ -36,15 +38,15 @@ import { ToolsMenu } from './tools-menu';
  * `shared/` rather than beside the chat feature: `features/projects` may not import
  * `features/chat`, and frame `4e` draws this exact control on the project screen.
  *
- * The project and download controls are **absent, not disabled**, until their stories
- * land (US-307, US-1502) — the repo's pattern for unshipped affordances. When they
- * land, they take the `composer__aux` class so US-407's in-flight dimming applies
- * unchanged, as the attach control and the microphone now do.
+ * The download control is **absent, not disabled**, until US-1502 lands — the repo's
+ * pattern for unshipped affordances. When it does, it takes the `composer__aux` class so
+ * US-407's in-flight dimming applies unchanged, as the attach control, the microphone
+ * and US-307's project pill now do.
  */
 @Component({
   selector: 'app-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AttachmentChip, DropOverlay, FileDropTarget, Icon, ModelMenu, ToolsMenu],
+  imports: [AttachmentChip, DropOverlay, FileDropTarget, Icon, ModelMenu, ProjectPicker, ToolsMenu],
   providers: [DictationStore],
   templateUrl: './composer.html',
   styleUrl: './composer.scss',
@@ -61,6 +63,29 @@ export class Composer {
   private readonly promptBox = viewChild<ElementRef<HTMLTextAreaElement>>('promptBox');
   private readonly actionButton = viewChild<ElementRef<HTMLButtonElement>>('actionButton');
   private readonly filePicker = viewChild<ElementRef<HTMLInputElement>>('filePicker');
+  private readonly projectPill = viewChild<ElementRef<HTMLButtonElement>>('projectPill');
+
+  private readonly projects = inject(ProjectLookupStore);
+
+  /** US-307: frame `2e`'s picker, anchored to the pill and opening upward. */
+  protected readonly projectPickerOpen = signal(false);
+  protected readonly projectPillEl = computed(() => this.projectPill()?.nativeElement ?? null);
+
+  /**
+   * The assigned project's name, or null when the conversation is standalone — and also
+   * when the project is not in the drained lookup set, where naming it is impossible and
+   * "No project" would be a lie the pill has no way to detect.
+   */
+  protected readonly projectLabel = computed(() => {
+    const target = this.turn.projectTarget();
+    if (target === null) {
+      return null;
+    }
+
+    return this.projects.nameOf()(
+      target.kind === 'conversation' ? target.conversation.projectId : target.projectId,
+    );
+  });
 
   /** One field with no validation rules — a plain signal, not a form. */
   protected readonly prompt = signal('');
@@ -209,6 +234,16 @@ export class Composer {
 
   protected openFilePicker(): void {
     this.filePicker()?.nativeElement.click();
+  }
+
+  /**
+   * A toggle rather than an open, because the pill is the picker's own anchor: a second
+   * press lands on the trigger the panel is attached to, and `onDismiss` deliberately
+   * ignores presses inside the host — so without this the panel could never be closed
+   * by pressing the control that opened it.
+   */
+  protected toggleProjectPicker(): void {
+    this.projectPickerOpen.update((open) => !open);
   }
 
   protected onFileInputChange(event: Event): void {

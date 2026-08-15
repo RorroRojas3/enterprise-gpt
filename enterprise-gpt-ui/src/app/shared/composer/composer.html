@@ -97,6 +97,59 @@
       />
     }
 
+    <!--
+      US-307's project pill (Composer.dc.html), between the paperclip and the model
+      pill. Absent, not disabled, when the host has nothing to act on — empty /chat, and
+      a deep link for the round trip before its row lands.
+
+      Two shapes, because the two arms differ in kind: on the chat route the project is
+      a property of the conversation and the pill opens frame 2e's picker; on a project's
+      own screen it is the route, so the same pill renders as a static chip with nothing
+      to open.
+
+      Natively disabled while a turn runs, like the attach control beside it and unlike
+      the microphone, whose Stop must stay reachable: `composer__aux` already dims it to
+      40%, and a control that looks unavailable and still opens a popover reads as
+      broken. It sits outside any roving-focus panel, so the native attribute is safe.
+    -->
+    @if (turn.projectTarget(); as target) {
+      @if (target.kind === 'conversation') {
+        <button
+          #projectPill
+          type="button"
+          class="composer__aux composer__project"
+          [class.composer__project--assigned]="projectLabel() !== null"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="projectPickerOpen()"
+          [attr.aria-label]="'Project: ' + (projectLabel() ?? 'none') + '. Move to a project'"
+          [disabled]="turn.inFlight()"
+          (click)="toggleProjectPicker()"
+        >
+          <app-icon [name]="projectLabel() ? 'bi-folder-fill' : 'bi-folder'" />
+          <span class="composer__project-name">{{ projectLabel() ?? 'No project' }}</span>
+          <app-icon class="composer__project-caret" name="bi-chevron-down" />
+        </button>
+
+        @if (projectPickerOpen() && projectPillEl(); as anchor) {
+          <app-project-picker
+            [conversation]="target.conversation"
+            [anchor]="anchor"
+            [(open)]="projectPickerOpen"
+            direction="up"
+            align="start"
+            [anchorToggles]="true"
+          />
+        }
+      } @else {
+        <span
+          class="composer__aux composer__project composer__project--assigned composer__project--fixed"
+        >
+          <app-icon name="bi-folder-fill" />
+          <span class="composer__project-name">{{ projectLabel() ?? 'Project' }}</span>
+        </span>
+      }
+    }
+
     <app-model-menu />
     <app-tools-menu />
 
