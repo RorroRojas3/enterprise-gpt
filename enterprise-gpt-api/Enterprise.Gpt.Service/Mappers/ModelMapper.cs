@@ -26,6 +26,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 IsToolEnabled = model.IsToolEnabled,
                 IsReasoningEnabled = model.IsReasoningEnabled,
                 IsDefault = model.IsDefault,
+                InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
                 DateDeactivated = model.DateDeactivated
             };
         }
@@ -47,6 +49,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 IsToolEnabled = model.IsToolEnabled,
                 IsReasoningEnabled = model.IsReasoningEnabled,
                 IsDefault = model.IsDefault,
+                InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
                 DateDeactivated = model.DateDeactivated
             };
 
@@ -69,7 +73,9 @@ namespace Enterprise.Gpt.Service.Mappers
                 MaxOutputTokens = dto.MaxOutputTokens,
                 IsToolEnabled = dto.IsToolEnabled,
                 IsReasoningEnabled = dto.IsReasoningEnabled,
-                IsDefault = dto.IsDefault
+                IsDefault = dto.IsDefault,
+                InputPricePerMillionTokens = dto.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = dto.OutputPricePerMillionTokens
             };
         }
 
@@ -91,6 +97,10 @@ namespace Enterprise.Gpt.Service.Mappers
             model.IsToolEnabled = dto.IsToolEnabled;
             model.IsReasoningEnabled = dto.IsReasoningEnabled;
             model.IsDefault = dto.IsDefault;
+            // Assigned unconditionally, including when the request omits them: this is a full
+            // representation, so an absent price clears the stored one rather than preserving it.
+            model.InputPricePerMillionTokens = dto.InputPricePerMillionTokens;
+            model.OutputPricePerMillionTokens = dto.OutputPricePerMillionTokens;
         }
     }
 }

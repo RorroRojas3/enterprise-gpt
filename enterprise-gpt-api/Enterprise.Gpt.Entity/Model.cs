@@ -47,6 +47,37 @@ namespace Enterprise.Gpt.Entity
 
         public bool IsDefault { get; set; } = false;
 
+        /// <summary>
+        /// Gets or sets what this deployment charges per 1,000,000 input tokens, or
+        /// <see langword="null"/> when no price has been recorded.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Nullable rather than defaulted to zero so an unpriced model stays distinguishable from a
+        /// free one: a report that sums zeros silently understates spend, while one that skips
+        /// nulls can say how much of its input it could not price.
+        /// </para>
+        /// <para>
+        /// Per million tokens, and at six decimal places rather than the two the sibling columns
+        /// use, because provider price sheets are quoted that way and a per-token rate rounded to
+        /// cents is entirely rounding error. A single currency is assumed, and it is USD; a
+        /// multi-currency deployment would need a currency column beside these.
+        /// </para>
+        /// <para>
+        /// The catalog is editable, so this is the <em>current</em> price and not what any past
+        /// call was charged. Every usage row snapshots the pair at write time for that reason.
+        /// </para>
+        /// </remarks>
+        [Column(TypeName = "decimal(18, 6)")]
+        public decimal? InputPricePerMillionTokens { get; set; }
+
+        /// <summary>
+        /// Gets or sets what this deployment charges per 1,000,000 output tokens, on the same terms
+        /// as <see cref="InputPricePerMillionTokens"/>.
+        /// </summary>
+        [Column(TypeName = "decimal(18, 6)")]
+        public decimal? OutputPricePerMillionTokens { get; set; }
+
         public Provider Provider { get; set; } = null!;
     }
 }

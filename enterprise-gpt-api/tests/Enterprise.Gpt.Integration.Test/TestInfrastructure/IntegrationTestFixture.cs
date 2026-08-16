@@ -515,7 +515,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
 
         Factory.BlobStorage.Reset();
-        Factory.Cosmos.Reset();
+        Factory.Transcripts.Reset();
         ClearPermissionCache();
 
     }

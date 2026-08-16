@@ -30,6 +30,9 @@ namespace Enterprise.Gpt.Repository.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasJsonPropertyName("id");
 
+                    b.Property<long>("ContextTokens")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset>("DateCreated")
                         .HasColumnType("datetimeoffset")
                         .HasJsonPropertyName("dateCreated");
@@ -214,6 +217,9 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.Property<Guid?>("AssistantMessageId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<long?>("ContextTokens")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("ConversationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -230,6 +236,9 @@ namespace Enterprise.Gpt.Repository.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
 
+                    b.Property<decimal?>("InputPricePerMillionTokens")
+                        .HasColumnType("decimal(18, 6)");
+
                     b.Property<long>("InputTokens")
                         .HasColumnType("bigint");
 
@@ -238,6 +247,9 @@ namespace Enterprise.Gpt.Repository.Migrations
 
                     b.Property<Guid>("ModelId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("OutputPricePerMillionTokens")
+                        .HasColumnType("decimal(18, 6)");
 
                     b.Property<long>("OutputTokens")
                         .HasColumnType("bigint");
@@ -518,6 +530,9 @@ namespace Enterprise.Gpt.Repository.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
 
+                    b.Property<decimal?>("InputPricePerMillionTokens")
+                        .HasColumnType("decimal(18, 6)");
+
                     b.Property<bool>("IsDefault")
                         .HasColumnType("bit");
 
@@ -538,6 +553,9 @@ namespace Enterprise.Gpt.Repository.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<decimal?>("OutputPricePerMillionTokens")
+                        .HasColumnType("decimal(18, 6)");
 
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("uniqueidentifier");

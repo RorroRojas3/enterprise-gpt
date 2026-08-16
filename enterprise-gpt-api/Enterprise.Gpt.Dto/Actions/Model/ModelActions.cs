@@ -21,6 +21,18 @@ namespace Enterprise.Gpt.Dto.Actions.Model
         public bool IsReasoningEnabled { get; init; }
 
         public bool IsDefault { get; init; }
+
+        /// <summary>
+        /// What the deployment charges per 1,000,000 input tokens in USD. Omit it to leave the
+        /// model unpriced, which is not the same as free.
+        /// </summary>
+        public decimal? InputPricePerMillionTokens { get; init; }
+
+        /// <summary>
+        /// What the deployment charges per 1,000,000 output tokens in USD, on the same terms as
+        /// <see cref="InputPricePerMillionTokens"/>.
+        /// </summary>
+        public decimal? OutputPricePerMillionTokens { get; init; }
     }
 
     public class CreateModelActionDtoValidator : AbstractValidator<CreateModelActionDto>
@@ -42,6 +54,14 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            // Zero is accepted where the sibling rules demand a positive value: a genuinely free
+            // deployment exists, and omitting the price is how "unpriced" is expressed instead.
+            RuleFor(x => x.InputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.InputPricePerMillionTokens.HasValue);
+            RuleFor(x => x.OutputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.OutputPricePerMillionTokens.HasValue);
         }
     }
 
@@ -64,6 +84,18 @@ namespace Enterprise.Gpt.Dto.Actions.Model
         public bool IsReasoningEnabled { get; init; }
 
         public bool IsDefault { get; init; }
+
+        /// <summary>
+        /// What the deployment charges per 1,000,000 input tokens in USD. Omitting it clears the
+        /// stored price, matching the full-representation semantics of the rest of this request.
+        /// </summary>
+        public decimal? InputPricePerMillionTokens { get; init; }
+
+        /// <summary>
+        /// What the deployment charges per 1,000,000 output tokens in USD, on the same terms as
+        /// <see cref="InputPricePerMillionTokens"/>.
+        /// </summary>
+        public decimal? OutputPricePerMillionTokens { get; init; }
     }
 
     public class UpdateModelActionDtoValidator : AbstractValidator<UpdateModelActionDto>
@@ -85,6 +117,14 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            // Zero is accepted where the sibling rules demand a positive value: a genuinely free
+            // deployment exists, and omitting the price is how "unpriced" is expressed instead.
+            RuleFor(x => x.InputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.InputPricePerMillionTokens.HasValue);
+            RuleFor(x => x.OutputPricePerMillionTokens)
+                .GreaterThanOrEqualTo(0)
+                .When(x => x.OutputPricePerMillionTokens.HasValue);
         }
     }
 }

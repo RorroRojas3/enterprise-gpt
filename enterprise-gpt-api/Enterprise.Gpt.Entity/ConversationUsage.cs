@@ -108,6 +108,82 @@ public class ConversationUsage : BaseEntity
     public long TotalTokens => AssistantTokens + ToolInputTokens + ToolOutputTokens;
 
     /// <summary>
+    /// What the two messages this turn transcribed weigh, estimated locally, or
+    /// <see langword="null"/> when the turn was not transcribed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nullable on purpose, and the distinction matters: a cancelled or failed turn is billed in
+    /// SQL and deliberately never transcribed, so it has no context cost at all. Null says "not
+    /// transcribed" where zero would say "transcribed nothing" — the same reason the price columns
+    /// below are nullable.
+    /// </para>
+    /// <para>
+    /// The only estimated figure on this row. Every other token column is what the provider
+    /// reported it billed, and the two are not a reconciliation pair: tool calls, tool results and
+    /// reasoning are billed and never transcribed, so the billed columns exceed this one by more
+    /// the more tools a turn ran. They agree only on a turn with no tool calls, which is exactly
+    /// the condition the estimator's accuracy is measured under.
+    /// </para>
+    /// </remarks>
+    public long? ContextTokens { get; set; }
+
+    /// <summary>
+    /// What the serving deployment charged per 1,000,000 input tokens when this call ran, or
+    /// <see langword="null"/> when the model carried no price.
+    /// </summary>
+    /// <remarks>
+    /// Snapshotted for the same reason <see cref="DeploymentName"/> is: the catalog is editable, so
+    /// joining <c>[Core.Ref].[Model]</c> at report time would price a call at today's rate and
+    /// silently rewrite the history of every call the model ever served.
+    /// </remarks>
+    [Column(TypeName = "decimal(18, 6)")]
+    public decimal? InputPricePerMillionTokens { get; set; }
+
+    /// <summary>
+    /// What the serving deployment charged per 1,000,000 output tokens when this call ran, on the
+    /// same terms as <see cref="InputPricePerMillionTokens"/>.
+    /// </summary>
+    [Column(TypeName = "decimal(18, 6)")]
+    public decimal? OutputPricePerMillionTokens { get; set; }
+
+    /// <summary>
+    /// What this call cost at the prices captured on it, or <see langword="null"/> when either
+    /// price is absent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unmapped, on the same terms as <see cref="TotalTokens"/>: an expression-bodied getter with
+    /// no backing field, so no column can drift from its own operands.
+    /// </para>
+    /// <para>
+    /// Null rather than a partial figure when a price is missing. Adding the priced half would
+    /// produce a number that looks like a cost and understates it, and there is no way for a reader
+    /// to tell the two apart afterwards.
+    /// </para>
+    /// <para>
+    /// Tool tokens are priced at the driving model's rate because nothing in a tool call names the
+    /// model behind it — <see cref="ConversationUsageToolCall.ModelId"/> is null on every row this
+    /// application can write. Cost is therefore an approximation by construction.
+    /// </para>
+    /// <para>
+    /// <see cref="ContextTokens"/> is deliberately absent from this arithmetic and must stay
+    /// absent. Cost is what the provider reported it billed, never what the transcript weighs; the
+    /// two are reportable side by side and are not addable.
+    /// </para>
+    /// <para>
+    /// Being unmapped, this cannot appear in a server-side projection: a
+    /// <c>Select(x =&gt; x.EstimatedCost)</c> over an <see cref="IQueryable{T}"/> throws, because
+    /// there is no column to translate it to. Materialize the row first, or repeat the arithmetic
+    /// in the query — the same constraint <see cref="TotalTokens"/> carries.
+    /// </para>
+    /// </remarks>
+    public decimal? EstimatedCost =>
+        InputPricePerMillionTokens is { } inputPrice && OutputPricePerMillionTokens is { } outputPrice
+            ? (((InputTokens + ToolInputTokens) * inputPrice) + ((OutputTokens + ToolOutputTokens) * outputPrice)) / 1_000_000m
+            : null;
+
+    /// <summary>
     /// The identifier of the assistant message this call appended to the Cosmos transcript, or
     /// <see langword="null"/> for a naming call and for a turn that did not complete.
     /// </summary>

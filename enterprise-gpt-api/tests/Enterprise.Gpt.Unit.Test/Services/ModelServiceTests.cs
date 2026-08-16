@@ -119,6 +119,59 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateModelAsync_WithPrices_PersistsThem()
+    {
+        var request = CreateRequest() with
+        {
+            InputPricePerMillionTokens = 2.500000m,
+            OutputPricePerMillionTokens = 10.000000m
+        };
+
+        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2.500000m, result.InputPricePerMillionTokens);
+        var persisted = await FindModelAsync(result.Id);
+        Assert.NotNull(persisted);
+        Assert.Equal(2.500000m, persisted.InputPricePerMillionTokens);
+        Assert.Equal(10.000000m, persisted.OutputPricePerMillionTokens);
+    }
+
+    [Fact]
+    public async Task CreateModelAsync_WithoutPrices_LeavesThemNullRatherThanZero()
+    {
+        // Unpriced and free are different states, and a report has to be able to tell them apart.
+        var result = await _service.CreateModelAsync(CreateRequest(), TestContext.Current.CancellationToken);
+
+        var persisted = await FindModelAsync(result.Id);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted.InputPricePerMillionTokens);
+        Assert.Null(persisted.OutputPricePerMillionTokens);
+    }
+
+    [Fact]
+    public async Task CreateModelAsync_NegativePrice_Throws()
+    {
+        var request = CreateRequest() with { InputPricePerMillionTokens = -0.01m };
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.CreateModelAsync(request, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateModelAsync_ZeroPrice_IsAccepted()
+    {
+        var request = CreateRequest() with
+        {
+            InputPricePerMillionTokens = 0m,
+            OutputPricePerMillionTokens = 0m
+        };
+
+        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0m, result.InputPricePerMillionTokens);
+    }
+
+    [Fact]
     public async Task GetModelsAsync_ActiveAndDeactivatedModelsExist_ReturnsOnlyActiveOrderedByName()
     {
         var active = await AddModelAsync("aaa-active");

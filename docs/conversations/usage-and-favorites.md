@@ -1,6 +1,6 @@
 # Conversation Usage and Favourites
 
-End-to-end reference for the conversation usage audit trail: the append-only record of every model call charged to a conversation, of every tool that call invoked, the model and MCP selection a conversation is resumed with, and the favourite flag. Covers the data model, what is recorded when, how cancelled and naming calls are accounted for, the resume shape returned by `GET api/conversations/{id}`, the favourite routes, how the schema reaches a real database, and the reports the trail makes possible. Audience: engineers maintaining conversations, and whoever has to answer "what did we spend, and on what?".
+End-to-end reference for the conversation usage audit trail: the append-only record of every model call charged to a conversation, of every tool that call invoked, the model and MCP selection a conversation is resumed with, and the favourite flag. Covers the data model, what is recorded when, how cancelled and naming calls are accounted for, the two kinds of token count a row now carries, the price snapshot that turns tokens into money, the resume shape returned by `GET api/conversations/{id}`, the favourite routes, how the schema reaches a real database, and the reports the trail makes possible. Audience: engineers maintaining conversations, and whoever has to answer "what did we spend, and on what?".
 
 Companion to [Conversation Streaming Contract](streaming-contract.md), which covers the events the same turn writes to the client while it runs.
 
@@ -15,9 +15,11 @@ Four things close that gap:
 3. **Model tracking.** `Core.Conversation` gains a nullable `ModelId` — the model its most recent turn ran with — so a client can reopen a conversation on the model it was last used with, and so that lookup does not have to read the audit trail (§5.1).
 4. **A favourite flag.** `Core.Conversation.IsFavorite`, set through a dedicated route and filterable from the search endpoint (§5.2, §5.3).
 
-Per-tool attribution arrived after the rest, and it moved two things the first release had promised not to touch. **A turn's token counters now include what its tools spent** (§4), and **the streaming endpoint now writes structured events instead of raw answer text** — a breaking change for API clients, documented in [Conversation Streaming Contract](streaming-contract.md). What is still unchanged: the Cosmos DB transcript format and the permission model.
+Per-tool attribution arrived after the rest, and it moved two things the first release had promised not to touch. **A turn's token counters now include what its tools spent** (§4), and **the streaming endpoint now writes structured events instead of raw answer text** — a breaking change for API clients, documented in [Conversation Streaming Contract](streaming-contract.md). What it left unchanged: the Cosmos DB transcript format and the permission model — the permission model still is, and the transcript format has since changed completely (next paragraph).
 
-> **Before deploying this:** `Core.ConversationUsageToolCall` and the two new `Core.ConversationUsage` columns do not exist in any database yet, and nothing in this repository creates them. Read §6.5 first — until they are applied, **every completed chat turn fails after its answer has already been streamed**.
+A later release added the two quantities this document's first version could not answer: **what a turn's transcript weighs** (`ContextTokens`, estimated and recomputable) and **what a call cost in money** (a price snapshot per usage row, and an unmapped `EstimatedCost` derived from it). Both are described in §6.1, §6.4 and §7, and the naming rule that keeps them apart from the billed columns is in §3.8. That release also moved the transcript itself to one Cosmos document per message — see [Transcript Storage and Tokenization](transcript-storage.md) — and **destroys every existing transcript at cutover**; the SQL side of this document is untouched by that, but read [Transcript Cutover](transcript-cutover.md) before deploying it.
+
+> **Before deploying:** the schema now reaches a database through EF migrations applied at startup, which is a change from how this document originally described it. Read §6.5 — it is short, and a database that predates the migration history needs one manual step before `Database.Migrate()` can run against it.
 
 ### 1.1 Data model at a glance
 
@@ -52,7 +54,8 @@ The edges from `ConversationUsage` to `Model`, `Provider` and `McpServer` are fo
 | Favourites | `ConversationService.SetConversationFavoriteAsync`, `SearchConversationsAsync` (§5.2, §5.3) |
 | Filtering the listing by project | `ConversationService.SearchConversationsAsync` + the private `EnsureProjectExistsAsync` (§5.4) |
 | Entities and mapping | [`ConversationUsage.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsage.cs), [`ConversationUsageMcpServer.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageMcpServer.cs), [`ConversationUsageToolCall.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageToolCall.cs), [`Conversation.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Conversation.cs) |
-| Schema | The EF model only — no migration, no DDL script (§6.5) |
+| Schema | EF migrations in [`Repository/Migrations/`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/), applied by `Database.Migrate()` at startup (§6.5) |
+| Prices, cost and context tokens | [`ConversationUsage.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsage.cs) (`ContextTokens`, the two price columns, `EstimatedCost`), [`Model.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs) (§6.1, §7) |
 
 ## 2. Quick start
 
@@ -214,6 +217,25 @@ Three smaller properties of the columns:
 
 When no prefix matches, the reported `Source` name is compared against the leased servers' catalog names. When that misses too, `McpServerId` stays **null rather than guessed**, so a report can tell "not an MCP tool" from "an MCP tool we could not place". `Source` is written either way, snapshotted as it stood at the time, for the same reason `DeploymentName` is (§3.2).
 
+### 3.8 `Context*` is estimated; every other token column is billed
+
+Since the transcript moved to one document per message, a usage row carries **two kinds of token count**, and they are not addable. One rule governs every token field in this schema:
+
+> **`Context*` means estimated, recomputable and replayed. Every other token field is provider-billed.**
+
+| | `ContextTokens` | `InputTokens`, `OutputTokens`, `ToolInputTokens`, `ToolOutputTokens` |
+|---|---|---|
+| Source | This application's local tokenizer, run over the message text it stored | The provider, via the tracking middleware |
+| Measures | What the turn's two transcribed messages will contribute to *future* prompts | What the provider charged for *this* turn |
+| Includes tool calls, tool results, reasoning | **No** — none of it is transcribed, so none of it is replayed | **Yes** |
+| Nullable | Yes — null means "not transcribed" | No |
+
+**The two are supposed to disagree, and by more the more tools a turn runs.** Every tool round trip re-sends the conversation plus the tool's result and none of it is written to the transcript, so the billed columns climb above `ContextTokens` with each one. They measure the same thing only on a turn with zero tool calls, which is exactly the condition the estimator's accuracy telemetry isolates ([storage §10](transcript-storage.md#10-estimator-accuracy-telemetry)). A report that treats a divergence as a defect is reading the wrong invariant; a report that sums across the two is simply wrong.
+
+`ContextTokens` is nullable on `Core.ConversationUsage` and not nullable on `Core.Conversation`, for the reason §3.6 already gives for the tool columns: a cancelled or failed turn is billed and never transcribed, so null says "not transcribed" where `0` would claim it was transcribed and weighed nothing. A conversation that has never completed a turn genuinely weighs nothing, so `0` is honest there. The same rule makes the price columns nullable — unpriced is not free.
+
+`ContextTokens` is an estimate on both tables and inherits every limitation of the tokenizer behind it. It is comparable across conversations because it is computed the same way for all of them; it is **not** a figure to bill against, which is why `EstimatedCost` (§6.1) deliberately does not use it.
+
 ## 4. What happens on a chat turn
 
 Finalization runs in a `finally` inside the streaming iterator, so it runs on **every** exit path — the loop completing, the request being cancelled, or the model call faulting:
@@ -225,24 +247,29 @@ acquire conversation lock
   └─ finally
         ├─ dispose the response stream         → the middleware finalizes and reports (§4.4)
         └─ PersistTurnAsync
-              ├─ transaction ┐ conversation counters += tokens, ModelId = model, DateModified = now
+              ├─ transaction ┐ conversation counters += tokens, ContextTokens += estimate,
+              │              │ ModelId = model, DateModified = now
               │              ├ insert ConversationUsage (+ one child row per attached MCP server)
               │              └ insert the ConversationUsageToolCall tree, as one graph
-              └─ completed only → append user + assistant messages to the Cosmos transcript
+              └─ completed only → one transactional batch on the conversation's Cosmos partition:
+                                  create the user message, create the assistant message,
+                                  patch the header's messageCount / contextTokens / dateModified
 ```
 
 The counter update and both audit inserts share one transaction, so a conversation whose totals moved always carries the rows that account for the movement. Finalization runs with `CancellationToken.None` — the token that ended the stream is exactly the one that would abort the write recording it.
 
-**The counters now move by everything the turn consumed**, tools included: `Core.Conversation.InputTokens` gains `InputTokens + ToolInputTokens` and `OutputTokens` gains `OutputTokens + ToolOutputTokens`. So does the Cosmos transcript's `/totalTokens` increment and the `usage` block on the assistant message, which is why `CosmosConversationUsage` is deliberately *not* the same split as the identically named SQL columns: what belongs beside a message in a transcript is what the turn cost, and the breakdown belongs in the relational trail. Both figures are derived from the same numbers written to the audit row rather than read separately off the report, so a conversation's counters cannot disagree with the sum of its rows.
+**The billed counters move by everything the turn consumed**, tools included: `Core.Conversation.InputTokens` gains `InputTokens + ToolInputTokens` and `OutputTokens` gains `OutputTokens + ToolOutputTokens`. So does the `usage` block on the assistant message document, which is deliberately *not* the same split as the identically named SQL columns: what belongs beside a message in a transcript is what the turn cost, and the breakdown belongs in the relational trail. Both figures are derived from the same numbers written to the audit row rather than read separately off the report, so a conversation's counters cannot disagree with the sum of its rows.
+
+**The context roll-ups move separately, and by a different number** (§3.8). `ConversationUsage.ContextTokens` gets the turn's own two messages; `Conversation.ContextTokens` gets those plus any message the write had to reseed, so it stays equal to the transcript header's `contextTokens`. Neither costs a round trip: the conversation figure is one more `.SetProperty` on the `ExecuteUpdateAsync` that was already running, and the turn figure is one more initializer on the entity that was already being built. Both are inside the transaction that was already open. Prices are snapshotted onto the same row from the catalog model at the same moment, for the same reason `DeploymentName` is (§3.2) — including on naming calls, which are real billed completions.
 
 The tool-call tree is saved as **one object graph**, not row by row: EF assigns the sequential keys and fixes each child's `ParentId` from the navigation, so nesting survives without generating random identifiers into the clustered key of the fastest-growing table in the schema (§6.1).
 
-| Outcome | Usage row | Tool-call rows | Counters | Transcript |
-|---|---|---|---|---|
-| Stream completes | `Chat` / `Completed`, `AssistantMessageId` set | whatever ran | moved | user + assistant messages appended |
-| Client disconnects, or stop pressed | `Chat` / `Cancelled` | whatever ran before the stop | moved | **not** appended |
-| Model call faults | `Chat` / `Failed` | whatever ran before the fault | moved | **not** appended |
-| First-turn naming call | `Naming` / `Completed` | none — naming attaches no tools | moved | name patched only |
+| Outcome | Usage row | Tool-call rows | Billed counters | `ContextTokens` | Transcript |
+|---|---|---|---|---|---|
+| Stream completes | `Chat` / `Completed`, `AssistantMessageId` set | whatever ran | moved | set | two message documents created, header counters patched |
+| Client disconnects, or stop pressed | `Chat` / `Cancelled` | whatever ran before the stop | moved | **null** | **not** written |
+| Model call faults | `Chat` / `Failed` | whatever ran before the fault | moved | **null** | **not** written |
+| First-turn naming call | `Naming` / `Completed` | none — naming attaches no tools | moved | null — it transcribes nothing | header `name` patched only |
 
 ### 4.1 Abandoned turns are billed and recorded, but never transcribed
 
@@ -362,9 +389,9 @@ No index was added for it, and that is deliberate. `(ProjectId, DateDeactivated)
 
 ## 6. Database schema
 
-Three tables and four columns, all in the `Core` schema, following the conventions the rest of the database already uses: every foreign key is `NoAction`, soft delete is a nullable `DateDeactivated` with no query filter, and `Version` is a `rowversion`. Note that `Core.Ref` is a single schema whose name contains a dot — SQL references need `[Core.Ref].[Model]`.
+Three tables and nine columns, in the `Core` and `Core.Ref` schemas, following the conventions the rest of the database already uses: every foreign key is `NoAction`, soft delete is a nullable `DateDeactivated` with no query filter, and `Version` is a `rowversion`. Note that `Core.Ref` is a single schema whose name contains a dot — SQL references need `[Core.Ref].[Model]`.
 
-They did not all land at once. **This release adds `Core.ConversationUsageToolCall` (§6.3) and the `ToolInputTokens`/`ToolOutputTokens` columns on `Core.ConversationUsage` (§6.1)**; everything else came with the first one. §6.5 is how any of it reaches a database, and is mandatory reading before a deployment.
+They did not all land at once, and the "new in this release" labels below refer to whichever release introduced each piece: `Core.ConversationUsage` and `Core.ConversationUsageMcpServer` came first, `Core.ConversationUsageToolCall` and the two tool-token columns came with per-tool attribution, and `ContextTokens` plus the four price columns came with the transcript and tokenization release. §6.5 is how any of it reaches a database.
 
 ### 6.1 `Core.ConversationUsage`
 
@@ -382,9 +409,12 @@ They did not all land at once. **This release adds `Core.ConversationUsageToolCa
 | `Status` | `int` | no | `ConversationUsageStatuses` |
 | `InputTokens` | `bigint` | no | the **assistant's own** model turns (§3.5) |
 | `OutputTokens` | `bigint` | no | the assistant's own model turns |
-| `ToolInputTokens` | `bigint` | no | **new in this release.** Everything the call's tools consumed, nested tools included; `DEFAULT 0` for existing rows |
-| `ToolOutputTokens` | `bigint` | no | **new in this release**, on the same terms; `DEFAULT 0` for existing rows |
-| `AssistantMessageId` | `uniqueidentifier` | yes | correlates to the Cosmos transcript message; no FK, Cosmos is a different store |
+| `ToolInputTokens` | `bigint` | no | Everything the call's tools consumed, nested tools included; `DEFAULT 0` for existing rows |
+| `ToolOutputTokens` | `bigint` | no | On the same terms; `DEFAULT 0` for existing rows |
+| `ContextTokens` | `bigint` | **yes** | **New.** What the turn's two transcribed messages weigh, **estimated** — the only estimated figure on the row (§3.8). Null on a turn that was billed and never transcribed, and on every row written before this release |
+| `InputPricePerMillionTokens` | `decimal(18, 6)` | **yes** | **New.** What the deployment charged per 1,000,000 input tokens when the call ran, snapshotted from the catalog. Null means unpriced, not free |
+| `OutputPricePerMillionTokens` | `decimal(18, 6)` | **yes** | **New**, on the same terms |
+| `AssistantMessageId` | `uniqueidentifier` | yes | correlates to the transcript's assistant message document; no FK, Cosmos is a different store |
 | `DateCreated` | `datetimeoffset` | no | when the call finished |
 | `DateDeactivated` | `datetimeoffset` | yes | inherited from `BaseEntity`; always `null` here (§3.3) |
 | `Version` | `rowversion` | no | inherited; nothing updates these rows, so it never changes |
@@ -397,7 +427,17 @@ Indexes:
 | `(UserId, DateCreated)` | usage for one user over a period |
 | `(ModelId, DateCreated)` | usage for one model over a period |
 
-EF also adds a foreign-key index for `ProviderId` by convention; the other three foreign keys already lead an index above.
+EF also adds a foreign-key index for `ProviderId` by convention; the other three foreign keys already lead an index above. No index was added for the new columns: nothing filters on a price or on `ContextTokens`, and the date-leading indexes above already serve the windowed reports in §7.
+
+**`EstimatedCost` is a member, not a column.** Like `AssistantTokens` and `TotalTokens` (§3.5), it is an unmapped expression-bodied getter, so no column can drift from its own operands:
+
+```csharp
+((InputTokens + ToolInputTokens) * inputPrice + (OutputTokens + ToolOutputTokens) * outputPrice) / 1_000_000m
+```
+
+Three properties of it are deliberate. It returns **null when either price is missing**, rather than a partial figure — adding only the priced half produces a number that looks like a cost, understates it, and cannot be told apart afterwards. **Tool tokens are priced at the driving model's rate**, because nothing in a tool call names the model behind it (§9), so cost is an approximation by construction. And **`ContextTokens` is absent from the arithmetic and must stay absent**: cost is what the provider reported it billed, never what the transcript weighs.
+
+Being unmapped, it cannot appear in a server-side projection — `Select(x => x.EstimatedCost)` over an `IQueryable<T>` throws, because there is no column to translate. Materialize first, or repeat the arithmetic in SQL as §7 does.
 
 ### 6.2 `Core.ConversationUsageMcpServer`
 
@@ -457,12 +497,15 @@ UPDATE [Core].[ConversationUsageToolCall] SET ParentId = NULL WHERE ParentId IS 
 DELETE  FROM [Core].[ConversationUsageToolCall];
 ```
 
-### 6.4 `Core.Conversation` gains two columns
+### 6.4 `Core.Conversation` gains three columns, and `[Core.Ref].[Model]` two
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `ModelId` | `uniqueidentifier` | yes | FK → `[Core.Ref].Model(Id)`; `null` until the first turn runs |
 | `IsFavorite` | `bit` | no | defaults to `0` for existing rows |
+| `ContextTokens` | `bigint` | no | **New.** What the conversation's stored transcript weighs, estimated (§3.8). `DEFAULT 0`, and `0` is the truthful value for every pre-cutover row, since the cutover destroyed its transcript. Mirrors the transcript header's `contextTokens` |
+
+`TotalTokens` on the entity is unchanged and still computes the **billed** figure only. The two quantities never merge into one member.
 
 The relationship is configured in [`ConversationConfiguration`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationConfiguration.cs) rather than by annotation, for the same reason `ProjectId` is: an annotation-only mapping would make the navigation required. Two listing indexes come with it:
 
@@ -471,43 +514,36 @@ The relationship is configured in [`ConversationConfiguration`](../../enterprise
 
 EF adds a foreign-key index for `Core.Conversation.ModelId` by convention.
 
+The catalog gains the prices the snapshots are copied from, editable by an administrator through `POST api/models` and `PUT api/models/{id}` and returned on `ModelDto`:
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `InputPricePerMillionTokens` | `decimal(18, 6)` | yes | **New.** USD per 1,000,000 input tokens. Six decimal places rather than the two the sibling columns use, because a per-token rate rounded to cents is entirely rounding error |
+| `OutputPricePerMillionTokens` | `decimal(18, 6)` | yes | **New**, on the same terms |
+
+Per **million** rather than per thousand, because provider price sheets are quoted that way. A single currency is assumed and it is USD; a multi-currency deployment would need a currency column beside these. The validator accepts zero — a genuinely free deployment exists — and omitting the value is how "unpriced" is expressed. This is the *current* price and not what any past call was charged, which is what the per-row snapshot in §6.1 is for.
+
 ### 6.5 Applying the schema — read this before deploying
 
-> **The application does not create any of this, and nothing in this repository does either.** `Enterprise.Gpt.Repository/Migrations/` is empty, so `Database.Migrate()` at startup **applies nothing**. There is no migration and no checked-in DDL script for this feature — the schema has always been managed outside the repository, and this feature follows that practice. **This release adds schema too** (§6.1, §6.3), so the generated script must be applied again before deploying it.
+> **This section previously said `Enterprise.Gpt.Repository/Migrations/` was empty and the schema had to be applied by hand. That is no longer true.** The folder now holds **four** migrations, and `Database.Migrate()` runs at startup, so a database with an initialized migration history takes the schema on deployment with no manual step.
 
-**Until the objects in §6.1–§6.4 exist in a deployed database, chatting is broken.** How it breaks depends on which release is missing.
+| Migration | Carries |
+|---|---|
+| `20260811024339_InitialCreate` | The whole schema — including everything in §6.1 to §6.4 that predates the two below — plus the `HasData` seeds |
+| `20260813233326_AddModelIsReasoningEnabled` | `[Core.Ref].[Model].IsReasoningEnabled` |
+| `20260814031023_AddAzureAIFoundryProvider` | The Azure AI Foundry provider row |
+| `20260815202757_AddContextTokensAndModelPricing` | `ContextTokens` on `Core.Conversation` and `Core.ConversationUsage`, and the price columns on `Core.ConversationUsage` and `[Core.Ref].[Model]` (§6.1, §6.4) |
 
-Missing the **first** release's objects, chatting fails in two places:
+`Migrate()` is skipped in the `Testing` environment only. **Both test harnesses build the schema from the EF model** — `SqliteDbContextFixture` for unit tests, Testcontainers plus `EnsureCreatedAsync` for integration tests — so `dotnet test` passes regardless of what any real database looks like, and schema drift still cannot fail the build.
 
-- A conversation's **first** turn fails before producing any text: the naming call writes its usage row inside a transaction (§4.2), which throws on the missing table.
-- Every **later** turn streams its answer and then throws at finalization. Because the answer has already been sent, the client sees text — but the counters do not move, no usage row is written, and the transcript is never appended, so the turn disappears when the conversation is reopened.
+Two things can still go wrong on a real database, and both fail at startup rather than at the first request:
 
-Missing **this** release's objects — `Core.ConversationUsageToolCall`, or either new column — **every completed turn fails, after its answer has already streamed.** The failure is worth understanding, because it is louder than the one above and lands in a place that looks like a bug elsewhere. `PersistTurnAsync` runs in a `finally`, and the `catch` around it is filtered `when (!completed)` so that a cancelled turn's recording failure cannot replace the exception already in flight (§4.1). A turn that *completed* has no exception to mask, so its `Invalid object name 'Core.ConversationUsageToolCall'` propagates — out of a response that has already begun, past exception handlers that short-circuit on `Response.HasStarted`. The client sees a full answer and then a stream that dies with no error, the conversation's counters never move, and nothing is transcribed.
+- **A database that predates the migration history has no `__EFMigrationsHistory`**, so `Migrate()` will try to run `InitialCreate` against objects that already exist and fail with "There is already an object named …". Baseline it first: generate a script for the migrations it is actually missing, apply that, then record every earlier migration as applied. The steps are in [Transcript Cutover §3](transcript-cutover.md#3-step-1--the-sql-migration).
+- **The engine must be SQL Server 2025 or later.** The context pins `UseCompatibilityLevel(170)`; pre-2025 engines and LocalDB reject it outright, and the failure happens on the first connection, before any migration runs.
 
-The EF model is the source of truth for what to apply. The fastest way to read it out:
+If you are applying DDL by hand anyway — an environment where the application does not own its schema — the EF model remains the source of truth, and `context.Database.GenerateCreateScript()` against a SQL Server-provider context emits it. Run it with `SET QUOTED_IDENTIFIER ON` and `SET ANSI_NULLS ON`: the surrounding schema has filtered indexes and `sqlcmd` connects with `QUOTED_IDENTIFIER OFF`. Order matters in one place only — `Core.ConversationUsageToolCall` references `Core.ConversationUsage`, so the parent goes first.
 
-```csharp
-// against a SqlServer-provider DbContext, with UseCompatibilityLevel(170)
-var ddl = context.Database.GenerateCreateScript();
-```
-
-That emits the whole schema, so lift out exactly the pieces below. Skip the group a given database already has.
-
-**This release:**
-
-- `Core.ConversationUsageToolCall` (§6.3): the table, its four foreign keys — including the self-referencing `ParentId` — and its five indexes, the four declared ones plus the convention index on `ModelId`.
-- On the existing `Core.ConversationUsage` table: `ToolInputTokens` and `ToolOutputTokens`, both `bigint NOT NULL` with a `DEFAULT 0` for existing rows (drop the constraints afterwards if you prefer to match the generated script exactly).
-
-**The first release, for a database that never got it:**
-
-- `Core.ConversationUsage` and its four indexes, `Core.ConversationUsageMcpServer` and its two indexes, and all six of their foreign keys.
-- On the existing `Core.Conversation` table: the `ModelId` and `IsFavorite` columns, the `ModelId` foreign key, and the three indexes from §6.4. `IsFavorite` must be added as `bit NOT NULL` with a `DEFAULT 0`.
-
-Order matters in one place only: `Core.ConversationUsageToolCall` references `Core.ConversationUsage`, so a database taking both releases at once must create the parent first.
-
-Two carry-overs from the existing schema notes still apply: run with `SET QUOTED_IDENTIFIER ON` and `SET ANSI_NULLS ON` (the surrounding schema has filtered indexes, and `sqlcmd` connects with `QUOTED_IDENTIFIER OFF`), and target **SQL Server 2025 or later**, which the application pins through `UseCompatibilityLevel(170)`.
-
-**Neither test harness needs any of this.** Both build the schema from the EF model — `SqliteDbContextFixture` for unit tests, Testcontainers plus `EnsureCreatedAsync` for integration tests — so `dotnet test` passes regardless of what any real database looks like. That is also why schema drift cannot fail the build.
+**What a missing object still looks like**, because it lands somewhere that looks like a bug elsewhere: `PersistTurnAsync` runs in a `finally`, and the `catch` around it is filtered `when (!completed)` so a cancelled turn's recording failure cannot replace the exception already in flight (§4.1). A turn that *completed* has no exception to mask, so an `Invalid object name` propagates out of a response that has already begun, past exception handlers that short-circuit on `Response.HasStarted`. The client sees a full answer and then a stream that dies with no error, the conversation's counters never move, and nothing is transcribed.
 
 ## 7. Reporting
 
@@ -517,6 +553,63 @@ Everything below reads the audit tables directly; there is no reporting API (§9
 
 1. On `Core.ConversationUsage`, `InputTokens + OutputTokens` is now the **assistant-only** figure (§3.5). The whole call is `InputTokens + OutputTokens + ToolInputTokens + ToolOutputTokens`. The queries below name both, so the choice is explicit rather than accidental.
 2. On `Core.ConversationUsageToolCall`, sum the **own-token** columns (`InputTokens`, `OutputTokens`, `TotalTokens`) over *all* rows, or `SubtreeTotalTokens` over *top-level* rows only (`ParentId IS NULL`). Either counts each token exactly once. Summing `SubtreeTotalTokens` across all rows double-counts every nested call (§3.6).
+3. **Never add `ContextTokens` to a billed column.** It is an estimate of what the transcript weighs, not a charge, and the two are supposed to disagree (§3.8). Report it beside them, never inside them.
+
+**Cost, per conversation and per model — from one table, with no join.** This is the query the price snapshot exists for. It reads `Core.ConversationUsage` alone: the prices, the deployment name and the token counts are all on the row, so it reports what each call *was* charged rather than what it would cost at today's catalog prices. Three token columns are reported separately and never summed — billed model tokens, billed tool tokens, and the estimated `ContextTokens` beside them (§3.8).
+
+```sql
+-- Per conversation
+SELECT   u.ConversationId,
+         COUNT(*)                                              AS Calls,
+         SUM(u.InputTokens + u.OutputTokens)                    AS BilledModelTokens,
+         SUM(u.ToolInputTokens + u.ToolOutputTokens)            AS BilledToolTokens,
+         SUM(ISNULL(u.ContextTokens, 0))                        AS ContextTokens,
+         SUM(CASE WHEN u.InputPricePerMillionTokens IS NOT NULL
+                   AND u.OutputPricePerMillionTokens IS NOT NULL
+                  THEN ((u.InputTokens  + u.ToolInputTokens)  * u.InputPricePerMillionTokens
+                      + (u.OutputTokens + u.ToolOutputTokens) * u.OutputPricePerMillionTokens)
+                       / 1000000.0
+             END)                                              AS CostUsd,
+         SUM(CASE WHEN u.InputPricePerMillionTokens IS NULL
+                    OR u.OutputPricePerMillionTokens IS NULL
+                  THEN 1 ELSE 0 END)                           AS UnpricedCalls
+FROM     [Core].[ConversationUsage] u
+WHERE    u.DateCreated >= @from AND u.DateCreated < @to
+GROUP BY u.ConversationId
+ORDER BY CostUsd DESC;
+```
+
+Swap the grouping for the same figures per model. `DeploymentName` is the snapshot, so a model renamed or repointed in the catalog does not move historical calls:
+
+```sql
+-- Per model
+SELECT   u.DeploymentName,
+         COUNT(*)                                              AS Calls,
+         SUM(u.InputTokens + u.OutputTokens)                    AS BilledModelTokens,
+         SUM(u.ToolInputTokens + u.ToolOutputTokens)            AS BilledToolTokens,
+         SUM(ISNULL(u.ContextTokens, 0))                        AS ContextTokens,
+         SUM(CASE WHEN u.InputPricePerMillionTokens IS NOT NULL
+                   AND u.OutputPricePerMillionTokens IS NOT NULL
+                  THEN ((u.InputTokens  + u.ToolInputTokens)  * u.InputPricePerMillionTokens
+                      + (u.OutputTokens + u.ToolOutputTokens) * u.OutputPricePerMillionTokens)
+                       / 1000000.0
+             END)                                              AS CostUsd,
+         SUM(CASE WHEN u.InputPricePerMillionTokens IS NULL
+                    OR u.OutputPricePerMillionTokens IS NULL
+                  THEN 1 ELSE 0 END)                           AS UnpricedCalls
+FROM     [Core].[ConversationUsage] u
+WHERE    u.DateCreated >= @from AND u.DateCreated < @to
+GROUP BY u.DeploymentName
+ORDER BY CostUsd DESC;
+```
+
+Five things to read correctly:
+
+- **`UnpricedCalls` is part of the answer, not diagnostics.** A row with either price null contributes no cost, so `CostUsd` covers only the priced calls. A non-zero `UnpricedCalls` means the figure is a floor, and the fix is a price on the catalog row (§6.4), which applies from then on and never retroactively.
+- **`CostUsd` is null, not zero, when nothing in the group was priced.** `SUM` over an all-null `CASE` returns null, which is the honest answer.
+- **Tool tokens are priced at the driving model's rate.** Nothing in a tool call names the model behind it (§9), so this is an approximation by construction.
+- **`ContextTokens` is here to be looked at beside the billed columns, not added to them.** Expect it to be lower, and much lower on tool-heavy traffic. `ISNULL(…, 0)` folds in cancelled and failed turns, which are billed and never transcribed; drop the `ISNULL` if you would rather the sum go null when any turn in the group was not transcribed.
+- **This query is also the estimator's durable accuracy signal.** Filter to rows whose `ConversationUsageId` has no `Core.ConversationUsageToolCall` children and compare `ContextTokens` against `InputTokens` — on a zero-tool turn the two measure the same thing, and the metric in [storage §10](transcript-storage.md#10-estimator-accuracy-telemetry) only covers a rolling window, where these rows cover history.
 
 **Tokens by model, over a period.** Grouping on the catalog `Name` reports under the label the model has *now*; group on `u.DeploymentName` instead to report under what actually billed the call. Note that the tool columns are attributed to the model that *drove* the turn, not to whatever ran inside a tool — nothing knows that (§9).
 
@@ -696,7 +789,7 @@ HAVING   u.ToolInputTokens  <> SUM(ISNULL(t.InputTokens, 0))
 
 This should return nothing. Do **not** extend it to compare against `SubtreeTotalTokens`: the tool columns are summed from the providers' input and output counts while the total columns store the providers' reported *total*, and a provider that bills cached or reasoning tokens outside both operands makes the two legitimately disagree (§3.6).
 
-**Reconciling a conversation's counters.** `Core.Conversation.InputTokens`/`OutputTokens` should equal the sum of that conversation's usage rows — **assistant plus tool columns**, since that is what the counters now move by (§4). A discrepancy means a usage row was lost while recording an abandoned turn (§4.1) — or that the conversation predates this feature.
+**Reconciling a conversation's counters.** `Core.Conversation.InputTokens`/`OutputTokens` should equal the sum of that conversation's usage rows — **assistant plus tool columns**, since that is what the counters now move by (§4). A discrepancy means a usage row was lost while recording an abandoned turn (§4.1) — or that the conversation predates this feature. `Conversation.ContextTokens` is deliberately **not** reconcilable the same way: it also counts the seeded system message and any message the write had to reseed, neither of which belongs to a turn, so it is expected to exceed `SUM(ConversationUsage.ContextTokens)`. Its counterpart is the transcript header's `contextTokens`, and those two should agree exactly.
 
 ```sql
 SELECT   c.Id, c.InputTokens, c.OutputTokens,
@@ -737,14 +830,15 @@ Integration coverage runs against real SQL Server 2025 in Testcontainers, where 
 ## 9. Known limits and gaps
 
 - **No reporting API, and no UI.** The audit trail is queryable only in SQL (§7). There is no endpoint, no aggregate view, and no per-user quota or budget enforcement built on it — the point of these releases is that the data now exists to build those on. Per-tool attribution did not change this: the tool tree is reconstructible from SQL and exposed over HTTP nowhere.
-- **No cost, only tokens.** Nothing stores a price per 1K tokens, so money is a spreadsheet exercise. A `Price` column on the catalog model would have to be snapshotted onto the usage row like `DeploymentName` is, for the same reason.
+- ~~**No cost, only tokens.**~~ **Closed.** The catalog carries nullable input and output prices per **1,000,000** tokens (per million, not per thousand — provider price sheets are quoted that way), each usage row snapshots the pair at write time, and `EstimatedCost` derives a figure from the snapshot (§6.1, §6.4). The §7 query answers cost per conversation and per model from one table with no join. What remains open about it: **cost is an approximation by construction**, because tool tokens can only be priced at the driving model's rate; **a single currency is assumed** and it is USD, with no currency column; **prices are snapshotted rather than versioned**, so the trail answers "what did this call cost" and not "what would last quarter cost at today's rates"; and an unpriced call contributes nothing to a total, which is why the query reports `UnpricedCalls` beside it.
+- **Context tokens are an estimate, and are not money.** `ContextTokens` on both tables is computed by this application's own tokenizer, not reported by a provider, and it inherits that tokenizer's error — including a known undercount for providers whose tokenizer tiktoken is not. It is comparable across conversations and it is deliberately absent from every cost calculation (§3.8, §6.1). Nothing recomputes historical values when a calibration multiplier changes.
 - **A tool call never names its model.** `ConversationUsageToolCall.ModelId` and `DeploymentName` are `null` on every row this application can write, and honestly so: nothing in a tool call identifies the model behind it. An MCP server is opaque by construction, and a function that reports usage does not say what produced it. Only an agent whose catalog model this application configured could answer, so a report can attribute tool tokens to a *tool*, never to a *deployment*. That is also why there is no `(ModelId, DateCreated)` index yet (§6.3).
 - **Cached and reasoning tokens are not captured, on either table.** The middleware surfaces them in `UsageDetails.AdditionalCounts`, and neither `ConversationUsage` nor `ConversationUsageToolCall` has a column for them. They are billed. They also explain the one place the schema tolerates arithmetic that does not add up: a reported `TotalTokens` need not equal its own input plus output (§3.6).
 - **Agent rows are wired but unproven.** Agent-as-tool classification is installed in every pipeline, and `ConversationToolKinds.Agent` rows will be written correctly the day an `AIAgent` is registered. **No agent exists in this codebase yet**, so nothing has produced one outside tests.
 - **A turn cut off mid-model-turn loses tokens that were billed.** Providers report usage at the end of a model turn, so a stop that lands mid-generation records a lower bound (§4.4).
 - **A failed naming call is billed and unrecorded.** `UpdateConversationNameAsync` writes its row only after the completion succeeds, so a naming call that faults is charged by the provider and leaves no trace — the same hole this feature closed for chat turns.
 - **An abandoned turn's usage row can be dropped.** If the finalization write fails while the turn is already failing, the error is logged and swallowed (§4.1). The reconciliation query in §7 is how such a loss is found.
-- **`AssistantMessageId` is best-effort.** The audit row commits before the transcript append, so a Cosmos failure leaves the row pointing at a message that was never written. Both identifiers are logged when that happens.
+- **`AssistantMessageId` is best-effort.** The audit row commits before the transcript write, so a Cosmos failure leaves the row pointing at a message that was never written. Both identifiers are logged when that happens. Every pre-cutover row also points at a message that no longer exists, because the transcript cutover destroyed them ([cutover §1](transcript-cutover.md#1-what-is-destroyed-and-what-survives)); nothing joins the two stores, so no cleanup is needed.
 - **Attachment still is not invocation.** `ConversationUsageMcpServer` records what was leased, not what ran, and the two tables are not reconciled against each other (§3.4).
 - **Favourites are a flag, not a collection.** No ordering, no folders, no per-user cap, and no bulk favourite/unfavourite route.
 - **`mcpServerIds` cannot distinguish "none selected" from "no turn yet"** (§5.1). Clients that care must look at `modelId` being `null`.
@@ -756,7 +850,9 @@ Integration coverage runs against real SQL Server 2025 in Testcontainers, where 
 |---|---|
 | Usage entities | [`Enterprise.Gpt.Entity/ConversationUsage.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsage.cs), [`ConversationUsageMcpServer.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageMcpServer.cs), [`ConversationUsageToolCall.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageToolCall.cs) |
 | Conversation entity + mapping | [`Enterprise.Gpt.Entity/Conversation.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Conversation.cs) |
-| Transcript usage block | [`Enterprise.Gpt.Entity/CosmosConversation.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/CosmosConversation.cs) (`CosmosConversationUsage` — the turn total, not the SQL split) |
+| Transcript documents and their usage block | [`Enterprise.Gpt.Entity/Transcripts/TranscriptDocuments.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Transcripts/TranscriptDocuments.cs) (`TranscriptMessageUsage` — the turn total, not the SQL split) |
+| Model catalog and its prices | [`Enterprise.Gpt.Entity/Model.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs) |
+| Migrations | [`Enterprise.Gpt.Repository/Migrations/`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/) (§6.5) |
 | Enums | [`Enterprise.Gpt.Common/Enums/ConversationUsageKinds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/ConversationUsageKinds.cs), [`ConversationUsageStatuses.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/ConversationUsageStatuses.cs), [`ConversationToolKinds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/ConversationToolKinds.cs) |
 | EF configuration | [`ConversationUsageConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationUsageConfiguration.cs), [`ConversationUsageMcpServerConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationUsageMcpServerConfiguration.cs), [`ConversationUsageToolCallConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationUsageToolCallConfiguration.cs), [`ConversationConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationConfiguration.cs) |
 | `DbSet`s + configuration registration | [`Enterprise.Gpt.Repository/EnterpriseGptDbContext.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/EnterpriseGptDbContext.cs) |
@@ -767,4 +863,4 @@ Integration coverage runs against real SQL Server 2025 in Testcontainers, where 
 | MCP server references on a lease | [`Enterprise.Gpt.Service/McpToolProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/McpToolProvider.cs) (`McpServerReference`, `IMcpToolLeaseSet.Servers`, `SanitizeToolNamePrefix`, `WithTracking`) |
 | Response DTOs | [`Enterprise.Gpt.Dto/ConversationDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationDto.cs) |
 | Request DTO | [`Enterprise.Gpt.Dto/Actions/Chat/ConversationActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Chat/ConversationActions.cs) (`SetConversationFavoriteActionDto`) |
-| Related reference | [Streaming Contract](streaming-contract.md), [Model Management](../models/model-management.md), [Projects](../projects/project-management.md), [Permission Cache](../permissions/permission-cache.md) |
+| Related reference | [Streaming Contract](streaming-contract.md), [Transcript Storage and Tokenization](transcript-storage.md), [Transcript Cutover](transcript-cutover.md), [Model Management](../models/model-management.md), [Projects](../projects/project-management.md), [Permission Cache](../permissions/permission-cache.md) |

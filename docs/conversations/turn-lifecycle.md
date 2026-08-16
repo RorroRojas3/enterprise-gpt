@@ -216,13 +216,36 @@ The two callers disagree about one thing, `keepLive`:
 
 ```jsonc
 // GET api/conversations/{id}/messages
-{ "id": "…", "name": "…", "messages": [{ "text": "…", "role": 3 }] }
+{
+  "id": "…", "name": "…",
+  "totalCount": 27, "hasMore": false,
+  "messages": [
+    {
+      "id": "5b7e…",
+      "dateCreated": "2026-08-15T20:27:57.0000000+00:00",
+      "text": "…",
+      "role": 3,
+      "htmlContent": "<p>…</p>",
+      "tokens": 412,
+      "tokenAccuracy": "Estimated"
+    }
+  ]
+}
 ```
 
 - **`role` is a number, not a string.** The API registers no `JsonStringEnumConverter`, so `ChatRoles` serializes as its integer value: `1` System, `2` Assistant, `3` User, `4` Tool. [`domain/api/conversation.ts`](../../enterprise-gpt-ui/src/app/domain/api/conversation.ts) mirrors that as `CHAT_ROLE`. Only `user` and `assistant` are rendered — the server already filters `System` out of the response, `Tool` is a model-to-model artefact whose proper surface is the activity timeline this response cannot reconstruct anyway, and an unknown role from a future server is skipped rather than guessed at.
-- **Only `messages` may be read from the response.** It is `ConversationDto`-shaped on the wire but is rebuilt from the Cosmos transcript document, which reports `projectId`, `modelId` and `isFavorite` as `null` / `null` / `false` whatever the truth ([shell §3.2](../ui/shell-and-navigation.md#32-get-apiconversationsid-versus-idmessages)). The client types it as its own `ChatConversationDto` with three fields rather than extending `ConversationDetailDto`, so that trap is unreachable through the type.
+- **Only `messages` may be read from the response.** It is `ConversationDto`-shaped on the wire but is rebuilt from the transcript's header document, which reports `projectId`, `modelId` and `isFavorite` as `null` / `null` / `false` whatever the truth ([shell §3.2](../ui/shell-and-navigation.md#32-get-apiconversationsid-versus-idmessages)). The client types it as its own `ChatConversationDto` with three fields rather than extending `ConversationDetailDto`, so that trap is unreachable through the type.
 
-A message carries no id, no timestamp and no usage; US-1101 is the story that would add them.
+**A message is no longer bare.** Since the transcript moved to one Cosmos document per message ([transcript storage](transcript-storage.md)), each one carries `id`, `dateCreated`, `htmlContent`, `tokens` and `tokenAccuracy` beside `text` and `role`, and the envelope carries `totalCount` and `hasMore`. `text` and `role` are unchanged in name, type and meaning, so nothing here breaks a client that ignores the additions — but four of them are worth knowing before building on them:
+
+- **`htmlContent` may be null**, in which case the client must render `text` itself. It is server-rendered by Markdig at persist time as an **export-fidelity artefact**, not a mirror of what this client draws: the two render through different pipelines (`ngx-markdown` over marked and Prism here) and differ in whitespace, syntax-highlighting markup and extension support. Nothing in the client reads it today, and swapping the transcript over to it would change how answers look.
+- **`tokens` is the *context* cost, not what the turn was billed.** It is what the message will contribute to future prompts, estimated server-side from its own text, so an assistant message's `tokens` deliberately does not equal the turn's output tokens — tool-call arguments are generated, billed, and never transcribed. It is not the number the turn footer shows (§8.5), which is the provider's own report.
+- **`tokenAccuracy` is a *string*** (`"Estimated"` or `"Exact"`) while `role` beside it is a number. That is not an oversight: the enum carries a property-level converter precisely because a global string-enum converter would have flipped `role` and broken `CHAT_ROLE`. Everything the server writes today is `"Estimated"`.
+- **`dateCreated` is also the paging cursor.** `?take=` (clamped 1–100) and `?before={dateCreated}` return the newest page and walk backwards; `hasMore` says whether older messages remain. **Paging is opt-in — the no-parameter default still returns every message**, deliberately, so this client's replace-the-whole-history read (§7.3) keeps working unchanged.
+
+**Two contracts, two shapes, one enum.** The stored Cosmos document serializes `role` as a camel-cased *string* (`"assistant"`), because that keeps an exported document readable and matches the SSE contract. The HTTP DTO serializes it as an integer, because this client depends on that. Reading the storage shape — through the JSON export, say — and the HTTP shape as though they were the same thing is the mistake this note exists to prevent.
+
+A message still carries no per-turn `usage` over this route and no activity timeline; §7.5 explains why the latter is permanent.
 
 ### 7.5 Replayed history carries no activity timeline — permanently
 
