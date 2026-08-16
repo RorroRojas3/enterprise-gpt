@@ -187,12 +187,50 @@ public class ConversationEndpointsTests
     {
         var id = Guid.NewGuid();
         var expected = new ChatConversationDto { Id = id, Name = "Planning" };
-        _conversationService.GetConversationMessagesAsync(id, Arg.Any<CancellationToken>()).Returns(expected);
+        _conversationService
+            .GetConversationMessagesAsync(id, Arg.Any<int?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
+            .Returns(expected);
 
         var result = await ConversationEndpoints.GetConversationMessagesAsync(
-            id, _conversationService, TestContext.Current.CancellationToken);
+            id, _conversationService, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
+    }
+
+    /// <summary>
+    /// Paging is opt-in. A request with neither parameter must reach the service with both unset, so
+    /// the client that reads this endpoint today keeps receiving the whole transcript.
+    /// </summary>
+    [Fact]
+    public async Task GetConversationMessagesAsync_NoQueryParameters_AsksForTheWholeTranscript()
+    {
+        var id = Guid.NewGuid();
+        _conversationService
+            .GetConversationMessagesAsync(id, Arg.Any<int?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatConversationDto { Id = id });
+
+        await ConversationEndpoints.GetConversationMessagesAsync(
+            id, _conversationService, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _conversationService.Received(1)
+            .GetConversationMessagesAsync(id, null, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetConversationMessagesAsync_PagingParameters_AreForwardedToTheService()
+    {
+        var id = Guid.NewGuid();
+        var before = DateTimeOffset.UtcNow;
+        _conversationService
+            .GetConversationMessagesAsync(id, Arg.Any<int?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatConversationDto { Id = id });
+
+        await ConversationEndpoints.GetConversationMessagesAsync(
+            id, _conversationService, take: 25, before: before,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await _conversationService.Received(1)
+            .GetConversationMessagesAsync(id, 25, before, Arg.Any<CancellationToken>());
     }
 
     [Fact]

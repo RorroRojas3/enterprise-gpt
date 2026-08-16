@@ -21,6 +21,8 @@ public class ModelMapperTests
             MaxOutputTokens = 16384m,
             IsToolEnabled = true,
             IsDefault = true,
+            InputPricePerMillionTokens = 2.500000m,
+            OutputPricePerMillionTokens = 10.000000m,
             DateDeactivated = dateDeactivated,
             DateCreated = DateTimeOffset.UtcNow.AddDays(-1),
             DateModified = DateTimeOffset.UtcNow,
@@ -40,6 +42,11 @@ public class ModelMapperTests
         Assert.Equal(expected.MaxOutputTokens, actual.MaxOutputTokens);
         Assert.Equal(expected.IsToolEnabled, actual.IsToolEnabled);
         Assert.Equal(expected.IsDefault, actual.IsDefault);
+        // Asserted through the shared helper so it covers the materialized mapper and the LINQ
+        // projection alike: the two are hand-duplicated, and a field added to one and not the other
+        // works on a create response and is silently null on every list and get.
+        Assert.Equal(expected.InputPricePerMillionTokens, actual.InputPricePerMillionTokens);
+        Assert.Equal(expected.OutputPricePerMillionTokens, actual.OutputPricePerMillionTokens);
         Assert.Equal(expected.DateDeactivated, actual.DateDeactivated);
     }
 
@@ -89,7 +96,9 @@ public class ModelMapperTests
             ContextWindowSize = 200000m,
             MaxOutputTokens = 32768m,
             IsToolEnabled = false,
-            IsDefault = true
+            IsDefault = true,
+            InputPricePerMillionTokens = 1.250000m,
+            OutputPricePerMillionTokens = 5m
         };
 
         var model = request.FromCreateModelActionDtoToModel();
@@ -102,6 +111,8 @@ public class ModelMapperTests
         Assert.Equal(request.MaxOutputTokens, model.MaxOutputTokens);
         Assert.Equal(request.IsToolEnabled, model.IsToolEnabled);
         Assert.Equal(request.IsDefault, model.IsDefault);
+        Assert.Equal(request.InputPricePerMillionTokens, model.InputPricePerMillionTokens);
+        Assert.Equal(request.OutputPricePerMillionTokens, model.OutputPricePerMillionTokens);
         Assert.Equal(Guid.Empty, model.Id);
         Assert.Equal(default, model.DateCreated);
         Assert.Equal(default, model.DateModified);
@@ -143,5 +154,56 @@ public class ModelMapperTests
         Assert.Equal(originalDateCreated, model.DateCreated);
         Assert.Equal(originalCreatedById, model.CreatedById);
         Assert.Null(model.DateDeactivated);
+    }
+
+    /// <summary>
+    /// The update request is a full representation, so an omitted price clears the stored one. The
+    /// alternative — treating null as "leave it alone" — would make an administrator unable to
+    /// un-price a model through the API at all.
+    /// </summary>
+    [Fact]
+    public void FromUpdateModelActionDtoToModel_OmittedPrices_ClearsTheStoredPrices()
+    {
+        var model = CreateModel();
+        var request = new UpdateModelActionDto
+        {
+            ProviderId = model.ProviderId,
+            Name = model.Name,
+            DeploymentName = model.DeploymentName,
+            Description = model.Description,
+            ContextWindowSize = model.ContextWindowSize,
+            MaxOutputTokens = model.MaxOutputTokens,
+            IsToolEnabled = model.IsToolEnabled,
+            IsDefault = model.IsDefault
+        };
+
+        request.FromUpdateModelActionDtoToModel(model);
+
+        Assert.Null(model.InputPricePerMillionTokens);
+        Assert.Null(model.OutputPricePerMillionTokens);
+    }
+
+    [Fact]
+    public void FromUpdateModelActionDtoToModel_SuppliedPrices_ReplacesTheStoredPrices()
+    {
+        var model = CreateModel();
+        var request = new UpdateModelActionDto
+        {
+            ProviderId = model.ProviderId,
+            Name = model.Name,
+            DeploymentName = model.DeploymentName,
+            Description = model.Description,
+            ContextWindowSize = model.ContextWindowSize,
+            MaxOutputTokens = model.MaxOutputTokens,
+            IsToolEnabled = model.IsToolEnabled,
+            IsDefault = model.IsDefault,
+            InputPricePerMillionTokens = 0.150000m,
+            OutputPricePerMillionTokens = 0.600000m
+        };
+
+        request.FromUpdateModelActionDtoToModel(model);
+
+        Assert.Equal(0.150000m, model.InputPricePerMillionTokens);
+        Assert.Equal(0.600000m, model.OutputPricePerMillionTokens);
     }
 }

@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Export;
+using System.Text;
 using System.Text.Json;
 
 namespace Enterprise.Gpt.Api.Endpoints;
@@ -42,7 +44,17 @@ public static class ConversationEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("{id:guid}", GetConversationAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
+        // The 400 is a binding failure on ?take= or ?before=, so it carries no errors dictionary —
+        // ProducesProblem(400) rather than ProducesValidationProblem(), as on the routes below.
         group.MapGet("{id:guid}/messages", GetConversationMessagesAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+        // Content-negotiated by query parameter rather than by Accept header, so a plain browser
+        // link can request either format. The 400 carries an errors dictionary, because an
+        // unsupported ?format= is rejected by a validator rather than by binding.
+        group.MapGet("{id:guid}/export", ExportConversationAsync)
+            .Produces(StatusCodes.Status200OK, contentType: "text/html")
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", CreateConversationAsync)
             .ProducesValidationProblem()
@@ -98,10 +110,27 @@ public static class ConversationEndpoints
         return TypedResults.Ok(response);
     }
 
-    internal static async Task<Ok<ChatConversationDto>> GetConversationMessagesAsync(
-        Guid id, IConversationService conversationService, CancellationToken cancellationToken)
+    // Returns a file rather than a typed body, so it writes the response directly instead of going
+    // through TypedResults: the payload is a whole HTML document or a JSON rendering of the stored
+    // documents, neither of which is a DTO this API otherwise serializes.
+    internal static async Task<IResult> ExportConversationAsync(
+        Guid id, IConversationExportService exportService, string? format = null,
+        CancellationToken cancellationToken = default)
     {
-        var response = await conversationService.GetConversationMessagesAsync(id, cancellationToken);
+        var export = await exportService.ExportConversationAsync(id, format, cancellationToken);
+
+        return Results.File(
+            Encoding.UTF8.GetBytes(export.Content), export.ContentType, export.FileName);
+    }
+
+    // Paging is opt-in: with neither parameter the whole transcript is returned, as it always was.
+    // Optional parameters must come last, as on the search route above, or an absent ?take= fails
+    // binding with a 400.
+    internal static async Task<Ok<ChatConversationDto>> GetConversationMessagesAsync(
+        Guid id, IConversationService conversationService, int? take = null,
+        DateTimeOffset? before = null, CancellationToken cancellationToken = default)
+    {
+        var response = await conversationService.GetConversationMessagesAsync(id, take, before, cancellationToken);
         return TypedResults.Ok(response);
     }
 

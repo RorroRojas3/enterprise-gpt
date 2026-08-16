@@ -22,6 +22,7 @@ using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Api.Observability;
 using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Startup;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
@@ -30,9 +31,14 @@ using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Converters;
+using Enterprise.Gpt.Service.Export;
 using Enterprise.Gpt.Service.Extraction;
+using Enterprise.Gpt.Service.Rendering;
+using Enterprise.Gpt.Service.Serialization;
 using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Service.Transcripts;
 using Scalar.AspNetCore;
 using System.ClientModel;
 
@@ -463,23 +469,41 @@ builder.Services.AddSingleton(sp =>
     return new DocumentIntelligenceClient(new Uri(endpoint!), credential);
 });
 
-// Register Azure Cosmos DB
-var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"];
-var cosmosDatabaseId = builder.Configuration["CosmosDb:DatabaseId"];
-var cosmosContainerId = builder.Configuration["CosmosDb:ContainerId"];
-var cosmosClientOptions = new CosmosClientOptions
+// Azure Cosmos DB, holding the conversation transcript. Bound and validated at startup because
+// every value here is read once, when a container handle is built, so a missing id used to surface
+// as a failure on the first conversation rather than at boot.
+builder.Services.AddOptions<CosmosOptions>()
+    .Bind(builder.Configuration.GetSection(CosmosOptions.SectionName))
+    .ValidateDataAnnotations()
+    // Messages name the configuration key an operator has to edit rather than the bound property,
+    // and never echo the value: the connection string carries an account key.
+    .Validate(options => !string.IsNullOrWhiteSpace(options.ConnectionString),
+        "CosmosDb:ConnectionString is required.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.DatabaseId),
+        "CosmosDb:DatabaseId is required.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.TranscriptContainerId),
+        "CosmosDb:TranscriptContainerId is required.")
+    // The cutover gate. A configuration that still names the pre-cutover container is a deployment
+    // that has not been migrated, and starting it would answer every transcript read with an empty
+    // result — which reads as data loss rather than as a setting nobody removed.
+    .Validate(_ => builder.Configuration[CosmosOptions.LegacyContainerKey] is null,
+        $"{CosmosOptions.LegacyContainerKey} names the pre-cutover container, whose documents this application can no longer read. Remove the setting and set CosmosDb:TranscriptContainerId instead; see docs/conversations/transcript-cutover.md.")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton(sp =>
 {
-    SerializerOptions = new CosmosSerializationOptions
+    var cosmos = sp.GetRequiredService<IOptions<CosmosOptions>>().Value;
+
+    // System.Text.Json rather than the SDK's Newtonsoft default: the document types carry
+    // [JsonPropertyName] attributes that the default serializer never reads, so the stored names
+    // agreed with them only because the SDK's camel-case policy happened to produce the same
+    // result. A query predicate that did not match those names is a bug already recorded here.
+    return new CosmosClient(cosmos.ConnectionString, new CosmosClientOptions
     {
-        PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
-    }
-};
-builder.Services.AddSingleton(sp => new CosmosClient(cosmosConnectionString, cosmosClientOptions));
-builder.Services.AddScoped<IAzureCosmosService>(provider =>
-{
-    var cosmosClient = provider.GetRequiredService<CosmosClient>();
-    return new AzureCosmosService(cosmosClient, cosmosDatabaseId!, cosmosContainerId!);
+        UseSystemTextJsonSerializerWithOptions = CosmosSerialization.CreateOptions()
+    });
 });
+builder.Services.AddSingleton<ITranscriptStore, TranscriptStore>();
 
 // MCP client/tool cache: singleton cache of live MCP connections, scoped provider that
 // resolves permissions and acquires OBO tokens per request. The named HttpClient gets an
@@ -501,6 +525,50 @@ builder.Services.AddOptions<UserPermissionCacheOptions>()
         "Permissions:Cache:EntryLifetime must be greater than zero.")
     .ValidateOnStart();
 builder.Services.AddSingleton<IUserPermissionCache, UserPermissionCache>();
+
+// Per-message token estimation. Validated at startup because a negative overhead term or a
+// nonsensical calibration multiplier silently corrupts every stored token count and, through the
+// context budget built on them, silently shrinks what is replayed to the model.
+builder.Services.AddOptions<TokenEstimationOptions>()
+    .Bind(builder.Configuration.GetSection(TokenEstimationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options => !string.IsNullOrWhiteSpace(options.FallbackEncoding),
+        "Tokenization:FallbackEncoding is required.")
+    .Validate(
+        options => options.ProviderCalibration.Values.All(multiplier => multiplier > 0 && multiplier <= options.MaxCalibrationMultiplier),
+        "Every Tokenization:ProviderCalibration value must be greater than zero and at most Tokenization:MaxCalibrationMultiplier.")
+    .Validate(
+        options => options.ProviderCalibration.Keys.All(key => Guid.TryParse(key, out _)),
+        "Every Tokenization:ProviderCalibration key must be a provider id in GUID form.")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<TokenizerProvider>();
+builder.Services.AddSingleton<PromptOverheadCalculator>();
+
+// One estimator per provider, keyed exactly as the chat clients are, so a provider's calibration
+// multiplier is resolved the same way its client is. The vocabularies themselves are shared through
+// the singleton TokenizerProvider, so four registrations do not mean four loaded vocabularies.
+foreach (var (providerId, serviceKey) in Providers.ServiceKeys)
+{
+    var provider = providerId;
+    builder.Services.AddKeyedSingleton<ITokenEstimator>(serviceKey, (sp, _) =>
+        new TiktokenTokenEstimator(
+            provider,
+            sp.GetRequiredService<TokenizerProvider>(),
+            sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
+}
+
+// The uncalibrated fallback the resolver hands back for a provider with no registration.
+builder.Services.AddSingleton<ITokenEstimator>(sp =>
+    new TiktokenTokenEstimator(
+        Guid.Empty,
+        sp.GetRequiredService<TokenizerProvider>(),
+        sp.GetRequiredService<IOptions<TokenEstimationOptions>>()));
+builder.Services.AddSingleton<ITokenEstimatorResolver, TokenEstimatorResolver>();
+
+// Server-side markdown rendering, stored beside each message so an export is a read rather than a
+// re-render. A singleton because building the pipeline is per-process configuration.
+builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 
 // Exception handlers (chained — first to return true wins; GlobalExceptionHandler is the fallback)
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
@@ -538,6 +606,7 @@ builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
 
 // Keep other services as Scoped
 builder.Services.AddScoped<IConversationService, ConversationService>();
+builder.Services.AddScoped<IConversationExportService, ConversationExportService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentRetrievalService, DocumentRetrievalService>();
 builder.Services.AddScoped<IModelService, ModelService>();
@@ -574,10 +643,11 @@ if (!app.Environment.IsEnvironment("Testing"))
         throw; // Rethrow to prevent app startup if migration fails
     }
 
-    // Apply cosmos DB migrations or setup if needed
+    // Provision the Cosmos database and containers, and refuse to start against a transcript
+    // container whose partition key path this application cannot address.
     var cosmosClient = services.GetRequiredService<CosmosClient>();
-    var database = await cosmosClient.CreateDatabaseIfNotExistsAsync(cosmosDatabaseId);
-    await database.Database.CreateContainerIfNotExistsAsync(cosmosContainerId, "/userId");
+    var cosmosOptions = services.GetRequiredService<IOptions<CosmosOptions>>().Value;
+    await CosmosBootstrapper.EnsureProvisionedAsync(cosmosClient, cosmosOptions, app.Logger, CancellationToken.None);
 }
 
 // Configure the HTTP request pipeline.

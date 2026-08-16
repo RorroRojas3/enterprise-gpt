@@ -37,6 +37,31 @@ namespace Enterprise.Gpt.Entity
 
         public long TotalTokens => InputTokens + OutputTokens;
 
+        /// <summary>
+        /// What this conversation's stored transcript weighs: the sum of every transcribed
+        /// message's estimated token cost.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A different quantity from <see cref="InputTokens"/>, <see cref="OutputTokens"/> and
+        /// <see cref="TotalTokens"/> beside it, which are what the provider billed. This is what the
+        /// transcript costs to replay on the next turn, estimated locally and recomputable from the
+        /// messages themselves. The naming rule is that <c>Context</c> means estimated and
+        /// replayed, and every other token member is provider-billed; the two are never summed.
+        /// </para>
+        /// <para>
+        /// The two are <em>supposed</em> to disagree, and the gap widens with tool use: tool calls,
+        /// tool results and reasoning are billed and never transcribed. A report treating a
+        /// divergence as a defect is reading the wrong invariant.
+        /// </para>
+        /// <para>
+        /// Not nullable, unlike its counterpart on <see cref="ConversationUsage"/>: a conversation
+        /// that has never completed a turn genuinely weighs nothing, whereas a turn that was billed
+        /// but never transcribed has no context cost at all.
+        /// </para>
+        /// </remarks>
+        public long ContextTokens { get; set; }
+
         public User User { get; set; } = null!;
 
         public Project? Project { get; set; }

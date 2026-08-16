@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Testing;
 using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Transcripts;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
@@ -41,10 +42,10 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     public FakeEmbeddingGenerator EmbeddingGenerator { get; } = new();
 
     /// <summary>
-    /// Gets the in-memory transcript store backing <see cref="IAzureCosmosService"/> for the whole
-    /// run, so conversation writes complete without a Cosmos DB account or the emulator.
+    /// Gets the in-memory store backing <see cref="ITranscriptStore"/> for the whole run, so
+    /// per-message transcript writes complete without a Cosmos DB account or the emulator.
     /// </summary>
-    public FakeAzureCosmosService Cosmos { get; } = new();
+    public FakeTranscriptStore Transcripts { get; } = new();
 
     /// <inheritdoc />
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -78,7 +79,7 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["CosmosDb:ConnectionString"] =
                 "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
             ["CosmosDb:DatabaseId"] = "test-db",
-            ["CosmosDb:ContainerId"] = "test-container",
+            ["CosmosDb:TranscriptContainerId"] = "test-transcript-container",
             ["AzureStorage:ConnectionString"] = "UseDevelopmentStorage=true",
             ["AzureStorage:DocumentsContainer"] = "test-documents",
             ["DocumentIntelligence:Endpoint"] = "https://localhost/",
@@ -122,8 +123,8 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
 
             // Without this, every conversation write blocks until the Cosmos SDK gives up on the
             // emulator address configured above and the endpoint answers 500 after ~25 seconds.
-            services.RemoveAll<IAzureCosmosService>();
-            services.AddSingleton<IAzureCosmosService>(Cosmos);
+            services.RemoveAll<ITranscriptStore>();
+            services.AddSingleton<ITranscriptStore>(Transcripts);
 
             // Scoped to the access-log category on purpose: an unfiltered collector accumulates every
             // record the whole suite produces — EF Core included — for the lifetime of the shared

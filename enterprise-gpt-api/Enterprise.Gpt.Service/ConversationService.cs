@@ -12,15 +12,21 @@ using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Microsoft.Azure.Cosmos;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using Enterprise.Gpt.Entity.Transcripts;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Service.Transcripts;
 
 namespace Enterprise.Gpt.Service
 {
@@ -88,7 +94,24 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
         IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
 
-        Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, CancellationToken cancellationToken);
+        /// <summary>
+        /// Reads a conversation's transcript, oldest message first.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="take">
+        /// How many of the newest messages to return, clamped to 1–100. Omit it to return the whole
+        /// transcript, which is the default so that a client written before paging existed is
+        /// unaffected.
+        /// </param>
+        /// <param name="before">
+        /// Return only messages written strictly before this moment, so a client can walk backwards
+        /// through a long transcript. Omit it to start at the newest.
+        /// </param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The conversation's name, dates, counters and messages. System messages are excluded.</returns>
+        /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
+        Task<ChatConversationDto> GetConversationMessagesAsync(
+            Guid id, int? take, DateTimeOffset? before, CancellationToken cancellationToken);
     }
 
     public class ConversationService(ILogger<ConversationService> logger,
@@ -98,7 +121,10 @@ namespace Enterprise.Gpt.Service
         IDocumentRetrievalService documentRetrievalService,
         IConversationLockService conversationLockService,
         ITokenService tokenService,
-        IAzureCosmosService cosmosService,
+        ITranscriptStore transcriptStore,
+        ITokenEstimatorResolver tokenEstimatorResolver,
+        PromptOverheadCalculator promptOverheadCalculator,
+        IMarkdownRenderer markdownRenderer,
         IValidator<CreateConversationActionDto> createChatValidator,
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
@@ -113,7 +139,14 @@ namespace Enterprise.Gpt.Service
         private readonly IDocumentRetrievalService _documentRetrievalService = documentRetrievalService;
         private readonly IConversationLockService _conversationLockService = conversationLockService;
         private readonly ITokenService _tokenService = tokenService;
-        private readonly IAzureCosmosService _cosmosService = cosmosService;
+        private readonly ITranscriptStore _transcriptStore = transcriptStore;
+        private readonly ITokenEstimatorResolver _tokenEstimatorResolver = tokenEstimatorResolver;
+        private readonly PromptOverheadCalculator _promptOverheadCalculator = promptOverheadCalculator;
+        private readonly IMarkdownRenderer _markdownRenderer = markdownRenderer;
+
+        // Logged once per model rather than per turn: an unset context window is a permanent
+        // property of a catalog row, and a warning on every turn would bury the rest of the log.
+        private readonly ConcurrentDictionary<Guid, bool> _unboundedModelsReported = new();
         private readonly IValidator<CreateConversationActionDto> _createChatValidator = createChatValidator;
         private readonly IValidator<CreateConversationStreamActionDto> _createChatStreamActionValidator = createChatStreamActionValidator;
         private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
@@ -210,28 +243,57 @@ namespace Enterprise.Gpt.Service
             _ctx.Add(newChat);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            var prompt = ConversationPrompts.BuildDefaultSystemPrompt();
-            var newCosmosChat = new CosmosConversation()
+            // No model has been chosen yet, so there is no provider to calibrate for: the
+            // uncalibrated default is the honest estimator here, and it is what the budget will
+            // re-estimate against on the first turn anyway.
+            var systemMessage = BuildSeededSystemMessage(
+                userId, newChat.Id, date, _tokenEstimatorResolver.Default, deploymentName: null);
+
+            // Both counters start from the same message. Seeding only the header would leave the
+            // relational roll-up understated by the system prompt for the life of the conversation:
+            // every later turn moves the two by the same delta, so the gap never closes. A second
+            // save because the message needs the identifier the first one assigned; both are inside
+            // the transaction already open.
+            newChat.ContextTokens = systemMessage.Tokens;
+            await _ctx.SaveChangesAsync(cancellationToken);
+
+            var header = TranscriptHeaderDocument.Create(userId, newChat.Id, newChat.Name, date) with
             {
-                Id = newChat.Id,
-                UserId = userId,
-                Name = newChat.Name,
-                TotalTokens = 0,
-                DateCreated = date,
-                DateModified = date,
-                Documents = [],
-                Messages = [new()
-                {
-                    Id = Guid.NewGuid(),
-                    Role = ChatRoles.System,
-                    Content = prompt,
-                    DateCreated = date,
-                }]
+                MessageCount = 1,
+                ContextTokens = systemMessage.Tokens
             };
 
-            await _cosmosService.CreateItemAsync(newCosmosChat, userId.ToString(), cancellationToken);
+            // Header and seeded message in one batch: a header whose counters claim a message that
+            // was never written is exactly the drift the per-message shape exists to remove.
+            var created = await _transcriptStore.ExecuteBatchAsync(
+                TranscriptPartition(userId, newChat.Id),
+                batch => batch.Create(header.Id, header).Create(systemMessage.Id, systemMessage),
+                cancellationToken);
 
-            await transaction.CommitAsync(cancellationToken);
+            if (!created.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"Creating the transcript for conversation {newChat.Id} failed: {created.Describe()}.");
+            }
+
+            try
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // The Cosmos write is inside the transaction so a relational failure rolls the row
+                // back — but it cannot roll back the documents, which are in another store. A commit
+                // that fails here therefore leaves a transcript partition with no conversation row
+                // behind it. Logged with the partition key because nothing else can find it
+                // afterwards: no query reaches a conversation that SQL has no record of.
+                _logger.LogError(
+                    ex,
+                    "Committing conversation {ConversationId} failed after its transcript was written. Partition {PartitionKey} is orphaned and can be deleted.",
+                    newChat.Id, PartitionKeys.For(userId, newChat.Id));
+
+                throw;
+            }
 
             return newChat.MapToChatDto();
         }
@@ -254,7 +316,7 @@ namespace Enterprise.Gpt.Service
             // Patched rather than read-modify-replaced so a turn streaming concurrently cannot
             // have its appended messages reverted by this write. Returns false when the document
             // is absent, which is tolerated for the same reason the previous null check was.
-            await _cosmosService.PatchItemAsync(id.ToString(), userId.ToString(),
+            await _transcriptStore.PatchItemAsync(id.ToString(), TranscriptPartition(userId, id),
             [
                 PatchOperation.Set("/dateDeactivated", date),
             ], cancellationToken);
@@ -305,7 +367,8 @@ namespace Enterprise.Gpt.Service
             // and so never selected anything. SQL has already narrowed the ids to this user's.
             foreach (var conversationId in conversationIds)
             {
-                await _cosmosService.PatchItemAsync(conversationId.ToString(), userId.ToString(),
+                await _transcriptStore.PatchItemAsync(
+                    conversationId.ToString(), TranscriptPartition(userId, conversationId),
                 [
                     PatchOperation.Set("/dateDeactivated", date),
                 ], cancellationToken);
@@ -340,9 +403,13 @@ namespace Enterprise.Gpt.Service
             // Read untracked: the write below is an ExecuteUpdate, and a tracked entity carrying the
             // pre-naming token values alongside it is exactly the mix EF warns about — a later
             // SaveChanges would write the stale counters back over the increment.
+            // Owner-scoped and active-only, like every other read. The sole caller has already
+            // matched ownership, but this method is public on the interface, and a filter that is
+            // correct only because of who happens to call it is a filter waiting to be wrong.
+            var callerId = _tokenService.GetOid();
             var conversation = await _ctx.Conversations
                 .AsNoTracking()
-                .Where(x => x.Id == id)
+                .Where(x => x.Id == id && x.UserId == callerId && !x.DateDeactivated.HasValue)
                 .Select(x => new { x.Id, x.UserId })
                 .FirstOrDefaultAsync(cancellationToken);
             if (conversation == null)
@@ -351,8 +418,8 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation with id {id} not found");
             }
 
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), conversation.UserId.ToString(), cancellationToken);
-            if (cosmosConversation == null)
+            var header = await ReadHeaderAsync(conversation.UserId, id, cancellationToken);
+            if (header == null)
             {
                 _logger.LogError("Conversation for id {Id} not found in Cosmos DB", id);
                 throw new NotFoundException($"Conversation for id {id} not found");
@@ -361,7 +428,13 @@ namespace Enterprise.Gpt.Service
             var model = await _ctx.Models
                         .AsNoTracking()
                         .Where(x => x.Id == request.ModelId && !x.DateDeactivated.HasValue)
-                        .Select(x => new { x.DeploymentName, x.ProviderId })
+                        .Select(x => new
+                        {
+                            x.DeploymentName,
+                            x.ProviderId,
+                            x.InputPricePerMillionTokens,
+                            x.OutputPricePerMillionTokens
+                        })
                         .FirstOrDefaultAsync(cancellationToken);
             // DeploymentName is not checked here: the create and update validators already enforce
             // NotEmpty on it, and guarding only this path — which runs on a conversation's first turn
@@ -430,6 +503,11 @@ namespace Enterprise.Gpt.Service
                 Status = ConversationUsageStatuses.Completed,
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
+                // Priced like any other call: naming is a real completion against a real
+                // deployment, so leaving it unpriced would understate a conversation's cost by
+                // exactly the call that a report is least likely to look for.
+                InputPricePerMillionTokens = model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
                 DateCreated = date
             });
 
@@ -439,7 +517,8 @@ namespace Enterprise.Gpt.Service
             // Patch the two fields that changed. Passing the SQL entity to a full-document replace
             // here overwrote the Cosmos document with the relational shape and destroyed the
             // transcript — and this runs from inside a live stream, on the conversation's first turn.
-            await _cosmosService.PatchItemAsync(conversation.Id.ToString(), conversation.UserId.ToString(),
+            await _transcriptStore.PatchItemAsync(
+                conversation.Id.ToString(), TranscriptPartition(conversation.UserId, conversation.Id),
             [
                 PatchOperation.Set("/name", name),
                 PatchOperation.Set("/dateModified", date),
@@ -534,7 +613,8 @@ namespace Enterprise.Gpt.Service
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
-            await _cosmosService.PatchItemAsync(request.Id.ToString(), userId.ToString(),
+            await _transcriptStore.PatchItemAsync(
+                request.Id.ToString(), TranscriptPartition(userId, request.Id),
             [
                 PatchOperation.Set("/name", request.Name),
                 PatchOperation.Set("/dateModified", date),
@@ -627,28 +707,27 @@ namespace Enterprise.Gpt.Service
                 throw new NotFoundException($"Conversation with id {id} not found.");
             }
 
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-            if (cosmosConversation == null)
-            {
-                _logger.LogError("Conversation {Id} not found.", id);
-                throw new NotFoundException($"Conversation {id} not found.");
-            }
+            // The moment the prompt was received, carried to the write so the user message is
+            // stamped when it was asked rather than when the answer finished. Those are genuinely
+            // different moments, and the difference is what makes dateCreated a total order.
+            var promptReceivedAt = DateTimeOffset.UtcNow;
+
+            // A one-RU point read rather than a count query. It answers two questions the turn needs
+            // before it can run: whether this is the conversation's first turn, and whether the
+            // header exists at all — a conversation created before the transcript cutover has none,
+            // and patching a header that is absent would fail the whole write batch.
+            var header = await ReadHeaderAsync(userId, id, cancellationToken);
 
             // Only the seeded system prompt so far, i.e. this is the conversation's first turn:
             // name it from the opening prompt before answering it.
-            if (cosmosConversation.Messages.Count == 1)
+            if (header is { MessageCount: 1 })
             {
                 await UpdateConversationNameAsync(id, request, cancellationToken);
             }
 
-            // Conversations created before the transcript was persisted correctly were written
-            // from the relational entity, which has no messages array at all. Every correctly
-            // created conversation carries at least the system prompt, so an empty transcript here
-            // means the property is absent rather than empty — and Cosmos rejects an append whose
-            // parent path does not exist, so such a document has to be seeded instead.
-            var transcriptExists = cosmosConversation.Messages.Count > 0;
+            var transcript = await ReadMessagesAsync(userId, id, take: null, before: null, cancellationToken);
 
-            var conversations = new List<ChatMessage>(cosmosConversation.Messages.Select(x => new ChatMessage(MappingService.MapToChatRole(x.Role), x.Content)))
+            var conversations = new List<ChatMessage>(transcript.Select(x => new ChatMessage(MappingService.MapToChatRole(x.Role), x.Content)))
             {
                 new(ChatRole.User, request.Prompt)
             };
@@ -663,6 +742,7 @@ namespace Enterprise.Gpt.Service
             var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
             var chatClient = _chatClientResolver.Resolve(model.ProviderId);
             var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
+
             StringBuilder sb = new();
             var completed = false;
 
@@ -671,6 +751,14 @@ namespace Enterprise.Gpt.Service
             // releases the leases on completion, fault, or client disconnect alike.
             await using (toolLeases)
             {
+                // Inside the lease scope, not before it: this throws when the prompt cannot fit the
+                // model's context window, and a throw between acquiring the leases and entering the
+                // scope would strand them. A stranded lease never decrements its cache entry's
+                // count, so the MCP client it holds is never disposed even after eviction.
+                var estimator = _tokenEstimatorResolver.Resolve(model.ProviderId);
+                var estimatedPromptTokens = ApplyContextBudget(
+                    conversations, transcript, request.Prompt, model, chatOptions, estimator);
+
                 // Collects the tracking middleware's report. Reading the token counts off the
                 // stream instead would lose everything for a turn that never reaches its final
                 // update, which is every cancelled turn.
@@ -785,7 +873,11 @@ namespace Enterprise.Gpt.Service
                                 : ConversationUsageStatuses.Failed,
                         Prompt: request.Prompt,
                         Answer: sb.ToString(),
-                        TranscriptExists: transcriptExists,
+                        PromptReceivedAt: promptReceivedAt,
+                        HeaderExists: header is not null,
+                        ConversationName: conversation.Name,
+                        ConversationCreatedAt: conversation.DateCreated,
+                        EstimatedPromptTokens: estimatedPromptTokens,
                         Report: usageScope.Report);
 
                     // The token that ended the stream is the one that would abort the write
@@ -817,7 +909,25 @@ namespace Enterprise.Gpt.Service
         /// <param name="Status">How the turn ended.</param>
         /// <param name="Prompt">The user's prompt.</param>
         /// <param name="Answer">The text the model produced, possibly truncated when the turn was abandoned.</param>
-        /// <param name="TranscriptExists">Whether the Cosmos document already has a messages array to append to.</param>
+        /// <param name="PromptReceivedAt">
+        /// The moment the prompt arrived, which is what the user message is stamped with.
+        /// </param>
+        /// <param name="HeaderExists">
+        /// Whether the conversation already has a transcript header. False for a conversation
+        /// created before the transcript cutover, whose header the turn has to create rather than
+        /// patch.
+        /// </param>
+        /// <param name="ConversationName">
+        /// The conversation's name, needed only when the header has to be created.
+        /// </param>
+        /// <param name="ConversationCreatedAt">
+        /// When the conversation was created, needed only when the header has to be created, so a
+        /// reseeded header does not report this turn's moment as the conversation's creation date.
+        /// </param>
+        /// <param name="EstimatedPromptTokens">
+        /// What this application estimated the prompt would cost, including per-turn overhead. Kept
+        /// so finalization can compare it against what the provider reported.
+        /// </param>
         /// <param name="Report">
         /// What the turn consumed, as the tool-tracking middleware accounted for it, or
         /// <see langword="null"/> when it produced no report at all.
@@ -830,7 +940,11 @@ namespace Enterprise.Gpt.Service
             ConversationUsageStatuses Status,
             string Prompt,
             string Answer,
-            bool TranscriptExists,
+            DateTimeOffset PromptReceivedAt,
+            bool HeaderExists,
+            string ConversationName,
+            DateTimeOffset ConversationCreatedAt,
+            long EstimatedPromptTokens,
             ChatUsageReport? Report);
 
         /// <summary>
@@ -867,12 +981,59 @@ namespace Enterprise.Gpt.Service
 
             var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, date);
 
+            // Only on a turn that invoked no tools. A turn that ran tools was billed for prompts the
+            // estimator never saw — every tool round trip re-sends the conversation plus the tool's
+            // result — so the two figures measure different things and comparing them would record
+            // an error that is not one. Token-zero is deliberately not the test: an MCP server can
+            // run and report no usage at all.
+            if (turn.Report is not null && turnUsage.ToolCalls.Count == 0)
+            {
+                ChatMetrics.RecordEstimatorError(
+                    turn.Model.ProviderId,
+                    turn.Model.DeploymentName,
+                    turn.EstimatedPromptTokens,
+                    turnUsage.InputTokens);
+            }
+
             // The conversation's running counters move by everything the turn consumed — the
             // assistant's own turns and every tool, MCP call and agent underneath them. Derived
             // from the same numbers written to the audit row below rather than read separately off
             // the report, so the counters can never disagree with the sum of the rows.
             var inputTokens = turnUsage.TotalInputTokens;
             var outputTokens = turnUsage.TotalOutputTokens;
+
+            // Estimated before the transaction opens so the context roll-up can ride the update that
+            // is already running, rather than costing a second statement. Null — not zero — for a
+            // turn that was billed and never transcribed: null says "not transcribed" where zero
+            // would claim it was transcribed and weighed nothing.
+            var estimator = _tokenEstimatorResolver.Resolve(turn.Model.ProviderId);
+            var deploymentName = turn.Model.DeploymentName;
+
+            long? contextTokens = null;
+            long promptTokens = 0;
+            long answerTokens = 0;
+            TranscriptMessageDocument? reseededSystemMessage = null;
+
+            if (completed)
+            {
+                promptTokens = EstimateTokens(estimator, turn.Prompt, deploymentName);
+                answerTokens = EstimateTokens(estimator, turn.Answer, deploymentName);
+
+                // The turn's own two messages, which is what the audit row records. The reseeded
+                // system message below is not one of them — it belongs to the conversation, not to
+                // this turn — so it is deliberately outside this figure.
+                contextTokens = promptTokens + answerTokens;
+
+                if (!turn.HeaderExists)
+                {
+                    reseededSystemMessage = BuildSeededSystemMessage(
+                        turn.UserId, conversationId, turn.PromptReceivedAt.AddTicks(-1), estimator, deploymentName);
+                }
+            }
+
+            // The conversation roll-up counts every message written, so it stays equal to the
+            // header's own counter; the per-turn figure above counts only the turn's two.
+            var contextDelta = (contextTokens ?? 0) + (reseededSystemMessage?.Tokens ?? 0);
 
             // One transaction, so a conversation whose counters moved always carries the usage row
             // that accounts for the movement.
@@ -883,6 +1044,7 @@ namespace Enterprise.Gpt.Service
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.InputTokens, x => x.InputTokens + inputTokens)
                     .SetProperty(x => x.OutputTokens, x => x.OutputTokens + outputTokens)
+                    .SetProperty(x => x.ContextTokens, x => x.ContextTokens + contextDelta)
                     .SetProperty(x => x.ModelId, modelId)
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
@@ -903,6 +1065,11 @@ namespace Enterprise.Gpt.Service
                 OutputTokens = turnUsage.OutputTokens,
                 ToolInputTokens = turnUsage.ToolInputTokens,
                 ToolOutputTokens = turnUsage.ToolOutputTokens,
+                // Snapshotted for the same reason DeploymentName is: an administrator editing the
+                // catalog must not rewrite what past calls cost.
+                InputPricePerMillionTokens = turn.Model.InputPricePerMillionTokens,
+                OutputPricePerMillionTokens = turn.Model.OutputPricePerMillionTokens,
+                ContextTokens = contextTokens,
                 AssistantMessageId = completed ? assistantMessageId : null,
                 DateCreated = date,
                 McpServers =
@@ -929,49 +1096,83 @@ namespace Enterprise.Gpt.Service
                 return;
             }
 
+            // Clamped to at least one tick after the prompt. A turn that completes inside a single
+            // tick would otherwise stamp both messages identically, and with no array position and
+            // no sequence field to fall back on, ORDER BY dateCreated could render the answer before
+            // the question — and replay it to the model that way on every later turn.
+            var answeredAt = date > turn.PromptReceivedAt ? date : turn.PromptReceivedAt.AddTicks(1);
+
             // The deployment name, not the display label: the transcript is append-only, so the value
             // recorded here has to stay meaningful after a model is renamed in the catalog, and it is
             // the deployment that identifies which model actually served and billed the turn.
-            var userMessage = new CosmosConversationMessage
+            var userMessage = TranscriptMessageDocument.Create(
+                turn.UserId, conversationId, Guid.NewGuid(), ChatRoles.User, turn.Prompt, turn.PromptReceivedAt) with
             {
-                Id = Guid.NewGuid(),
-                Content = turn.Prompt,
-                DateCreated = date,
-                Model = turn.Model.DeploymentName,
-                Role = ChatRoles.User,
-                Tokens = 0,
+                Tokens = promptTokens,
+                HtmlContent = _markdownRenderer.Render(turn.Prompt),
+                Model = deploymentName
             };
-            var assistantMessage = new CosmosConversationMessage
+
+            var assistantMessage = TranscriptMessageDocument.Create(
+                turn.UserId, conversationId, assistantMessageId, ChatRoles.Assistant, turn.Answer, answeredAt) with
             {
-                Id = assistantMessageId,
-                Content = turn.Answer,
-                DateCreated = date,
-                Model = turn.Model.DeploymentName,
-                Role = ChatRoles.Assistant,
-                Usage = new CosmosConversationUsage
+                Tokens = answerTokens,
+                HtmlContent = _markdownRenderer.Render(turn.Answer),
+                Model = deploymentName,
+                Usage = new TranscriptMessageUsage
                 {
                     InputTokens = inputTokens,
                     OutputTokens = outputTokens
                 }
             };
 
-            // Appended server-side rather than re-read, mutated and replaced. A full-document
-            // replace would silently revert anything written since the read at the top of this
-            // method — a rename or a soft delete landing mid-stream — and would rewrite the entire
-            // transcript on every turn, which grows the request toward the 2 MB item ceiling.
-            // Operations apply in order, so seeding the array first leaves the second append valid.
-            var persisted = await _cosmosService.PatchItemAsync(turn.ConversationId.ToString(), turn.UserId.ToString(),
-            [
-                turn.TranscriptExists
-                    ? PatchOperation.Add("/messages/-", userMessage)
-                    : PatchOperation.Set<List<CosmosConversationMessage>>("/messages", [userMessage]),
-                PatchOperation.Add("/messages/-", assistantMessage),
-                PatchOperation.Increment("/messageCount", 2),
-                PatchOperation.Increment("/totalTokens", inputTokens + outputTokens),
-                PatchOperation.Set("/dateModified", date),
-            ], cancellationToken);
+            // One batch, so the header's counters and the documents they count either all land or
+            // none do. That atomicity is what makes messageCount exact rather than advisory, and it
+            // is why nothing has to reconcile the two afterwards.
+            var result = await _transcriptStore.ExecuteBatchAsync(
+                TranscriptPartition(turn.UserId, conversationId),
+                batch =>
+                {
+                    batch.Create(userMessage.Id, userMessage)
+                         .Create(assistantMessage.Id, assistantMessage);
 
-            if (!persisted)
+                    if (turn.HeaderExists)
+                    {
+                        batch.Patch(conversationId.ToString(),
+                        [
+                            PatchOperation.Increment("/messageCount", 2),
+                            PatchOperation.Increment("/contextTokens", contextDelta),
+                            PatchOperation.Set("/dateModified", answeredAt),
+                        ]);
+                    }
+                    else
+                    {
+                        // A conversation created before the transcript cutover has no header, and
+                        // patching one that is absent would fail the whole batch. Its earlier
+                        // messages were destroyed at cutover and do not come back, but the seeded
+                        // system message has to: it is the assistant's standing instructions, and a
+                        // conversation that never reseeds it would run every future turn without
+                        // them — silently, because nothing reports a missing system prompt.
+                        batch.Create(reseededSystemMessage!.Id, reseededSystemMessage);
+
+                        // Stamped with the conversation's real creation date, not this turn's. The
+                        // transcript read serves the header's date once one exists, so stamping
+                        // "now" would have the same conversation report two different creation dates
+                        // either side of its first post-cutover turn.
+                        batch.Create(
+                            conversationId.ToString(),
+                            TranscriptHeaderDocument.Create(
+                                turn.UserId, conversationId, turn.ConversationName, turn.ConversationCreatedAt) with
+                            {
+                                MessageCount = 3,
+                                ContextTokens = contextDelta,
+                                DateModified = answeredAt
+                            });
+                    }
+                },
+                cancellationToken);
+
+            if (!result.IsSuccess)
             {
                 // The token counters and the usage row have already been committed to SQL, so failing
                 // silently here would bill the turn and lose it. Nothing can be returned to the
@@ -979,8 +1180,8 @@ namespace Enterprise.Gpt.Service
                 // the logs. Both identifiers are logged because the usage row now asserts an
                 // AssistantMessageId that no transcript contains; reconciling needs the pair.
                 _logger.LogError(
-                    "Conversation {Id} document is missing; the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
-                    turn.ConversationId, usage.Id, assistantMessageId);
+                    "Writing the transcript for conversation {Id} failed ({Failure}); the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
+                    conversationId, result.Describe(), usage.Id, assistantMessageId);
             }
         }
 
@@ -1046,33 +1247,386 @@ namespace Enterprise.Gpt.Service
             return new ConversationBusyException($"Conversation {id} is currently being processed. Please wait for the current request to complete.");
         }
 
-        /// <inheritdoc />
-        public async Task<ChatConversationDto> GetConversationMessagesAsync(Guid id, CancellationToken cancellationToken)
+        /// <summary>
+        /// Trims a turn's replayed history in place to what the selected model's context window can
+        /// hold, and reports the estimated prompt that results.
+        /// </summary>
+        /// <param name="replay">The messages about to be sent, trimmed in place.</param>
+        /// <param name="transcript">The stored messages backing all but the last entry of <paramref name="replay"/>.</param>
+        /// <param name="prompt">The current prompt, which is the last entry of <paramref name="replay"/>.</param>
+        /// <param name="model">The model that will answer.</param>
+        /// <param name="chatOptions">The options the turn will be sent with, read for tools and instructions.</param>
+        /// <param name="estimator">The estimator for the model's provider.</param>
+        /// <returns>The estimated prompt in tokens, including the per-turn overhead.</returns>
+        /// <exception cref="ValidationException">
+        /// Thrown when the system message and the current prompt exceed the model's window on their
+        /// own. Failing here is deliberate: the alternative is sending a prompt the provider will
+        /// reject after the user has waited for it.
+        /// </exception>
+        /// <remarks>
+        /// Trimming decides what is <em>sent</em>, never what is <em>stored</em> — the transcript
+        /// keeps every message either way.
+        /// </remarks>
+        private long ApplyContextBudget(
+            List<ChatMessage> replay,
+            IReadOnlyList<TranscriptMessageDocument> transcript,
+            string prompt,
+            ModelDto model,
+            ChatOptions chatOptions,
+            ITokenEstimator estimator)
         {
-            var userId = _tokenService.GetOid();
-            var cosmosConversation = await _cosmosService.GetItemAsync<CosmosConversation>(id.ToString(), userId.ToString(), cancellationToken);
-            if (cosmosConversation == null)
+            List<BudgetMessage> budgetMessages =
+            [
+                // A message stored before per-message accounting existed carries zero, which would
+                // make it free to keep. Estimated on the fly instead, so the budget measures the
+                // whole prompt rather than the part of it this application happened to have counted.
+                .. transcript.Select(x => new BudgetMessage(
+                    x.Role,
+                    x.Tokens > 0 ? x.Tokens : EstimateTokens(estimator, x.Content, model.DeploymentName))),
+                new(ChatRoles.User, EstimateTokens(estimator, prompt, model.DeploymentName))
+            ];
+
+            // Project and document instructions ride the options rather than the message list, so
+            // they are billed and belong to no message. Counted into the overhead for that reason.
+            var overhead = _promptOverheadCalculator.Estimate(
+                budgetMessages.Count,
+                chatOptions.Tools?.Count ?? 0,
+                EstimateTokens(estimator, chatOptions.Instructions, model.DeploymentName));
+
+            var budget = ContextBudgetCalculator.Apply(
+                budgetMessages, model.ContextWindowSize, model.MaxOutputTokens, overhead);
+
+            if (!budget.Fits)
+            {
+                throw new ValidationException(
+                [
+                    new ValidationFailure(
+                        nameof(CreateConversationStreamActionDto.Prompt),
+                        $"This prompt does not fit the context window of '{model.Name}' ({model.ContextWindowSize:0} tokens, reserving {model.MaxOutputTokens:0} for the answer). Shorten the prompt or choose a model with a larger context window.")
+                ]);
+            }
+
+            if (budget.IsUnbounded)
+            {
+                LogUnboundedModelOnce(model);
+            }
+
+            if (budget.DroppedMessages > 0)
+            {
+                ChatMetrics.RecordBudgetTrim(model.DeploymentName, budget.DroppedMessages, budget.DroppedTokens);
+
+                _logger.LogInformation(
+                    "Trimmed {DroppedMessages} messages holding {DroppedTokens} tokens from the replayed history to fit {DeploymentName}.",
+                    budget.DroppedMessages, budget.DroppedTokens, model.DeploymentName);
+
+                var kept = budget.KeptIndexes.Select(index => replay[index]).ToList();
+                replay.Clear();
+                replay.AddRange(kept);
+            }
+
+            return budget.KeptIndexes.Sum(index => budgetMessages[index].Tokens) + overhead;
+        }
+
+        /// <summary>
+        /// Logs once per model that its catalog row declares no context window, so nothing is
+        /// trimmed for it.
+        /// </summary>
+        /// <param name="model">The model with an unset context window.</param>
+        private void LogUnboundedModelOnce(ModelDto model)
+        {
+            if (_unboundedModelsReported.TryAdd(model.Id, true))
+            {
+                _logger.LogWarning(
+                    "Model {ModelId} ('{ModelName}') declares a context window of zero, so replayed history is not bounded for it. Set ContextWindowSize on the catalog row.",
+                    model.Id, model.Name);
+            }
+        }
+
+        /// <summary>
+        /// Answers a transcript read for a conversation that has a relational row but no transcript.
+        /// </summary>
+        /// <param name="userId">The object identifier of the calling user.</param>
+        /// <param name="id">The conversation's unique identifier.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The conversation with an empty message list.</returns>
+        /// <exception cref="NotFoundException">
+        /// Thrown when no active conversation with that identifier belongs to the caller — which is
+        /// also what a foreign identifier produces, so the two are indistinguishable to a caller.
+        /// </exception>
+        /// <remarks>
+        /// The only path that falls back to SQL. It exists for conversations that predate the
+        /// transcript cutover: their rows survived and their transcripts did not, and a row a user
+        /// can see in their sidebar has to open.
+        /// </remarks>
+        private async Task<ChatConversationDto> ReadEmptyTranscriptAsync(
+            Guid userId, Guid id, CancellationToken cancellationToken)
+        {
+            var conversation = await _ctx.Conversations
+                .AsNoTracking()
+                .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Select(x => new { x.Name, x.DateCreated, x.DateModified })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (conversation is null)
             {
                 _logger.LogError("Conversation {Id} not found.", id);
                 throw new NotFoundException($"Conversation {id} not found.");
             }
 
-            var messages = cosmosConversation.Messages
+            _logger.LogInformation(
+                "Conversation {Id} has no transcript; returning an empty one. This is expected for a conversation created before the transcript cutover.",
+                id);
+
+            return new ChatConversationDto
+            {
+                Id = id,
+                Name = conversation.Name,
+                DateCreated = conversation.DateCreated,
+                DateModified = conversation.DateModified,
+                Messages = []
+            };
+        }
+
+        /// <summary>
+        /// Builds the seeded system message a conversation's transcript opens with.
+        /// </summary>
+        /// <param name="userId">The object identifier of the conversation's owner.</param>
+        /// <param name="conversationId">The conversation the message belongs to.</param>
+        /// <param name="createdAt">
+        /// The moment to stamp it with, which must precede every other message in the conversation.
+        /// </param>
+        /// <param name="estimator">The estimator for the serving provider.</param>
+        /// <param name="deploymentName">The deployment the text will be sent to.</param>
+        /// <returns>The seeded system message.</returns>
+        /// <remarks>
+        /// The system message is not privileged: it goes through the same estimator and the same
+        /// renderer as user text, so the header's counters describe every message beneath them on
+        /// one basis.
+        /// </remarks>
+        private TranscriptMessageDocument BuildSeededSystemMessage(
+            Guid userId,
+            Guid conversationId,
+            DateTimeOffset createdAt,
+            ITokenEstimator estimator,
+            string? deploymentName)
+        {
+            var prompt = ConversationPrompts.BuildDefaultSystemPrompt();
+
+            return TranscriptMessageDocument.Create(
+                userId, conversationId, Guid.NewGuid(), ChatRoles.System, prompt, createdAt) with
+            {
+                Tokens = EstimateTokens(estimator, prompt, deploymentName),
+                HtmlContent = _markdownRenderer.Render(prompt)
+            };
+        }
+
+        /// <summary>
+        /// Counts a message's context cost, degrading to zero rather than failing the turn.
+        /// </summary>
+        /// <param name="estimator">The estimator for the serving provider.</param>
+        /// <param name="text">The message text.</param>
+        /// <param name="deploymentName">The deployment the text was or will be sent to.</param>
+        /// <returns>The estimated token count, or zero when estimation failed.</returns>
+        /// <remarks>
+        /// A tokenizer fault must not lose a turn whose answer has already been streamed to the
+        /// user. Zero is honest here — it is what the recorded cost is — and it is recoverable,
+        /// because the count is a pure function of the stored text and can be recomputed later.
+        /// </remarks>
+        private long EstimateTokens(ITokenEstimator estimator, string? text, string? deploymentName)
+        {
+            try
+            {
+                return estimator.CountTokens(text, deploymentName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Estimating the token cost of a transcript message failed; recording it with no context cost.");
+
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Builds the partition every one of a conversation's transcript documents lives in.
+        /// </summary>
+        /// <param name="userId">The object identifier of the conversation's owner.</param>
+        /// <param name="conversationId">The conversation's unique identifier.</param>
+        /// <returns>The partition key.</returns>
+        /// <remarks>
+        /// The caller's user id is always the one composed in, never a value read from a document.
+        /// That is what makes a foreign conversation id address a partition holding nothing rather
+        /// than one the caller has to be filtered out of.
+        /// </remarks>
+        private static PartitionKey TranscriptPartition(Guid userId, Guid conversationId)
+        {
+            return new PartitionKey(PartitionKeys.For(userId, conversationId));
+        }
+
+        /// <summary>
+        /// Reads a conversation's header document.
+        /// </summary>
+        /// <param name="userId">The object identifier of the conversation's owner.</param>
+        /// <param name="conversationId">The conversation's unique identifier.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The header, or <see langword="null"/> when the conversation has no transcript.</returns>
+        private Task<TranscriptHeaderDocument?> ReadHeaderAsync(Guid userId, Guid conversationId, CancellationToken cancellationToken)
+        {
+            return _transcriptStore.ReadItemAsync<TranscriptHeaderDocument>(
+                conversationId.ToString(), TranscriptPartition(userId, conversationId), cancellationToken);
+        }
+
+        /// <summary>
+        /// Reads a conversation's message documents in the order they were written.
+        /// </summary>
+        /// <param name="userId">The object identifier of the conversation's owner.</param>
+        /// <param name="conversationId">The conversation's unique identifier.</param>
+        /// <param name="take">
+        /// How many of the newest messages to return, or <see langword="null"/> for all of them.
+        /// </param>
+        /// <param name="before">
+        /// Return only messages written strictly before this moment, or <see langword="null"/> to
+        /// start at the newest.
+        /// </param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The messages, oldest first.</returns>
+        /// <remarks>
+        /// <para>
+        /// Always a single-partition query. The <c>type</c> predicate stays in place because the
+        /// container is heterogeneous by design, and it is what stops a third document kind added
+        /// later from silently entering a query written before it existed.
+        /// </para>
+        /// <para>
+        /// Ordered by <c>dateCreated</c> alone rather than by a <c>(dateCreated, id)</c> pair: a
+        /// multi-property <c>ORDER BY</c> requires a composite index in Cosmos, and the tie it would
+        /// break cannot occur — a turn's own two messages are clamped a tick apart, and the
+        /// conversation lock serializes turns. The materialized page is still ordered by id within a
+        /// timestamp so the result is total whatever the store returns.
+        /// </para>
+        /// </remarks>
+        private async Task<List<TranscriptMessageDocument>> ReadMessagesAsync(
+            Guid userId,
+            Guid conversationId,
+            int? take,
+            DateTimeOffset? before,
+            CancellationToken cancellationToken)
+        {
+            var partition = TranscriptPartition(userId, conversationId);
+            var descending = take.HasValue || before.HasValue;
+
+            var text = descending
+                ? "SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId AND (IS_NULL(@before) OR c.dateCreated < @before) ORDER BY c.dateCreated DESC"
+                : "SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId ORDER BY c.dateCreated";
+
+            var query = new QueryDefinition(text)
+                .WithParameter("@type", TranscriptDocumentTypes.Message)
+                .WithParameter("@conversationId", conversationId);
+
+            if (descending)
+            {
+                query = query.WithParameter("@before", before);
+            }
+
+            List<TranscriptMessageDocument> messages = [];
+            string? continuationToken = null;
+
+            do
+            {
+                var page = await _transcriptStore.QueryAsync<TranscriptMessageDocument>(
+                    query, partition, take, continuationToken, cancellationToken);
+
+                messages.AddRange(page.Items);
+                continuationToken = page.ContinuationToken;
+
+                // Kept draining until the requested count is actually in hand. A page size is a
+                // ceiling that Cosmos may return fewer than — a page can even come back empty with
+                // more results behind it — so stopping at the first page would silently truncate a
+                // transcript, and truncating history the model replays is not a visible failure.
+                if (take.HasValue && messages.Count >= take.Value)
+                {
+                    break;
+                }
+            }
+            while (continuationToken is not null);
+
+            var ordered = messages
+                .OrderBy(x => x.DateCreated)
+                .ThenBy(x => x.Id, StringComparer.Ordinal);
+
+            // A bounded read asks for the newest N, so the surplus to discard is at the old end.
+            return take.HasValue && messages.Count > take.Value
+                ? [.. ordered.TakeLast(take.Value)]
+                : [.. ordered];
+        }
+
+        /// <inheritdoc />
+        public async Task<ChatConversationDto> GetConversationMessagesAsync(
+            Guid id, int? take, DateTimeOffset? before, CancellationToken cancellationToken)
+        {
+            var userId = _tokenService.GetOid();
+
+            // The partition key is built from the caller's user id, so a conversation belonging to
+            // someone else addresses a partition that holds nothing and this read answers null — a
+            // 404, never a 403, matching every other conversation route.
+            var header = await ReadHeaderAsync(userId, id, cancellationToken);
+
+            if (header is null)
+            {
+                // A conversation created before the transcript cutover has a SQL row and no header,
+                // because the cutover destroyed every transcript. It still opens: an empty
+                // transcript is the truth about it, and an error would strand a row the user can
+                // see in their sidebar.
+                return await ReadEmptyTranscriptAsync(userId, id, cancellationToken);
+            }
+
+            if (header.DateDeactivated.HasValue)
+            {
+                _logger.LogError("Conversation {Id} not found.", id);
+                throw new NotFoundException($"Conversation {id} not found.");
+            }
+
+            // Clamped rather than validated, matching every other paginated route here. Absent
+            // means the whole transcript: the client that reads this endpoint today expects every
+            // message, so paging is opt-in and the default is unchanged.
+            var clamped = take.HasValue ? Math.Clamp(take.Value, 1, 100) : (int?)null;
+
+            // One more than asked for, purely to answer "is there another page". Deriving that from
+            // the header's total instead would be wrong while walking backwards: every page would be
+            // compared against the whole transcript rather than against what is left behind it, so
+            // the last page would always claim another one follows.
+            var probe = clamped.HasValue ? clamped.Value + 1 : (int?)null;
+            var fetched = await ReadMessagesAsync(userId, id, probe, before, cancellationToken);
+
+            var hasMore = clamped.HasValue && fetched.Count > clamped.Value;
+            var documents = hasMore ? fetched.TakeLast(clamped!.Value).ToList() : fetched;
+
+            var messages = documents
                             .Where(x => x.Role != ChatRoles.System)
                             .Select(x => new ConversationMessageDto()
                             {
+                                Id = Guid.TryParse(x.Id, out var messageId) ? messageId : Guid.Empty,
+                                DateCreated = x.DateCreated,
                                 Text = x.Content ?? string.Empty,
-                                Role = x.Role
+                                Role = x.Role,
+                                HtmlContent = x.HtmlContent,
+                                Tokens = x.Tokens,
+                                TokenAccuracy = x.TokenAccuracy
                             })
-                            .ToList() ?? [];
+                            .ToList();
 
             return new()
             {
                 Id = id,
-                Name = cosmosConversation.Name,
-                DateCreated = cosmosConversation.DateCreated,
-                DateModified = cosmosConversation.DateModified,
-                Messages = messages
+                Name = header.Name,
+                DateCreated = header.DateCreated,
+                DateModified = header.DateModified,
+                Messages = messages,
+                // Taken from the header rather than counted, which the write batch's atomicity is
+                // what makes exact. The system message is counted here and excluded from the
+                // payload, because the total describes the transcript rather than this page of it —
+                // so the oldest page of a paged read comes back one message short of `take`, once,
+                // when it is the page the system message falls on.
+                TotalCount = header.MessageCount,
+                HasMore = hasMore
             };
         }
 
@@ -1203,58 +1757,70 @@ namespace Enterprise.Gpt.Service
                 tools.AddRange(toolLeases.Tools);
             }
 
-            // MCP tools are named "{sanitizedServerName}_{tool}", so a server named "document" exposing a
-            // tool named "search" produces exactly this name. Two identically named functions on one
-            // request are rejected outright by OpenAI-shaped providers, and the usage audit would credit
-            // retrieval's tokens to that server. The user's explicit MCP selection wins; retrieval is the
-            // implicit one, so it stands down.
-            if (attachDocumentTool && tools.Any(t => string.Equals(t.Name, DocumentTool.ToolName, StringComparison.OrdinalIgnoreCase)))
+            // Everything below runs with the leases already held, and the caller can only dispose
+            // what this method returns. Anything that throws in between would strand them — and a
+            // stranded lease never decrements its cache entry's count, so the MCP client it holds is
+            // never disposed even after the entry is evicted.
+            try
             {
-                _logger.LogWarning(
-                    "An MCP tool selected for conversation {ConversationId} is already named '{ToolName}'; document retrieval is unavailable for this turn.",
-                    sessionId, DocumentTool.ToolName);
-
-                attachDocumentTool = false;
-            }
-
-            if (attachDocumentTool)
-            {
-                tools.Add(DocumentTool.Create(documentScope!, _documentRetrievalService, _logger));
-                instructions.Add(ConversationPrompts.BuildDocumentRetrievalPrompt(DocumentTool.ToolName, documentScope!.DocumentNames));
-            }
-
-            // A fabricated tool, off in every environment that has not asked for it. It exists so the
-            // activity timeline can be driven from a real turn — cards, sub-statuses, durations, and
-            // the failed state — without standing up an MCP server. It stands down on a model that
-            // cannot call tools for the same reason retrieval does: nothing about it is worth failing
-            // a turn over.
-            if (_weatherToolOptions.Enabled)
-            {
-                if (model.IsToolEnabled)
-                {
-                    tools.Add(WeatherTool.Create(_weatherToolOptions, _logger));
-                }
-                else
+                // MCP tools are named "{sanitizedServerName}_{tool}", so a server named "document" exposing a
+                // tool named "search" produces exactly this name. Two identically named functions on one
+                // request are rejected outright by OpenAI-shaped providers, and the usage audit would credit
+                // retrieval's tokens to that server. The user's explicit MCP selection wins; retrieval is the
+                // implicit one, so it stands down.
+                if (attachDocumentTool && tools.Any(t => string.Equals(t.Name, DocumentTool.ToolName, StringComparison.OrdinalIgnoreCase)))
                 {
                     _logger.LogWarning(
-                        "The weather tool is enabled but model {ModelId} does not support tools; it is unavailable for this turn.",
-                        model.Id);
+                        "An MCP tool selected for conversation {ConversationId} is already named '{ToolName}'; document retrieval is unavailable for this turn.",
+                        sessionId, DocumentTool.ToolName);
+
+                    attachDocumentTool = false;
                 }
-            }
 
-            if (instructions.Count > 0)
+                if (attachDocumentTool)
+                {
+                    tools.Add(DocumentTool.Create(documentScope!, _documentRetrievalService, _logger));
+                    instructions.Add(ConversationPrompts.BuildDocumentRetrievalPrompt(DocumentTool.ToolName, documentScope!.DocumentNames));
+                }
+
+                // A fabricated tool, off in every environment that has not asked for it. It exists so the
+                // activity timeline can be driven from a real turn — cards, sub-statuses, durations, and
+                // the failed state — without standing up an MCP server. It stands down on a model that
+                // cannot call tools for the same reason retrieval does: nothing about it is worth failing
+                // a turn over.
+                if (_weatherToolOptions.Enabled)
+                {
+                    if (model.IsToolEnabled)
+                    {
+                        tools.Add(WeatherTool.Create(_weatherToolOptions, _logger));
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "The weather tool is enabled but model {ModelId} does not support tools; it is unavailable for this turn.",
+                            model.Id);
+                    }
+                }
+
+                if (instructions.Count > 0)
+                {
+                    chatOptions.Instructions = string.Join("\n\n", instructions);
+                }
+
+                // Assigned once. Assigning per source would have the last writer discard the others.
+                if (tools.Count > 0)
+                {
+                    chatOptions.Tools = tools;
+                    chatOptions.AllowMultipleToolCalls = true;
+                }
+
+                return (chatOptions, toolLeases);
+            }
+            catch when (toolLeases is not null)
             {
-                chatOptions.Instructions = string.Join("\n\n", instructions);
+                await toolLeases.DisposeAsync().ConfigureAwait(false);
+                throw;
             }
-
-            // Assigned once. Assigning per source would have the last writer discard the others.
-            if (tools.Count > 0)
-            {
-                chatOptions.Tools = tools;
-                chatOptions.AllowMultipleToolCalls = true;
-            }
-
-            return (chatOptions, toolLeases);
         }
     }
 }

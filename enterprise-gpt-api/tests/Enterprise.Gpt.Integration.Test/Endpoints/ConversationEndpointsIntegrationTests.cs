@@ -148,15 +148,36 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
-    // The transcript lives in Cosmos, not SQL, so a conversation row with no document 404s here even
-    // though GET api/conversations/{id} succeeds for the same id.
+    /// <summary>
+    /// The transcript lives in Cosmos and the row lives in SQL, and the transcript cutover destroyed
+    /// every transcript while leaving every row. A conversation in that state has to open with an
+    /// empty transcript: it is visible in the sidebar, so answering 404 would strand a row the user
+    /// can see. A foreign or deactivated id still 404s — that is the case below.
+    /// </summary>
     [Fact]
-    public async Task GetConversationMessages_NoTranscriptDocument_ReturnsNotFound()
+    public async Task GetConversationMessages_NoTranscriptDocument_ReturnsAnEmptyTranscript()
     {
         var id = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
         using var client = _fixture.Factory.CreateUserClient();
 
         var response = await client.GetAsync($"api/conversations/{id}/messages", TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        var transcript = await response.Content.ReadFromJsonAsync<ChatConversationDto>(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(transcript);
+        Assert.Equal(id, transcript.Id);
+        Assert.Empty(transcript.Messages);
+    }
+
+    [Fact]
+    public async Task GetConversationMessages_AnotherUsersConversation_ReturnsNotFound()
+    {
+        var theirs = await _fixture.AddConversationAsync(
+            TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync($"api/conversations/{theirs}/messages", TestContext.Current.CancellationToken);
 
         await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
