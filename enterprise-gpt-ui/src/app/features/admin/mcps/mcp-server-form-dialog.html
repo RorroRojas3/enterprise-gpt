@@ -1,0 +1,222 @@
+<app-modal
+  [heading]="heading()"
+  size="md"
+  [open]="open()"
+  [busy]="actions.formBusy()"
+  (closed)="actions.cancelForm()"
+>
+  <!--
+    novalidate: the schema rules own validation, and the browser's own required bubble
+    would fight frame `5h`'s inline message.
+  -->
+  <form id="mcp-server-form" class="mcp-form" novalidate (submit)="submit($event)">
+    @if (actions.formFailure(); as failure) {
+      <!--
+        Frame `5h`'s `--fail` panel. It names the server the failed request was about —
+        not the row on screen now — because create and edit share one dialog and a reader
+        who was interrupted needs to know which save failed. It renders for a validation
+        problem as well as a transport-level one, which is why a non-validation failure on
+        this surface raises no toast: the same fact must not be reported twice.
+      -->
+      <div class="mcp-form__summary" role="alert">
+        <p class="mcp-form__summary-line">
+          Couldn’t save <strong>{{ failure.serverName }}</strong
+          >. {{ failure.reason }} Everything you typed is kept below.
+        </p>
+        @for (message of unmatched(); track $index) {
+          <p class="mcp-form__error">{{ message }}</p>
+        }
+        @if (failure.traceLine; as trace) {
+          <p class="mcp-form__trace">{{ trace }}</p>
+        }
+      </div>
+    }
+
+    <div class="mcp-form__grid">
+      <div class="mcp-form__field">
+        <label class="form-label" for="mcp-form-name">Name</label>
+        <!--
+          No literal maxlength: NG8022 — the [formField] directive owns the constraint
+          attributes and derives this one from the schema's maxLength rule.
+        -->
+        <input
+          id="mcp-form-name"
+          class="form-control"
+          type="text"
+          data-modal-autofocus
+          [formField]="f.name"
+          [class.is-invalid]="fieldErrors().name.show"
+          [attr.aria-describedby]="
+            fieldErrors().name.show
+              ? 'mcp-form-name-errors mcp-form-name-note'
+              : 'mcp-form-name-note'
+          "
+        />
+        @if (fieldErrors().name.show) {
+          <div class="mcp-form__errors" id="mcp-form-name-errors" role="alert">
+            @for (message of fieldErrors().name.messages; track $index) {
+              <p class="mcp-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+        <!--
+          Frame `5h` draws a "Linked permission" select and this system has no field for
+          one: the server creates that permission itself and names it after the server.
+          Saying so here is also the only way the name-collision refusal makes sense — the
+          two share one uniqueness space.
+        -->
+        <p class="mcp-form__note" id="mcp-form-name-note">
+          A permission with this name is created alongside the server, and renamed with it.
+        </p>
+      </div>
+
+      <div class="mcp-form__field">
+        <label class="form-label" for="mcp-form-auth">Auth type</label>
+        <!--
+          Two options, not frame `5h`'s three: `McpAuthTypes` has None and
+          EntraIdOnBehalfOf, and neither "Header key" nor "OAuth2" exists in this system.
+          The values are numbers on the wire — the API registers no string enum converter
+          — and are bound as strings here because a native select binds strings.
+        -->
+        <select
+          id="mcp-form-auth"
+          class="form-select"
+          [formField]="f.authType"
+          [class.is-invalid]="fieldErrors().authType.show || !!unsupportedAuthType()"
+          [attr.aria-describedby]="
+            fieldErrors().authType.show || unsupportedAuthType() ? 'mcp-form-auth-errors' : null
+          "
+        >
+          @for (option of authTypes; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+        @if (fieldErrors().authType.show || unsupportedAuthType()) {
+          <div class="mcp-form__errors" id="mcp-form-auth-errors" role="alert">
+            @if (fieldErrors().authType.show) {
+              @for (message of fieldErrors().authType.messages; track $index) {
+                <p class="mcp-form__error">{{ message }}</p>
+              }
+            }
+            <!-- An edit of a row seeded with an auth type this build does not offer. The
+                 select has no option to show it, so the message names the raw value and
+                 says what to do — ungated by `touched`, because nobody typed it. -->
+            @if (unsupportedAuthType(); as message) {
+              <p class="mcp-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mcp-form__field mcp-form__field--wide">
+        <label class="form-label" for="mcp-form-description">Description</label>
+        <input
+          id="mcp-form-description"
+          class="form-control"
+          type="text"
+          [formField]="f.description"
+          [class.is-invalid]="fieldErrors().description.show"
+          [attr.aria-describedby]="
+            fieldErrors().description.show ? 'mcp-form-description-errors' : null
+          "
+        />
+        @if (fieldErrors().description.show) {
+          <div class="mcp-form__errors" id="mcp-form-description-errors" role="alert">
+            @for (message of fieldErrors().description.messages; track $index) {
+              <p class="mcp-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mcp-form__field mcp-form__field--wide">
+        <label class="form-label" for="mcp-form-url">URL</label>
+        <input
+          id="mcp-form-url"
+          class="form-control font-mono"
+          type="text"
+          inputmode="url"
+          autocomplete="off"
+          spellcheck="false"
+          [formField]="f.url"
+          [class.is-invalid]="fieldErrors().url.show"
+          [attr.aria-describedby]="fieldErrors().url.show ? 'mcp-form-url-errors' : null"
+        />
+        @if (fieldErrors().url.show) {
+          <div class="mcp-form__errors" id="mcp-form-url-errors" role="alert">
+            @for (message of fieldErrors().url.messages; track $index) {
+              <p class="mcp-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <!--
+        Conditional in both directions, because the validator is: a scope is required for
+        Entra ID and refused outright for None. Hidden *and* cleared on a switch, so what
+        the dialog shows is what the save will store.
+      -->
+      @if (showScope()) {
+        <div class="mcp-form__field mcp-form__field--wide">
+          <label class="form-label" for="mcp-form-scope">Scope</label>
+          <input
+            id="mcp-form-scope"
+            class="form-control font-mono"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            [formField]="f.scope"
+            [class.is-invalid]="fieldErrors().scope.show"
+            [attr.aria-describedby]="
+              fieldErrors().scope.show
+                ? 'mcp-form-scope-errors mcp-form-scope-note'
+                : 'mcp-form-scope-note'
+            "
+          />
+          @if (fieldErrors().scope.show) {
+            <div class="mcp-form__errors" id="mcp-form-scope-errors" role="alert">
+              @for (message of fieldErrors().scope.messages; track $index) {
+                <p class="mcp-form__error">{{ message }}</p>
+              }
+            </div>
+          }
+          <p class="mcp-form__note" id="mcp-form-scope-note">
+            The delegated scope this API requests on the signed-in user’s behalf, such as
+            <span class="font-mono">api://…/.default</span>. One scope only.
+          </p>
+        </div>
+      }
+    </div>
+  </form>
+
+  <!--
+    modalFooter on each button, never on a wrapper div: the kit's footer is the flex row,
+    and a wrapper would collapse its gap once Angular strips the inter-element whitespace.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    [disabled]="actions.formBusy()"
+    (click)="actions.cancelForm()"
+  >
+    Cancel
+  </button>
+  <!--
+    Outside the <form> element (the footer projects into the modal's slot), so the native
+    `form` attribute is what ties it back — and what makes Enter in a field perform this
+    button's submit.
+  -->
+  <button
+    modalFooter
+    class="btn btn-primary"
+    type="submit"
+    form="mcp-server-form"
+    [disabled]="!canSubmit()"
+  >
+    @if (actions.formBusy()) {
+      <span class="kit-spinner" aria-hidden="true"></span>
+    }
+    {{ submitLabel() }}
+  </button>
+</app-modal>

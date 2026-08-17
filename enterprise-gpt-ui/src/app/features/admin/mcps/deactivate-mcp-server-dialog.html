@@ -1,0 +1,35 @@
+<app-modal
+  heading="Deactivate MCP server"
+  size="sm"
+  [open]="open()"
+  (closed)="actions.cancelDeactivate()"
+>
+  <p class="deactivate-mcp__body">
+    <strong>{{ target()?.name }}</strong> is removed from every user’s tool picker, and its tools
+    stop being offered to any turn that had selected it.
+  </p>
+
+  <!--
+    Not an aside: `DeactivateMcpServerAsync` deactivates the linked permission and every
+    grant of it in the same save. That is a change to other people's access, and it is the
+    part of this action a reader is least likely to expect.
+  -->
+  <p class="deactivate-mcp__note deactivate-mcp__note--warn">
+    The permission named after this server is deactivated with it, and revoked from everyone who
+    held it. It cannot be brought back from here.
+  </p>
+
+  <!-- Cancel takes initial focus so Enter on a fresh destructive confirmation does nothing. -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    data-modal-autofocus
+    (click)="actions.cancelDeactivate()"
+  >
+    Cancel
+  </button>
+  <button modalFooter class="btn btn-danger" type="button" (click)="actions.confirmDeactivate()">
+    Deactivate server
+  </button>
+</app-modal>

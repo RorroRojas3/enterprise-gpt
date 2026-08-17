@@ -12,8 +12,6 @@ import { UserDto } from '@domain/api/user';
  *
  * Every payload is **server-confirmed**. Optimistic patches and their rollbacks stay
  * inside the store that made them, so an observer never has to undo one.
- *
- * US-1208 adds the MCP server events to this group.
  */
 export const adminEvents = eventGroup({
   source: 'Admin',
@@ -54,5 +52,26 @@ export const adminEvents = eventGroup({
      * administrator has just retired.
      */
     modelCatalogChanged: type<void>(),
+
+    /**
+     * An MCP server was created, updated or deactivated, and the server confirmed it
+     * (US-1208).
+     *
+     * **Void, and every observer refetches**, for the reasons
+     * {@link modelCatalogChanged} is — restated here because they are different facts:
+     *
+     * - `GET api/mcps/all` is **ordered by name**, so a new server's slot is the
+     *   server's to decide, exactly as it is for {@link userCreated};
+     * - `DELETE` answers 204 with no body, and the row has to turn muted, so a patch
+     *   would have to synthesize a `dateDeactivated` the client never observed;
+     * - a `PUT` renames the server's **linked permission** in the same save, which no
+     *   response on this route describes;
+     * - the set is unpaginated and small, so a refetch costs one request.
+     *
+     * Its second observer is `McpCatalogStore`, the chat composer's tool picker, which
+     * must not go on offering a server whose permission has just been revoked from
+     * everybody who held it.
+     */
+    mcpCatalogChanged: type<void>(),
   },
 });

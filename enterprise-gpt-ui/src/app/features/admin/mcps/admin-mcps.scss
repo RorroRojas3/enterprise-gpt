@@ -1,0 +1,64 @@
+:host {
+  display: block;
+}
+
+.admin-mcps__title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.admin-mcps__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  // Only the field may shrink past a 360px viewport (WCAG SC 1.4.10).
+  flex-wrap: wrap;
+}
+
+.admin-mcps__search {
+  width: 300px;
+  // Below the search field's own intrinsic width the toolbar would push the page wide.
+  min-width: 0;
+  flex: 1 1 220px;
+  max-width: 300px;
+}
+
+.admin-mcps__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  margin-left: auto;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+// ── Rows ─────────────────────────────────────────────────────────────────────
+
+.admin-mcps__name {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// A deactivated server is still listed, so it needs a second channel besides the Status
+// column: the name itself recedes. Opacity rather than a colour swap, and never below the
+// 4.5:1 the muted token already clears against the row.
+.admin-mcps__name--retired {
+  opacity: 0.65;
+}
+
+.admin-mcps__muted {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
