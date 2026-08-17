@@ -15,11 +15,12 @@ export interface AdminTab {
  *
  * `AdminNav.dc.html` draws four — Users, Models, MCP servers, Reports — and this list
  * holds only the ones that exist. A tab is added by the story that builds its route
- * (US-1207, US-1208, US-1302), never ahead of it: a rail entry leading nowhere is the
- * "shown and disabled" affordance US-203 already rejected for the Admin entry itself.
+ * (US-1208, US-1302), never ahead of it: a rail entry leading nowhere is the "shown and
+ * disabled" affordance US-203 already rejected for the Admin entry itself.
  */
 export const ADMIN_TABS: readonly AdminTab[] = [
   { id: 'users', label: 'Users', icon: 'bi-people', link: `${ADMIN_ROUTE}/users` },
+  { id: 'models', label: 'Models', icon: 'bi-cpu', link: `${ADMIN_ROUTE}/models` },
 ];
 
 /** The same tabs as {@link PillSubnav} takes them, below 768px (frame `5m`). */

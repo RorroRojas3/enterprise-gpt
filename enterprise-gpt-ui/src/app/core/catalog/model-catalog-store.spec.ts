@@ -5,6 +5,7 @@ import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
+import { adminEvents } from '@core/events/admin-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ModelCatalogStore } from './model-catalog-store';
 
@@ -75,6 +76,43 @@ describe('ModelCatalogStore', () => {
 
     expect(store.error()).toBeNull();
     expect(store.models()).toHaveLength(1);
+  });
+
+  it('reloads when an administrator changes the catalog (US-1207)', async () => {
+    const loaded = store.ensureLoaded();
+    backend
+      .expectOne(MODELS_URL)
+      .flush([modelFixture({ isDefault: true }), modelFixture({ name: 'GPT-4.1 (legacy)' })]);
+    await loaded;
+    expect(store.models()).toHaveLength(2);
+
+    TestBed.inject(Dispatcher).dispatch(adminEvents.modelCatalogChanged());
+    TestBed.tick();
+
+    // `reload()`, not `ensureLoaded()`: the memo is already resolved by the time an
+    // administrator can change anything, so the memoized call would return the stale list.
+    backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true })]);
+    await Promise.resolve();
+
+    // The composer's model menu reads this store. Without the refresh it goes on offering
+    // a model that now answers 404 for the rest of the session.
+    expect(store.models().map((model) => model.name)).not.toContain('GPT-4.1 (legacy)');
+  });
+
+  it('replaces the memo on that reload, so a later ensureLoaded sees the fresh list', async () => {
+    const loaded = store.ensureLoaded();
+    backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true })]);
+    await loaded;
+
+    TestBed.inject(Dispatcher).dispatch(adminEvents.modelCatalogChanged());
+    TestBed.tick();
+    backend.expectOne(MODELS_URL).flush([modelFixture({ name: 'Fresh', isDefault: true })]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(store.ensureLoaded()).resolves.toBe(true);
+    expect(store.defaultModel()?.name).toBe('Fresh');
+    backend.expectNone(MODELS_URL);
   });
 
   it('goes idle when sign-out cancels the flight, and can load again afterwards', async () => {

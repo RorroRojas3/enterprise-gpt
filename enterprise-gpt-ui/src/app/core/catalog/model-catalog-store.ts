@@ -10,9 +10,11 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { Events, withEventHandlers } from '@ngrx/signals/events';
+import { firstValueFrom, takeUntil, tap } from 'rxjs';
 import { ModelDto } from '@domain/api/model';
 import { toAppError } from '@core/errors/to-app-error';
+import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import {
@@ -114,5 +116,15 @@ export const ModelCatalogStore = signalStore(
       });
     },
   }),
+  // The administration area retires a model; this catalogue is what the composer's
+  // model menu reads. Without this the picker goes on offering a retired model for the
+  // rest of the session, and a turn started on one takes a 404 (US-1207).
+  //
+  // `reload()` rather than `ensureLoaded()`: the memo is already resolved by the time
+  // an administrator can change anything, so the memoized call would return the stale
+  // list. It also replaces the memo, so a later `ensureLoaded()` sees the fresh one.
+  withEventHandlers((store, events = inject(Events)) => [
+    events.on(adminEvents.modelCatalogChanged).pipe(tap(() => void store.reload())),
+  ]),
   withResetOnSignOut(),
 );

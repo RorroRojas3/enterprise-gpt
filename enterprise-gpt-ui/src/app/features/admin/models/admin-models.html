@@ -1,0 +1,186 @@
+<h1 class="admin-models__title font-display">Models</h1>
+
+<div class="admin-models__toolbar">
+  <!-- One field over provider *and* model name, which is what frame `5e`'s placeholder
+       promises. It filters in memory: `models/all` is unpaginated, so the rows on screen
+       are the whole catalog and a filter over them is exact rather than a filter over a
+       page pretending to be one. -->
+  <app-search-input
+    class="admin-models__search"
+    label="Search models by provider or name"
+    placeholder="Search provider or model"
+    [value]="models.query()"
+    [busy]="models.isPending()"
+    (searched)="onSearched($event)"
+  />
+
+  <!--
+    `aria-disabled` while the dialog's own submit is on the wire, never the native
+    attribute: the store refuses to open a dialog it could not dismiss, and a silent
+    no-op on a click is its own defect. The native attribute would drop the control out
+    of the tab order for the length of a request instead of announcing why.
+  -->
+  <button
+    class="btn btn-primary btn-sm admin-models__add"
+    type="button"
+    aria-haspopup="dialog"
+    [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
+    (click)="actions.beginCreate()"
+  >
+    <app-icon name="bi-plus-lg" />
+    Add model
+  </button>
+</div>
+
+@if (models.error(); as error) {
+  <!-- Instead of the table rather than beside it: the rows on screen belong to a request
+       that failed. A revoked Administrator grant arrives here as
+       `/problems/permission-required`, which `ErrorPanel` already names and correctly
+       refuses to offer a retry for. -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="Models couldn’t load"
+    (retried)="models.retry()"
+  />
+} @else {
+  <app-data-table
+    label="Models"
+    [rows]="models.results()"
+    [columns]="columns"
+    [trackKey]="trackKey"
+    [rowLabel]="rowLabel"
+    [loading]="models.isFirstLoad()"
+    [summary]="models.countSummary()"
+    [pendingIds]="actions.pendingIds()"
+  >
+    <ng-template appTableCell="model" [appTableCellFor]="models.results()" let-row>
+      <span class="admin-models__identity" [class.admin-models__identity--retired]="isRetired(row)">
+        <span class="admin-models__name">{{ row.name }}</span>
+        @if (row.isDefault) {
+          <!-- The deployment has at most one, and retiring it leaves none: the server
+               clears `IsDefault` on the row it retires. So this is a fact about the
+               catalog, not a per-row decoration. -->
+          <span class="admin-models__default">Default</span>
+        }
+      </span>
+    </ng-template>
+
+    <ng-template appTableCell="provider" [appTableCellFor]="models.results()" let-row>
+      @if (provider(row); as meta) {
+        <app-status-dot [tone]="meta.tone" [label]="meta.name" />
+      } @else {
+        <!-- A provider seeded after this build. Muted and named by its id rather than
+             blank, so the row still says which provider it belongs to. -->
+        <app-status-dot tone="muted" [label]="row.providerId" />
+      }
+    </ng-template>
+
+    <ng-template appTableCell="deployment" [appTableCellFor]="models.results()" let-row>
+      <span class="admin-models__deployment font-mono">{{ row.deploymentName }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="context" [appTableCellFor]="models.results()" let-row>
+      <span class="admin-models__number font-mono">{{ formatContext(row.contextWindowSize) }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="output" [appTableCellFor]="models.results()" let-row>
+      <span class="admin-models__number font-mono">{{ formatTokens(row.maxOutputTokens) }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="tools" [appTableCellFor]="models.results()" let-row>
+      <!-- The glyph is aria-hidden and the meaning is text: colour and shape are never
+           the only channel (WCAG 1.4.1), and "Tools" over a bare tick reads as nothing
+           at all to a screen reader. -->
+      @if (row.isToolEnabled) {
+        <span class="admin-models__tools admin-models__tools--on">
+          <app-icon name="bi-check-circle-fill" />
+          <span class="visually-hidden">Tools enabled</span>
+        </span>
+      } @else {
+        <span class="admin-models__tools">
+          <app-icon name="bi-dash-circle" />
+          <span class="visually-hidden">Tools not enabled</span>
+        </span>
+      }
+    </ng-template>
+
+    <ng-template appTableCell="status" [appTableCellFor]="models.results()" let-row>
+      @if (isRetired(row)) {
+        <app-status-dot tone="muted" label="Retired" />
+      } @else {
+        <app-status-dot tone="ok" label="Active" />
+      }
+    </ng-template>
+
+    <ng-template appTableCell="actions" [appTableCellFor]="models.results()" let-row>
+      <!-- A retired model gets no menu at all rather than a disabled one: there is no
+           reactivate route, so every item would be an affordance that cannot work — the
+           "shown and disabled" pattern US-203 rejected for the Admin entry itself. -->
+      @if (!isRetired(row)) {
+        <!-- `formBusy` as well as the row's own request: Edit refuses to open while the
+             dialog's submit is on the wire, and `Menu.disabled` is `aria-disabled` plus
+             inert rather than the native attribute. -->
+        <app-menu
+          [label]="'Actions for ' + row.name"
+          [disabled]="actions.isRowPending(row.id) || actions.formBusy()"
+          [panelWidth]="200"
+        >
+          <button appMenuItem type="button" (click)="actions.beginEdit(row)">Edit</button>
+          @if (!row.isDefault) {
+            <button appMenuItem type="button" (click)="actions.setAsDefault(row)">
+              Set as default
+            </button>
+          }
+          <button
+            appMenuItem
+            type="button"
+            class="menu__item--danger"
+            (click)="actions.beginDeactivate(row)"
+          >
+            Delete
+          </button>
+        </app-menu>
+      }
+    </ng-template>
+
+    <div tableEmpty>
+      @if (models.hasNoMatches()) {
+        <app-empty-state
+          [heading]="noMatchHeading()"
+          [headingLevel]="2"
+          message="Search covers the model name and its provider."
+        >
+          <button
+            emptyStateAction
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="clearSearch()"
+          >
+            Clear search
+          </button>
+        </app-empty-state>
+      } @else {
+        <app-empty-state
+          heading="No models yet"
+          [headingLevel]="2"
+          message="Add a model and it will appear here and in every user’s picker."
+        />
+      }
+    </div>
+  </app-data-table>
+}
+
+<!--
+  Mounted once for the screen rather than inside a branch above: the dialog is the
+  reader's own state, and a re-render of the controls must not destroy the form they are
+  filling in.
+-->
+<app-model-form-dialog />
+
+<!--
+  Nothing is removed optimistically, unlike a user deactivation: this is a soft delete
+  the table goes on rendering, so the row turns muted when the refetch lands and there is
+  no undo to hand back.
+-->
+<app-deactivate-model-dialog />

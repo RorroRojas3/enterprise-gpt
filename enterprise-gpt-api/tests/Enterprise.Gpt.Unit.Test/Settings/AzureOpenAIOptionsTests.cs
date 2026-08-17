@@ -70,6 +70,20 @@ public sealed class AzureOpenAIOptionsTests
         Assert.Throws<UriFormatException>(() => new AzureOpenAIOptions { Url = "" }.V1Endpoint);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("test.services.ai.azure.com")]
+    [InlineData("ftp://test.services.ai.azure.com/")]
+    // A path, not a URL: Uri accepts this as an implicit file path on Unix but not on Windows, so
+    // deriving the endpoint straight from the Uri constructor passed here and shipped file:///openai/v1/
+    // to the Linux hosts. The theory runs the same on both.
+    [InlineData("/openai/v1/")]
+    public void V1Endpoint_WithoutAnAbsoluteHttpUrl_ThrowsOnEveryPlatform(string url)
+    {
+        Assert.Throws<UriFormatException>(() => new AzureOpenAIOptions { Url = url }.V1Endpoint);
+    }
+
     [Fact]
     public void Defaults_AskForAnAutomaticSummaryAtMediumEffort()
     {

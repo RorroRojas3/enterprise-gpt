@@ -1,0 +1,237 @@
+name: API CI
+
+# No workflow-level `paths` filter, deliberately, and this is the one place this file
+# departs from the shape ui-ci.yml used to have.
+#
+# GitHub's two "skipped" behaviours are not the same, and the difference is the whole
+# design here:
+#
+#   - A workflow skipped by a **path or branch filter** never reports a check at all. Its
+#     status stays Pending, so a filtered workflow can never be a required check without
+#     making every unrelated pull request unmergeable. That is why the filter is gone.
+#   - A job skipped by a **conditional** reports **Success** and does not block merging.
+#     That is what makes the `if:` on each job below safe to use as a required check.
+#
+# Both are documented under "Handling skipped but required checks" in GitHub's
+# troubleshooting-required-status-checks page.
+#
+# The filter therefore moved inside: `changes` decides whether the API tree moved, and the
+# two test jobs condition on its answer. The condition is written **fail-open** — see the
+# comment on `unit` for why that is not a detail.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  # So these still report if a merge queue is ever enabled. The filter script treats
+  # anything that is not a pull request as "run everything", which is correct here.
+  merge_group:
+
+# Read-only by default. No job below writes anything back to the repository, and none of
+# them needs `checks: write` or `pull-requests: write`: results travel as artifacts rather
+# than as a bot comment, so this workflow stays safe to run for a fork's pull request.
+permissions:
+  contents: read
+
+concurrency:
+  # Pull requests collapse onto the pull request number; every other run gets its own
+  # group from its SHA. Keying master on the ref instead would serialise merges into one
+  # group where a *pending* run is cancelled when the next one queues — so three merges
+  # landing together would leave the middle commit with no result at all, which is the
+  # opposite of what a durable master signal means.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: enterprise-gpt-api
+
+jobs:
+  # Cheap, and the only job that always does work. Both jobs below read its answer.
+  #
+  # It is part of the trusted computing base for a merge decision, so it should be a
+  # required check in branch protection alongside the two test jobs.
+  changes:
+    name: Detect API changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Two: the diff below reads the merge commit and its first parent, and nothing
+          # older. A full clone would work too and costs more.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: filter
+        working-directory: .
+        # The value reaches the script through `env`, never through `${{ }}` interpolation
+        # inside `run`. Nothing author-controlled is used here today, but interpolation
+        # splices its value into the shell before bash ever sees a quote, so the habit is
+        # the protection.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          # A push to master always runs everything: two pull requests approved against
+          # different bases can both merge and leave master unvalidated. A merge_group run
+          # takes the same branch, which is what it should do.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "api=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # `HEAD^1` rather than the event payload's `base.sha`: HEAD is the merge commit,
+          # so its first parent *is* the base this pull request will land on. Reading the
+          # payload instead goes stale the moment master advances and the merge ref is
+          # regenerated, which silently widens the diff.
+          #
+          # The allowlist is hand-maintained, so a root-level file that affects the build
+          # — a `global.json`, `Directory.Build.props`, `NuGet.config` — must be added
+          # here when it is introduced. None exists today; a missing entry would under-run
+          # these gates rather than over-run them, which is the dangerous direction.
+          changed=$(git diff --name-only HEAD^1 HEAD -- \
+            enterprise-gpt-api .github/workflows/api-ci.yml)
+
+          if [ -n "$changed" ]; then
+            echo "api=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # 1152 tests, no Docker, ~10s of test time behind a restore and a build. First, because
+  # a compile error should be reported long before a container has finished booting.
+  unit:
+    name: Unit tests
+    needs: changes
+    # **Fail open, and this is the finding that matters most in this file.** A job skipped
+    # by a conditional reports Success, and a `needs` whose dependency *failed* is skipped
+    # — so the naive `needs.changes.outputs.api == 'true'` hands out a green required check
+    # over untested code the moment the filter job breaks for any reason at all.
+    #
+    # `!= 'false'` means an absent answer runs the tests, and `!cancelled()` keeps this job
+    # alive when `changes` failed rather than letting it be skipped into a false pass.
+    # `!cancelled()` rather than `always()`, so `cancel-in-progress` still stops the run.
+    if: ${{ !cancelled() && needs.changes.outputs.api != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # No NuGet cache, matching the decision ui-ci.yml documents: restoring this graph
+      # fills ~/.nuget/packages with hundreds of megabytes, which would compete for the
+      # repository's 10 GB LRU budget against the npm cache on every UI pull request's hot
+      # path. (`setup-dotnet`'s own `cache:` is a separate non-option: it needs
+      # `packages.lock.json` files this repository does not have.)
+      # The test project, not the solution — restore is transitive over project
+      # references, so this pulls everything the build below needs and nothing for the
+      # *other* job's test project.
+      - name: Restore
+        run: >
+          dotnet restore tests/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
+
+      # Likewise. It references Api, Service, Repository, Dto and Entity, and Dto
+      # references Common — so this already compiles all six product projects. Building
+      # the solution would add only the *integration* test assembly, 250 tests this job
+      # will never run and the job beside it compiles anyway.
+      - name: Build
+        run: >
+          dotnet build tests/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
+          --no-restore -c Release
+
+      - name: Test
+        run: >
+          dotnet test tests/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
+          --no-build -c Release
+          --filter "Category!=Integration"
+          --logger "trx;LogFileName=unit.trx"
+          --results-directory "${{ runner.temp }}/unit-results"
+
+      # A red run is exactly when the .trx is worth reading. `!cancelled()` rather than
+      # `always()`: a force-push cancels the run, and there is nothing to keep from one.
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unit-test-results
+          path: ${{ runner.temp }}/unit-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 250 tests against real containers. Separate from `unit` so a compile error or a failing
+  # unit test is reported without waiting on an image pull, and so the two signals can be
+  # required independently in branch protection.
+  integration:
+    name: Integration tests
+    needs: changes
+    # Fail open, for the reason spelled out on `unit`.
+    if: ${{ !cancelled() && needs.changes.outputs.api != 'false' }}
+    # Pinned rather than `ubuntu-latest`. This is the one job that depends on the image's
+    # preinstalled Docker and on two large images pulling cleanly, so a runner-image
+    # migration should arrive as a deliberate pull request rather than as a surprise red
+    # master.
+    runs-on: ubuntu-24.04
+    # Two images are pulled: SQL Server 2025 (~1.5 GB, and `UseCompatibilityLevel(170)`
+    # means no older engine will do) and, for the transcript store only, the Cosmos vNext
+    # emulator. Thirty minutes is the pull plus the suite with room to spare; if it is ever
+    # actually reached, the container is wedged rather than slow.
+    #
+    # Both fixtures name mutable `*-latest` image tags, so an upstream push can turn this
+    # red with no change in this repository. Pinning them by digest is a change to the test
+    # infrastructure rather than to this file, and worth doing separately.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: >
+          dotnet restore
+          tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
+
+      # As in `unit`: this project reaches every product project through its reference to
+      # Api, so the solution build would add only the unit test assembly.
+      - name: Build
+        run: >
+          dotnet build tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
+          --no-restore -c Release
+
+      # Docker is preinstalled on the runner, and Testcontainers starts the containers
+      # itself — including its Ryuk reaper. No secrets and no Azure credentials are
+      # involved: CustomWebApplicationFactory supplies well-formed fake settings inline,
+      # forces the `Testing` environment (which skips `Database.Migrate()`), and swaps
+      # Graph, blob storage, embeddings and the transcript store for fakes.
+      #
+      # If the Cosmos emulator ever proves flaky here, split it into a fourth job with
+      # `--filter "Category=Integration&FullyQualifiedName!~TranscriptStore"` — not a retry
+      # loop, which would only hide which of the two containers was at fault.
+      - name: Test
+        run: >
+          dotnet test tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
+          --no-build -c Release
+          --filter "Category=Integration"
+          --logger "trx;LogFileName=integration.trx"
+          --results-directory "${{ runner.temp }}/integration-results"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-test-results
+          path: ${{ runner.temp }}/integration-results
+          if-no-files-found: ignore
+          retention-days: 7
