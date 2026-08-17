@@ -1,8 +1,8 @@
 # Administration
 
-The `/admin` area: a layout route carrying the rail its tabs hang off, and the **three** tabs behind it. A server-paged **user directory** with a create modal, a permission-editing drawer and a deactivate confirmation; an unpaginated **model catalog** with a create-and-edit dialog, a set-as-default row action and a retire confirmation; and an unpaginated **MCP server registry** with a create-and-edit dialog and a deactivate confirmation that has to name a cascade no other delete in this application performs. Each tab splits its state across **two** stores, and that seam is the most consequential thing here. The area replaces the placeholder that had stood since US-203, whose only job was to give `adminCanMatch` a real chunk to withhold.
+The `/admin` area: a layout route carrying the rail its tabs hang off, and the **four** tabs behind it. A server-paged **user directory** with a create modal, a permission-editing drawer and a deactivate confirmation; an unpaginated **model catalog** with a create-and-edit dialog, a set-as-default row action and a retire confirmation; an unpaginated **MCP server registry** with a create-and-edit dialog and a deactivate confirmation that has to name a cascade no other delete in this application performs; and a **reports** tab that is a URL and an unavailable panel, because the API behind it does not exist yet. Each of the first three splits its state across **two** stores, and that seam is the most consequential thing here. The fourth has no store at all, which is §3.4's whole subject. The area replaces the placeholder that had stood since US-203, whose only job was to give `adminCanMatch` a real chunk to withhold.
 
-Audience: a developer adding the fourth admin tab (US-1302's reports), building a numbered pager or a client-filtered table anywhere else in the app, or debugging a rejection that landed on the wrong surface. Read [Conversation Library](conversation-library.md) first for the list-screen conventions the directory copies — the URL contract, the route-scoped store, the empty states — [Authentication and Session §9](authentication-and-session.md#9-administration-withheld-rather-than-hidden-us-203) for why this chunk is withheld rather than hidden, and [Frontend Foundation](frontend-foundation.md) for the composable store features and the `core/errors` conventions everything here composes. Bare `§` references below are to sections of _this_ page.
+Audience: a developer adding a **fifth** admin tab, filling the reports tab in when US-1301 puts its endpoint on the wire (US-1302), building a numbered pager or a client-filtered table anywhere else in the app, or debugging a rejection that landed on the wrong surface. Read [Conversation Library](conversation-library.md) first for the list-screen conventions the directory copies — the URL contract, the route-scoped store, the empty states — [Authentication and Session §9](authentication-and-session.md#9-administration-withheld-rather-than-hidden-us-203) for why this chunk is withheld rather than hidden, and [Frontend Foundation](frontend-foundation.md) for the composable store features and the `core/errors` conventions everything here composes. Bare `§` references below are to sections of _this_ page.
 
 The server side is the authority on everything past the request, and this page links into it rather than restating it:
 
@@ -14,7 +14,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority f
 
 ## 1. Overview
 
-Six stories. The first four were taken in their numbered order because they all write the same three files; US-1207 followed, on the second tab, touching none of them, and US-1208 copied _that_ tab rather than the first. Between them they also land the part of US-1209 that frame `5a` draws as part of the users screen.
+Seven stories. The first four were taken in their numbered order because they all write the same three files; US-1207 followed, on the second tab, touching none of them, and US-1208 copied _that_ tab rather than the first. Between them they landed the part of US-1209 that frame `5a` draws as part of the users screen — the layout route, the rail and the redirect — which is why US-1209 closed as a fourth tab and two route-table entries rather than as an epic of its own.
 
 | Story               | What it delivers                                                                                                                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -24,7 +24,7 @@ Six stories. The first four were taken in their numbered order because they all 
 | **US-1204**         | A deactivate confirmation, an optimistic and position-faithful row removal, and the refusal a caller gets on their own row                                                                           |
 | **US-1207**         | The models tab: the whole catalog in one request, filtered in memory, an eleven-field create-and-edit dialog, a Set as default row action, and a retire confirmation (§10)                           |
 | **US-1208**         | The MCP servers tab: the whole registry in one request, a five-field create-and-edit dialog whose Scope is conditional in both directions, and a deactivate confirmation that names a cascade (§11)  |
-| **part of US-1209** | The layout route, the rail marking the open tab from the router, and the `/admin` → `/admin/users` redirect. What is left to US-1209 is the reports tab and the criteria spanning all four           |
+| **US-1209**         | The layout route, the rail marking the open tab from the router and the `/admin` → `/admin/users` redirect — all landed with the four above — plus the reports tab, the fourth URL its first criterion names, and a `**` child that keeps an unknown admin URL inside the area (§3.1, §3.4) |
 
 Nine decisions shape the directory, and each looks removable until you know what it prevents:
 
@@ -63,6 +63,14 @@ Nine shape the MCP server registry. It copies the catalog's shape and departs fr
 8. **The confirmation says what the cascade actually does.** `DeactivateMcpServerAsync` deactivates the server, its linked permission **and every grant of that permission** in one atomic save. No other delete in this application revokes other people's access, so it is on the `--warn` surface rather than an aside (§11.5).
 9. **The Auth column is 150px, not frame `5g`'s 90px.** "Entra ID (on behalf of)" is one of only two values it can hold, and a narrower grid track ellipsises it permanently (§11.2).
 
+Five shape the reports tab, and every one of them is a departure from something written down — which is why they are here rather than in a commit message:
+
+1. **The route shipped with US-1209, not with US-1302.** §3.2 and the comments in `admin-tabs.ts` had booked the fourth tab to US-1302, but US-1302 `Depends on: US-1209`, and US-1209's first criterion names `/admin/reports` among the four URLs it has to open. The two deadlocked, and the rule §3.2 states was never the thing in the way: it says a tab is added by the story that builds its route, and US-1209 **is** that story (§3.4).
+2. **The tab renders the shared `UnavailablePanel` and no data at all.** Frame `5i` — "Reports — unavailable panel (current state)", captioned "Required frame" — is the design authority for shipping it this way, `GET api/reports/usage` does not exist, and FR-49 (P0) requires that every capability with no backing API render a visible unavailable state rather than placeholder figures. This is the panel's first production consumer; until now only `/ui-kit` rendered it (§3.4).
+3. **There is no `ReportsStore`, and that departs from a written criterion.** US-1302's first acceptance criterion asks for one holding zero records. With no endpoint it would hold no state, expose no method and load nothing — and US-1209's own third criterion, that opening a tab instantiates that tab's store and no other, is satisfied most strongly by a tab that instantiates none. The store arrives with the endpoint (§3.4).
+4. **The tab carries an `<h1>Reports</h1>` that frame `5i` does not draw.** The panel's own heading is a `<p>` bound through `aria-labelledby`, not a heading role, so without it this would be the only routed screen in the app with no level-one heading — a gap US-1401's axe gate (P7) would find (§3.4).
+5. **`/admin/<unknown>` now redirects to `/admin/users` rather than ejecting to `/chat`.** A `**` child on the layout route. The consequence outlives the redirect: the layout matches by prefix, so **a new admin route must be added above that entry** or it is unreachable, and nothing reports it (§3.1).
+
 ### 1.1 Where each piece lives
 
 | Concern                                                                     | Where                                                                                                                                                                                                                                                                                                                            |
@@ -93,6 +101,8 @@ Nine shape the MCP server registry. It copies the catalog's shape and departs fr
 | `400k` and `32,768`, in one fixed locale                                    | [`features/admin/models/model-format.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/model-format.ts) (§10.3)                                                                                                                                                                                                         |
 | The MCP registry screen and its route-scoped store                          | [`features/admin/mcps/admin-mcps.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.html), [`admin-mcps-store.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps-store.ts) (§11.1)                              |
 | The two MCP surfaces                                                        | [`mcp-server-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/mcp-server-form-dialog.ts) (§11.3), [`deactivate-mcp-server-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/deactivate-mcp-server-dialog.ts) (§11.5)                                                                           |
+| The reports tab — a component, a heading and a panel, and nothing else     | [`features/admin/reports/admin-reports.ts`](../../enterprise-gpt-ui/src/app/features/admin/reports/admin-reports.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/reports/admin-reports.html) — no store, no route file, no request (§3.4)                                                                        |
+| The panel it renders                                                        | [`shared/feedback/unavailable-panel/`](../../enterprise-gpt-ui/src/app/shared/feedback/unavailable-panel/) — US-106's, with no `retry` output by design (§3.4)                                                                                                                                                                  |
 | The pager, the drawer, the badge                                            | [`shared/data/paginator/`](../../enterprise-gpt-ui/src/app/shared/data/paginator/), [`shared/overlay/offcanvas/`](../../enterprise-gpt-ui/src/app/shared/overlay/offcanvas/), [`shared/badge/permission-badge/`](../../enterprise-gpt-ui/src/app/shared/badge/permission-badge/) — all US-106's, built for these frames (§12.2)  |
 | Fixtures for specs                                                          | [`src/testing/users.ts`](../../enterprise-gpt-ui/src/testing/users.ts), [`src/testing/catalog.ts`](../../enterprise-gpt-ui/src/testing/catalog.ts)                                                                                                                                                                               |
 
@@ -186,23 +196,30 @@ Identical in shape to §2.3, because it is the same regime (§11.1). The searcha
 
 ### 2.5 Adding an admin tab
 
-Three files, and none of them is the layout. Both the models tab and the MCP tab are worked examples; each was the same two edits:
+Three files, and none of them is the layout. The models tab, the MCP tab and the reports tab are all worked examples; each was the same two edits:
 
 ```ts
 // admin-tabs.ts — the rail entry. Add it in the story that builds the route, never before.
-// The glyph must already be in ICON_NAMES: `bi-plug` is what AdminNav.dc.html draws and is
-// in the 75-glyph sprite, so nothing had to be rebuilt for it.
+// The glyph must already be in ICON_NAMES: `bi-plug` and `bi-graph-up` are what
+// AdminNav.dc.html draws and are both in the 75-glyph sprite, so neither cost a rebuild.
 { id: 'mcps', label: 'MCP servers', icon: 'bi-plug', link: `${ADMIN_ROUTE}/mcps` }
+{ id: 'reports', label: 'Reports', icon: 'bi-graph-up', link: `${ADMIN_ROUTE}/reports` }
 
-// admin.routes.ts — a sibling child of the layout, providing its own store on its own route.
+// admin.routes.ts — a sibling child of the layout, providing its own store on its own route,
+// and **above the `**` entry**, which is last and matches everything left (§3.1).
 { path: 'mcps', component: AdminMcps, title: 'MCP servers — Enterprise GPT' }
+{ path: 'reports', component: AdminReports, title: 'Reports — Enterprise GPT' }
 ```
 
-`AdminLayout` holds **no store**, and no tab may provide one on it: US-1209 requires that opening a tab instantiates that tab's store and no other. The third file is the screen itself, and which of the two shapes on this page it copies is decided by the endpoint: a server-paged route takes `AdminUsers`'s URL contract (§4.1), an unpaginated one takes `AdminModels`'s client filter (§10.2). `GET api/mcps/all` is unpaginated, which is why US-1208 copied the models tab and touched none of the directory's files.
+That position is the one constraint US-1209 added and the one a compiler cannot catch. The layout is `path: ''` and matches by **prefix**, so every URL under `/admin` is consumed inside this array; an entry added below the `**` is unreachable, and neither the build, the linter nor the router says so. If a route is to render **without** the rail, it goes above the layout route itself rather than among its children.
+
+`AdminLayout` holds **no store**, and no tab may provide one on it: US-1209 requires that opening a tab instantiates that tab's store and no other. The third file is the screen itself, and which shape on this page it copies is decided by the endpoint: a server-paged route takes `AdminUsers`'s URL contract (§4.1), an unpaginated one takes `AdminModels`'s client filter (§10.2), and a route whose endpoint **does not exist** takes `AdminReports`'s — a component, a heading and `UnavailablePanel`, with no store at all (§3.4). `GET api/mcps/all` is unpaginated, which is why US-1208 copied the models tab and touched none of the directory's files.
 
 ### 2.6 Rules that are not style preferences
 
 - **Never add a rail entry before its route exists.** A link that leads nowhere is the shown-and-disabled affordance US-203 already rejected for the Admin entry itself (§3.2).
+- **Never add an admin route below the layout's `**` child.** It matches everything left, so anything after it is dead code the tooling does not flag (§3.1).
+- **Never fill a screen whose API does not exist with plausible-looking figures.** FR-49 (P0): render `UnavailablePanel`, which has no `retry` output precisely because a missing endpoint does not return on a button press (§3.4).
 - **Never build a user update body without the profile fields.** `UpdateUserActionDto` requires `firstName`, `lastName` and `email` to be non-empty; `{ permissionIds }` alone is a 400 on three required fields, not a partial update (§7.3).
 - **Never decide which surface renders a failure by reading `formMode()`.** Pass the flow (§6.5).
 - **Never match a self-action refusal on the server's message.** Match the `errors` key and the target's identity (§9).
@@ -223,22 +240,42 @@ Three files, and none of them is the layout. Both the models tab and the MCP tab
 /admin  canMatch: [adminCanMatch]  loadChildren      ← the chunk, withheld not hidden
  └─ ''  AdminLayout                                  ← the 190px rail (pills below 768px)
       ├─ ''        → redirect to 'users'
-      ├─ 'users'   AdminUsers   providers: [AdminUsersStore]
-      ├─ 'models'  AdminModels  providers: [AdminModelsStore]
-      └─ 'mcps'    AdminMcps    providers: [AdminMcpsStore]
+      ├─ 'users'   AdminUsers    providers: [AdminUsersStore]
+      ├─ 'models'  AdminModels   providers: [AdminModelsStore]
+      ├─ 'mcps'    AdminMcps     providers: [AdminMcpsStore]
+      ├─ 'reports' AdminReports  — no providers, because there is no store (§3.4)
+      └─ '**'      → redirect to 'users'
 ```
 
 Two things follow from real child routes that a signal holding a tab name cannot give: the rail marks the open tab **from the router**, which is what US-1209 asks for and what stops the mark and the content disagreeing; and the browser's back button restores the previous tab for free. `ariaCurrentWhenActive="page"` rides along with the active class, so the mark reaches a screen reader as a navigation state rather than as a colour.
 
+The trailing `**` is US-1209's, and it changed where a mistyped admin URL lands. Before it, an unmatched segment made the router backtrack out of `/admin` altogether and fall through to `app.routes.ts`'s own `**`, which put an administrator on `/chat`: being ejected from the area is the opposite of what a story about reaching a tab by URL is for, and a renamed tab would do it to every bookmark at once. The redirect is written relative, so it resolves against this parent to `/admin/users` during recognition — no layout flash, and the guard has already run.
+
+**It also ends the backtracking anything else might have relied on.** `AdminLayout` sits at `path: ''` and matches by prefix, so from here every URL under `/admin` is consumed inside this array. A new admin route belongs **above** the `**` entry — or above the layout route itself, if it is to render without the rail. Added below either, it is unreachable, and neither `ng build` nor `npm run lint` will say so; the symptom is a route that silently renders the users tab (§15).
+
 ### 3.2 The rail lists only the tabs that exist
 
-`AdminNav.dc.html` draws four entries — Users, Models, MCP servers, Reports. `ADMIN_TABS` holds three. A tab is added by the story that builds its route (US-1302 for the last of them), never ahead of it, for the reason US-203 already settled for the Admin entry itself: an affordance that is present and inert is worse than one that is absent. US-1207 and US-1208 each added their entry and their route in the same commit, which is the whole rule in one line.
+`AdminNav.dc.html` draws four entries — Users, Models, MCP servers, Reports — and since US-1209 `ADMIN_TABS` holds all four. The rule that got them there is unchanged and still binds: **a tab is added by the story that builds its route, in the same commit, never ahead of it**, for the reason US-203 already settled for the Admin entry itself — an affordance that is present and inert is worse than one that is absent. US-1207 and US-1208 each added their entry and their route in the same commit, and US-1209 did the same for Reports; what changed is only which story owned the fourth (§3.4), not the rule.
 
-The glyph is a second, quieter constraint: `AdminTab.icon` is typed `IconName`, so an entry can only name a glyph the sprite already carries, and `npm run lint`'s `check:icons` fails a build that references one it does not. US-1208's `bi-plug` is what the board draws _and_ is already among the 75 glyphs, so the rail entry cost no sprite rebuild.
+The glyph is a second, quieter constraint: `AdminTab.icon` is typed `IconName`, so an entry can only name a glyph the sprite already carries, and `npm run lint`'s `check:icons` fails a build that references one it does not. US-1208's `bi-plug` and US-1209's `bi-graph-up` are both what the board draws _and_ already among the 75 glyphs, so neither rail entry cost a sprite rebuild.
 
 ### 3.3 Below 768px
 
-The rail becomes frame `5m`'s scrollable pill strip, through the existing `PillSubnav`. The breakpoint is fixed rather than an input, and it is the same one `DataTable` collapses at — a caller choosing a different width would put the rail and the rows out of step.
+The rail becomes frame `5m`'s scrollable pill strip, through the existing `PillSubnav`. The breakpoint is fixed rather than an input, and it is the same one `DataTable` collapses at — a caller choosing a different width would put the rail and the rows out of step. `ADMIN_PILLS` is derived from `ADMIN_TABS`, so the reports entry arrived here for free — but US-1209's first criterion is about the rail marking the open tab, and below the breakpoint the rail **is** this strip, which is why a spec opens `/admin/reports` narrow as well as wide.
+
+### 3.4 The reports tab: the URL exists, the dashboard does not (US-1209)
+
+The fourth tab exists **so that its URL does**. US-1209's first criterion names four URLs, `/admin/reports` among them, each of which has to render as the active tab with the rail marking it — and a tab whose route is missing cannot be marked. That is the whole reason this screen shipped now, and it settles a deadlock: §3.2 and the comments in `admin-tabs.ts` had booked the fourth tab to US-1302, but US-1302 `Depends on: US-1209`, so each was waiting on the other. §3.2's rule was never what stood in the way — it names the story that builds the route, and here that story is US-1209. Design frame `5i`, labelled "Reports — unavailable panel (current state)" and captioned "Required frame", is the authority for shipping it in this state rather than not at all.
+
+**What it renders.** An `<h1>Reports</h1>` and the shared [`UnavailablePanel`](../../enterprise-gpt-ui/src/app/shared/feedback/unavailable-panel/), carrying frame `5i`'s copy verbatim: "Usage reports aren't available yet", and beneath it that the reporting API is not enabled for this deployment and that **token usage is still recorded**. That second sentence is load-bearing rather than consolation — `ConversationUsage` rows are written for every turn, cancelled and failed ones included ([US-1301's criteria](../prd/enterprise-ui-rebuild.md)), so nothing is being lost while this tab waits for the route that reads them. This is the panel's **first production consumer**; US-106 built it against frames `4i` and `5i` and only `/ui-kit` had rendered it until now. It carries no `retry` output and no action slot by design: a missing API does not come back because somebody pressed a button.
+
+**No rows, no totals, no sample chart** — FR-49 (P0), which requires every capability with no backing API to render a visible unavailable state and no placeholder data. `GET api/reports/usage` does not exist: the API has seven endpoint modules and none of them is `api/reports`. The spec asserts the absence in both directions, counting zero `table`/`tr`/`td`/`li` elements and verifying against `HttpTestingController` that the tab issues **no request at all** — a request that 404s would surface as an error panel, which says something different and less true than an unavailable one.
+
+**There is no `ReportsStore`, and this is a departure from a written criterion.** US-1302's first acceptance criterion says the panel renders "and `ReportsStore` holds zero records: no sample chart, no placeholder totals". With no endpoint, such a store would hold no state, expose no method and load nothing — an empty shell whose only content is its own name. US-1209's third criterion, that opening a tab instantiates that tab's store and no other, is satisfied most strongly by a tab that instantiates none; and the wording's _intent_ is FR-49, which a storeless component satisfies more strongly than an empty store does. **`ReportsStore` arrives with the endpoint, in US-1302** — nobody should read that criterion literally against this interim state and add a store to satisfy it.
+
+**One departure from frame `5i`: the `<h1>`.** The frame draws the panel alone in the content pane. Every sibling tab carries a level-one heading, and `UnavailablePanel`'s own heading is a `<p>` bound through `aria-labelledby` rather than a heading role — so without one this would be the only routed screen in the app with no `<h1>`, a gap US-1401's axe gate (P7) would find. The centering the frame _does_ draw is honoured instead by making `.admin__content` a **flex column**, letting the tab's host take `flex: 1` and the panel centre in what is left below the title. That change is inert for the other three tabs: a blockified flex item in a column lays out exactly as the block it already was. The alternative — a percentage `min-height` on each tab's host — leans on a definiteness the Flexbox spec does not guarantee through this chain of `min-height: 100%` ancestors.
+
+Nothing else on this route changes when US-1302 lands: the URL, the rail entry, the title and the heading all stay, and the panel is replaced by frames `5j`/`5k`'s dashboard.
 
 ## 4. The directory (US-1201)
 
@@ -757,15 +794,20 @@ The root store's handler calls `reload()` rather than `ensureLoaded()`, for §10
 
 ### 12.1 The bundle
 
-The initial bundle measures **669.78 kB raw / 168.94 kB transfer** against the 670 kB warning and 720 kB error ceiling, with `styles` unchanged at 63.96 kB. No re-baseline — and **0.22 kB of headroom left**, so the next root-scoped store trips the warning.
+The initial bundle measures **669.78 kB raw / 168.95 kB transfer** against the 670 kB warning and 720 kB error ceiling, with `styles` unchanged at 63.96 kB. No re-baseline — and **0.22 kB of headroom left**, so the next root-scoped store trips the warning.
 
 | Story           | Initial raw   | Δ            | What landed on the graph                                                                                               |
 | --------------- | ------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | US-1201–US-1204 | 669.17 kB     | +0.27 kB     | The shared kit's — the paginator's select and its `liveSummary` opt-out, and `initialsOf` moving into `shared/avatar/` |
 | US-1207         | 669.63 kB     | +0.46 kB     | `ModelCatalogStore`'s event handler, and nothing else (§10.6)                                                          |
-| **US-1208**     | **669.78 kB** | **+0.15 kB** | `McpCatalogStore`'s event handler, and nothing else (§11.6)                                                            |
+| US-1208         | 669.78 kB     | +0.15 kB     | `McpCatalogStore`'s event handler, and nothing else (§11.6)                                                            |
+| **US-1209**     | **669.78 kB** | **+0.00 kB** | Nothing. No event on `adminEvents`, no root-scoped store, no dependency — the tab is a component and a panel (§3.4)    |
 
-Everything else rides the lazy admin chunk, now **94.84 kB** (70.23 kB before this story), including all three root-scoped action stores: `providedIn: 'root'` is a DI scope, not a chunk assignment, and nothing eagerly reachable imports any of them. `check-initial-chunk.mjs` still reports the admin area absent from the initial graph.
+That last row is the shape to aim for and the reason §3.4's "no store" decision is not only about FR-49: a tab that adds nothing to `core/` adds nothing to the initial graph, whatever it renders.
+
+Everything else rides the lazy admin chunk, now **95.94 kB** — 70.23 kB before US-1208's tab, 94.84 kB before US-1209's, so the reports tab is **+1.10 kB** of it — including all three root-scoped action stores: `providedIn: 'root'` is a DI scope, not a chunk assignment, and nothing eagerly reachable imports any of them. `check-initial-chunk.mjs` still reports the admin area absent from the initial graph.
+
+**One note for US-1302, which is the next thing to touch this chunk.** `admin.routes.ts` names every tab with a static `component:` import, so `admin-routes` is one chunk that all four tabs share: a charting library imported by the reports screen would be downloaded by everyone who opens `/admin/users`. Switching that one route to `loadComponent` is the cheap fix, and it is cheap **at that point** — doing it now would split a chunk to defer a component with no dependencies.
 
 The two event-handler deltas are worth reading together, because they are the shape of every future cross-boundary event and they are **not the same size**. Both stores are root-scoped and genuinely initial — the chat composer reads each — so composing `withEventHandlers` onto one puts that handler, and the `adminEvents` symbol it names, on the initial graph. US-1207 paid 0.46 kB because it brought `withEventHandlers` and the event group with it; US-1208 paid 0.15 kB because both were already there and only the handler itself was new. The admin screens either store coordinates with do not follow in either case: an event group is a set of type tokens, not an import edge back into `features/admin/`.
 
@@ -781,15 +823,17 @@ Three components built by US-106 **against these frames** had no consumer but `/
 
 The select's selection is bound **on the options**, never as `[value]` on the `<select>`: that binding runs before `@for` inserts the options, so it sets `selectedIndex = -1` on an empty list, and the browser's reset then selects the first option — a deep link to `?size=100` would request 100 and display "25 / page". The chosen size is also validated against the offered list before it is emitted, so nothing can reach a request as `take=NaN`.
 
+A fourth, `UnavailablePanel` ("a capability this deployment does not have", frames `4i` and `5i`), waited one story longer and needed nothing either: US-1209's reports tab binds its two required inputs and is its first production consumer (§3.4).
+
 Two things did have to be built: `AvatarInitials` (§4.4) and the `AdminLayout` rail (§3).
 
 ## 13. Testing
 
-**271 specs**: 82 across seven files as EP-12's first four stories closed, 102 more with US-1207, and **87** with US-1208 — six new files, plus two cases added to `mcp-catalog-store` and one to `admin-layout`, whose "lists only the tabs that exist" now expects three. The suite total is **1656**.
+**279 specs**: 82 across seven files as EP-12's first four stories closed, 102 more with US-1207, 87 with US-1208, and **8** with US-1209 — one new file, plus three cases added to `admin-layout`, whose "lists only the tabs that exist" now expects four. The suite total is **1664**, across 134 files.
 
 | Area                    | Spec                      | Notable cases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The area's chrome       | `admin-layout` (8)        | `/admin` redirecting to the users tab; the open tab marked **from the router**; **only the three tabs that exist** listed; the pill strip below 768px; **`/admin/models` and `/admin/mcps` each opened by URL instantiating only their own store**; back restoring the previous tab                                                                                                                                                                                                                          |
+| The area's chrome       | `admin-layout` (11)       | `/admin` redirecting to the users tab; the open tab marked **from the router**; **only the four tabs that exist** listed; the pill strip below 768px, and **every tab reachable by URL there too**; **`/admin/models`, `/admin/mcps` and `/admin/reports` each opened by URL instantiating only their own store — and the reports tab none at all**; **an unknown `/admin/…` kept inside the area rather than ejected to `/chat`**; back restoring the previous tab                                             |
 | The URL contract        | `admin-users` (2)         | A page number that would send a negative offset refused; `?size=` read only as one of the three offered, so the control cannot contradict the URL                                                                                                                                                                                                                                                                                                                                                            |
 | The rows                | `admin-users` (4)         | Initials, name, email and one badge per grant; **an MCP server named without a second request**; the email fallback for an account with no directory name; the caller's own row marked                                                                                                                                                                                                                                                                                                                       |
 | Deep links and paging   | `admin-users` (5)         | **Term, page and size on one request**; a search dropping the page with it; back restoring the page before it; the size a deep link asked for shown; a size change returning to page 1                                                                                                                                                                                                                                                                                                                       |
@@ -827,9 +871,16 @@ And US-1208's, on the MCP servers tab:
 | Deactivation        | `deactivate-mcp-server` (6)     | The server named and the action red; initial focus on Cancel; **the permission and its grants stated as going with the server**; what it does to a turn in progress; confirmed on the store, because there is no row to remove; cancelled without a request                                                                                                                                                                                                                                                                                        |
 | The composer's copy | `mcp-catalog-store` (2 new)     | **A reload when an administrator changes the registry**, and **the memo replaced**, so a later `ensureLoaded()` sees the fresh list                                                                                                                                                                                                                                                                                                                                                                                                                |
 
+And US-1209's, on the reports tab and the area around it:
+
+| Area              | Spec                  | Notable cases                                                                                                                                                                                                                                                                                                        |
+| ----------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The reports tab   | `admin-reports` (5)   | **The tab named at level one, as its three siblings are** (§3.4); the missing capability, the reason and what still happens without it, in frame `5i`'s words; **nothing to press**, because a missing API does not return on retry; **no rows, records or placeholder values (FR-49)**; **no request issued at all** |
+| The area's chrome | `admin-layout` (3 new) | **`/admin/reports` opened by URL instantiating no store at all**; the same URL reached below 768px, where the rail is the pill strip; **`/admin/mistyped` landing on `/admin/users` rather than on `/chat`** — the spec's route table carries a `ChatStub` so "stayed in the area" is distinguishable from "went nowhere" |
+
 ```bash
 # from enterprise-gpt-ui/
-npm test        # Vitest, single run — 1656 specs
+npm test        # Vitest, single run — 1664 specs
 npm run lint    # ESLint + icon, forbidden-API and token checks
 npm run build   # budgets, then check-initial-chunk.mjs
 npm run format  # Prettier
@@ -870,13 +921,15 @@ On the registry:
 | **More than one scope**                      | [MCP PRD](../prd/mcp/mcp-server-integration.md)'s US-101                                     | `McpServer.Scope` is a single `nvarchar(512)`. The form binds one field and says "One scope only." under it; that story's `Scope` → `Scopes` rename is a **breaking change to this client** and has to carry it          |
 | **Dry-run validation, a tool-surface view, a health signal** | that PRD's US-103, US-104 and US-405                                        | Frame-adjacent capability an administrator wants when registering a server, and nothing routes to `McpToolProvider` or `McpClientCache` over HTTP today                                                                 |
 
-And across all three:
+And on the reports tab, where the absence is the screen:
 
-| Missing         | Owner   | Notes                                  |
-| --------------- | ------- | -------------------------------------- |
-| The reports tab | US-1302 | The rail lists only what exists (§3.2) |
+| Missing from frame `5j` / `5k` | Owner                            | Notes                                                                                                                                                                                                                                                                            |
+| ------------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The usage dashboard itself** | US-1302 (P8), once US-1301 lands | The route, the rail entry and the title exist; frame `5i`'s `UnavailablePanel` stands in for the dashboard, because `GET api/reports/usage` does not (§3.4). Recorded in the build order's interim-behaviours table                                                               |
+| **`ReportsStore`**             | US-1302 (P8)                     | A deliberate departure from that story's first criterion, which asks for one holding zero records: with no endpoint it would hold no state and load nothing, and the criterion's intent — FR-49 — is met more strongly by a tab that instantiates no store at all (§3.4)          |
+| **A range control, a group-by select, KPI tiles, three charts and a per-model table** | US-1302 (P8) | All six are frames `5j`/`5k`, all six need the response US-1301's last criterion specifies, and none of them can be drawn honestly from figures nobody measured                                                                                                |
 
-The last three catalog absences and four of the registry's are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table, alongside the directory's Last active column.
+The last three catalog absences, four of the registry's and the reports tab's stand-in panel are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table, alongside the directory's Last active column.
 
 Two routes are deliberately unused rather than missing. The single-permission grant and revoke routes ([User Management §2.1](../users/user-management.md#21-related-grant-routes)) stay untouched because frame `5c` edits a set, and mixing a per-row request into a panel that also PUTs the whole set would make two paths to the same outcome with different failure modes — and `GET api/mcps/{id}` stays untouched for the same reason (§11.1).
 
@@ -904,6 +957,11 @@ Two routes are deliberately unused rather than missing. The single-permission gr
 | Deleting the row an administrator was standing on drops focus to `<body>`                   | The confirmation's `#main-content` fallback was removed, or its fell-through check was inverted (§8.1)                                                                |
 | The whole admin area lands in the initial bundle                                            | Something eagerly reachable imported one of the three root action stores, or a file beside one. `providedIn: 'root'` is a DI scope, not a chunk assignment (§12.1)    |
 | The rail marks the wrong tab, or none                                                       | The tabs were made local state instead of child routes (§3.1)                                                                                                         |
+| **A newly added admin route silently renders the users tab**                                | It was added **below** the layout's `**` child, which matches everything left. Nothing in the build or the linter reports this (§3.1, §2.5)                           |
+| A mistyped `/admin/…` URL throws an administrator out to `/chat`                            | The layout's `**` child was removed, so the router backtracks out of the area and falls to `app.routes.ts`'s own (§3.1)                                               |
+| The reports panel sits under the title instead of centred in the pane                       | `.admin__content` stopped being a flex column, or the tab's host lost `flex: 1`. The centring is the layout's, not a `min-height` on the tab (§3.4)                   |
+| One of the table tabs starts stretching or shrinking oddly                                  | Same change, other direction: `.admin__content` is a flex column and a tab's host set something other than the default `flex` a blockified item gets (§3.4)           |
+| The reports tab shows an **error** panel rather than an unavailable one                     | Something gave it a request to make. There is no `api/reports` route to call, and a 404 says "this broke" where the truth is "this was never built" (§3.4)            |
 
 And on the models tab:
 
@@ -952,6 +1010,7 @@ And on the MCP servers tab:
 | The catalog's number formats   | [`features/admin/models/model-format.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/model-format.ts)                                                                                                                                                                                                                                                                                    |
 | The MCP server registry        | [`features/admin/mcps/admin-mcps.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.html), [`admin-mcps-store.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps-store.ts)                                                                                                          |
 | Its two surfaces               | [`mcp-server-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/mcp-server-form-dialog.ts), [`deactivate-mcp-server-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/deactivate-mcp-server-dialog.ts)                                                                                                                                                              |
+| The reports tab                | [`features/admin/reports/admin-reports.ts`](../../enterprise-gpt-ui/src/app/features/admin/reports/admin-reports.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/reports/admin-reports.html), [`shared/feedback/unavailable-panel/`](../../enterprise-gpt-ui/src/app/shared/feedback/unavailable-panel/) — no store, by decision (§3.4)                                                |
 | Every request                  | [`core/users/user-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/users/user-actions-store.ts), [`core/catalog/model-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-actions-store.ts), [`core/catalog/mcp-server-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-server-actions-store.ts)                                                        |
 | The model form's rules         | [`core/catalog/model-form.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-form.ts)                                                                                                                                                                                                                                                                                                          |
 | The MCP form's rules           | [`core/catalog/mcp-server-form.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-server-form.ts)                                                                                                                                                                                                                                                                                                |

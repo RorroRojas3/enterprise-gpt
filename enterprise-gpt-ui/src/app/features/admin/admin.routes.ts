@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { AdminLayout } from './admin-layout';
 import { AdminMcps } from './mcps/admin-mcps';
 import { AdminModels } from './models/admin-models';
+import { AdminReports } from './reports/admin-reports';
 import { AdminUsers } from './users/admin-users';
 
 /**
@@ -13,11 +14,12 @@ import { AdminUsers } from './users/admin-users';
  *
  * Tabs are **children of one layout route**, which is what lets the rail mark the open
  * one from the router rather than from local state, and what makes the browser's back
- * button restore the previous tab for free. US-1302 adds the last sibling here; US-1209
- * owns the criteria across all four.
+ * button restore the previous tab for free (US-1209). All four the board draws are here;
+ * US-1302 changes what `reports` renders, not that it resolves.
  *
- * Each tab provides its own store on its own route, never on the layout — US-1209
- * requires that opening one tab instantiates that tab's store and no other.
+ * Each tab provides its own store on the component the route names, never on the layout —
+ * US-1209 requires that opening one tab instantiates that tab's store and no other, and
+ * `AdminReports` instantiates none because there is no endpoint to call yet.
  */
 export const adminRoutes: Routes = [
   {
@@ -28,6 +30,21 @@ export const adminRoutes: Routes = [
       { path: 'users', component: AdminUsers, title: 'Users — Enterprise GPT' },
       { path: 'models', component: AdminModels, title: 'Models — Enterprise GPT' },
       { path: 'mcps', component: AdminMcps, title: 'MCP servers — Enterprise GPT' },
+      { path: 'reports', component: AdminReports, title: 'Reports — Enterprise GPT' },
+
+      // Last, and inside the area rather than outside it. Without this an unmatched
+      // segment makes the router backtrack out of `/admin` entirely and fall to the
+      // table's own `**`, which lands an administrator on `/chat` — a mistyped or
+      // renamed tab URL ejecting them from the area is the opposite of what a story
+      // about reaching a tab by URL is for. The redirect is relative, so it resolves
+      // against this parent to `/admin/users` during recognition, with no layout flash.
+      //
+      // It also ends the backtracking a *sibling* of the layout route would rely on:
+      // the layout is `path: ''` and matches by prefix, so from here on every URL under
+      // `/admin` is consumed here. A new admin route therefore belongs in this array
+      // above this entry, or above the layout route itself if it is to render without
+      // the rail — added below either, it would be unreachable and nothing would say so.
+      { path: '**', redirectTo: 'users' },
     ],
   },
 ];

@@ -1,0 +1,25 @@
+:host {
+  display: flex;
+  // Fills `.admin__content`, which the layout makes a column for exactly this: it is
+  // what lets the panel centre in the pane rather than sit under the title, which is
+  // how frame `5i` draws it.
+  flex: 1;
+  flex-direction: column;
+}
+
+.admin-reports__title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.admin-reports__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  // Trailing only: the title's own margin already separates it from the panel where the
+  // pane is too short for `flex: 1` to leave any slack to centre in, and doubling it
+  // there would put this screen out of step with its three siblings.
+  padding-block-end: 16px;
+}

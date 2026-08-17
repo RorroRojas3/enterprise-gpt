@@ -81,4 +81,11 @@
   // flex row wider than the viewport (WCAG SC 1.4.10 Reflow).
   min-width: 0;
   flex: 1;
+  // A column rather than a block so a tab can fill the pane with `flex: 1` and centre
+  // in it, which is what frame `5i` asks of the reports tab. It is inert for the three
+  // table tabs: a blockified flex item in a column is laid out exactly as the block it
+  // already was. The alternative — a percentage `min-height` on each tab's host — leans
+  // on a definiteness the Flexbox spec does not guarantee through this chain.
+  display: flex;
+  flex-direction: column;
 }
