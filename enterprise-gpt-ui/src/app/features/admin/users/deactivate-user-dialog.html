@@ -1,0 +1,25 @@
+<app-modal heading="Deactivate user" size="sm" [open]="open()" (closed)="onClosed()">
+  <p class="deactivate-user__body">
+    <strong>{{ name() }}</strong> will lose access at their next sign-in, and their permissions are
+    revoked with the account.
+  </p>
+  <p class="deactivate-user__note">
+    An unexpired session keeps working until its token runs out. To cut access off immediately,
+    disable the account in Entra ID as well.
+  </p>
+
+  <!--
+    modalFooter on each button, never on a wrapper div: the kit's footer is the flex row.
+    Cancel takes initial focus so Enter on a fresh destructive confirmation does nothing.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    data-modal-autofocus
+    (click)="actions.cancelDeactivate()"
+  >
+    Cancel
+  </button>
+  <button modalFooter class="btn btn-danger" type="button" (click)="confirm()">Deactivate</button>
+</app-modal>

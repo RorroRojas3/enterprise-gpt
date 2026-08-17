@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { AuthService } from '@core/auth/auth-service';
 import { SessionStore } from '@core/session/session-store';
+import { initialsOf } from '@shared/avatar/initials';
 import { Icon } from '@shared/icon/icon';
 import { ThemeToggle } from '@shared/theme-toggle/theme-toggle';
 
@@ -40,19 +41,13 @@ export class UserFooter {
   readonly compact = input<boolean>(false);
 
   /**
-   * First letters of the first and last name. Derived from `fullName` rather than the
-   * separate fields because that is the one the server has already composed, and a
-   * single-word name has to fall back to one letter rather than render a stray comma.
+   * First letters of the first and last name.
+   *
+   * The derivation moved to `@shared/avatar/initials` when the admin user table needed
+   * the same one; this footer keeps its own markup, because frame `3a` sizes and colours
+   * its avatar off the sidebar rather than off the avatar ramp.
    */
-  protected readonly initials = computed(() =>
-    this.session
-      .displayName()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join(''),
-  );
+  protected readonly initials = computed(() => initialsOf(this.session.displayName()));
 
   protected readonly signingOut = this._auth.isSigningOut;
 

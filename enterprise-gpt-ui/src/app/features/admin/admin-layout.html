@@ -1,0 +1,33 @@
+@if (isNarrow()) {
+  <app-pill-subnav class="admin__pills" [items]="pills" ariaLabel="Administration" />
+} @else {
+  <nav class="admin-nav" aria-label="Administration">
+    <p class="admin-nav__title font-display">
+      <app-icon name="bi-shield-lock" />
+      Admin
+    </p>
+
+    <ul class="admin-nav__list">
+      @for (tab of tabs; track tab.id) {
+        <li>
+          <!-- `ariaCurrentWhenActive` rather than a class alone: the rail marks the open
+               tab visually *and* tells a screen reader which one it is, which is the
+               difference between a styled link and a navigation state. -->
+          <a
+            class="admin-nav__link"
+            routerLinkActive="admin-nav__link--active"
+            ariaCurrentWhenActive="page"
+            [routerLink]="tab.link"
+          >
+            <app-icon class="admin-nav__icon" [name]="tab.icon" />
+            {{ tab.label }}
+          </a>
+        </li>
+      }
+    </ul>
+  </nav>
+}
+
+<div class="admin__content">
+  <router-outlet />
+</div>

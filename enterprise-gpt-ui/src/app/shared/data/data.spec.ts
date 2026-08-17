@@ -330,6 +330,61 @@ describe('Paginator', () => {
     host.querySelector<HTMLButtonElement>('[aria-label="Next page"]')?.click();
     expect(changed).toHaveBeenCalledWith(8);
   });
+
+  it('offers no page-size select unless a caller asks for one', async () => {
+    // Frame `4a` draws none, which is why the default is empty rather than a set of
+    // numbers every caller has to opt out of.
+    const { host } = await render(1);
+
+    expect(host.querySelector('.paginator__size')).toBeNull();
+  });
+
+  it('shows the size in force, even before the reader touches the control', async () => {
+    const { fixture, host } = await render(1, 4, 312, 100);
+    fixture.componentRef.setInput('pageSizes', [25, 50, 100]);
+    await fixture.whenStable();
+
+    // A `[value]` binding on the <select> would run before `@for` inserted the options
+    // and leave the first one showing — so a deep link would display a size it is not
+    // using. The selection is bound on the options for that reason.
+    expect(host.querySelector<HTMLSelectElement>('.paginator__size select')?.value).toBe('100');
+  });
+
+  it('emits a chosen size and refuses one that is not on offer', async () => {
+    const { fixture, host } = await render(1, 13, 312, 25);
+    fixture.componentRef.setInput('pageSizes', [25, 50, 100]);
+    await fixture.whenStable();
+
+    const changed = vi.fn();
+    fixture.componentInstance.pageSizeChanged.subscribe(changed);
+    const select = host.querySelector<HTMLSelectElement>('.paginator__size select')!;
+
+    select.value = '50';
+    select.dispatchEvent(new Event('change'));
+    expect(changed).toHaveBeenCalledWith(50);
+
+    // The option list is the caller's; a size that is not on it must never reach a
+    // request, where it would land as `take=7` or `take=NaN`.
+    changed.mockClear();
+    const rogue = document.createElement('option');
+    rogue.value = '7';
+    select.appendChild(rogue);
+    select.value = '7';
+    select.dispatchEvent(new Event('change'));
+
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it('lets a caller silence its summary when the table already announces it', async () => {
+    const { fixture, host } = await render(1);
+    expect(host.querySelector('.paginator__summary')?.getAttribute('aria-live')).toBe('polite');
+
+    fixture.componentRef.setInput('liveSummary', false);
+    await fixture.whenStable();
+
+    // Two live regions carrying one sentence read the count twice on every page.
+    expect(host.querySelector('.paginator__summary')?.hasAttribute('aria-live')).toBe(false);
+  });
 });
 
 describe('BulkActionBar', () => {

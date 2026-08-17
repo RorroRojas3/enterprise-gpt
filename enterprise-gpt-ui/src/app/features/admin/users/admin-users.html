@@ -1,0 +1,251 @@
+<h1 class="admin-users__title font-display">Users</h1>
+
+<div class="admin-users__toolbar">
+  <!-- One field, because the server matches first name, last name *and* email with the
+       same LIKE — an email fragment finds the user and a second control would only
+       imply otherwise.
+
+       Frame `5a` also draws a "Permission: any" filter here, which is US-1206: until
+       US-1205 puts `permissionId` on the endpoint it could filter only the loaded page,
+       and a directory filter that quietly means "this page" is worse than none. -->
+  <app-search-input
+    class="admin-users__search"
+    label="Search users by name or email"
+    placeholder="Search name or email"
+    [value]="name()"
+    [busy]="users.isPending()"
+    (searched)="onSearched($event)"
+  />
+
+  @if (!users.isFirstLoad() && !users.error()) {
+    <!--
+      Regime D. `GET api/users` orders by last name and accepts no sort parameter, so
+      rather than leaving that to be inferred from an absence, the order is named and
+      the reason is one keystroke away.
+
+      The statement is not aria-hidden: nothing else carries it, and the criterion is
+      that the order is *stated*. The explanation rides along as visually-hidden text so
+      it does not depend on hovering, and the info control repeats it as a flyout for
+      the reader who is looking rather than listening — `Tooltip` shows on focus as well
+      as hover and Escape dismisses it (WCAG SC 1.4.13). Its own short name stops a
+      screen reader announcing the whole sentence as a button label.
+    -->
+    <p class="admin-users__order">
+      By last name
+      <span class="visually-hidden">. {{ ORDER_EXPLANATION }}</span>
+    </p>
+    <button
+      class="admin-users__order-info"
+      type="button"
+      aria-label="Why this order"
+      [appTooltip]="ORDER_EXPLANATION"
+      appTooltipPlacement="top"
+    >
+      <app-icon name="bi-info-circle" />
+    </button>
+  }
+
+  <button
+    class="btn btn-primary btn-sm admin-users__add"
+    type="button"
+    aria-haspopup="dialog"
+    (click)="actions.beginCreate()"
+  >
+    <app-icon name="bi-plus-lg" />
+    Add user
+  </button>
+</div>
+
+@if (users.error(); as error) {
+  <!-- Instead of the table rather than beside it: the rows on screen belong to a query
+       that failed, so leaving them up would show a stale page as if it were the answer.
+       A revoked Administrator grant arrives here as `/problems/permission-required`,
+       which `ErrorPanel` already names and correctly refuses to offer a retry for. -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="Users couldn’t load"
+    (retried)="users.retry()"
+  />
+} @else {
+  <app-data-table
+    label="Users"
+    [rows]="users.entities()"
+    [columns]="columns"
+    [trackKey]="trackKey"
+    [rowLabel]="rowLabel"
+    [loading]="users.isFirstLoad()"
+    [summary]="users.countSummary()"
+    [pendingIds]="actions.pendingIds()"
+  >
+    <ng-template appTableCell="user" [appTableCellFor]="users.entities()" let-row>
+      <span class="admin-users__identity">
+        <app-avatar-initials [name]="row.fullName" [fallback]="row.email" [seed]="row.id" />
+        <span class="admin-users__name">{{ displayName(row) }}</span>
+        @if (isSelf(row)) {
+          <!-- Frame `5d`. Not decoration: it is the one row whose two actions the server
+               answers differently, and saying so before the refusal beats only after. -->
+          <span class="admin-users__you">(you)</span>
+        }
+      </span>
+
+      @if (actions.selfDeactivateRefusedId() === row.id) {
+        <!--
+          Frame `5d`'s second state, and the criterion is explicit that it is never a
+          toast. It sits in this cell rather than beside the button because the actions
+          column is 160px and the sentence would wrap to four lines there; the Deactivate
+          control points at it with `aria-describedby`, so it is attached to the control
+          whichever way the reader meets it.
+
+          role="alert": the region appears with its content, so the refusal is announced
+          rather than left to be noticed.
+        -->
+        <p class="admin-users__refusal" role="alert" [id]="refusalId(row)">
+          <app-icon name="bi-slash-circle" />
+          {{ SELF_DEACTIVATE_MESSAGE }}
+        </p>
+      }
+    </ng-template>
+
+    <ng-template appTableCell="email" [appTableCellFor]="users.entities()" let-row>
+      <span class="admin-users__email">{{ row.email }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="permissions" [appTableCellFor]="users.entities()" let-row>
+      <span class="admin-users__permissions">
+        @for (permission of row.permissions; track permission.id) {
+          <!-- `managedBy` marks a grant whose *definition* belongs to an MCP server. The
+               name is the server's: `McpServerService` creates the permission with the
+               server's name and re-syncs it on rename, and the two share one uniqueness
+               space — so no second request is needed to name it. -->
+          <app-permission-badge
+            [name]="permission.name"
+            [managedBy]="permission.mcpServerId === null ? null : permission.name + ' MCP server'"
+          />
+        } @empty {
+          <!-- A real state, not missing data: a user can hold no grants at all, and
+               US-202 already treats the empty set as a valid answer. -->
+          <span class="admin-users__no-permissions">No permissions</span>
+        }
+      </span>
+    </ng-template>
+
+    <ng-template appTableCell="actions" [appTableCellFor]="users.entities()" let-row>
+      <span class="admin-users__actions">
+        <!--
+          `aria-disabled`, never the native attribute: a natively disabled button blurs
+          itself the instant it is pressed, stranding a keyboard reader on `<body>` for
+          the whole round trip. `beginEdit` refuses re-entry on the pending id, so the
+          guard is real either way.
+        -->
+        <button
+          class="btn btn-outline-secondary btn-sm"
+          type="button"
+          aria-haspopup="dialog"
+          [attr.aria-label]="'Edit ' + displayName(row)"
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.beginEdit(row)"
+        >
+          Edit
+        </button>
+        <button
+          class="btn btn-outline-secondary btn-sm admin-users__deactivate"
+          type="button"
+          aria-haspopup="dialog"
+          [attr.aria-label]="'Deactivate ' + displayName(row)"
+          [attr.aria-describedby]="
+            actions.selfDeactivateRefusedId() === row.id ? refusalId(row) : null
+          "
+          [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
+          (click)="actions.beginDeactivate(row)"
+        >
+          Deactivate
+        </button>
+      </span>
+    </ng-template>
+
+    <div tableEmpty>
+      <!-- Past-the-end first: a filtered link to `?name=hopper&page=99` has both a term
+           and an out-of-range page, and blaming the term would send the reader to clear a
+           search that was working. -->
+      @if (users.isPastEnd()) {
+        <app-empty-state
+          heading="This page is past the end of the directory"
+          [headingLevel]="2"
+          message="Users may have been deactivated since this link was shared."
+        >
+          <button
+            emptyStateAction
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="toFirstPage()"
+          >
+            Go to the first page
+          </button>
+        </app-empty-state>
+      } @else if (users.hasNoMatches()) {
+        <app-empty-state
+          [heading]="noMatchHeading()"
+          [headingLevel]="2"
+          message="Search covers first name, last name and email address."
+        >
+          <button
+            emptyStateAction
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="clearSearch()"
+          >
+            Clear search
+          </button>
+        </app-empty-state>
+      } @else {
+        <app-empty-state
+          heading="No users yet"
+          [headingLevel]="2"
+          message="Add someone and they will appear here."
+        />
+      }
+    </div>
+
+    <!--
+      The `@if` sits *inside* the projected element, never around it: content projection
+      matches static nodes, and `@if` would wrap this in an `ng-template` carrying no
+      `tableFooter` attribute — silently dropping it, since `DataTable` has no catch-all
+      slot.
+
+      `liveSummary` is off because the identical sentence is already handed to
+      `DataTable.summary`, whose region is live: two of them would read the count twice
+      on every page.
+    -->
+    <div tableFooter class="admin-users__pager">
+      @if (users.totalCount() > 0) {
+        <app-paginator
+          itemLabel="users"
+          [page]="users.page()"
+          [totalPages]="users.totalPages()"
+          [totalCount]="users.totalCount()"
+          [pageSize]="users.pageSize()"
+          [pageSizes]="pageSizes"
+          [liveSummary]="false"
+          (pageChanged)="onPageChanged($event)"
+          (pageSizeChanged)="onPageSizeChanged($event)"
+        />
+      }
+    </div>
+  </app-data-table>
+}
+
+<!--
+  Mounted once for the screen rather than inside the toolbar branch: the modal is the
+  reader's own state, and a re-render of the controls above it must not destroy the form
+  they are filling in.
+-->
+<app-user-form-dialog />
+<app-user-edit-panel />
+
+<!--
+  The row goes at once and the request settles behind it: a 204 raises one success toast,
+  a failure puts the row back where it was. The removal is this screen's, because the
+  request's store outlives the route and cannot reach into it.
+-->
+<app-deactivate-user-dialog (confirmed)="onConfirmDeactivate()" />

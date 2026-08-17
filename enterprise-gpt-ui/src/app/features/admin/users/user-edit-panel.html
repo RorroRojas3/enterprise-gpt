@@ -1,0 +1,88 @@
+<app-offcanvas
+  heading="Edit user"
+  [open]="open()"
+  [busy]="actions.formBusy()"
+  (closed)="actions.cancelForm()"
+>
+  @if (target(); as user) {
+    <div class="edit-user">
+      <!--
+        The identity block is body content, not header content: the board puts it under
+        the title bar, and `Offcanvas` owns its own <h2>.
+
+        Frame `5c` also writes "· last active yesterday" here. It is absent, because
+        `UserDto` carries no timestamp of any kind — `dateModified` moves only when an
+        administrator edits the row, never when the user signs in.
+      -->
+      <div class="edit-user__identity">
+        <app-avatar-initials
+          [name]="user.fullName"
+          [fallback]="user.email"
+          [seed]="user.id"
+          [size]="40"
+        />
+        <div class="edit-user__who">
+          <p class="edit-user__name">{{ displayName() }}</p>
+          <p class="edit-user__email">{{ user.email }}</p>
+        </div>
+      </div>
+
+      <!--
+        The warning is not decoration: `PUT api/users/{id}` treats `permissionIds` as the
+        complete desired set, so an administrator who unchecks nothing but forgets to look
+        can still revoke a grant by leaving it unchecked.
+      -->
+      <div class="edit-user__warning">
+        <app-icon name="bi-exclamation-triangle-fill" />
+        <p>
+          <strong>Saving replaces this user’s entire permission set.</strong>
+          Unchecking a permission revokes it.
+        </p>
+      </div>
+
+      <p class="edit-user__legend" id="edit-user-permissions">Permissions</p>
+      <div role="group" aria-labelledby="edit-user-permissions">
+        <app-permission-checklist
+          captionStyle="block"
+          [permissions]="actions.checklist()"
+          [(selectedIds)]="selectedIds"
+          [loading]="actions.permissionsLoading()"
+          [error]="actions.permissionsError()"
+          [disabled]="actions.formBusy()"
+          [messageFor]="messageFor"
+          [retried]="retryPermissions"
+        />
+      </div>
+
+      @if (unmatched().length > 0) {
+        <div class="edit-user__errors" role="alert">
+          @for (message of unmatched(); track $index) {
+            <p class="edit-user__error">{{ message }}</p>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <button
+    offcanvasFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    [disabled]="actions.formBusy()"
+    (click)="actions.cancelForm()"
+  >
+    Cancel
+  </button>
+  <button
+    offcanvasFooter
+    class="btn btn-primary"
+    type="button"
+    [disabled]="!canSubmit()"
+    (click)="submit()"
+  >
+    @if (actions.formBusy()) {
+      <span class="kit-spinner" aria-hidden="true"></span>
+    }
+    Save changes
+  </button>
+</app-offcanvas>

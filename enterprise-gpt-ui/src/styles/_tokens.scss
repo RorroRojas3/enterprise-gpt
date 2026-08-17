@@ -115,6 +115,12 @@ $dark: (
 // Bedrock has no frame value (the prototype's "Meta" green is an artifact), so
 // it takes the palette's green ramp, which the design family already uses for
 // its third dot.
+//
+// The avatar ramp of frames `5a`/`5c` is deliberately **not** here. Only
+// `AvatarInitials` uses it, and this file is global: eight entries emitted twice
+// would cost every page of the app for one component on one lazy route. It lives in
+// that component's own stylesheet instead — which is also where the reasoning about
+// its two board-supplied ink colours belongs.
 $extra-light: (
   'focus-ring': #0e7fa8,
   'tooltip-bg': #0b1f33,

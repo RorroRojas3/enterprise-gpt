@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
-import { AdminUsers } from './admin-users/admin-users';
+import { AdminLayout } from './admin-layout';
+import { AdminUsers } from './users/admin-users';
 
 /**
  * The administration chunk.
@@ -8,12 +9,23 @@ import { AdminUsers } from './admin-users/admin-users';
  * this file is never fetched by a browser whose user lacks the Administrator
  * permission. `scripts/check-initial-chunk.mjs` keeps it out of the initial graph.
  *
- * US-1207 turns `users` into one of four deep-linkable sibling tabs, each lazy with
- * its own route-scoped store.
+ * Tabs are **children of one layout route**, which is what lets the rail mark the open
+ * one from the router rather than from local state, and what makes the browser's back
+ * button restore the previous tab for free. US-1207, US-1208 and US-1302 each add a
+ * sibling here; US-1209 owns the criteria across all four.
+ *
+ * Each tab provides its own store on its own route, never on the layout — US-1209
+ * requires that opening one tab instantiates that tab's store and no other.
  */
 export const adminRoutes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'users' },
-  { path: 'users', component: AdminUsers, title: 'Users — Enterprise GPT' },
+  {
+    path: '',
+    component: AdminLayout,
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'users' },
+      { path: 'users', component: AdminUsers, title: 'Users — Enterprise GPT' },
+    ],
+  },
 ];
 
 export default adminRoutes;

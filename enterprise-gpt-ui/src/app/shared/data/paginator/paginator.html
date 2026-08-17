@@ -1,7 +1,31 @@
 <div class="paginator">
-  <!-- Polite, so changing page announces the new range instead of leaving a screen
-       reader to work out that the table changed underneath it. -->
-  <p class="paginator__summary" aria-live="polite">{{ summary() }}</p>
+  <div class="paginator__lead">
+    <!-- Polite, so changing page announces the new range instead of leaving a screen
+         reader to work out that the table changed underneath it — unless the caller
+         has already handed the same sentence to the table's own live region. -->
+    <p class="paginator__summary" [attr.aria-live]="liveSummary() ? 'polite' : null">
+      {{ summary() }}
+    </p>
+
+    @if (pageSizes().length > 0) {
+      <!-- The label is hidden rather than absent: "25 / page" reads as a value, not as
+           what the control does, and frame `5a` draws no visible label for it. -->
+      <label class="paginator__size">
+        <span class="visually-hidden">Rows per page</span>
+        <!--
+          The selection is bound on the options, never as `[value]` on the select: that
+          binding runs before `@for` inserts the options, so it sets `selectedIndex = -1`
+          on an empty list and the browser's "ask for a reset" then selects the first
+          option. A deep link to `?size=100` would request 100 and display "25 / page".
+        -->
+        <select class="form-select" (change)="onPageSize($event)">
+          @for (size of pageSizes(); track size) {
+            <option [value]="size" [selected]="size === pageSize()">{{ size }} / page</option>
+          }
+        </select>
+      </label>
+    }
+  </div>
 
   <nav class="paginator__nav" aria-label="Pagination">
     <button
