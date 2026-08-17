@@ -47,6 +47,8 @@ node_modules/
 dist/
 .angular/
 coverage/
+# `npm run test:ci` writes the JUnit report CI uploads as an artifact.
+test-results/
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*

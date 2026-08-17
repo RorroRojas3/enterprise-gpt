@@ -10,6 +10,8 @@
     "watch": "ng build --watch --configuration development",
     "pretest": "npm run assets",
     "test": "ng test",
+    "pretest:ci": "npm run assets",
+    "test:ci": "ng test --reporters=junit --reporters=default --output-file=test-results/ui.junit.xml",
     "test:watch": "ng test --watch",
     "test:coverage": "ng test --coverage",
     "lint": "npm run lint:es && npm run check:icons && npm run check:forbidden && npm run check:tokens",

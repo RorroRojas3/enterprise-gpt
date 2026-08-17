@@ -1,0 +1,325 @@
+<app-modal
+  [heading]="heading()"
+  size="md"
+  [open]="open()"
+  [busy]="actions.formBusy()"
+  (closed)="actions.cancelForm()"
+>
+  <!--
+    novalidate: the schema rules own validation, and the browser's own required bubble
+    would fight frame 5f's inline message.
+  -->
+  <form id="model-form" class="model-form" novalidate (submit)="submit($event)">
+    @if (unmatched().length > 0) {
+      <!--
+        Frame `5h`'s failure banner, which frame `5f` does not draw but needs for the same
+        reason: a server message keyed to a property no control binds would otherwise be
+        discarded, and the save would appear to fail for no stated reason.
+      -->
+      <div class="model-form__summary" role="alert">
+        @for (message of unmatched(); track $index) {
+          <p class="model-form__error">{{ message }}</p>
+        }
+      </div>
+    }
+
+    <div class="model-form__grid">
+      <div class="model-form__field">
+        <label class="form-label" for="model-form-provider">Provider</label>
+        <!--
+          The options are a client-side mirror of the seeded rows: there is no
+          `GET api/providers`, so nothing can be fetched to fill this.
+        -->
+        <select
+          id="model-form-provider"
+          class="form-select"
+          data-modal-autofocus
+          [formField]="f.providerId"
+          [class.is-invalid]="fieldErrors().providerId.show || !!providerNotFound()"
+          [attr.aria-describedby]="
+            fieldErrors().providerId.show || providerNotFound()
+              ? 'model-form-provider-errors'
+              : null
+          "
+        >
+          <option value="">Choose a provider…</option>
+          @for (provider of providers; track provider.id) {
+            <option [value]="provider.id">{{ provider.name }}</option>
+          }
+        </select>
+        @if (fieldErrors().providerId.show || providerNotFound()) {
+          <div class="model-form__errors" id="model-form-provider-errors" role="alert">
+            @if (fieldErrors().providerId.show) {
+              @for (message of fieldErrors().providerId.messages; track $index) {
+                <p class="model-form__error">{{ message }}</p>
+              }
+            }
+            <!-- The 404 `EnsureProviderExistsAsync` throws for a provider this deployment
+                 has deactivated. It carries no `errors` dictionary, so it cannot travel
+                 the `serverMessagesFor` path — but it is about this field just the same,
+                 and a toast would leave the reader guessing which control was wrong. -->
+            @if (providerNotFound(); as message) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field">
+        <label class="form-label" for="model-form-name">Display name</label>
+        <!--
+          No literal maxlength: NG8022 — the [formField] directive owns the constraint
+          attributes and derives this one from the schema's maxLength rule.
+        -->
+        <input
+          id="model-form-name"
+          class="form-control"
+          type="text"
+          [formField]="f.name"
+          [class.is-invalid]="fieldErrors().name.show"
+          [attr.aria-describedby]="fieldErrors().name.show ? 'model-form-name-errors' : null"
+        />
+        @if (fieldErrors().name.show) {
+          <div class="model-form__errors" id="model-form-name-errors" role="alert">
+            @for (message of fieldErrors().name.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field model-form__field--wide">
+        <label class="form-label" for="model-form-deployment">Deployment name</label>
+        <input
+          id="model-form-deployment"
+          class="form-control font-mono"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          [formField]="f.deploymentName"
+          [class.is-invalid]="fieldErrors().deploymentName.show"
+          [attr.aria-describedby]="
+            fieldErrors().deploymentName.show ? 'model-form-deployment-errors' : null
+          "
+        />
+        @if (fieldErrors().deploymentName.show) {
+          <div class="model-form__errors" id="model-form-deployment-errors" role="alert">
+            @for (message of fieldErrors().deploymentName.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field model-form__field--wide">
+        <label class="form-label" for="model-form-description">Description</label>
+        <input
+          id="model-form-description"
+          class="form-control"
+          type="text"
+          [formField]="f.description"
+          [class.is-invalid]="fieldErrors().description.show"
+          [attr.aria-describedby]="
+            fieldErrors().description.show ? 'model-form-description-errors' : null
+          "
+        />
+        @if (fieldErrors().description.show) {
+          <div class="model-form__errors" id="model-form-description-errors" role="alert">
+            @for (message of fieldErrors().description.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field">
+        <label class="form-label" for="model-form-context">Context window</label>
+        <!--
+          type="text" with inputmode, never type="number". The native numeric control
+          returns null for anything it cannot parse, which loses what the reader typed —
+          and frame `5f` draws the rejected `400000.5` still sitting in this field.
+        -->
+        <input
+          id="model-form-context"
+          class="form-control font-mono"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          [formField]="f.contextWindowSize"
+          [class.is-invalid]="fieldErrors().contextWindowSize.show"
+          [attr.aria-describedby]="
+            fieldErrors().contextWindowSize.show ? 'model-form-context-errors' : null
+          "
+        />
+        @if (fieldErrors().contextWindowSize.show) {
+          <div class="model-form__errors" id="model-form-context-errors" role="alert">
+            @for (message of fieldErrors().contextWindowSize.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field">
+        <label class="form-label" for="model-form-output">Max output tokens</label>
+        <input
+          id="model-form-output"
+          class="form-control font-mono"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          [formField]="f.maxOutputTokens"
+          [class.is-invalid]="fieldErrors().maxOutputTokens.show"
+          [attr.aria-describedby]="
+            fieldErrors().maxOutputTokens.show ? 'model-form-output-errors' : null
+          "
+        />
+        @if (fieldErrors().maxOutputTokens.show) {
+          <div class="model-form__errors" id="model-form-output-errors" role="alert">
+            @for (message of fieldErrors().maxOutputTokens.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field">
+        <label class="form-label" for="model-form-input-price">
+          Input price <span class="model-form__optional">per million tokens</span>
+        </label>
+        <input
+          id="model-form-input-price"
+          class="form-control font-mono"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="Not priced"
+          [formField]="f.inputPricePerMillionTokens"
+          [class.is-invalid]="fieldErrors().inputPricePerMillionTokens.show"
+          [attr.aria-describedby]="
+            fieldErrors().inputPricePerMillionTokens.show
+              ? 'model-form-input-price-errors'
+              : 'model-form-price-note'
+          "
+        />
+        @if (fieldErrors().inputPricePerMillionTokens.show) {
+          <div class="model-form__errors" id="model-form-input-price-errors" role="alert">
+            @for (message of fieldErrors().inputPricePerMillionTokens.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="model-form__field">
+        <label class="form-label" for="model-form-output-price">
+          Output price <span class="model-form__optional">per million tokens</span>
+        </label>
+        <input
+          id="model-form-output-price"
+          class="form-control font-mono"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="Not priced"
+          [formField]="f.outputPricePerMillionTokens"
+          [class.is-invalid]="fieldErrors().outputPricePerMillionTokens.show"
+          [attr.aria-describedby]="
+            fieldErrors().outputPricePerMillionTokens.show
+              ? 'model-form-output-price-errors'
+              : 'model-form-price-note'
+          "
+        />
+        @if (fieldErrors().outputPricePerMillionTokens.show) {
+          <div class="model-form__errors" id="model-form-output-price-errors" role="alert">
+            @for (message of fieldErrors().outputPricePerMillionTokens.messages; track $index) {
+              <p class="model-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Blank is unpriced, not free: a report that summed a blank as zero would
+           understate spend rather than report a gap it could name. -->
+      <p class="model-form__note model-form__field--wide" id="model-form-price-note">
+        Leave a price blank if this deployment has none. Blank means unpriced, which usage reports
+        show as unknown rather than as zero.
+      </p>
+
+      <div class="model-form__switch form-check form-switch model-form__field--wide">
+        <input
+          id="model-form-tools"
+          class="form-check-input"
+          type="checkbox"
+          role="switch"
+          [formField]="f.isToolEnabled"
+        />
+        <label class="form-check-label" for="model-form-tools">
+          Tools enabled
+          <span class="model-form__hint">Lets a turn on this model call MCP tool servers.</span>
+        </label>
+      </div>
+
+      <div class="model-form__switch form-check form-switch model-form__field--wide">
+        <input
+          id="model-form-reasoning"
+          class="form-check-input"
+          type="checkbox"
+          role="switch"
+          [formField]="f.isReasoningEnabled"
+        />
+        <label class="form-check-label" for="model-form-reasoning">
+          Reasoning enabled
+          <span class="model-form__hint">Read only by Azure AI Foundry deployments.</span>
+        </label>
+      </div>
+
+      <div class="model-form__switch form-check form-switch model-form__field--wide">
+        <input
+          id="model-form-default"
+          class="form-check-input"
+          type="checkbox"
+          role="switch"
+          [formField]="f.isDefault"
+        />
+        <label class="form-check-label" for="model-form-default">
+          Default model
+          <span class="model-form__hint">
+            Saving this replaces whichever model is the default today.
+          </span>
+        </label>
+      </div>
+    </div>
+  </form>
+
+  <!--
+    modalFooter on each button, never on a wrapper div: the kit's footer is the flex row,
+    and a wrapper would collapse its gap once Angular strips the inter-element whitespace.
+  -->
+  <button
+    modalFooter
+    class="btn btn-outline-secondary"
+    type="button"
+    [disabled]="actions.formBusy()"
+    (click)="actions.cancelForm()"
+  >
+    Cancel
+  </button>
+  <!--
+    Outside the <form> element (the footer projects into the modal's slot), so the native
+    `form` attribute is what ties it back — and what makes Enter in a field perform this
+    button's submit.
+  -->
+  <button
+    modalFooter
+    class="btn btn-primary"
+    type="submit"
+    form="model-form"
+    [disabled]="!canSubmit()"
+  >
+    @if (actions.formBusy()) {
+      <span class="kit-spinner" aria-hidden="true"></span>
+    }
+    {{ submitLabel() }}
+  </button>
+</app-modal>

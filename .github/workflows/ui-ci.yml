@@ -1,38 +1,39 @@
 name: UI CI
 
-# The two path lists are duplicated rather than shared through a YAML anchor:
-# GitHub Actions does not resolve anchors in workflow files. Keep them in step.
+# No workflow-level `paths` filter, deliberately — it used to have one.
+#
+# GitHub's two "skipped" behaviours are not the same, and the difference is the whole
+# design here:
+#
+#   - A workflow skipped by a **path or branch filter** never reports a check at all. Its
+#     status stays Pending, so a filtered workflow can never be a required check without
+#     making every unrelated pull request unmergeable. That was recorded as an open
+#     question in docs/prd/enterprise-ui-rebuild.md; removing the filter is the answer.
+#   - A job skipped by a **conditional** reports **Success** and does not block merging.
+#     That is what makes the `if:` on each job below safe to use as a required check.
+#
+# Both are documented under "Handling skipped but required checks" in GitHub's
+# troubleshooting-required-status-checks page. Applied here and in api-ci.yml together, so
+# both can be required at the same time.
 on:
   push:
     branches: [master]
-    paths:
-      - 'enterprise-gpt-ui/**'
-      # check:tokens diffs the app's tokens against the design bundle's source of
-      # record. Without this path a PR editing only theme.css would never run the
-      # check that exists to police it.
-      - 'docs/design/project/theme.css'
-      # The contract job cross-checks the version the API references. Needed on push
-      # as well as pull_request: two PRs approved against different bases can both
-      # merge and leave master unvalidated.
-      - 'enterprise-gpt-api/**/*.csproj'
-      - '.github/workflows/ui-ci.yml'
   pull_request:
     branches: [master]
-    paths:
-      - 'enterprise-gpt-ui/**'
-      - 'docs/design/project/theme.css'
-      - 'enterprise-gpt-api/**/*.csproj'
-      - '.github/workflows/ui-ci.yml'
+  # So these still report if a merge queue is ever enabled. The filter script treats
+  # anything that is not a pull request as "run everything", which is correct here.
+  merge_group:
 
 # Read-only by default. No job below writes anything back to the repository.
 permissions:
   contents: read
 
 concurrency:
-  # Keyed on the workflow too, so a future api-ci.yml can be copied from this one
-  # without colliding. Cancellation is limited to pull requests: on master every
-  # commit should keep a durable green or red rather than a cancelled check.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Pull requests collapse onto the pull request number; every other run gets its own
+  # group from its SHA. Keying master on the ref instead would serialise merges into one
+  # group where a *pending* run is cancelled when the next one queues — so three merges
+  # landing together would leave the middle commit with no result at all.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -40,12 +41,100 @@ defaults:
     working-directory: enterprise-gpt-ui
 
 jobs:
+  # Cheap, and the only job that always does work. Both jobs below read its answer.
+  #
+  # It is part of the trusted computing base for a merge decision, so it should be a
+  # required check in branch protection alongside the two gates.
+  #
+  # **Two outputs, not one**, because the two gates read different inputs: `npm run lint`
+  # runs check:tokens, which diffs the app's tokens against the design bundle's
+  # `theme.css`; `check:contract` walks every `.csproj` under the API and compares the
+  # vendored copy against the package they reference. Neither is in the other's input set,
+  # and one shared boolean would run the whole Angular pipeline for a backend dependency
+  # bump, and a .NET restore for a change to a colour.
+  changes:
+    name: Detect UI changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+      contract: ${{ steps.filter.outputs.contract }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Two: the diff below reads the merge commit and its first parent, and nothing
+          # older.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - id: filter
+        working-directory: .
+        # The value reaches the script through `env`, never through `${{ }}` interpolation
+        # inside `run`. Nothing author-controlled is used here today, but interpolation
+        # splices its value into the shell before bash ever sees a quote, so the habit is
+        # the protection.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          # A push to master always runs everything: two pull requests approved against
+          # different bases can both merge and leave master unvalidated.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "contract=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # `HEAD^1` rather than the event payload's `base.sha`: HEAD is the merge commit,
+          # so its first parent *is* the base this pull request will land on. Reading the
+          # payload instead goes stale the moment master advances and the merge ref is
+          # regenerated, which silently widens the diff.
+          #
+          # Both allowlists are hand-maintained, so a root-level file the gates come to
+          # read — an `.nvmrc`, an `.npmrc`, a Prettier config — must be added here when
+          # it is introduced. Neither exists today: the gate scripts read nothing outside
+          # `enterprise-gpt-ui/` except `theme.css` and the API's csproj files. A missing
+          # entry would under-run these gates rather than over-run them, which is the
+          # dangerous direction.
+          build=$(git diff --name-only HEAD^1 HEAD -- \
+            enterprise-gpt-ui \
+            docs/design/project/theme.css \
+            .github/workflows/ui-ci.yml)
+
+          contract=$(git diff --name-only HEAD^1 HEAD -- \
+            enterprise-gpt-ui \
+            ':(glob)enterprise-gpt-api/**/*.csproj' \
+            .github/workflows/ui-ci.yml)
+
+          if [ -n "$build" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$contract" ]; then
+            echo "contract=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "contract=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # Static gates, tests and the production build. No .NET, so it starts immediately.
   build:
     name: Lint, test, build
+    needs: changes
+    # **Fail open.** A job skipped by a conditional reports Success, and a `needs` whose
+    # dependency *failed* is skipped — so `== 'true'` would hand out a green required check
+    # over untested code the moment the filter job broke. `!= 'false'` means an absent
+    # answer runs the gates, and `!cancelled()` keeps this job alive when `changes` failed
+    # rather than letting it be skipped into a false pass. `!cancelled()` rather than
+    # `always()`, so `cancel-in-progress` still stops the run.
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # A full checkout, never sparse: check:tokens reads
+      # ../docs/design/project/theme.css from outside the UI tree.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -65,8 +154,23 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # `test:ci` rather than `test`: the same run, plus the JUnit report uploaded below.
       - name: Test
-        run: npm test
+        run: npm run test:ci
+
+      # Before the build step, so a failing test still leaves a report behind.
+      #
+      # `warn`, not `ignore`: Vitest's JUnit reporter opens the file in `onInit`, so it
+      # exists even when the run dies mid-suite. An empty path here therefore means the
+      # reporter wiring broke — the one thing worth an annotation rather than silence.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-test-results
+          path: enterprise-gpt-ui/test-results
+          if-no-files-found: warn
+          retention-days: 7
 
       # Runs the budgets, then check-initial-chunk.mjs over the build metafile.
       - name: Build
@@ -77,6 +181,9 @@ jobs:
   # UI pull request.
   contract:
     name: Andes contract drift
+    needs: changes
+    # Fail open, for the reason spelled out on `build`.
+    if: ${{ !cancelled() && needs.changes.outputs.contract != 'false' }}
     runs-on: ubuntu-latest
     # A restore and a file comparison. Fifteen minutes would mean a wedged restore
     # burns fifteen minutes before anyone hears about it.

@@ -13,9 +13,7 @@ import { UserDto } from '@domain/api/user';
  * Every payload is **server-confirmed**. Optimistic patches and their rollbacks stay
  * inside the store that made them, so an observer never has to undo one.
  *
- * US-1207 and US-1208 add `modelCatalogChanged` and the MCP server events to this group.
- * Those have a second observer this one does not: the chat picker's root catalogue,
- * which must not go on offering a model an administrator has just retired.
+ * US-1208 adds the MCP server events to this group.
  */
 export const adminEvents = eventGroup({
   source: 'Admin',
@@ -37,5 +35,24 @@ export const adminEvents = eventGroup({
 
     /** `DELETE api/users/{id}` returned 204. The payload is the user id (US-1204). */
     userDeactivated: type<string>(),
+
+    /**
+     * A model was created, updated or retired, and the server confirmed it (US-1207).
+     *
+     * **Void, and every observer refetches** — unlike the three user events, which carry
+     * the DTO and patch a row in place. Three facts make a payload the wrong shape here:
+     *
+     * - `POST` and `PUT` return only the model they saved, while saving one with
+     *   `isDefault` **demotes another row the response does not describe**;
+     * - `DELETE` additionally clears `IsDefault` on the row it retires, so the catalog
+     *   can be left with no default at all;
+     * - the catalog is unpaginated and small, so a refetch costs one request and is the
+     *   only thing that can show either of the above.
+     *
+     * This event has a second observer the user events do not: `ModelCatalogStore`, the
+     * chat picker's root catalogue, which must not go on offering a model an
+     * administrator has just retired.
+     */
+    modelCatalogChanged: type<void>(),
   },
 });
