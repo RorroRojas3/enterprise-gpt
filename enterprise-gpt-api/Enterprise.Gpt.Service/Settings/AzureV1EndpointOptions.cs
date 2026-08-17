@@ -62,12 +62,26 @@ public abstract class AzureV1EndpointOptions
     /// Gets the OpenAI-compatible v1 endpoint the client is built against.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Derived rather than configured so an existing deployment needs no new setting. The trailing
     /// slash on <see cref="V1Path"/> is load-bearing: the SDK resolves relative request paths
     /// against this URI, and without it the last segment would be replaced instead of extended.
+    /// </para>
+    /// <para>
+    /// The guard is <see cref="IsUrlAbsolute"/> rather than letting <see cref="Uri"/> reject the
+    /// string itself: on Unix, <c>new Uri("/openai/v1/")</c> succeeds as an implicit file path, so an
+    /// unset or path-shaped URL would build <c>file:///openai/v1/</c> on the Linux hosts this runs on
+    /// while throwing on a Windows dev box.
+    /// </para>
     /// </remarks>
-    /// <exception cref="UriFormatException"><see cref="Url"/> is not an absolute URI.</exception>
-    public Uri V1Endpoint => new(new Uri(EnsureTrailingSlash(Url)), V1Path);
+    /// <exception cref="UriFormatException">
+    /// <see cref="Url"/> is not an absolute HTTP or HTTPS URI.
+    /// </exception>
+    public Uri V1Endpoint =>
+        IsUrlAbsolute
+            ? new Uri(new Uri(EnsureTrailingSlash(Url)), V1Path)
+            : throw new UriFormatException(
+                $"The configured URL '{Url}' is not an absolute http or https URI, so no v1 endpoint can be derived from it.");
 
     /// <summary>
     /// Gets a value indicating whether <see cref="Url"/> is an absolute HTTP or HTTPS URI.
