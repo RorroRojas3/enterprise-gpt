@@ -1,0 +1,74 @@
+.edit-user {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.edit-user__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  // The name and the address both ellipsise rather than widening a fixed-width panel.
+  min-width: 0;
+}
+
+.edit-user__who {
+  min-width: 0;
+}
+
+.edit-user__name {
+  margin: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-user__email {
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-user__warning {
+  display: flex;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn-border);
+  border-radius: 10px;
+  background: var(--warn-bg);
+  font-size: 12.5px;
+  line-height: 1.5;
+
+  app-icon {
+    margin-top: 1px;
+    color: var(--warn);
+    font-size: 13px;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.edit-user__legend {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.edit-user__errors {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.edit-user__error {
+  margin: 0;
+  color: var(--fail);
+  font-size: 12px;
+}

@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 94 stories in [`enterprise-ui-r
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 62 / 94 done.** Current position: **P5 is complete, and with it EP-3, EP-7 and EP-9** — US-307 (row 61) closed the last row action in EP-3 and the last two controls frame `4a` was missing, and US-908 (row 62) closed EP-9. The backend enabler US-907 landed alongside them, off the parallel track, which is why US-908 never shipped its interim drain ceiling. Next is **P6, `US-1201`** — the administration epic, which nothing in P1–P5 blocks. The only thing left outstanding against a shipped P5 story is US-706, the sort enabler that retires US-705's stated order (row 89).
+**Progress: 66 / 94 done.** Current position: **P6 is under way — US-1201 through US-1204 landed together on 2026-08-16, replacing the placeholder the admin chunk has held since US-203.** The administration area now has a layout route, a rail that marks the open tab from the router, and a working user directory: server-paged search, a create modal, a permission-editing offcanvas and a deactivate confirmation. Next is **`US-1207`**, the model catalog, then US-1208 and the reduced US-1209 (see the note under P6). Two things are outstanding against shipped stories: US-706, the sort enabler that retires US-705's stated order (row 89), and a backend enabler for the Last active column US-1201 could not build.
 
 Within a phase, stories on the same table row have no ordering constraint between them and can be taken in any order or in parallel. `→` in the notes column means "must follow".
 
@@ -152,17 +152,25 @@ US-305 was pulled forward and landed with P3, which is what unblocked the header
 
 **No re-baseline, and 1.1 kB of headroom left.** The initial bundle measures **668.90 kB raw / 168.23 kB transfer** against 670 kB warn / 720 kB error. The +1.85 kB is `ProjectLookupStore`, which is root-scoped and released by `SessionBootstrap` — the same shape as EP-9's +3.1 kB, and the same lesson: **the next root-scoped store trips the warning line.** The picker, the dialogs and every chip they feed ride lazy chunks.
 
-## P6 — Administration
+## P6 — Administration · EP-12's user stories complete
 
-| Order | Story                                         | Depends on     | Pri | Status |
-| ----- | --------------------------------------------- | -------------- | --- | ------ |
-| 63    | US-1201 Find and page through users           | US-203, US-104 | P1  |        |
-| 64    | US-1202 Create a user                         | US-1201        | P1  |        |
-| 65    | US-1203 Edit a user's profile and permissions | US-1201        | P1  |        |
-| 66    | US-1204 Deactivate a user                     | US-1201        | P1  |        |
-| 67    | US-1207 Manage the model catalog              | US-203         | P1  |        |
-| 68    | US-1208 Manage MCP servers                    | US-203         | P1  |        |
-| 69    | US-1209 Reach an admin tab by URL             | US-203         | P1  |        |
+| Order | Story                                         | Depends on     | Pri | Status                                                                            |
+| ----- | --------------------------------------------- | -------------- | --- | --------------------------------------------------------------------------------- |
+| 63    | US-1201 Find and page through users           | US-203, US-104 | P1  | ✅ 2026-08-16 — the layout route and the rail; no Last active column, see below   |
+| 64    | US-1202 Create a user                         | US-1201        | P1  | ✅ 2026-08-16 — four rejections at one field, and only three are validation ones  |
+| 65    | US-1203 Edit a user's profile and permissions | US-1201        | P1  | ✅ 2026-08-16 — not a Signal Form; the PUT echoes the profile it does not edit    |
+| 66    | US-1204 Deactivate a user                     | US-1201        | P1  | ✅ 2026-08-16 — root store owns the request, the route owns the row               |
+| 67    | US-1207 Manage the model catalog              | US-203         | P1  |                                                                                   |
+| 68    | US-1208 Manage MCP servers                    | US-203         | P1  |                                                                                   |
+| 69    | US-1209 Reach an admin tab by URL             | US-203         | P1  |                                                                                   |
+
+**EP-12's first four completed 2026-08-16, in the numbered order, which was not optional.** US-1202, US-1203 and US-1204 all hang off US-1201 and all three write the same three files — `AdminUsersStore`, `UserActionsStore` and `admin-users.html` — so two worktrees would have collided on every one of them, exactly as EP-7 and EP-9 did. Within that, the create modal came before the edit panel because the shared `PermissionChecklist` is simpler in frame `5b` (an inline caption, no lock) than in frame `5c` (a lock glyph, a block caption and a per-row refusal slot), and settling the smaller variant first is the same reasoning EP-6 used for the code-block chrome.
+
+**The shared kit had been waiting for this epic.** `Paginator` ("the numbered pager of frame `5a`"), `Offcanvas` ("the admin detail drawer of frame `5c`", already defaulting to 420px with a sticky footer and focus return) and `PermissionBadge` ("in the admin user list and detail drawer") were all built by US-106 *against these frames* and had no consumer but `/ui-kit` until now. Between them they needed one page-size select, one `liveSummary` opt-out and nothing else. Two things did have to be built: `AvatarInitials`, whose four-tone ramp lives in the component rather than in `_tokens.scss` because it is the only consumer and that file is global; and the `AdminLayout` rail, which lists only the tabs that exist.
+
+**US-1209 is smaller than it was.** The layout route, the rail marking the active tab from the router, and the `/admin` → `/admin/users` redirect all landed here, because frame `5a` draws the rail as part of the users screen. What is left to it is the other three tabs' routes and the criteria that span all four.
+
+**No re-baseline.** The initial bundle measures **669.17 kB raw / 168.97 kB transfer** against 670 kB warn / 720 kB error — **+0.27 kB**, and `styles` is unchanged at 63.96 kB. Everything in these four stories rides the lazy admin chunk, including the root-scoped `UserActionsStore`: `providedIn: 'root'` is a DI scope, not a chunk assignment, and nothing eagerly reachable imports it. `check-initial-chunk.mjs` still reports the admin area absent from the initial graph.
 
 ## P7 — Conformance · gates run against everything shipped in P1–P6
 
@@ -239,5 +247,6 @@ Each of these ships deliberately incomplete and is closed later. Kept here so no
 | ~~The project composer has no project picker — the project is fixed by the route~~                                                                               | US-906 (P5)                                 | ✅ retired by US-307, 2026-08-15 — a pill with two arms: the picker on `/chat`, a static chip on a project's own screen, where the project **is** the route. Still absent on empty `/chat`, where there is no conversation to move |
 | ~~`SessionBootstrap` still does not request projects (US-202's fourth criterion), because no root project list has a consumer yet~~                                | pre-EP-9                                    | ✅ retired by US-307, 2026-08-15 — `ProjectLookupStore` is the first consumer, feeding both the picker's list and every chip that has to name a `projectId` |
 | **500-item drain ceiling with a visible notice — never shipped.** US-907 landed in the same batch as US-908, so the interim criterion was live for no build at all; the panel issues one filtered request | US-908 (P5) — not, in the end, shipped      | US-907, 2026-08-15                                                                                                                   |
+| The users table has no **Last active** column, and the edit panel's identity line omits frame `5c`'s `· last active yesterday` — `UserDto` carries no timestamp of any kind, and `dateModified` moves only when an administrator edits the row, never when the user signs in | US-1201 (P6)                                | a backend enabler stamping a sign-in timestamp and exposing it on `UserDto`, if ever prioritized                                      |
 | Device-local project pins that do not sync                                                                                                                       | US-910's predecessor                        | US-909 (P8)                                                                                                                          |
 | Export control absent rather than an `UnavailablePanel`                                                                                                          | pre-US-1501                                 | US-1501 (P8)                                                                                                                         |

@@ -1,0 +1,36 @@
+.user-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.user-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-label {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.user-form__errors {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-form__error {
+  margin: 0;
+  color: var(--fail);
+  font-size: 12px;
+}
+
+.user-form__note {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}

@@ -1,0 +1,84 @@
+:host {
+  display: flex;
+  gap: 30px;
+  // The board's content pane. min-height rather than height: the table is what
+  // scrolls the page, and a fixed height would trap it.
+  min-height: 100%;
+  padding: 26px 34px;
+}
+
+// Below the breakpoint the rail is a strip above the content rather than beside it.
+@media (max-width: 767px) {
+  :host {
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px 16px;
+  }
+}
+
+.admin-nav {
+  flex: 0 0 190px;
+  width: 190px;
+}
+
+.admin-nav__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 10px 12px;
+  color: var(--brand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.admin-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--bs-body-color);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color var(--t-fast) ease;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+}
+
+.admin-nav__link--active {
+  background: var(--active-bg);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.admin-nav__icon {
+  width: 18px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.admin__content {
+  // min-width: 0 is what lets the table inside ellipsise instead of pushing the
+  // flex row wider than the viewport (WCAG SC 1.4.10 Reflow).
+  min-width: 0;
+  flex: 1;
+}

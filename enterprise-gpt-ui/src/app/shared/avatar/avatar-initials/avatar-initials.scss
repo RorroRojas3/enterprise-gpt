@@ -1,0 +1,64 @@
+// The avatar ramp of frames `5a` and `5c`.
+//
+// Local rather than in `_tokens.scss`, and deliberately: this component is the only
+// thing that uses these four pairs, while that file is global — eight entries emitted
+// in both themes would cost every page of the app for one component on one lazy route.
+// They are not in `theme.css` either, where the boards leave them as bare literals, so
+// there is nothing for `check-tokens.mjs` to keep in step.
+//
+// Backgrounds are pinned across both themes for the provider dots' reason: a person's
+// colour is how they are recognised in a list, and it must not change when the page
+// does. Each tone carries its own ink because the boards' own two pairings disagree —
+// #FFFFFF on the accent in the table, #06202F on the same accent in `5c` — and only the
+// second clears 4.5:1. The initials are aria-hidden decoration beside the name they
+// abbreviate, so that is legibility rather than a conformance requirement, but meeting
+// it costs nothing.
+@use 'sass:list';
+
+$tones: (
+  1: (
+    #14324f,
+    #ffffff,
+  ),
+  2: (
+    #21a8d8,
+    #06202f,
+  ),
+  3: (
+    #3fb56a,
+    #06202f,
+  ),
+  4: (
+    #5a6e82,
+    #ffffff,
+  ),
+);
+
+:host {
+  display: inline-flex;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // flex-basis as well as width: the circle sits in a flex row beside a name that
+  // ellipsises, and without it the avatar is what shrinks.
+  flex: 0 0 var(--avatar-size, 30px);
+  width: var(--avatar-size, 30px);
+  height: var(--avatar-size, 30px);
+  border-radius: 50%;
+  // Two letters in a 30px circle at the board's 11px, scaled off the diameter so the
+  // 40px variant in frame `5c` lands on its own 14px without a second rule.
+  font-size: calc(var(--avatar-size, 30px) * 0.367);
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+
+  @each $tone, $pair in $tones {
+    &[data-tone='#{$tone}'] {
+      background: list.nth($pair, 1);
+      color: list.nth($pair, 2);
+    }
+  }
+}

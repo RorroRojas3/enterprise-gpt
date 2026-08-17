@@ -6,10 +6,27 @@
   flex-wrap: wrap;
 }
 
+.paginator__lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .paginator__summary {
   margin: 0;
   color: var(--muted);
   font-size: 12.5px;
+}
+
+.paginator__size {
+  margin: 0;
+
+  .form-select {
+    width: 110px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
 }
 
 .paginator__nav {

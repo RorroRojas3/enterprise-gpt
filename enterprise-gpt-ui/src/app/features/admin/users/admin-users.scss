@@ -1,0 +1,155 @@
+:host {
+  display: block;
+}
+
+.admin-users__title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.admin-users__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  // Five controls past a 360px viewport, and only the field can shrink (WCAG SC 1.4.10).
+  flex-wrap: wrap;
+}
+
+.admin-users__search {
+  width: 300px;
+  // Below the search field's own intrinsic width the toolbar would push the page wide.
+  min-width: 0;
+  flex: 1 1 220px;
+  max-width: 300px;
+}
+
+.admin-users__order {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.admin-users__order-info {
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--bs-body-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+}
+
+.admin-users__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  margin-left: auto;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+// ── Rows ─────────────────────────────────────────────────────────────────────
+
+.admin-users__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  // Without this the flex row refuses to shrink below its content and the name never
+  // ellipsises — it widens the table instead.
+  min-width: 0;
+}
+
+.admin-users__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-users__you {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+// Frame `5d`'s refusal, under the name rather than beside the button: the actions column
+// is 160px, and this sentence would wrap to four lines there.
+.admin-users__refusal {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 4px 0 0 40px;
+  color: var(--fail);
+  font-size: 12.5px;
+  line-height: 1.45;
+
+  app-icon {
+    margin-top: 1px;
+    font-size: 12px;
+  }
+}
+
+.admin-users__email {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-users__permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.admin-users__no-permissions {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-users__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+
+  .btn {
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  // The row's own request is in flight. `aria-disabled` rather than the native attribute
+  // keeps the control focusable, so it needs a visual state of its own — otherwise a
+  // sighted reader sees a normal button that does nothing when pressed.
+  .btn[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+.admin-users__deactivate {
+  color: var(--muted);
+}
+
+.admin-users__pager {
+  padding: 11px 4px 0;
+}

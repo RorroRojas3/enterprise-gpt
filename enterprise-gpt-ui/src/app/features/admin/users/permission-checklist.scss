@@ -1,0 +1,92 @@
+:host {
+  display: block;
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Frame `5c` gives the rows more air, because each carries a second line.
+.checklist--block {
+  gap: 11px;
+}
+
+.checklist__label {
+  display: flex;
+  // flex-start rather than center: the block variant's caption makes the row two lines
+  // tall, and a centred checkbox would float beside the gap between them.
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checklist--block .checklist__label .form-check-input {
+  margin-top: 2px;
+}
+
+.checklist__text {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+}
+
+.checklist--block .checklist__text {
+  flex-direction: column;
+  gap: 1px;
+}
+
+.checklist__managed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.checklist--block .checklist__managed {
+  font-size: 11.5px;
+}
+
+.checklist__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  // Indented to the label text, so the refusal reads as belonging to the row above it
+  // rather than to the list.
+  margin: 8px 0 0 26px;
+  color: var(--fail);
+  font-size: 12.5px;
+  line-height: 1.45;
+
+  app-icon {
+    margin-top: 1px;
+    font-size: 12px;
+  }
+}
+
+.checklist__status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.checklist__status--error {
+  color: var(--fail);
+}
+
+.checklist__retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
