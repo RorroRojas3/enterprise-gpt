@@ -9,9 +9,11 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { Events, withEventHandlers } from '@ngrx/signals/events';
+import { firstValueFrom, takeUntil, tap } from 'rxjs';
 import { McpDto } from '@domain/api/mcp';
 import { toAppError } from '@core/errors/to-app-error';
+import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import {
@@ -109,5 +111,17 @@ export const McpCatalogStore = signalStore(
       });
     },
   }),
+  // The administration area registers, renames and deactivates these servers; this
+  // catalogue is what the composer's Tools menu reads. Without this the picker goes on
+  // offering a server whose permission was revoked from everyone the moment it was
+  // deactivated, and a turn started on one fails.
+  //
+  // `reload()` rather than `ensureLoaded()`: the memo is already resolved by the time an
+  // administrator can change anything, so the memoized call would hand back the stale
+  // list — and `reload()` also replaces the memo, so a later `ensureLoaded()` sees the
+  // fresh one. Mirrors `ModelCatalogStore`.
+  withEventHandlers((store, events = inject(Events)) => [
+    events.on(adminEvents.mcpCatalogChanged).pipe(tap(() => void store.reload())),
+  ]),
   withResetOnSignOut(),
 );

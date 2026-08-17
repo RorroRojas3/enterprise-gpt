@@ -1,0 +1,21 @@
+.deactivate-mcp__body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.deactivate-mcp__note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+// The permission-and-grants cascade is a fact about other people's access after this
+// action, not an aside, so it carries the warning surface rather than the muted one.
+.deactivate-mcp__note--warn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--bs-body-color);
+}

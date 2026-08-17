@@ -1,19 +1,20 @@
 # Administration
 
-The `/admin` area: a layout route carrying the rail its tabs hang off, and the **two** tabs behind it. A server-paged **user directory** with a create modal, a permission-editing drawer and a deactivate confirmation; and an unpaginated **model catalog** with a create-and-edit dialog, a set-as-default row action and a retire confirmation. Each tab splits its state across **two** stores, and that seam is the most consequential thing here. The area replaces the placeholder that had stood since US-203, whose only job was to give `adminCanMatch` a real chunk to withhold.
+The `/admin` area: a layout route carrying the rail its tabs hang off, and the **three** tabs behind it. A server-paged **user directory** with a create modal, a permission-editing drawer and a deactivate confirmation; an unpaginated **model catalog** with a create-and-edit dialog, a set-as-default row action and a retire confirmation; and an unpaginated **MCP server registry** with a create-and-edit dialog and a deactivate confirmation that has to name a cascade no other delete in this application performs. Each tab splits its state across **two** stores, and that seam is the most consequential thing here. The area replaces the placeholder that had stood since US-203, whose only job was to give `adminCanMatch` a real chunk to withhold.
 
-Audience: a developer adding the third admin tab (US-1208's MCP servers), building a numbered pager or a client-filtered table anywhere else in the app, or debugging a rejection that landed on the wrong surface. Read [Conversation Library](conversation-library.md) first for the list-screen conventions the directory copies — the URL contract, the route-scoped store, the empty states — [Authentication and Session §9](authentication-and-session.md#9-administration-withheld-rather-than-hidden-us-203) for why this chunk is withheld rather than hidden, and [Frontend Foundation](frontend-foundation.md) for the composable store features and the `core/errors` conventions everything here composes. Bare `§` references below are to sections of _this_ page.
+Audience: a developer adding the fourth admin tab (US-1302's reports), building a numbered pager or a client-filtered table anywhere else in the app, or debugging a rejection that landed on the wrong surface. Read [Conversation Library](conversation-library.md) first for the list-screen conventions the directory copies — the URL contract, the route-scoped store, the empty states — [Authentication and Session §9](authentication-and-session.md#9-administration-withheld-rather-than-hidden-us-203) for why this chunk is withheld rather than hidden, and [Frontend Foundation](frontend-foundation.md) for the composable store features and the `core/errors` conventions everything here composes. Bare `§` references below are to sections of _this_ page.
 
 The server side is the authority on everything past the request, and this page links into it rather than restating it:
 
 - [User Management](../users/user-management.md) — §2 for the directory routes and their failure modes, §6 for what `PUT` does to a permission set, §7 for the two invariants §9 below renders, and §8 for what deactivation does **not** do.
 - [Model Management](../models/model-management.md) — §2 for the catalog routes and their wire shapes, §5 for the validation the form mirrors, §6 for the single-default invariant §10 below refetches to show, and §7 for what a soft-deleted model keeps.
+- [Permission Cache §5](../permissions/permission-cache.md#5-invalidation) — the eviction `DeactivateMcpServerAsync` performs over **every holder** of the deactivated server's permission, which is the fact §11.5's confirmation puts in front of the person about to cause it.
 
 Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority for every `US-xxx` reference.
 
 ## 1. Overview
 
-Five stories. The first four were taken in their numbered order because they all write the same three files; US-1207 followed, on the second tab, touching none of them. Between them they also land the part of US-1209 that frame `5a` draws as part of the users screen.
+Six stories. The first four were taken in their numbered order because they all write the same three files; US-1207 followed, on the second tab, touching none of them, and US-1208 copied _that_ tab rather than the first. Between them they also land the part of US-1209 that frame `5a` draws as part of the users screen.
 
 | Story               | What it delivers                                                                                                                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -22,7 +23,8 @@ Five stories. The first four were taken in their numbered order because they all
 | **US-1203**         | A 420px right offcanvas editing permissions, stating before Save that the whole set is being replaced, with MCP-derived rows lock-marked and still operable                                          |
 | **US-1204**         | A deactivate confirmation, an optimistic and position-faithful row removal, and the refusal a caller gets on their own row                                                                           |
 | **US-1207**         | The models tab: the whole catalog in one request, filtered in memory, an eleven-field create-and-edit dialog, a Set as default row action, and a retire confirmation (§10)                           |
-| **part of US-1209** | The layout route, the rail marking the open tab from the router, and the `/admin` → `/admin/users` redirect. What is left to US-1209 is the other two tabs and the criteria spanning all four        |
+| **US-1208**         | The MCP servers tab: the whole registry in one request, a five-field create-and-edit dialog whose Scope is conditional in both directions, and a deactivate confirmation that names a cascade (§11)  |
+| **part of US-1209** | The layout route, the rail marking the open tab from the router, and the `/admin` → `/admin/users` redirect. What is left to US-1209 is the reports tab and the criteria spanning all four           |
 
 Nine decisions shape the directory, and each looks removable until you know what it prevents:
 
@@ -34,7 +36,7 @@ Nine decisions shape the directory, and each looks removable until you know what
 6. **The checklist reads `GET api/permissions`, not `/all`.** `/all` also returns deactivated permissions, and the server answers a grant of one with a 404 — a checkbox that could only ever fail (§6.3).
 7. **MCP-derived permissions are lock-marked but operable.** The API permits granting them, and disabling them would remove the only route to MCP tool access (§7.4).
 8. **Both self-action refusals render inline, in the board's second-person wording, and never as a toast** — recognised by the `errors` key plus the target's identity, never by the server's prose (§9).
-9. **Three controls frame `5a` draws stay absent**, each pinned by a spec: no sort control, no row-selection column, no permission filter (§13).
+9. **Three controls frame `5a` draws stay absent**, each pinned by a spec: no sort control, no row-selection column, no permission filter (§14).
 
 Ten more shape the model catalog, and none of them is a preference:
 
@@ -49,19 +51,34 @@ Ten more shape the model catalog, and none of them is a preference:
 9. **`provider.ts` gained Azure AI Foundry.** `Providers.cs` seeds four and the client mirror had three; there is no `GET api/providers`, so the mirror is the only source (§10.7).
 10. **The `DEFAULT` pill renders in `--brand`, not frame `5e`'s `--accent`**, which measures 2.74:1 on light `--surface` — below AA, with the border in the same colour, so there is no second channel (§10.3).
 
+Nine shape the MCP server registry. It copies the catalog's shape and departs from it in exactly one place, which is the fourth below:
+
+1. **The form binds five fields where frame `5h` draws six.** Neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field — the server creates the gating permission itself, names it after the server and re-syncs that name on every rename — so the board's "Linked permission" select is a control this API has nothing to bind. A note under the Name field states the rule instead, which is also the only way the name-collision 400 makes sense to a reader (§11.3).
+2. **Two auth types, not frame `5h`'s three, and they travel as numbers.** `McpAuthTypes` has `None = 1` and `EntraIdOnBehalfOf = 2`; "Header key" and "OAuth2" do not exist in this system. The API registers no `JsonStringEnumConverter`, and `IsInEnum` rejects the `0` an empty select parses to — which is why a create seeds `None` rather than a blank option (§11.3).
+3. **Scope is conditional in both directions, because the validator is**: required for `EntraIdOnBehalfOf`, refused outright for `None`. It is `hidden()` in the schema, guarded by an `@if`, **and** cleared by an effect, and `toMcpServerBody` normalizes it to `null` on top of all three (§11.3).
+4. **Every rejection kept on the dialog's own surface renders in the modal's `--fail` panel, a validation problem included.** This is the one place `ModelActionsStore`'s shape is deliberately not copied: the criterion asks for a panel that names the server on a 502 as well as on a 400, so a non-validation failure renders there rather than raising a toast (§11.4).
+5. **The criterion's 502 is unreachable on save.** `POST`/`PUT api/mcps` attempt no MCP connection, so `/problems/mcp-server-unavailable` arises only from a chat turn. The panel renders _any_ error kept on the surface, which satisfies the intent and would cover a 502 the day a validation enabler introduces one (§11.4).
+6. **One void event, `adminEvents.mcpCatalogChanged`**, mirroring `modelCatalogChanged` rather than the criterion's `mcpServerCreated` naming, and both observers refetch. Four facts make a payload the wrong shape, and a `PUT` renaming the **linked permission** is the one no response on this route describes (§11.6).
+7. **Deactivated servers render, muted, with no kebab at all** — `mcps/all` is the only route returning them, and there is no reactivate route (§11.2).
+8. **The confirmation says what the cascade actually does.** `DeactivateMcpServerAsync` deactivates the server, its linked permission **and every grant of that permission** in one atomic save. No other delete in this application revokes other people's access, so it is on the `--warn` surface rather than an aside (§11.5).
+9. **The Auth column is 150px, not frame `5g`'s 90px.** "Entra ID (on behalf of)" is one of only two values it can hold, and a narrower grid track ellipsises it permanently (§11.2).
+
 ### 1.1 Where each piece lives
 
 | Concern                                                                     | Where                                                                                                                                                                                                                                                                                                                            |
 | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The wire shapes — `UserDto`, `PermissionDto`                                | [`domain/api/user.ts`](../../enterprise-gpt-ui/src/app/domain/api/user.ts) — framework-free                                                                                                                                                                                                                                      |
 | The wire shapes — `ModelDto`, `ModelWriteBody`, `isRetired`                 | [`domain/api/model.ts`](../../enterprise-gpt-ui/src/app/domain/api/model.ts) — one body shape for both verbs (§10.4)                                                                                                                                                                                                             |
+| The wire shapes — `McpServerDto`, `McpServerWriteBody`, `MCP_AUTH_TYPE`     | [`domain/api/mcp.ts`](../../enterprise-gpt-ui/src/app/domain/api/mcp.ts) — the administrative shape beside the picker's `McpDto`, and the two auth types as the numbers they travel as (§11.3)                                                                                                                                  |
 | The four provider ids, names and tones                                      | [`domain/api/provider.ts`](../../enterprise-gpt-ui/src/app/domain/api/provider.ts) — a mirror of the seeded rows, because there is no `GET api/providers` (§10.7)                                                                                                                                                                |
 | The Administrator permission id                                             | [`domain/api/permission-ids.ts`](../../enterprise-gpt-ui/src/app/domain/api/permission-ids.ts) — matched by id, never by name                                                                                                                                                                                                    |
 | Every request, and the state of every surface                               | [`core/users/user-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/users/user-actions-store.ts) — root-scoped (§5.1)                                                                                                                                                                                                      |
 | The two second-person refusal messages, and how they are recognised         | [`core/users/self-action-messages.ts`](../../enterprise-gpt-ui/src/app/core/users/self-action-messages.ts) (§9)                                                                                                                                                                                                                  |
-| The four events, three for the directory and one for the catalog            | [`core/events/admin-events.ts`](../../enterprise-gpt-ui/src/app/core/events/admin-events.ts) (§5.2)                                                                                                                                                                                                                              |
+| The five events — three for the directory, one per unpaginated catalog      | [`core/events/admin-events.ts`](../../enterprise-gpt-ui/src/app/core/events/admin-events.ts) (§5.2)                                                                                                                                                                                                                              |
 | Every catalog request, and the state of both model surfaces                 | [`core/catalog/model-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-actions-store.ts) — root-scoped (§10.5)                                                                                                                                                                                               |
 | The form's value shape, its client-side rules, and the body builder         | [`core/catalog/model-form.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-form.ts) (§10.4)                                                                                                                                                                                                                               |
+| Every registry request, and the state of both MCP surfaces                  | [`core/catalog/mcp-server-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-server-actions-store.ts) — root-scoped, and the only store carrying an `McpServerSaveFailure` (§11.4)                                                                                                                              |
+| The MCP form's value shape, its rules, and the two builders                 | [`core/catalog/mcp-server-form.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-server-form.ts) — `urlError`, `scopeError`, `authTypeError`, `toMcpServerBody`, `describeRejectedFields` (§11.3)                                                                                                                            |
 | Initials and the deterministic tone                                         | [`shared/avatar/initials.ts`](../../enterprise-gpt-ui/src/app/shared/avatar/initials.ts) — shared with the sidebar footer                                                                                                                                                                                                        |
 | The initials circle, and the four-tone ramp that is _not_ in `_tokens.scss` | [`shared/avatar/avatar-initials/`](../../enterprise-gpt-ui/src/app/shared/avatar/avatar-initials/) (§4.4)                                                                                                                                                                                                                        |
 | The area's route table and its chrome                                       | [`features/admin/admin.routes.ts`](../../enterprise-gpt-ui/src/app/features/admin/admin.routes.ts), [`admin-layout.ts`](../../enterprise-gpt-ui/src/app/features/admin/admin-layout.ts)                                                                                                                                          |
@@ -74,7 +91,9 @@ Ten more shape the model catalog, and none of them is a preference:
 | The models screen and its route-scoped store                                | [`features/admin/models/admin-models.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/admin-models.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/models/admin-models.html), [`admin-models-store.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/admin-models-store.ts) (§10.2)             |
 | The two model surfaces                                                      | [`model-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/model-form-dialog.ts) (§10.4), [`deactivate-model-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/deactivate-model-dialog.ts) (§10.6)                                                                                           |
 | `400k` and `32,768`, in one fixed locale                                    | [`features/admin/models/model-format.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/model-format.ts) (§10.3)                                                                                                                                                                                                         |
-| The pager, the drawer, the badge                                            | [`shared/data/paginator/`](../../enterprise-gpt-ui/src/app/shared/data/paginator/), [`shared/overlay/offcanvas/`](../../enterprise-gpt-ui/src/app/shared/overlay/offcanvas/), [`shared/badge/permission-badge/`](../../enterprise-gpt-ui/src/app/shared/badge/permission-badge/) — all US-106's, built for these frames (§11.2)  |
+| The MCP registry screen and its route-scoped store                          | [`features/admin/mcps/admin-mcps.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.html), [`admin-mcps-store.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps-store.ts) (§11.1)                              |
+| The two MCP surfaces                                                        | [`mcp-server-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/mcp-server-form-dialog.ts) (§11.3), [`deactivate-mcp-server-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/deactivate-mcp-server-dialog.ts) (§11.5)                                                                           |
+| The pager, the drawer, the badge                                            | [`shared/data/paginator/`](../../enterprise-gpt-ui/src/app/shared/data/paginator/), [`shared/overlay/offcanvas/`](../../enterprise-gpt-ui/src/app/shared/overlay/offcanvas/), [`shared/badge/permission-badge/`](../../enterprise-gpt-ui/src/app/shared/badge/permission-badge/) — all US-106's, built for these frames (§12.2)  |
 | Fixtures for specs                                                          | [`src/testing/users.ts`](../../enterprise-gpt-ui/src/testing/users.ts), [`src/testing/catalog.ts`](../../enterprise-gpt-ui/src/testing/catalog.ts)                                                                                                                                                                               |
 
 ## 2. Quick start
@@ -144,32 +163,57 @@ protected readonly actions = inject(ModelActionsStore); // every request, and bo
 
 There is no `bindQuery` and no route file: **the search term is screen state, not a URL parameter** (§10.2). The mutations all live on the other store — `beginCreate()`, `beginEdit(model)`, `submitForm(value)`, `setAsDefault(model)`, `beginDeactivate(model)`, `confirmDeactivate()` — and none of them patches these rows: they dispatch `adminEvents.modelCatalogChanged`, and the list refetches (§10.6).
 
-### 2.4 Adding an admin tab
+### 2.4 Reading the MCP server registry
 
-Three files, and none of them is the layout. The models tab is the worked example; US-1208's is the same two edits:
+`AdminMcpsStore` is provided by the `AdminMcps` component, so it exists only while the tab does. `McpServerActionsStore` is root-scoped and outlives it:
+
+```ts
+protected readonly servers = inject(AdminMcpsStore);        // the rows, and the filter over them
+protected readonly actions = inject(McpServerActionsStore); // every request, and both surfaces
+
+//   servers.entities()     → readonly McpServerDto[], the whole registry, deactivated rows included
+//   servers.results()      → what the search field left of it — render these
+//   servers.query()        → the committed term
+//   servers.isFirstLoad()  → pending with nothing on screen
+//   servers.isEmpty()      → loaded, and nothing is registered
+//   servers.hasNoMatches() → loaded, nothing matched, and a term is why
+//   servers.countSummary() → "Showing 2 of 7 servers", or "7 MCP servers registered"
+//
+//   servers.load();  servers.search(term);  servers.retry();  servers.refresh();
+```
+
+Identical in shape to §2.3, because it is the same regime (§11.1). The searchable text is **name + description + URL**, and the field's label names all three, so nothing is searched that the reader was not told about. The mutations live on the other store — `beginCreate()`, `beginEdit(server)`, `submitForm(value)`, `beginDeactivate(server)`, `confirmDeactivate()` — and none of them patches these rows: they dispatch `adminEvents.mcpCatalogChanged`, and the list refetches (§11.6).
+
+### 2.5 Adding an admin tab
+
+Three files, and none of them is the layout. Both the models tab and the MCP tab are worked examples; each was the same two edits:
 
 ```ts
 // admin-tabs.ts — the rail entry. Add it in the story that builds the route, never before.
-{ id: 'mcps', label: 'MCP servers', icon: 'bi-hdd-network', link: `${ADMIN_ROUTE}/mcps` }
+// The glyph must already be in ICON_NAMES: `bi-plug` is what AdminNav.dc.html draws and is
+// in the 75-glyph sprite, so nothing had to be rebuilt for it.
+{ id: 'mcps', label: 'MCP servers', icon: 'bi-plug', link: `${ADMIN_ROUTE}/mcps` }
 
 // admin.routes.ts — a sibling child of the layout, providing its own store on its own route.
 { path: 'mcps', component: AdminMcps, title: 'MCP servers — Enterprise GPT' }
 ```
 
-`AdminLayout` holds **no store**, and no tab may provide one on it: US-1209 requires that opening a tab instantiates that tab's store and no other. The third file is the screen itself, and which of the two on this page it copies is decided by the endpoint: a server-paged route takes `AdminUsers`'s URL contract (§4.1), an unpaginated one takes `AdminModels`'s client filter (§10.2). `GET api/mcps/all` is unpaginated, so US-1208 copies the models tab.
+`AdminLayout` holds **no store**, and no tab may provide one on it: US-1209 requires that opening a tab instantiates that tab's store and no other. The third file is the screen itself, and which of the two shapes on this page it copies is decided by the endpoint: a server-paged route takes `AdminUsers`'s URL contract (§4.1), an unpaginated one takes `AdminModels`'s client filter (§10.2). `GET api/mcps/all` is unpaginated, which is why US-1208 copied the models tab and touched none of the directory's files.
 
-### 2.5 Rules that are not style preferences
+### 2.6 Rules that are not style preferences
 
 - **Never add a rail entry before its route exists.** A link that leads nowhere is the shown-and-disabled affordance US-203 already rejected for the Admin entry itself (§3.2).
 - **Never build a user update body without the profile fields.** `UpdateUserActionDto` requires `firstName`, `lastName` and `email` to be non-empty; `{ permissionIds }` alone is a 400 on three required fields, not a partial update (§7.3).
 - **Never decide which surface renders a failure by reading `formMode()`.** Pass the flow (§6.5).
 - **Never match a self-action refusal on the server's message.** Match the `errors` key and the target's identity (§9).
 - **Never disable an MCP-derived permission's checkbox.** The API permits the grant, and disabling it removes the only route to MCP tool access (§7.4).
-- **Never let `UserActionsStore` or `ModelActionsStore` be reached from anything eagerly imported.** `providedIn: 'root'` is a DI scope, not a chunk assignment, and the initial graph has well under a kilobyte of headroom (§11.1).
+- **Never let `UserActionsStore`, `ModelActionsStore` or `McpServerActionsStore` be reached from anything eagerly imported.** `providedIn: 'root'` is a DI scope, not a chunk assignment, and the initial graph has a fraction of a kilobyte of headroom (§12.1).
 - **Never reinterpret `withOffsetPagination`'s `skip` as a request offset.** Four stores read it as the feature defines it (§4.2).
-- **Never assemble a model write body by hand.** Both verbs go through `toModelBody`, because `ModelMapper` assigns every property on a PUT and an omitted price is a cleared one (§10.4).
-- **Never set `formBusy` from anything but the model dialog's own submit.** It is also `Modal`'s Escape and backdrop suppression (§10.5).
-- **Never filter retired models out of the catalog table.** They are what `DELETE` produces, and hiding them makes the action look inert (§10.3).
+- **Never assemble a model or MCP write body by hand.** Both verbs go through `toModelBody` / `toMcpServerBody`, because each mapper assigns every property on a PUT — an omitted price is a cleared one, and an omitted scope is a cleared one (§10.4, §11.3).
+- **Never set `formBusy` from anything but the dialog's own submit**, in either store. It is also `Modal`'s Escape and backdrop suppression (§10.5).
+- **Never filter retired models or deactivated MCP servers out of their table.** They are what `DELETE` produces, and hiding them makes the action look inert (§10.3, §11.2).
+- **Never render a scope the form has hidden.** `hidden()`, the `@if`, the clearing effect and `toMcpServerBody`'s normalization are four layers over one rule, and dropping any of them lets a save store a value the dialog was not showing (§11.3).
+- **Never toast a rejection the MCP dialog is still on screen for.** It goes in the `--fail` panel, validation problem included; reporting it twice is the defect that shape avoids (§11.4).
 
 ## 3. The area: a layout route and a rail
 
@@ -180,14 +224,17 @@ Three files, and none of them is the layout. The models tab is the worked exampl
  └─ ''  AdminLayout                                  ← the 190px rail (pills below 768px)
       ├─ ''        → redirect to 'users'
       ├─ 'users'   AdminUsers   providers: [AdminUsersStore]
-      └─ 'models'  AdminModels  providers: [AdminModelsStore]
+      ├─ 'models'  AdminModels  providers: [AdminModelsStore]
+      └─ 'mcps'    AdminMcps    providers: [AdminMcpsStore]
 ```
 
 Two things follow from real child routes that a signal holding a tab name cannot give: the rail marks the open tab **from the router**, which is what US-1209 asks for and what stops the mark and the content disagreeing; and the browser's back button restores the previous tab for free. `ariaCurrentWhenActive="page"` rides along with the active class, so the mark reaches a screen reader as a navigation state rather than as a colour.
 
 ### 3.2 The rail lists only the tabs that exist
 
-`AdminNav.dc.html` draws four entries — Users, Models, MCP servers, Reports. `ADMIN_TABS` holds two. A tab is added by the story that builds its route (US-1208, US-1302), never ahead of it, for the reason US-203 already settled for the Admin entry itself: an affordance that is present and inert is worse than one that is absent. US-1207 added its entry and its route in the same commit, which is the whole rule in one line.
+`AdminNav.dc.html` draws four entries — Users, Models, MCP servers, Reports. `ADMIN_TABS` holds three. A tab is added by the story that builds its route (US-1302 for the last of them), never ahead of it, for the reason US-203 already settled for the Admin entry itself: an affordance that is present and inert is worse than one that is absent. US-1207 and US-1208 each added their entry and their route in the same commit, which is the whole rule in one line.
+
+The glyph is a second, quieter constraint: `AdminTab.icon` is typed `IconName`, so an entry can only name a glyph the sprite already carries, and `npm run lint`'s `check:icons` fails a build that references one it does not. US-1208's `bi-plug` is what the board draws _and_ is already among the 75 glyphs, so the rail entry cost no sprite rebuild.
 
 ### 3.3 Below 768px
 
@@ -278,7 +325,7 @@ Two flags are easy to conflate and are deliberately separate. **`formBusy` track
 
 ### 5.2 `adminEvents` — server-confirmed facts only
 
-The Events plugin earns its place here on scope, exactly as it does for `projectEvents`: the root store cannot reach into a route-scoped one, and `core/` may not import from `features/`. Four events, each carrying what the server returned:
+The Events plugin earns its place here on scope, exactly as it does for `projectEvents`: the root store cannot reach into a route-scoped one, and `core/` may not import from `features/`. Five events, each carrying what the server returned:
 
 | Event                 | Fired on                                          | What the observers do                                                                 |
 | --------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -286,8 +333,9 @@ The Events plugin earns its place here on scope, exactly as it does for `project
 | `userUpdated`         | `PUT api/users/{id}` → 200, the DTO               | Patches the row in place if it holds it, and ignores it otherwise                     |
 | `userDeactivated`     | `DELETE api/users/{id}` → 204, the id             | Drops the row if it still holds it — idempotent, since this screen already removed it |
 | `modelCatalogChanged` | `POST`, `PUT` or `DELETE` on `api/models`, `void` | **Two** observers, and both refetch the whole catalog (§10.6)                         |
+| `mcpCatalogChanged`   | `POST`, `PUT` or `DELETE` on `api/mcps`, `void`   | **Two** observers, and both refetch the whole registry (§11.6)                        |
 
-Optimistic patches and their rollbacks stay inside the store that made them; an observer never has to undo one. The fourth event is the odd one out in two ways, both explained in §10.6: it carries no payload, and it is the only one with an observer outside the admin area — the chat picker's root `ModelCatalogStore`, which must not go on offering a model an administrator has just retired. US-1208 adds the MCP server events to this group.
+Optimistic patches and their rollbacks stay inside the store that made them; an observer never has to undo one. The last two are the odd ones out in the same two ways: they carry no payload, and each is the only kind with an observer **outside** the admin area — the chat picker's root `ModelCatalogStore`, which must not go on offering a model an administrator has just retired, and the composer's root `McpCatalogStore`, which must not go on offering a server whose permission was revoked from everybody the moment it was deactivated. The three user events remain the ones that carry a DTO, because a user's row is the only thing here a response fully describes.
 
 ### 5.3 A creation re-reads; an update patches in place
 
@@ -561,7 +609,7 @@ It has **two** observers, and the second is the whole point of the event:
 | `AdminModelsStore` (route) | The table would otherwise show two default rows, or a stale one                                                                                                      |
 | `ModelCatalogStore` (root) | The chat composer's model menu reads it. Without this the picker goes on offering a retired model for the rest of the session, and a turn started on one takes a 404 |
 
-The root store's handler calls `reload()` rather than `ensureLoaded()`: the memo is already resolved by the time an administrator can change anything, so the memoized call would hand back the stale list — and `reload()` also replaces the memo, so a later `ensureLoaded()` sees the fresh one. That handler is the whole **+0.46 kB** this story adds to the initial bundle (§11.1).
+The root store's handler calls `reload()` rather than `ensureLoaded()`: the memo is already resolved by the time an administrator can change anything, so the memoized call would hand back the stale list — and `reload()` also replaces the memo, so a later `ensureLoaded()` sees the fresh one. That handler is the whole **+0.46 kB** this story adds to the initial bundle (§12.1).
 
 ### 10.7 Providers are a client-side mirror, and there are four
 
@@ -573,22 +621,155 @@ It shares Azure OpenAI's dot tone. The boards draw three provider hues and the p
 
 `PROVIDER_OPTIONS` — the select's entries — is built in `core/catalog/model-form.ts` rather than beside `providerMeta`, so it stays off the initial graph: `domain/api/provider.ts` is reached by the chat composer's model menu, and this list has exactly one consumer, on a lazy admin route. An id it offers that a deployment has since deactivated fails the save with the 404 §10.5 renders at the Provider field, which is the correct failure and the only one a client with no provider endpoint can know about.
 
-## 11. Route, bundle and the shared kit
+## 11. The MCP server registry (US-1208)
 
-### 11.1 The bundle
+The third tab, frame `5g`: every MCP tool server the deployment knows about, where it is reached, how the API authenticates to it, which delegated scope it asks for, and which permission gates it — plus the three things an administrator can do to one. Like the catalog it is a surface the chat screen reads from, but the blast radius is wider in one direction: **deactivating a server revokes a permission from everybody who held it**, which no other delete in this application does.
 
-The initial bundle measures **669.63 kB raw / 168.80 kB transfer** against the 670 kB warning and 720 kB error ceiling, with `styles` unchanged at 63.96 kB. No re-baseline — and **0.37 kB of headroom left**, so the next root-scoped store trips the warning.
+### 11.1 Regime C again, and what the second tab settled
+
+The seam is §5's and the regime is §10.2's, both unchanged: `McpServerActionsStore` is root-scoped and owns every request because they outlive the screen; `AdminMcpsStore` is route-scoped, composes `withEntities` + `withClientQuery`, and owns the rows. `GET api/mcps/all` is unpaginated and Administrator-gated, so one request _is_ the whole registry and a filter over it is exact — there is no `mcps-route.ts`, no `bindQuery` and no `withComponentInputBinding()`.
+
+Both of `withClientQuery`'s shaped config values are copied verbatim from `AdminModelsStore`, reasons included: `isAuthoritative` is `isFulfilled() || entities().length > 0`, so the set does not read as non-authoritative for the length of every save; and `incompleteSetReason` is unreachable, so it says what would have to have gone wrong rather than describing a state this screen can enter. **This is the point of §10.2 being written down**: the second consumer of the feature was a copy rather than a re-derivation.
+
+What differs is what the endpoint and the entity decide:
+
+|                | Catalog (US-1207)                                | Registry (US-1208)                                                                          |
+| -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Endpoint       | `GET api/models/all`                             | `GET api/mcps/all` — **not** `api/mcps`, which filters to the caller's own grants           |
+| Searchable     | Model name + provider name                       | Name + description + **URL** — an administrator as often knows a server's host as its name  |
+| Comparators    | `name`, `provider` — wired, unoffered            | `name`, `url` — wired, unoffered (§14)                                                      |
+| Deleted rows   | Stay, muted, Status column                       | Stay, muted, frame `5g`'s own status dot — and the linked-permission badge goes with them   |
+| Row actions    | Edit, **Set as default**, Delete                 | Edit, Deactivate. There is no promotion to make and no default to hold                      |
+
+`GET api/mcps/{id}` exists and is **deliberately unused**. The row `mcps/all` returned already carries every field the PUT has to echo, and the single-server route answers 404 for a deactivated server — a second path to the same data with a different failure mode, which is what §14's note on the grant/revoke routes refuses on the users tab for the same reason.
+
+### 11.2 The table, and why a deactivated server is still in it
+
+Eight columns — server, description, URL, auth, scope, permission, status, actions — mapped onto `DataTable`'s card slots so the same rows read below the breakpoint.
+
+**Deactivated servers are rendered, not hidden.** `DELETE api/mcps/{id}` is a soft delete and `mcps/all` is the only route that returns what it produces; the user-facing `api/mcps` shows only active servers the caller holds a grant for. A table that dropped those rows would make Deactivate look as though it had done nothing. So the row stays, with **two** channels saying so — frame `5g`'s own active/inactive `StatusDot`, and the server name at `opacity: 0.65` — and **no kebab at all** rather than a disabled one, because there is no reactivate route and every item would be an affordance that cannot work (§14).
+
+Six more details are load-bearing:
+
+- **The Auth column is 150px, not frame `5g`'s 90px.** The longer of the two values this column can hold is "Entra ID (on behalf of)", and at 90px it ellipsises permanently — a column that can never show one of its two values in full is a column that says nothing. The board's width was drawn against a three-value enum this system does not have.
+- **An auth type this build does not know is rendered, not hidden.** `authTypeLabel` degrades to the raw number, exactly as the models table's unknown provider degrades to its raw id: a row must still say _something_ about how it authenticates. §11.3 covers what happens when such a row is opened for editing.
+- **The URL and the Scope cells carry `[title]`.** Both are mono, both ellipsise, and both hold exactly the kind of value that is read character by character when something is wrong — the URL column is the only place in the application an administrator can check one.
+- **A server with no scope shows an em dash and a visually-hidden "No scope"**, not a blank cell. `None` refuses a scope outright, so the absence is a fact about the row rather than missing data, and a blank cell reads as a rendering fault.
+- **The linked-permission badge names the permission from the server's own name**, with no second request. `McpServerService` creates the permission with that name, re-syncs it on every rename, and the two share one uniqueness space — the same invariant the directory's MCP badges rely on (§7.4). The badge is absent when `permissionId` is null, which happens only on a deactivated row, because the cascade takes the permission with the server. A **visually-hidden "Linked permission:"** label rides with it: below the breakpoint `DataTable`'s `badges` slot has no column header, and the card would otherwise print the server's name twice with nothing to tell the two apart.
+- **The count is stated over the rows on screen** — `Showing 2 of 7 servers`, or `7 MCP servers registered` — for §10.3's reason: a client-side filter changes what the table shows without changing what the server holds.
+
+Two empty states, because they are two situations: nothing matched a term (**Clear search**, which returns focus to the field, since the button removes itself the moment rows come back), and a genuinely empty registry, whose message says what registering one achieves.
+
+### 11.3 The dialog binds five fields where frame `5h` draws six
+
+The missing one is the board's **Linked permission** select, and it is absent because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field. `McpServerService` creates the gating permission alongside the server, names it after the server, and re-syncs that name on every rename. Rendering the control disabled would be the shown-and-inert affordance US-203 rejected for the Admin entry itself — so the **rule is stated under the Name field** instead:
+
+> A permission with this name is created alongside the server, and renamed with it.
+
+That note is not a consolation prize. It is the only thing that makes a name-collision 400 comprehensible: the server and its permission share one uniqueness space, so a name can be refused for colliding with a permission nobody created by hand.
+
+| Field         | Notes                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `name`        | 256, mirroring `CreateMcpServerActionDtoValidator`. Takes initial focus, and carries the permission note                 |
+| `description` | 1024, required — non-nullable on the administrative DTO, unlike the picker's `McpDto`                                    |
+| `url`         | 2048, mono, `inputmode="url"`. Validated against `BeAnAbsoluteHttpUri` — absolute, `http` or `https`                     |
+| `authType`    | A select over `AUTH_TYPE_OPTIONS`. **Two entries**, and they submit as numbers                                           |
+| `scope`       | 512, mono, and **conditional in both directions**. Hidden, cleared and normalized on the `None` arm                      |
+
+Four decisions inside it outlive the story.
+
+**Two auth types, not three, and they travel as numbers.** `McpAuthTypes` has `None = 1` and `EntraIdOnBehalfOf = 2`; frame `5h`'s "Header key" and "OAuth2" do not exist in this system — the same class of board error as frame `4l`'s file extensions. The API registers no `JsonStringEnumConverter`, so the enum serializes as its underlying `int`, and the validator's `IsInEnum` rejects `0` — which is why `toMcpServerFormValue(null)` seeds **`None`** rather than offering a blank option that could only ever fail. `AUTH_TYPE_OPTIONS` lives in `core/catalog/mcp-server-form.ts` rather than beside the constant in `domain/api/mcp.ts`, for `PROVIDER_OPTIONS`'s reason (§10.7): that file is reached by the composer's Tools menu, and this list has exactly one consumer on a lazy route.
+
+**Scope is conditional in both directions, because the validator is** — required for `EntraIdOnBehalfOf`, and refused outright for `None`. Four mechanisms enforce one rule, and each covers a case the others do not:
+
+| Mechanism                             | What it prevents                                                                                                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hidden(path.scope, …)` in the schema | A hidden field contributes nothing to its parent's validity, so the `None` arm cannot reach a **disabled Save explained by a control that is not on screen**       |
+| The `@if` in the template             | The guard the Signal Forms API recommends alongside `hidden`                                                                                                        |
+| A clearing `effect`                   | An interactive switch to `None` empties the field, so **what the dialog shows is what the save will store** — a value retained behind a hidden field is §10.4's "blank versus zero" defect in another costume |
+| `toMcpServerBody`'s normalization     | `scope: null` for `None` whatever the field holds. This is the branch that matters when an **edit seeds** a `None` server that already carries one, which is reachable: `McpServerDto.scope` is nullable and the API forbids the combination only on write |
+
+The last row is why `toMcpServerBody` normalizes rather than refusing. A refusal there would be a Save that silently does nothing, with the field it is about hidden.
+
+**The URL rule is the client's own wording of the server's.** `urlError` parses with `new URL(trimmed)` — no base, so a relative or rooted path throws — and then checks the protocol, which mirrors `BeAnAbsoluteHttpUri`. That validator is also the only place the transport is constrained: `McpToolProvider` builds an `HttpClientTransport` unconditionally, so there is no stdio option for the form to offer.
+
+**An unsupported auth type explains itself ungated by `touched`.** Editing a row the table rendered through `authTypeLabel`'s fallback leaves the select with no matching option, so the dialog surfaces a message naming the raw value and saying what to do — the same route the models dialog's provider 404 takes (§10.5), and for the same reason: nobody typed the value, so no amount of prior interaction predicts it, and gating it behind `touched` would leave Save disabled with the explanation hidden behind the very interaction the disabled button prevents. `authTypeError` is what keeps Save disabled there rather than enabled over a body `toMcpServerBody` refuses.
+
+The rest is `ModelFormDialog`'s shape, the app's fifth Signal Form: `disabled` as one root-level schema rule rather than a `[disabled]` binding (NG8022, as with `maxlength`); the server's verdict through a declarative `validate` rule that reports it only while the field still holds the exact value that was sent; `unmatchedServerMessages` rendering anything keyed to a property no control here displays; the whole **raw** form value held as `formRejectedValue`, so the comparison is exact and a scope the body dropped is still compared against the field that holds it; and every field marked touched on submit, because Enter submits without a blur.
+
+### 11.4 One panel for every rejection this surface keeps
+
+This is the one place `ModelActionsStore`'s shape is deliberately not copied. The acceptance criterion asks for a `--fail` panel at the top of the modal that names the server **on a 502 as well as on a 400** — so a non-validation failure kept on this surface renders _there_ rather than raising a toast, because reporting the same fact twice is the defect the shape avoids. It falls back to a toast only once its surface is no longer the one on screen.
+
+`McpServerSaveFailure` is a structure rather than a rendered string, so the template can bold the name:
+
+| Field       | Holds                                                                                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `serverName` | **The row the reader opened**, never the new name they typed — a save that renamed the server and failed must still name the row they went looking for   |
+| `reason`     | `describeRejectedFields(Object.keys(errors))` for a validation problem, `userMessage(error)` for anything else                                            |
+| `traceLine`  | Null for a validation problem, where the fields carry the detail and a trace id beside them is noise                                                      |
+
+`describeRejectedFields` builds frame `5h`'s "The server rejected the URL." clause from the `errors` keys — PascalCase, because that is how FluentValidation keys them — and **returns null rather than naming a field the reader cannot find**, so an object-level rule or a key a later API version introduces falls back to the generic line instead of pointing at a control that is not there.
+
+**The criterion's 502 is unreachable on save, and that is worth recording rather than quietly satisfying.** `POST` and `PUT api/mcps` attempt no MCP connection at all — they write a row and a permission — so `/problems/mcp-server-unavailable` arises only from a chat turn. The panel is built to render _any_ error kept on this surface, which is what the criterion is asking for and what would cover a 502 the day a validation enabler ([MCP Server Integration](../prd/mcp/mcp-server-integration.md)'s US-103) introduces one.
+
+Everything else is §6.5's rule in a third store, over §10.5's three flags unchanged — `formBusy`, `pendingIds` and `formRejectedValue`, each with its own job:
+
+- **The flow identifies itself.** `rejectForm` takes `{ mode: 'create' }` or `{ mode: 'edit', id }`, carried through the request rather than read back off `formMode()`, and for an edit the target id is checked too.
+- **`formBusy` is set only by the dialog's own submit**, drives the fields, both buttons and `Modal`'s Escape/backdrop suppression, and is released in `finalize` — not in `cancelForm()`, because it tracks a request rather than a surface.
+- **No failure closes the dialog.** Five fields including a 1024-character description are behind it, and `retryInterceptor` retries neither a POST nor a PUT.
+- **A row action's failure is always a toast**: no form produced it, so there is nowhere inline to put it.
+- The screen's constructor calls `cancelForm()` and `cancelDeactivate()`, because the store outlives the route and a dialog left open would otherwise re-mount `showModal()` on a surface the reader never asked for.
+
+Concurrency is chosen per flow: `exhaustMap` for create and update (a second submit is a double-click, and a duplicate that slipped through would take the "name already in use" 400 the first one had just made true), `mergeMap` for deactivate (different servers are independent; same-row overlap is stopped by the pending-id guard).
+
+### 11.5 Deactivating a server, and the cascade the confirmation names
+
+The confirmation names the server, styles the destructive action red, and lands initial focus on **Cancel**. Its body says what the deactivation does to the product, and its `--warn` note says what it does to other people:
+
+> **Jira** is removed from every user's tool picker, and its tools stop being offered to any turn that had selected it.
+>
+> The permission named after this server is deactivated with it, and revoked from everyone who held it. It cannot be brought back from here.
+
+That second paragraph is on the warn surface rather than tucked in as an aside because it is the part a reader is least likely to expect: `DeactivateMcpServerAsync` deactivates the server, its linked permission **and every grant of that permission** in one atomic save, then invalidates the MCP client cache and the permission-cache entry of every holder ([Permission Cache §5](../permissions/permission-cache.md#5-invalidation)). No other delete in this application changes somebody else's access.
+
+Like `DeactivateModelDialog` and unlike `DeactivateUserDialog`, it confirms **on the store** rather than emitting to the screen. Nothing is removed optimistically and there is no rollback to thread back — the row stays and turns muted when the refetch lands — which also means no focus fallback is needed, because the kebab it was invoked from is still in the document for `Modal` to return focus to.
+
+### 11.6 `mcpCatalogChanged`: void, and two observers that refetch
+
+`adminEvents.mcpCatalogChanged` is `type<void>()`, mirroring `modelCatalogChanged` rather than the criterion's `mcpServerCreated`-and-counterpart naming. Four facts make a payload the wrong shape, and they are not the catalog's four:
+
+- `mcps/all` is **ordered by name**, so a new server's slot is the server's to decide — the `userCreated` reasoning (§5.3);
+- `DELETE` answers **204 with no body**, and the row has to turn muted, so a patch would have to synthesize a `dateDeactivated` the client never observed;
+- a `PUT` renames the **linked permission** in the same save, and no response on this route describes it;
+- the registry is unpaginated and small, so a refetch costs one request and is the only thing that can show any of the above.
+
+One event covers all three verbs, and it has two observers:
+
+| Observer                 | Why it must hear this                                                                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AdminMcpsStore` (route) | The table would otherwise show a stale row, a stale permission name, or an active dot on a server that has just been deactivated                                            |
+| `McpCatalogStore` (root) | The composer's Tools menu reads it. Without this the picker goes on offering a server whose permission was revoked from everyone the instant it was deactivated             |
+
+The root store's handler calls `reload()` rather than `ensureLoaded()`, for §10.6's reason exactly: the memo is already resolved by the time an administrator can change anything, and `reload()` also replaces it so a later `ensureLoaded()` sees the fresh list. That handler is the whole **+0.15 kB** this story adds to the initial bundle (§12.1) — a third of US-1207's, because `withEventHandlers` and the `adminEvents` symbol were already on the graph from `ModelCatalogStore`.
+
+## 12. Route, bundle and the shared kit
+
+### 12.1 The bundle
+
+The initial bundle measures **669.78 kB raw / 168.94 kB transfer** against the 670 kB warning and 720 kB error ceiling, with `styles` unchanged at 63.96 kB. No re-baseline — and **0.22 kB of headroom left**, so the next root-scoped store trips the warning.
 
 | Story           | Initial raw   | Δ            | What landed on the graph                                                                                               |
 | --------------- | ------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | US-1201–US-1204 | 669.17 kB     | +0.27 kB     | The shared kit's — the paginator's select and its `liveSummary` opt-out, and `initialsOf` moving into `shared/avatar/` |
-| **US-1207**     | **669.63 kB** | **+0.46 kB** | `ModelCatalogStore`'s event handler, and nothing else (§10.6)                                                          |
+| US-1207         | 669.63 kB     | +0.46 kB     | `ModelCatalogStore`'s event handler, and nothing else (§10.6)                                                          |
+| **US-1208**     | **669.78 kB** | **+0.15 kB** | `McpCatalogStore`'s event handler, and nothing else (§11.6)                                                            |
 
-Everything else rides the lazy admin chunk (~70.2 kB), including both root-scoped action stores: `providedIn: 'root'` is a DI scope, not a chunk assignment, and nothing eagerly reachable imports either of them. `check-initial-chunk.mjs` still reports the admin area absent from the initial graph.
+Everything else rides the lazy admin chunk, now **94.84 kB** (70.23 kB before this story), including all three root-scoped action stores: `providedIn: 'root'` is a DI scope, not a chunk assignment, and nothing eagerly reachable imports any of them. `check-initial-chunk.mjs` still reports the admin area absent from the initial graph.
 
-The 0.46 kB is worth understanding, because it is the shape of every future cross-boundary event. `ModelCatalogStore` is root-scoped and genuinely initial — the chat composer reads it — so composing `withEventHandlers` onto it puts that handler, and the `adminEvents` symbol it names, on the initial graph. The admin screens it coordinates with do not follow: an event group is a set of type tokens, not an import edge back into `features/admin/`.
+The two event-handler deltas are worth reading together, because they are the shape of every future cross-boundary event and they are **not the same size**. Both stores are root-scoped and genuinely initial — the chat composer reads each — so composing `withEventHandlers` onto one puts that handler, and the `adminEvents` symbol it names, on the initial graph. US-1207 paid 0.46 kB because it brought `withEventHandlers` and the event group with it; US-1208 paid 0.15 kB because both were already there and only the handler itself was new. The admin screens either store coordinates with do not follow in either case: an event group is a set of type tokens, not an import edge back into `features/admin/`.
 
-### 11.2 The kit had been waiting for this epic
+### 12.2 The kit had been waiting for this epic
 
 Three components built by US-106 **against these frames** had no consumer but `/ui-kit` until now, and between them needed two inputs:
 
@@ -602,13 +783,13 @@ The select's selection is bound **on the options**, never as `[value]` on the `<
 
 Two things did have to be built: `AvatarInitials` (§4.4) and the `AdminLayout` rail (§3).
 
-## 12. Testing
+## 13. Testing
 
-**184 specs**: 82 across seven files as EP-12's first four stories closed, and 102 more with US-1207 — seven new files, plus four cases added to `model-catalog-store` and `admin-layout`. The suite total is **1569**.
+**271 specs**: 82 across seven files as EP-12's first four stories closed, 102 more with US-1207, and **87** with US-1208 — six new files, plus two cases added to `mcp-catalog-store` and one to `admin-layout`, whose "lists only the tabs that exist" now expects three. The suite total is **1656**.
 
 | Area                    | Spec                      | Notable cases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The area's chrome       | `admin-layout` (7)        | `/admin` redirecting to the users tab; the open tab marked **from the router**; **only the tabs that exist** listed; the pill strip below 768px; **`/admin/models` opened by URL instantiating only its own store**; back restoring the previous tab                                                                                                                                                                                                                                                         |
+| The area's chrome       | `admin-layout` (8)        | `/admin` redirecting to the users tab; the open tab marked **from the router**; **only the three tabs that exist** listed; the pill strip below 768px; **`/admin/models` and `/admin/mcps` each opened by URL instantiating only their own store**; back restoring the previous tab                                                                                                                                                                                                                          |
 | The URL contract        | `admin-users` (2)         | A page number that would send a negative offset refused; `?size=` read only as one of the three offered, so the control cannot contradict the URL                                                                                                                                                                                                                                                                                                                                                            |
 | The rows                | `admin-users` (4)         | Initials, name, email and one badge per grant; **an MCP server named without a second request**; the email fallback for an account with no directory name; the caller's own row marked                                                                                                                                                                                                                                                                                                                       |
 | Deep links and paging   | `admin-users` (5)         | **Term, page and size on one request**; a search dropping the page with it; back restoring the page before it; the size a deep link asked for shown; a size change returning to page 1                                                                                                                                                                                                                                                                                                                       |
@@ -634,9 +815,21 @@ And US-1207's, on the models tab:
 | The chat picker's copy | `model-catalog-store` (2)  | **A reload when an administrator changes the catalog**, and **the memo replaced**, so a later `ensureLoaded()` sees the fresh list                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Formatting             | `model-format` (7)         | `400000` as `400k`, `32768` as `32,768`; a fraction keeping one decimal; **one fixed grouping rather than the reader's locale**; a dash rather than `NaN`                                                                                                                                                                                                                                                                                                                                                                                                            |
 
+And US-1208's, on the MCP servers tab:
+
+| Area                | Spec                            | Notable cases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The registry rows   | `admin-mcps` (15)               | The columns frame `5g` draws, with the URL and the scope in mono; **the linked permission named without a second request**; a missing scope said rather than left blank; **a deactivated row muted, marked and with no actions at all**; filtering on the URL as well as the name, without a second request; the term named and cleared; an empty registry told apart from a search that matched nothing; no sort control; a 403 replacing the table; **both dialogs mounted once**; a dialog left standing not reopened; an unknown auth type rendered |
+| The list store      | `admin-mcps-store` (12)         | **`mcps/all`, the only route returning deactivated servers**; a match on the description and the URL; **filtering without touching the server**; the filtered figure stated against the total; **sort offered only over a set held in full**; **the set still authoritative while a mutation's refetch is in flight**; a registry change refetching rather than patching; an in-flight query superseded; sign-out cancelling and emptying                                                                                                             |
+| The requests        | `mcp-server-actions-store` (16) | A registration announcing the change; **a second submit refused**; a body it could not build never sent; the full representation the PUT requires; a validation failure kept inline with every field intact; **the server and the rejected field named in the panel**; **a non-validation failure in the panel rather than as a toast**; a rejection never rendered on a surface it did not come from; **the row the reader opened named, not the one opened after it**; overlapping deactivations; `formBusy` not cleared by a mid-flight close   |
+| The form dialog     | `mcp-server-form-dialog` (18)   | **The five fields the API accepts, and no linked-permission control**; the note saying why a name can collide with a permission; **two auth types, not frame `5h`'s three**; **Scope shown only for Entra ID, and cleared when the arm stops accepting one**; an edit of a `None` server carrying a scope still submittable; an unsupported auth type explained **without waiting to be touched**, and recovering; the auth type sent as the number the wire carries; the server's message at its field, cleared on the next edit; a second open empty |
+| The form's rules    | `mcp-server-form` (17)          | The two auth types and an unknown one labelled by its raw value; `IsInEnum`'s zero refused; `urlError` over both schemes, relative paths and trimming; **`scopeError` in both directions**; a create seeded with `None`; **`toMcpServerBody` sending a null scope whatever the hidden field holds**, trimming, and refusing a body it cannot build; `describeRejectedFields` saying nothing rather than naming a field the reader cannot find                                                                                                        |
+| Deactivation        | `deactivate-mcp-server` (6)     | The server named and the action red; initial focus on Cancel; **the permission and its grants stated as going with the server**; what it does to a turn in progress; confirmed on the store, because there is no row to remove; cancelled without a request                                                                                                                                                                                                                                                                                        |
+| The composer's copy | `mcp-catalog-store` (2 new)     | **A reload when an administrator changes the registry**, and **the memo replaced**, so a later `ensureLoaded()` sees the fresh list                                                                                                                                                                                                                                                                                                                                                                                                                |
+
 ```bash
 # from enterprise-gpt-ui/
-npm test        # Vitest, single run — 1569 specs
+npm test        # Vitest, single run — 1656 specs
 npm run lint    # ESLint + icon, forbidden-API and token checks
 npm run build   # budgets, then check-initial-chunk.mjs
 npm run format  # Prettier
@@ -644,7 +837,7 @@ npm run format  # Prettier
 
 > **Verification status.** As with every epic before it, none of this has been exercised against a live API. The gates above are green and every behaviour here is asserted against `HttpTestingController` and `RouterTestingHarness`.
 
-## 13. Deliberately not here
+## 14. Deliberately not here
 
 Each is pinned by a spec, so removing the absence fails a test rather than passing silently.
 
@@ -666,24 +859,35 @@ On the catalog:
 | **A server-side whole-token rule** | —                 | The columns are `decimal(18,2)` and the validator carries only `GreaterThan(0)`, so a model seeded outside this screen can hold `400000.5` and this table will render it (§10.4)                                                         |
 | **A cost column**                  | US-1302           | The two prices are set here and read there. Adding a figure to this table would duplicate the report's arithmetic in a place nobody would look for it                                                                                    |
 
-And across both:
+On the registry:
 
-| Missing                  | Owner            | Notes                                  |
-| ------------------------ | ---------------- | -------------------------------------- |
-| The other two admin tabs | US-1208, US-1302 | The rail lists only what exists (§3.2) |
+| Missing from frame `5g` / `5h`               | Owner                                                                                       | Notes                                                                                                                                                                                                                    |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Any sort control**                         | US-902's sibling                                                                            | Frame `5g` draws none. Like the catalog this set _is_ sortable — `name` and `url` are wired and `canSort()` is true — so closing it is a template change (§11.1)                                                        |
+| **Restore for a deactivated server**         | a backend enabler                                                                           | `DELETE` is a soft delete; `GET`, `PUT` and `DELETE` on `{id}` all 404 on a deactivated row, and there is no reactivate route. The kebab is therefore absent rather than disabled (§11.2)                                |
+| **A "Linked permission" select**             | —                                                                                           | Neither action DTO carries one. The server owns that permission's name, and a disabled select would be an affordance with nothing behind it (§11.3)                                                                     |
+| **Header key and OAuth2 auth types**         | —                                                                                           | `McpAuthTypes` has two members. Offering a third would be a select entry the wire refuses (§11.3)                                                                                                                       |
+| **More than one scope**                      | [MCP PRD](../prd/mcp/mcp-server-integration.md)'s US-101                                     | `McpServer.Scope` is a single `nvarchar(512)`. The form binds one field and says "One scope only." under it; that story's `Scope` → `Scopes` rename is a **breaking change to this client** and has to carry it          |
+| **Dry-run validation, a tool-surface view, a health signal** | that PRD's US-103, US-104 and US-405                                        | Frame-adjacent capability an administrator wants when registering a server, and nothing routes to `McpToolProvider` or `McpClientCache` over HTTP today                                                                 |
 
-The last three catalog absences are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table, alongside the directory's Last active column.
+And across all three:
 
-The single-permission grant and revoke routes ([User Management §2.1](../users/user-management.md#21-related-grant-routes)) are deliberately unused: frame `5c` edits a set, and mixing a per-row request into a panel that also PUTs the whole set would make two paths to the same outcome with different failure modes.
+| Missing         | Owner   | Notes                                  |
+| --------------- | ------- | -------------------------------------- |
+| The reports tab | US-1302 | The rail lists only what exists (§3.2) |
 
-## 14. Troubleshooting
+The last three catalog absences and four of the registry's are recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table, alongside the directory's Last active column.
+
+Two routes are deliberately unused rather than missing. The single-permission grant and revoke routes ([User Management §2.1](../users/user-management.md#21-related-grant-routes)) stay untouched because frame `5c` edits a set, and mixing a per-row request into a panel that also PUTs the whole set would make two paths to the same outcome with different failure modes — and `GET api/mcps/{id}` stays untouched for the same reason (§11.1).
+
+## 15. Troubleshooting
 
 | Symptom                                                                                     | Cause                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Two requests fire when a filtered link is opened cold                                       | `bindQuery` was handed values instead of a computation, so it ran with defaults before the router's parameters arrived (§2.2)                                         |
 | The field fights the user, or the term resets as they type                                  | `[(value)]` was used on `SearchInput`, or something navigates from an effect over a bound input. The loop is one-directional by construction (§4.1)                   |
 | Back walks through the search one letter at a time                                          | `shouldReplaceHistory` is returning `false` while a term is being refined (§4.1)                                                                                      |
-| **A deep link to `?size=100` requests 100 rows and displays "25 / page"**                   | The select's selection was bound as `[value]` on the `<select>` instead of `[selected]` on the options; the empty option list resets it to the first entry (§11.2)    |
+| **A deep link to `?size=100` requests 100 rows and displays "25 / page"**                   | The select's selection was bound as `[value]` on the `<select>` instead of `[selected]` on the options; the empty option list resets it to the first entry (§12.2)    |
 | The summary reads `Showing 2451–312 of 312 users`                                           | The past-the-end clamp came off one of the two summaries. Both the store's and `Paginator`'s have it (§4.3)                                                           |
 | A filtered link past the end tells the reader to clear a search that was working            | `hasNoMatches` was tested before `isPastEnd` in the template (§4.3)                                                                                                   |
 | A screen reader reads the count twice, with two different numbers                           | `Paginator` lost `[liveSummary]="false"`, or a second count was derived instead of handing `countSummary()` to `DataTable`'s `summary` (§4.4)                         |
@@ -698,7 +902,7 @@ The single-permission grant and revoke routes ([User Management §2.1](../users/
 | A checkbox looks dead — clicking changes nothing                                            | A `Set` was mutated and the same reference written back. `patchState` and `model` compare by reference, so there is no signal write at all (§5.1)                     |
 | A newly created user appears at the top of every page                                       | The row was inserted locally instead of re-reading the page. Ordering is the server's (§5.3)                                                                          |
 | Deleting the row an administrator was standing on drops focus to `<body>`                   | The confirmation's `#main-content` fallback was removed, or its fell-through check was inverted (§8.1)                                                                |
-| The whole admin area lands in the initial bundle                                            | Something eagerly reachable imported `UserActionsStore`, `ModelActionsStore` or a file beside one. `providedIn: 'root'` is a DI scope, not a chunk assignment (§11.1) |
+| The whole admin area lands in the initial bundle                                            | Something eagerly reachable imported one of the three root action stores, or a file beside one. `providedIn: 'root'` is a DI scope, not a chunk assignment (§12.1)    |
 | The rail marks the wrong tab, or none                                                       | The tabs were made local state instead of child routes (§3.1)                                                                                                         |
 
 And on the models tab:
@@ -716,7 +920,25 @@ And on the models tab:
 | A model's provider renders as a bare GUID                                | The provider was seeded server-side after this build. `provider.ts` is a mirror and there is no endpoint to fetch (§10.7)                                                     |
 | A dialog reopens on its own when the models tab is revisited             | `cancelForm()`/`cancelDeactivate()` came off the screen's constructor. `ModelActionsStore` outlives the route (§10.5)                                                         |
 
-## 15. Key files
+And on the MCP servers tab:
+
+| Symptom                                                                                       | Cause                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A save stores a scope the dialog was not showing**                                          | The clearing effect or `toMcpServerBody`'s normalization came off. Both exist because an edit can _seed_ a `None` server that already carries one (§11.3)                                     |
+| Save is disabled and nothing on screen says why                                               | The Scope field lost its `hidden()` rule and is only `@if`-ed away. A hidden field contributes nothing to validity; an `@if`-ed one still does (§11.3)                                        |
+| **The auth type reaches the API as a string and the save 400s**                               | The value was sent as the select's raw string. There is no `JsonStringEnumConverter` server-side — `toMcpServerBody` parses it, and `isKnownAuthType` narrows it (§11.3)                      |
+| A brand-new server form opens with an empty Auth type that cannot be saved                    | The seed stopped pre-selecting `None`. `IsInEnum` rejects the `0` an empty select parses to (§11.3)                                                                                           |
+| **A failed save is reported twice** — once in the panel and once as a toast                   | The non-validation arm of `rejectForm` was made to toast unconditionally, copying `ModelActionsStore`. On this surface the panel is the report (§11.4)                                        |
+| The panel names the new name the reader typed rather than the row they opened                 | `rejectForm` was handed `body.name` on the edit flow instead of `target.name` (§11.4)                                                                                                         |
+| The panel claims a field was rejected that is nowhere in the dialog                           | `describeRejectedFields` lost its null return, or a key was added to its label map that no control renders (§11.4)                                                                           |
+| **Deactivating a server appears to do nothing**                                               | Deactivated rows were filtered out of the table. The delete is soft, and `mcps/all` is the only route that returns what it produces (§11.2)                                                   |
+| An administrator deactivates a server and users still see it in the Tools menu                | `McpCatalogStore` lost its event handler, or it calls `ensureLoaded()` rather than `reload()` — the memo is already resolved by then (§11.6)                                                  |
+| The permission badge is empty, or a second request appears per row                            | The badge was pointed at `permissionId` instead of the server's own `name`. The two share one uniqueness space precisely so no fetch is needed (§11.2)                                        |
+| A mobile card prints the server name twice                                                    | The visually-hidden "Linked permission:" label came off the badges slot, which has no column header below the breakpoint (§11.2)                                                              |
+| Editing a server registered with an unknown auth type leaves Save dead and silent             | `authTypeError` or the `unsupportedAuthType` message was gated on `touched`. Nobody typed the value, and the disabled Save prevents the interaction that would reveal it (§11.3)              |
+| "Entra ID (on behalf of)" is ellipsised in every row                                          | The Auth column was returned to frame `5g`'s 90px. It holds one of two values and the wider one never fits (§11.2)                                                                            |
+
+## 16. Key files
 
 | Concern                        | File                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -728,14 +950,18 @@ And on the models tab:
 | The model catalog              | [`features/admin/models/admin-models.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/admin-models.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/models/admin-models.html), [`admin-models-store.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/admin-models-store.ts)                                                                                        |
 | Its two surfaces               | [`model-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/model-form-dialog.ts), [`deactivate-model-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/deactivate-model-dialog.ts)                                                                                                                                                                              |
 | The catalog's number formats   | [`features/admin/models/model-format.ts`](../../enterprise-gpt-ui/src/app/features/admin/models/model-format.ts)                                                                                                                                                                                                                                                                                    |
-| Every request                  | [`core/users/user-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/users/user-actions-store.ts), [`core/catalog/model-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-actions-store.ts)                                                                                                                                                                                |
+| The MCP server registry        | [`features/admin/mcps/admin-mcps.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.ts), [`.html`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps.html), [`admin-mcps-store.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/admin-mcps-store.ts)                                                                                                          |
+| Its two surfaces               | [`mcp-server-form-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/mcp-server-form-dialog.ts), [`deactivate-mcp-server-dialog.ts`](../../enterprise-gpt-ui/src/app/features/admin/mcps/deactivate-mcp-server-dialog.ts)                                                                                                                                                              |
+| Every request                  | [`core/users/user-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/users/user-actions-store.ts), [`core/catalog/model-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-actions-store.ts), [`core/catalog/mcp-server-actions-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-server-actions-store.ts)                                                        |
 | The model form's rules         | [`core/catalog/model-form.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-form.ts)                                                                                                                                                                                                                                                                                                          |
+| The MCP form's rules           | [`core/catalog/mcp-server-form.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-server-form.ts)                                                                                                                                                                                                                                                                                                |
 | The chat picker's catalogue    | [`core/catalog/model-catalog-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/model-catalog-store.ts) — the second observer of `modelCatalogChanged`                                                                                                                                                                                                                                         |
+| The composer's tool catalogue  | [`core/catalog/mcp-catalog-store.ts`](../../enterprise-gpt-ui/src/app/core/catalog/mcp-catalog-store.ts) — the second observer of `mcpCatalogChanged`                                                                                                                                                                                                                                               |
 | The refusal messages           | [`core/users/self-action-messages.ts`](../../enterprise-gpt-ui/src/app/core/users/self-action-messages.ts)                                                                                                                                                                                                                                                                                          |
 | The events                     | [`core/events/admin-events.ts`](../../enterprise-gpt-ui/src/app/core/events/admin-events.ts)                                                                                                                                                                                                                                                                                                        |
-| The wire shapes                | [`domain/api/user.ts`](../../enterprise-gpt-ui/src/app/domain/api/user.ts), [`domain/api/model.ts`](../../enterprise-gpt-ui/src/app/domain/api/model.ts), [`domain/api/provider.ts`](../../enterprise-gpt-ui/src/app/domain/api/provider.ts)                                                                                                                                                        |
+| The wire shapes                | [`domain/api/user.ts`](../../enterprise-gpt-ui/src/app/domain/api/user.ts), [`domain/api/model.ts`](../../enterprise-gpt-ui/src/app/domain/api/model.ts), [`domain/api/provider.ts`](../../enterprise-gpt-ui/src/app/domain/api/provider.ts), [`domain/api/mcp.ts`](../../enterprise-gpt-ui/src/app/domain/api/mcp.ts)                                                                              |
 | The avatar                     | [`shared/avatar/initials.ts`](../../enterprise-gpt-ui/src/app/shared/avatar/initials.ts), [`shared/avatar/avatar-initials/`](../../enterprise-gpt-ui/src/app/shared/avatar/avatar-initials/)                                                                                                                                                                                                        |
 | The pager                      | [`shared/data/paginator/paginator.ts`](../../enterprise-gpt-ui/src/app/shared/data/paginator/paginator.ts)                                                                                                                                                                                                                                                                                          |
 | The admin route guard          | [`core/auth/guards/admin.guard.ts`](../../enterprise-gpt-ui/src/app/core/auth/guards/admin.guard.ts), [`core/auth/auth-routes.ts`](../../enterprise-gpt-ui/src/app/core/auth/auth-routes.ts)                                                                                                                                                                                                        |
-| The API side                   | [`Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs), [`UserService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/UserService.cs), [`ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs), [`ModelService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ModelService.cs) |
-| Related reference              | [User Management](../users/user-management.md), [Model Management](../models/model-management.md), [Conversation Library](conversation-library.md), [Frontend Foundation](frontend-foundation.md), [Design System](design-system.md), [Authentication and Session](authentication-and-session.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md)                                     |
+| The API side                   | [`Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs), [`UserService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/UserService.cs), [`ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs), [`ModelService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ModelService.cs), [`McpEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/McpEndpoints.cs), [`McpServerService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/McpServerService.cs) |
+| Related reference              | [User Management](../users/user-management.md), [Model Management](../models/model-management.md), [Permission Cache](../permissions/permission-cache.md), [Conversation Library](conversation-library.md), [Frontend Foundation](frontend-foundation.md), [Design System](design-system.md), [Authentication and Session](authentication-and-session.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [MCP Server Integration PRD](../prd/mcp/mcp-server-integration.md) |

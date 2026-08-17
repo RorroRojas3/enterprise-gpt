@@ -1,0 +1,183 @@
+<h1 class="admin-mcps__title font-display">MCP servers</h1>
+
+<div class="admin-mcps__toolbar">
+  <!-- One field over the three strings on the row, which is what the label promises. It
+       filters in memory: `mcps/all` is unpaginated, so the rows on screen are the whole
+       registry and a filter over them is exact rather than a filter over a page
+       pretending to be one. -->
+  <app-search-input
+    class="admin-mcps__search"
+    label="Search servers by name, description, or URL"
+    placeholder="Search servers"
+    [value]="servers.query()"
+    [busy]="servers.isPending()"
+    (searched)="onSearched($event)"
+  />
+
+  <!--
+    `aria-disabled` while the dialog's own submit is on the wire, never the native
+    attribute: the store refuses to open a dialog it could not dismiss, and the native
+    attribute would drop the control out of the tab order for the length of a request
+    instead of announcing why.
+  -->
+  <button
+    class="btn btn-primary btn-sm admin-mcps__add"
+    type="button"
+    aria-haspopup="dialog"
+    [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
+    (click)="actions.beginCreate()"
+  >
+    <app-icon name="bi-plus-lg" />
+    Add server
+  </button>
+</div>
+
+@if (servers.error(); as error) {
+  <!-- Instead of the table rather than beside it: the rows on screen belong to a request
+       that failed. A revoked Administrator grant arrives here as
+       `/problems/permission-required`, which `ErrorPanel` already names and correctly
+       refuses to offer a retry for. -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="MCP servers couldn’t load"
+    (retried)="servers.retry()"
+  />
+} @else {
+  <app-data-table
+    label="MCP servers"
+    [rows]="servers.results()"
+    [columns]="columns"
+    [trackKey]="trackKey"
+    [rowLabel]="rowLabel"
+    [loading]="servers.isFirstLoad()"
+    [summary]="servers.countSummary()"
+    [pendingIds]="actions.pendingIds()"
+  >
+    <ng-template appTableCell="server" [appTableCellFor]="servers.results()" let-row>
+      <span class="admin-mcps__name" [class.admin-mcps__name--retired]="isRetired(row)">
+        {{ row.name }}
+      </span>
+    </ng-template>
+
+    <ng-template appTableCell="description" [appTableCellFor]="servers.results()" let-row>
+      <span class="admin-mcps__muted">{{ row.description }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="url" [appTableCellFor]="servers.results()" let-row>
+      <!-- Mono, per frame `5g`: a URL is read character by character when it is wrong,
+           and this column is the only place an administrator can check one — which is
+           why it carries a `title`, since the cell ellipsises exactly the long URLs that
+           are worth checking. -->
+      <span class="admin-mcps__muted font-mono" [title]="row.url">{{ row.url }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="auth" [appTableCellFor]="servers.results()" let-row>
+      <!-- Degrades to the raw value for an auth type this build does not know, rather
+           than to a blank cell — the same rule the model table's provider dot follows. -->
+      <span class="admin-mcps__muted">{{ authTypeLabel(row.authType) }}</span>
+    </ng-template>
+
+    <ng-template appTableCell="scope" [appTableCellFor]="servers.results()" let-row>
+      @if (row.scope) {
+        <span class="admin-mcps__muted font-mono" [title]="row.scope">{{ row.scope }}</span>
+      } @else {
+        <!-- A server with no authentication carries no scope, and the validator refuses
+             one. An em dash says "there is none" where a blank cell would read as a
+             rendering fault. -->
+        <span class="admin-mcps__muted" aria-hidden="true">—</span>
+        <span class="visually-hidden">No scope</span>
+      }
+    </ng-template>
+
+    <ng-template appTableCell="permission" [appTableCellFor]="servers.results()" let-row>
+      @if (row.permissionId) {
+        <!-- Named from the server's own name rather than from a second request:
+             `McpServerService` creates the permission with that name and re-syncs it on
+             every rename, and the two share one uniqueness space.
+
+             The visually-hidden label is what stops the mobile card reading the same name
+             twice with nothing to distinguish them: below the breakpoint the badges slot
+             has no column header to supply the context this cell relies on. -->
+        <span class="visually-hidden">Linked permission:</span>
+        <app-permission-badge [name]="row.name" />
+      } @else {
+        <span class="admin-mcps__muted" aria-hidden="true">—</span>
+        <span class="visually-hidden">No linked permission</span>
+      }
+    </ng-template>
+
+    <ng-template appTableCell="status" [appTableCellFor]="servers.results()" let-row>
+      @if (isRetired(row)) {
+        <app-status-dot tone="muted" label="Inactive" />
+      } @else {
+        <app-status-dot tone="ok" label="Active" />
+      }
+    </ng-template>
+
+    <ng-template appTableCell="actions" [appTableCellFor]="servers.results()" let-row>
+      <!-- A deactivated server gets no menu at all rather than a disabled one: there is
+           no reactivate route, so every item would be an affordance that cannot work —
+           the "shown and disabled" pattern US-203 rejected for the Admin entry itself. -->
+      @if (!isRetired(row)) {
+        <!-- `formBusy` as well as the row's own request: Edit refuses to open while the
+             dialog's submit is on the wire, and `Menu.disabled` is `aria-disabled` plus
+             inert rather than the native attribute. -->
+        <app-menu
+          [label]="'Actions for ' + row.name"
+          [disabled]="actions.isRowPending(row.id) || actions.formBusy()"
+          [panelWidth]="200"
+        >
+          <button appMenuItem type="button" (click)="actions.beginEdit(row)">Edit</button>
+          <button
+            appMenuItem
+            type="button"
+            class="menu__item--danger"
+            (click)="actions.beginDeactivate(row)"
+          >
+            Deactivate
+          </button>
+        </app-menu>
+      }
+    </ng-template>
+
+    <div tableEmpty>
+      @if (servers.hasNoMatches()) {
+        <app-empty-state
+          [heading]="noMatchHeading()"
+          [headingLevel]="2"
+          message="Search covers the server name, its description, and its URL."
+        >
+          <button
+            emptyStateAction
+            type="button"
+            class="btn btn-outline-secondary btn-sm"
+            (click)="clearSearch()"
+          >
+            Clear search
+          </button>
+        </app-empty-state>
+      } @else {
+        <app-empty-state
+          heading="No MCP servers yet"
+          [headingLevel]="2"
+          message="Register a server and it becomes selectable for anyone granted its permission."
+        />
+      }
+    </div>
+  </app-data-table>
+}
+
+<!--
+  Mounted once for the screen rather than inside a branch above: the dialog is the
+  reader's own state, and a re-render of the controls must not destroy the form they are
+  filling in.
+-->
+<app-mcp-server-form-dialog />
+
+<!--
+  Nothing is removed optimistically, unlike a user deactivation: this is a soft delete
+  the table goes on rendering, so the row turns muted when the refetch lands and there is
+  no undo to hand back.
+-->
+<app-deactivate-mcp-server-dialog />

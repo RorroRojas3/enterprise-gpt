@@ -1,4 +1,4 @@
-import { McpDto } from '../app/domain/api/mcp';
+import { MCP_AUTH_TYPE, McpDto, McpServerDto } from '../app/domain/api/mcp';
 import { ModelDto } from '../app/domain/api/model';
 import { PROVIDER_ID } from '../app/domain/api/provider';
 
@@ -37,6 +37,28 @@ export function mcpFixture(overrides: Partial<McpDto> = {}): McpDto {
     id: `${String(index).padStart(8, '0')}-1111-4222-8333-555555555555`,
     name: `Tool Server ${index}`,
     description: null,
+    ...overrides,
+  };
+}
+
+let mcpServerSequence = 0;
+
+/** An `McpServerDto` exactly as the administrative `GET api/mcps/all` returns one. */
+export function mcpServerFixture(overrides: Partial<McpServerDto> = {}): McpServerDto {
+  const index = mcpServerSequence++;
+
+  return {
+    id: `${String(index).padStart(8, '0')}-2222-4333-8444-666666666666`,
+    name: `MCP Server ${index}`,
+    // Non-null here and nullable on `McpDto`: the administrative DTO declares it
+    // required, and its validator refuses an empty one.
+    description: `Test MCP server ${index}.`,
+    url: `https://mcp.example.test/server-${index}`,
+    // A server with no authentication, which is what Microsoft Learn and Context7 are —
+    // and the only arm that must carry a null scope.
+    authType: MCP_AUTH_TYPE.none,
+    scope: null,
+    permissionId: `${String(index).padStart(8, '0')}-3333-4444-8555-777777777777`,
     ...overrides,
   };
 }

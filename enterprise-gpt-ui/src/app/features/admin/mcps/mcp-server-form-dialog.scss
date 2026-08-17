@@ -1,0 +1,68 @@
+.mcp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mcp-form__grid {
+  display: grid;
+  gap: 12px 14px;
+  // Frame `5h`'s two columns, collapsing to one below the modal's narrow width — every
+  // field here is a labelled control and none of them reads across a 320px viewport.
+  grid-template-columns: 1fr 1fr;
+  font-size: 12.5px;
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mcp-form__field {
+  min-width: 0;
+}
+
+.mcp-form__field--wide {
+  grid-column: 1 / -1;
+}
+
+// Frame `5h`'s `--fail` panel: the failure names the server, and the form never clears
+// what the reader typed.
+.mcp-form__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--fail) 35%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fail) 8%, transparent);
+}
+
+.mcp-form__summary-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.mcp-form__trace {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.mcp-form__note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.mcp-form__errors {
+  margin-top: 4px;
+}
+
+.mcp-form__error {
+  margin: 0;
+  color: var(--fail);
+  font-size: 11.5px;
+  line-height: 1.45;
+}

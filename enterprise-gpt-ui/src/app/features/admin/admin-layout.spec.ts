@@ -9,7 +9,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { modelFixture } from '@testing/catalog';
+import { mcpServerFixture, modelFixture } from '@testing/catalog';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { directoryUserFixture, userPage } from '@testing/users';
 import { AdminLayout } from './admin-layout';
@@ -17,6 +17,7 @@ import { adminRoutes } from './admin.routes';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
+const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
 
 describe('AdminLayout (US-1201, ahead of US-1209)', () => {
   let backend: HttpTestingController;
@@ -58,6 +59,8 @@ describe('AdminLayout (US-1201, ahead of US-1209)', () => {
 
     if (url.includes('/models')) {
       backend.expectOne(MODELS_URL).flush([modelFixture()]);
+    } else if (url.includes('/mcps')) {
+      backend.expectOne(MCPS_URL).flush([mcpServerFixture()]);
     } else {
       backend
         .expectOne((request) => request.url === USERS_URL)
@@ -89,9 +92,9 @@ describe('AdminLayout (US-1201, ahead of US-1209)', () => {
       link.textContent?.trim(),
     );
     // A rail entry leading nowhere is the shown-and-disabled affordance US-203 rejected.
-    // The board draws four; US-1208 and US-1302 append the other two with their routes.
-    expect(labels).toEqual(['Users', 'Models']);
-    expect(labels).not.toContain('MCP servers');
+    // The board draws four; US-1208 appended the third with its route, and US-1302
+    // appends Reports with its own.
+    expect(labels).toEqual(['Users', 'Models', 'MCP servers']);
     expect(labels).not.toContain('Reports');
   });
 
@@ -122,6 +125,20 @@ describe('AdminLayout (US-1201, ahead of US-1209)', () => {
 
     const active = element().querySelector('.admin-nav__link--active');
     expect(active?.textContent).toContain('Models');
+    expect(active?.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('opens the MCP servers tab by URL, instantiating only its own store (US-1208)', async () => {
+    await open('/admin/mcps');
+
+    expect(element().querySelector('app-admin-mcps')).not.toBeNull();
+    // Neither sibling tab's store is provided on the layout, so nothing here should have
+    // asked for users or models. `backend.verify()` in afterEach is the other half.
+    expect(element().querySelector('app-admin-users')).toBeNull();
+    expect(element().querySelector('app-admin-models')).toBeNull();
+
+    const active = element().querySelector('.admin-nav__link--active');
+    expect(active?.textContent).toContain('MCP servers');
     expect(active?.getAttribute('aria-current')).toBe('page');
   });
 
