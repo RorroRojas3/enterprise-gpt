@@ -81,6 +81,20 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
         await ClearConversationUsageAsync(ctx, cancellationToken);
+
+        // Conversations reference a model too, and that reference has to be released before the
+        // delete below or it trips FK_Conversation_Model_ModelId. Released rather than deleted,
+        // unlike the usage rows above: their FK is required so the row has to go, this one is
+        // nullable, and a helper named for the model catalog has no business destroying
+        // conversations that other classes may still be arranging around.
+        //
+        // The rows it releases belong to whichever class ran before this one — every class using
+        // this reset clears models but not conversations, so the leak is shared and the failure it
+        // caused depended on class ordering, which is why it surfaced in CI and not locally.
+        await ctx.Conversations
+            .Where(x => x.ModelId != null && x.ModelId != KnownIds.SeedModelId)
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.ModelId, (Guid?)null), cancellationToken);
+
         await ctx.Models
             .Where(x => x.Id != KnownIds.SeedModelId)
             .ExecuteDeleteAsync(cancellationToken);
