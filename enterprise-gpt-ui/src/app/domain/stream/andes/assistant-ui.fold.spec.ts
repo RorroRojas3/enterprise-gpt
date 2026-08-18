@@ -31,7 +31,7 @@ describe('foldAssistantEvents', () => {
     expect(snapshot.activities).toHaveLength(1);
     expect(snapshot.activities[0]).toMatchObject({
       scopeId: 'a1',
-      displayName: 'Andes Test MCP',
+      displayName: 'Weather_get_forecast',
       kind: 'McpTool',
       source: 'Weather',
       state: 'Running',

@@ -77,6 +77,34 @@ public class ConversationUsageToolCall : BaseEntity
     /// </remarks>
     public int Depth { get; set; }
 
+    /// <summary>
+    /// The model turn that issued the invocation, joining to
+    /// <see cref="ConversationUsageTurn.Iteration"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what makes a tool's <em>prompt</em> cost attributable. A tool's arguments and result
+    /// are billed in the next turn's prompt rather than inside the call, so the cost of the calls
+    /// one turn issued is the difference between that turn's reported input and the next turn's —
+    /// and without knowing which calls a turn issued there is nothing to attribute the difference
+    /// to. Wall-clock ordering cannot substitute: function invocation is serial by configuration,
+    /// so several calls from one turn are indistinguishable from one call each across several.
+    /// </para>
+    /// <para>
+    /// A nested call reports the iteration of the outer turn that issued its enclosing <em>root</em>
+    /// call, not one of its own. Grouping for attribution must therefore restrict to
+    /// <see cref="Depth"/> zero, or a subtree is counted once per level it is deep.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> on a row written before iteration tracking existed. Deliberately not
+    /// backfilled to zero: zero is a real iteration, so backfilling would assert that every
+    /// historical call was issued by the first model turn, and a delta query would then attribute
+    /// tokens to calls nobody can place. Null excludes such a row from attribution instead, which
+    /// is the truthful answer.
+    /// </para>
+    /// </remarks>
+    public int? Iteration { get; set; }
+
     public ConversationToolKinds Kind { get; set; }
 
     /// <summary>

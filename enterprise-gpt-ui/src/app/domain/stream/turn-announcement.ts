@@ -21,6 +21,7 @@
  * exception proves the rule: "Reasoning" is announced only past the server's
  * seeded delta, on the same `hasModelReasoning` test the visible region uses.
  */
+import { activityLabel } from './activity-label';
 import {
   ActivityState,
   AssistantActivity,
@@ -110,7 +111,7 @@ function describeProgress(
   // What is happening *now* outranks the answer: an activity that starts partway
   // through a reply is news, and the reply's own arrival was announced already.
   if (latest?.state === 'Running') {
-    return { text: `${latest.displayName} ${STATE_PHRASE.Running}`, namesAFailure: false };
+    return { text: `${activityLabel(latest)} ${STATE_PHRASE.Running}`, namesAFailure: false };
   }
 
   // Ahead of the settled activity below, so a completed tool call gives way to
@@ -124,7 +125,7 @@ function describeProgress(
   // call finishing and the answer starting, which is otherwise silence.
   if (latest !== null) {
     return {
-      text: `${latest.displayName} ${STATE_PHRASE[latest.state]}`,
+      text: `${activityLabel(latest)} ${STATE_PHRASE[latest.state]}`,
       namesAFailure: latest.state === 'Failed',
     };
   }

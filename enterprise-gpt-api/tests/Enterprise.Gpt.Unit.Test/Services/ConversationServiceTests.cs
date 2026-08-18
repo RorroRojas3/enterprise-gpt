@@ -449,6 +449,17 @@ public sealed class ConversationServiceTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken);
     }
 
+    private async Task<List<ConversationUsageTurn>> ReadTurnsAsync(Guid conversationId)
+    {
+        using var ctx = _fixture.CreateContext();
+
+        return await ctx.ConversationUsageTurns
+            .AsNoTracking()
+            .Where(x => x.ConversationUsage.ConversationId == conversationId)
+            .OrderBy(x => x.Iteration)
+            .ToListAsync(TestContext.Current.CancellationToken);
+    }
+
     private async Task<List<ConversationUsageToolCall>> ReadToolCallsAsync(Guid conversationId)
     {
         using var ctx = _fixture.CreateContext();
@@ -1963,6 +1974,47 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
+    /// The per-turn rows are what make a tool's prompt cost recoverable, and they partition the
+    /// assistant columns rather than adding to them.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenATurnRunsSeveralIterations_RecordsOneRowPerIteration()
+    {
+        var conversation = await RunToolTurnAsync();
+
+        var turns = await ReadTurnsAsync(conversation.Id);
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+
+        Assert.Equal([0, 1], turns.Select(turn => turn.Iteration));
+        Assert.Equal([5, 11], turns.Select(turn => turn.InputTokens));
+        Assert.Equal([3, 7], turns.Select(turn => turn.OutputTokens));
+        Assert.Equal(usage.InputTokens, turns.Sum(turn => turn.InputTokens ?? 0));
+        Assert.Equal(usage.OutputTokens, turns.Sum(turn => turn.OutputTokens ?? 0));
+    }
+
+    /// <summary>
+    /// The arithmetic the rows exist for, asserted end to end: what the tools issued by iteration 0
+    /// added to the next prompt is that prompt's growth, <c>input(1) - input(0) - output(0)</c>. The
+    /// tool row's iteration is what says which calls the figure belongs to.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolRuns_ItsIterationPairsWithTheTurnsThatBracketIt()
+    {
+        var conversation = await RunToolTurnAsync();
+
+        var toolCall = Assert.Single(await ReadToolCallsAsync(conversation.Id));
+        var turns = await ReadTurnsAsync(conversation.Id);
+
+        Assert.Equal(0, toolCall.Iteration);
+
+        var issuing = turns.Single(turn => turn.Iteration == toolCall.Iteration);
+        var next = turns.Single(turn => turn.Iteration == toolCall.Iteration + 1);
+        var promptGrowth = next.InputTokens - issuing.InputTokens - issuing.OutputTokens;
+
+        Assert.Equal(3, promptGrowth);
+    }
+
+    /// <summary>
     /// The split the whole feature exists for: what the assistant's own turns cost is kept apart
     /// from what its tools cost, and both are on the same audit row.
     /// </summary>
@@ -2292,7 +2344,16 @@ public sealed class ConversationServiceTests : IDisposable
             ], null));
 
         _chatClient.NamingResponse = "Named Conversation";
-        _chatClient.NamingUsage = new UsageDetails { InputTokenCount = 4, OutputTokenCount = 2 };
+        // Cached and reasoning counts are set here because naming is the one path that can currently
+        // persist them non-null: the tracking middleware's aggregation drops both, and this path
+        // reads the response's own usage instead of the report.
+        _chatClient.NamingUsage = new UsageDetails
+        {
+            InputTokenCount = 4,
+            OutputTokenCount = 2,
+            CachedInputTokenCount = 3,
+            ReasoningTokenCount = 1
+        };
         _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
         // The seeded model, because the naming path resolves the deployment straight from the
         // database rather than through IModelService.
@@ -2321,7 +2382,20 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(ConversationUsageStatuses.Completed, naming.Status);
         Assert.Equal(6, naming.TotalTokens);
         Assert.Null(naming.AssistantMessageId);
+        // Subsets of the two columns above, not additions to them, and they reach the row from the
+        // response rather than from the usage report — which is why this assertion is here and not
+        // on the chat row beside it.
+        Assert.Equal(3, naming.CachedInputTokens);
+        Assert.Equal(1, naming.ReasoningTokens);
         Assert.Equal(18, chat.TotalTokens);
+
+        // Naming is billed but not streamed, so the provider reports one aggregate and there is no
+        // per-turn breakdown to record. Synthesising one would manufacture an iteration nobody
+        // reported. The streamed chat row alongside it does carry turns, which is what makes this
+        // an assertion about the naming path rather than about the feature being off.
+        var turns = await ReadTurnsAsync(conversation.Id);
+        Assert.DoesNotContain(turns, x => x.ConversationUsageId == naming.Id);
+        Assert.Contains(turns, x => x.ConversationUsageId == chat.Id);
 
         using var ctx = _fixture.CreateContext();
         var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);

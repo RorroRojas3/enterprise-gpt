@@ -54,7 +54,7 @@ describe('vendored Andes contract', () => {
 
     expect(text).toContain('// --- END VENDOR HEADER');
     expect(text).toMatch(/@andes-contract-package\s+andes\.extensions\.ai\.ui/);
-    expect(text).toMatch(/@andes-contract-version\s+0\.5\.0/);
+    expect(text).toMatch(/@andes-contract-version\s+0\.7\.0/);
     expect(text).toMatch(/@andes-contract-source\s+typescript\/andes-assistant-ui\.ts/);
   });
 

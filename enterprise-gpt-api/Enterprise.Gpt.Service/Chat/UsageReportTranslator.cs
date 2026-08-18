@@ -11,6 +11,20 @@ namespace Enterprise.Gpt.Service.Chat;
 /// <param name="OutputTokens">Output tokens produced by the assistant's own model turns.</param>
 /// <param name="ToolInputTokens">Input tokens consumed by every tool the request invoked.</param>
 /// <param name="ToolOutputTokens">Output tokens produced by every tool the request invoked.</param>
+/// <param name="CachedInputTokens">
+/// Input tokens the assistant's turns served from the provider's prompt cache, already counted
+/// inside <paramref name="InputTokens"/>. <see langword="null"/> when nothing reported one, which
+/// is not the same as a cache miss.
+/// </param>
+/// <param name="ReasoningTokens">
+/// Reasoning tokens the assistant's turns produced, already counted inside
+/// <paramref name="OutputTokens"/>, on the same null terms.
+/// </param>
+/// <param name="Turns">
+/// What the provider reported for each model turn, in report order. <b>Empty for a request that
+/// did not stream</b> — providers report one aggregate then and the middleware surfaces no
+/// breakdown — which is not the same as a request that had no turns.
+/// </param>
 /// <param name="ToolCalls">
 /// Every tool invocation the request made, flat and in pre-order, with nesting expressed through
 /// each row's <see cref="ConversationUsageToolCall.Children"/>.
@@ -27,20 +41,32 @@ internal sealed record TurnUsage(
     long OutputTokens,
     long ToolInputTokens,
     long ToolOutputTokens,
-    List<ConversationUsageToolCall> ToolCalls)
+    long? CachedInputTokens,
+    long? ReasoningTokens,
+    List<ConversationUsageToolCall> ToolCalls,
+    List<ConversationUsageTurn> Turns)
 {
     /// <summary>
     /// Creates an empty result, for a request that produced no report at all.
     /// </summary>
-    /// <returns>A result with no tokens and no tool calls.</returns>
+    /// <returns>A result with no tokens, no tool calls and no turns.</returns>
     /// <remarks>
-    /// A method rather than a shared instance: <see cref="ToolCalls"/> is assigned straight into an
-    /// EF navigation, which the change tracker then owns and mutates in place, so handing out the
-    /// same list twice would let one turn's fixup append entities to another turn's graph.
+    /// A method rather than a shared instance: <see cref="ToolCalls"/> and <see cref="Turns"/> are
+    /// assigned straight into EF navigations, which the change tracker then owns and mutates in
+    /// place, so handing out the same list twice would let one turn's fixup append entities to
+    /// another turn's graph.
     /// </remarks>
     public static TurnUsage Empty()
     {
-        return new TurnUsage(0, 0, 0, 0, []);
+        return new TurnUsage(
+            InputTokens: 0,
+            OutputTokens: 0,
+            ToolInputTokens: 0,
+            ToolOutputTokens: 0,
+            CachedInputTokens: null,
+            ReasoningTokens: null,
+            ToolCalls: [],
+            Turns: []);
     }
 
     /// <summary>
@@ -110,12 +136,90 @@ internal static class UsageReportTranslator
             toolOutput += call.Usage?.OutputTokenCount ?? 0;
         }
 
+        var turns = BuildTurns(report.Turns, dateCreated);
+
         return new TurnUsage(
             InputTokens: report.AssistantUsage.InputTokenCount ?? 0,
             OutputTokens: report.AssistantUsage.OutputTokenCount ?? 0,
             ToolInputTokens: toolInput,
             ToolOutputTokens: toolOutput,
-            ToolCalls: flattened);
+            // Summed from the turns rather than read off AssistantUsage, so this reports the same
+            // number whichever of the two the middleware ends up carrying.
+            //
+            // Both are null through Andes 0.7.0 whatever the provider reported. Its usage arithmetic
+            // copies input, output, total and the AdditionalCounts dictionary and nothing else, and
+            // every UsageDetails on the report — the assistant aggregate and each turn alike — is
+            // produced by that copy. These two counts became first-class properties on UsageDetails
+            // after it was written, so they are dropped in transit. The columns are written anyway:
+            // they are correct the day the middleware carries the values, and a null that means
+            // "not reported" is the same null either way.
+            CachedInputTokens: SumReported(turns, turn => turn.CachedInputTokens),
+            ReasoningTokens: SumReported(turns, turn => turn.ReasoningTokens),
+            ToolCalls: flattened,
+            Turns: turns);
+    }
+
+    /// <summary>
+    /// Builds one row per model turn the report broke the request into.
+    /// </summary>
+    /// <returns>
+    /// The rows, or an empty list for a request with no breakdown — a non-streamed call, whose
+    /// provider reports a single aggregate instead.
+    /// </returns>
+    private static List<ConversationUsageTurn> BuildTurns(
+        IReadOnlyList<AssistantTurnUsage> turns,
+        DateTimeOffset dateCreated)
+    {
+        List<ConversationUsageTurn> rows = new(turns.Count);
+
+        foreach (var turn in turns)
+        {
+            rows.Add(new ConversationUsageTurn
+            {
+                Iteration = turn.Iteration,
+                ResponseId = Truncate(turn.ResponseId, ConversationUsageTurn.ResponseIdMaxLength),
+                ReportedModelId = Truncate(turn.ModelId, ConversationUsageTurn.ReportedModelIdMaxLength),
+                InputTokens = turn.Usage?.InputTokenCount,
+                OutputTokens = turn.Usage?.OutputTokenCount,
+                TotalTokens = turn.Usage?.TotalTokenCount,
+                CachedInputTokens = turn.Usage?.CachedInputTokenCount,
+                ReasoningTokens = turn.Usage?.ReasoningTokenCount,
+                DateCreated = dateCreated
+            });
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Adds up one count across every turn that reported it.
+    /// </summary>
+    /// <returns>
+    /// The sum, or <see langword="null"/> when no turn reported the count at all — which says the
+    /// provider was silent about it rather than that it was zero.
+    /// </returns>
+    /// <remarks>
+    /// A turn that reported nothing contributes nothing rather than blocking the sum, so when only
+    /// some turns report, the result is a <em>partial</em> total that no column distinguishes from
+    /// a complete one. That is the lesser evil: the alternative is discarding counts the provider
+    /// did report. A reader who needs to know whether a figure is complete has to compare against
+    /// the turn rows, which is why they are stored.
+    /// </remarks>
+    private static long? SumReported(
+        List<ConversationUsageTurn> turns,
+        Func<ConversationUsageTurn, long?> selector)
+    {
+        long? total = null;
+
+        foreach (var turn in turns)
+        {
+            if (selector(turn) is long reported)
+            {
+                total = (total ?? 0) + reported;
+            }
+        }
+
+        return total;
     }
 
     /// <summary>
@@ -142,6 +246,10 @@ internal static class UsageReportTranslator
             {
                 Sequence = index,
                 Depth = depth,
+                // A nested call reports the iteration of the outer turn that issued its enclosing
+                // root call, so this is copied rather than derived, and grouping by it has to
+                // restrict to depth zero or a subtree counts once per level.
+                Iteration = call.Iteration,
                 Kind = kind,
                 ToolName = Truncate(call.ToolName, ConversationUsageToolCall.ToolNameMaxLength) ?? string.Empty,
                 Source = Truncate(call.Source, ConversationUsageToolCall.SourceMaxLength),
@@ -214,8 +322,11 @@ internal static class UsageReportTranslator
             }
         }
 
-        // Fallback for a tool that reached the model by some other path: the middleware reports the
-        // server's own advertised name, which need not match the catalog name but usually does.
+        // Fallback for a tool that reached the model by some other path. McpToolProvider now hands
+        // the tracking wrapper the catalog name, so a tool this application leased matches here
+        // exactly rather than by luck; anything reaching the model another way still reports
+        // whatever name its own wrapper carries, which is why the comparison stays case-insensitive
+        // and why a miss leaves the id null rather than guessing.
         foreach (var (Id, Prefix, Name) in prefixes)
         {
             if (string.Equals(call.Source, Name, StringComparison.OrdinalIgnoreCase))

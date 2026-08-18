@@ -538,6 +538,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.ParentId, (Guid?)null), cancellationToken);
         await ctx.ConversationUsageToolCalls.ExecuteDeleteAsync(cancellationToken);
 
+        await ctx.ConversationUsageTurns.ExecuteDeleteAsync(cancellationToken);
+
         await ctx.ConversationUsage.ExecuteDeleteAsync(cancellationToken);
     }
 
@@ -615,6 +617,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             ToolName = "Weather_forecast",
             Source = "Weather",
             McpServerId = mcpServerId,
+            // The enclosing root's iteration, not one of its own: that is what the middleware
+            // reports for a nested call, and what makes a delta query group correctly.
+            Iteration = 1,
             InputTokens = 30,
             OutputTokens = 20,
             TotalTokens = 50,
@@ -631,6 +636,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             ToolName = "ResearchAgent",
             Source = "Research Agent",
             CallId = "call_1",
+            Iteration = 1,
             InputTokens = 70,
             OutputTokens = 40,
             TotalTokens = 110,
@@ -657,7 +663,30 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             DateCreated = date,
             // Flat, nested row included: this navigation is what gives each row its owning usage
             // id, and a child reachable only through its parent would be saved without one.
-            ToolCalls = [parent, child]
+            ToolCalls = [parent, child],
+            // Two model turns whose inputs and outputs partition the assistant columns above, so a
+            // reader can check that invariant against a real database rather than only in memory.
+            Turns =
+            [
+                new ConversationUsageTurn
+                {
+                    Iteration = 0,
+                    ResponseId = "resp-0",
+                    InputTokens = 4,
+                    OutputTokens = 3,
+                    TotalTokens = 7,
+                    DateCreated = date
+                },
+                new ConversationUsageTurn
+                {
+                    Iteration = 1,
+                    ResponseId = "resp-1",
+                    InputTokens = 7,
+                    OutputTokens = 4,
+                    TotalTokens = 11,
+                    DateCreated = date
+                }
+            ]
         };
 
         ctx.ConversationUsage.Add(usage);

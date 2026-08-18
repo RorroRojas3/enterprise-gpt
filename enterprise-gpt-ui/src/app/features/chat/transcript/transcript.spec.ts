@@ -137,7 +137,7 @@ describe('Transcript', () => {
       await streamFullTurn();
 
       // The recorded turn: mcp-1, then its child agent-1, then fn-1, then text.
-      expect(cardNames()).toEqual(['Andes Test MCP', 'Forecast Agent', 'Search Documents']);
+      expect(cardNames()).toEqual(['Get forecast', 'Forecast Agent', 'Search Documents']);
 
       // agent-1 is mcp-1's child, so the timeline opens two top-level nodes
       // for three cards (US-502); the third card is inside the first.
@@ -233,7 +233,7 @@ describe('Transcript', () => {
       const top = topLevelCards();
       expect(
         top.map((card) => card.querySelector('.activity-card__name')?.textContent?.trim()),
-      ).toEqual(['Andes Test MCP', 'Search Documents']);
+      ).toEqual(['Get forecast', 'Search Documents']);
 
       const nested = top[0]?.querySelectorAll('app-activity-card') ?? [];
       expect([...nested].map((card) => card.textContent)).toHaveLength(1);
@@ -678,6 +678,31 @@ describe('Transcript', () => {
       expect(host.querySelector('.activity-card__usage')).toBeNull();
     });
 
+    // WCAG 2.5.3: the chevron's accessible name has to contain the label a user
+    // can see, or a voice-control user saying what is on screen cannot reach it.
+    // Naming it from the raw `displayName` would say "Cost of Weather_get_forecast"
+    // beside a card that reads "Get forecast".
+    it('names the chevron with the label the card actually shows', async () => {
+      const handle = await startTurn();
+      handle.enqueue(
+        [
+          assistantEvent('ActivityStarted', { scopeId: 'mcp-1' }),
+          assistantEvent('ActivityCompleted', { scopeId: 'mcp-1' }),
+        ]
+          .map(frame)
+          .join(''),
+      );
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const cardName = host.querySelector('.activity-card__name')?.textContent?.trim();
+      const toggleName = host
+        .querySelector('.activity-card__toggle .visually-hidden')
+        ?.textContent?.trim();
+
+      expect(cardName).toBe('Get forecast');
+      expect(toggleName).toBe('Cost of Get forecast');
+    });
+
     it('offers no chevron on an activity that is still running', async () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
@@ -749,7 +774,7 @@ describe('Transcript', () => {
       expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Hello, world.');
       expect(host.getAttribute('aria-busy')).toBeNull();
       expect(host.querySelector('app-turn-notice-card')).toBeNull();
-      expect(cardNames()).toEqual(['Andes Test MCP', 'Forecast Agent', 'Search Documents']);
+      expect(cardNames()).toEqual(['Get forecast', 'Forecast Agent', 'Search Documents']);
       expect(host.querySelector('.activity-card__state--warn')).not.toBeNull();
     });
   });

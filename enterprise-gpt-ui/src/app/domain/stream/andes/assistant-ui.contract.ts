@@ -5,7 +5,7 @@
 // fails on any difference, including line endings.
 //
 // @andes-contract-package andes.extensions.ai.ui
-// @andes-contract-version 0.5.0
+// @andes-contract-version 0.7.0
 // @andes-contract-source  typescript/andes-assistant-ui.ts
 //
 // To upgrade: bump the PackageReference in enterprise-gpt-api, `dotnet restore`,
@@ -70,7 +70,11 @@ export interface SubStatus {
 export interface AssistantActivity {
   /** The tracked scope identifier, stable across all of this activity's events. */
   scopeId: string;
-  /** The clean display name (no "Calling" prefix, no kind word), e.g. "Andes Test MCP". */
+  /**
+   * The clean display name (no "Calling" prefix, no kind word), e.g. "GetForecast" or
+   * "Research Agent". For "McpTool" this is the raw MCP tool name (e.g. "get_forecast"); the
+   * server name travels in {@link source}.
+   */
   displayName: string;
   /** The activity category, for a badge or icon. */
   kind: ToolKind;
@@ -124,7 +128,10 @@ export interface AssistantUiEvent {
   depth: number;
   /** The category of the targeted activity, when applicable. */
   toolKind: ToolKind;
-  /** The clean display name of the activity (no "Calling" prefix, no kind word). */
+  /**
+   * The clean display name of the activity (no "Calling" prefix, no kind word). For "McpTool"
+   * this is the raw MCP tool name; the server name travels in {@link source}.
+   */
   displayName?: string;
   /** The origin — MCP server name or agent identifier — when applicable. */
   source?: string;

@@ -15,10 +15,10 @@
          other than an anonymous function, and .UI supplies the serializable event contract the
          streaming endpoint writes. All four are referenced directly because Program.cs and
          ConversationEndpoints.cs use types from each. -->
-    <PackageReference Include="Andes.Extensions.AI" Version="0.5.0" />
-    <PackageReference Include="Andes.Extensions.AI.Agent" Version="0.5.0" />
-    <PackageReference Include="Andes.Extensions.AI.Mcp" Version="0.5.0" />
-    <PackageReference Include="Andes.Extensions.AI.UI" Version="0.5.0" />
+    <PackageReference Include="Andes.Extensions.AI" Version="0.7.0" />
+    <PackageReference Include="Andes.Extensions.AI.Agent" Version="0.7.0" />
+    <PackageReference Include="Andes.Extensions.AI.Mcp" Version="0.7.0" />
+    <PackageReference Include="Andes.Extensions.AI.UI" Version="0.7.0" />
     <!-- Anthropic first-party. Unlike Bedrock this needs a single package: the SDK carries the
          Microsoft.Extensions.AI bridge itself (IAnthropicClient.AsIChatClient), so there is no
          separate adapter to reference. -->
