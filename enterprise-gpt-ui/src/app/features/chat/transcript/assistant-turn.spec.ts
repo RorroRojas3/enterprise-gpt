@@ -64,6 +64,11 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     };
   }
 
+  /** The terminal frame, for the folded-`Finished` half of US-1402. */
+  function finished() {
+    return assistantEvent('Finished');
+  }
+
   /** ngx-markdown assigns innerHTML one microtask after its input changes. */
   async function show(text: string, streaming: boolean): Promise<void> {
     const { snapshot, timeline } = fold(text);
@@ -193,6 +198,44 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       expect(head?.querySelector('.md-diagram')).not.toBeNull();
       expect(head?.querySelector('.md-diagram--rendered')).toBeNull();
       expect(head?.querySelector('.md-diagram__figure')).toBeNull();
+    });
+  });
+
+  describe('the streaming answer as a live region (US-1402)', () => {
+    function content(): HTMLElement | null {
+      return host.querySelector('.assistant-turn__content');
+    }
+
+    it('is polite while streaming and silent once settled', async () => {
+      await show('The forecast is', true);
+      expect(content()?.getAttribute('aria-live')).toBe('polite');
+
+      // A turn rendered without `[streaming]` carries nothing — which is what
+      // keeps the answer from being announced a second time when the settled
+      // entry replaces the live one. That the *call site* passes no `[streaming]`
+      // is pinned in `transcript.spec.ts`, where the two are different instances.
+      await show('The forecast is clear.', false);
+      expect(content()?.getAttribute('aria-live')).toBeNull();
+      expect(content()?.getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('holds its announcements until the folded Finished releases them', async () => {
+      await show('The forecast is', true);
+      expect(content()?.getAttribute('aria-busy')).toBe('true');
+
+      const { snapshot, timeline } = fold('The forecast is clear.');
+      fixture.componentRef.setInput('snapshot', foldAssistantEvents(snapshot, finished()));
+      fixture.componentRef.setInput('timeline', timeline);
+      fixture.componentRef.setInput('streaming', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // Still the streaming instance — the settle that swaps it in waits for the
+      // response body to close — so the region is mounted to be read at the
+      // moment it stops being busy. An explicit `false`, not a removed
+      // attribute: that release is the mutation the whole pattern hangs on.
+      expect(content()?.getAttribute('aria-live')).toBe('polite');
+      expect(content()?.getAttribute('aria-busy')).toBe('false');
     });
   });
 

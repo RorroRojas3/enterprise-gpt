@@ -1,0 +1,35 @@
+// The focus indicator, once. US-1401.
+//
+// WCAG 2.1 SC 1.4.11 wants a focus indicator at 3:1 against its adjacent colours,
+// and `--focus-ring` is the token chosen for it — `#0E7FA8` in light, where the
+// accent measures only 2.74:1 on `--surface`, and the accent itself in dark, where
+// it already measures 6.09:1. `scripts/check-tokens.mjs` measures the token against
+// every surface it can land on, so the claim is a build gate rather than a comment.
+//
+// This is a **floor, not a policy**, and it only reaches selectors of lower
+// specificity than itself. Component styles carry an `[_ngcontent]` attribute and
+// out-specify it; so does anything Bootstrap declares on a class. What it catches is
+// the element with no rule at all — `pill-subnav`'s pills, the auth screens'
+// programmatically focused headings, an un-classed `<a>` or `<button>` added later.
+// Before it, each of those fell back to the user agent's outline, which is a
+// different indicator in every browser and measured by nobody.
+//
+// **It is deliberately not the whole answer.** Bootstrap's `.btn`, `.nav-link` and
+// `.form-check-input` each declare `outline: 0` on a class selector, which beats a
+// bare `:focus-visible` whatever the source order — so they are overridden by name in
+// `_bootstrap-overrides.scss`, where the `.form-control` counterpart already lives.
+// Adding a rule here would not have reached them.
+//
+// `:focus-visible`, not `:focus`: a pointer press should not draw a ring. Six rules
+// still use plain `:focus`, and each has a reason. `.skip-link` (`_kit.scss`) is
+// revealed *by* being focused. Four are text fields — `.form-control`/`.form-select`
+// and `.is-invalid` in `_bootstrap-overrides.scss` and `_kit.scss`, the picker's
+// search field, and the composer's textarea, which suppresses its own — where a
+// focused field is always focus-visible anyway. The sixth is `.form-check-input`,
+// which is **not** a text field: Chrome does not match `:focus-visible` on a checkbox
+// focused by pointer, so that rule exists to clear Bootstrap's wash on a click, and a
+// second `:focus-visible` rule after it draws the ring for the keyboard.
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

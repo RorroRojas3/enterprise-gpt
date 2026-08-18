@@ -67,6 +67,9 @@
   &:hover,
   &:focus-visible {
     background: var(--surface-2);
+    // The ring is inset below instead: a full-bleed row has no margin for an
+    // outline to sit in.
+    // focus-check-ignore-next-line
     outline: none;
   }
 

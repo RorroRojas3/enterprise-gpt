@@ -14,10 +14,14 @@
   font-size: 17px;
   font-weight: 600;
 
-  // Focused programmatically, so the ring would fire on a move the user did not make.
-  &:focus {
-    outline: none;
-  }
+  // No `outline: none` here since US-1401, and the change is about consistency
+  // rather than about this screen. Five other route headings — the four auth
+  // states and `ErrorPanel`'s — are focused the same way by `focusOnRender` and
+  // have no such rule, so they draw the floor's ring; suppressing it on this one
+  // meant the same interaction looked different depending on which page you
+  // landed on. Showing it is also the more defensible half: a reader who cannot
+  // see the caret has just had focus moved for them, and the ring is what says
+  // where it went.
 }
 
 .signing-out__detail {

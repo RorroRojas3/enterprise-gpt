@@ -8,7 +8,9 @@
 // Statement order *is* output order, and three points in it are load-bearing:
 //   1. Bootstrap's `root` before `tokens`      — identical selectors; ours must be later
 //   2. Bootstrap's components before `bootstrap-overrides` — same reason
-//   3. `motion` last                            — its reduced-motion block suppresses
+//   3. `focus` after Bootstrap's components     — it replaces their focus styles, and
+//                                                 must lose to every component's own
+//   4. `motion` last                            — its reduced-motion block suppresses
 //                                                 every animation and transition above it
 // The utilities API is last but one, because a utility class must beat a component
 // rule.
@@ -26,6 +28,11 @@
 @import 'bootstrap-components';
 
 @import 'base';
+
+// After Bootstrap's components so it beats their focus styles, before `kit` and
+// every component stylesheet so theirs beat it (US-1401).
+@import 'focus';
+
 @import 'kit';
 
 // theme.css's own component overrides, after the components they restyle.

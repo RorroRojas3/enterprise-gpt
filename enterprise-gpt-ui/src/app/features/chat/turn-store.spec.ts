@@ -938,6 +938,106 @@ describe('TurnStore', () => {
     });
   });
 
+  describe('what a screen reader is told (US-1402)', () => {
+    it('reports the folded Finished before the body has closed', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.answerComplete()).toBe(false);
+
+      // The frame, and only the frame: the body stays open. `inFlight` is still
+      // true here, which is the whole point — the transcript's `aria-busy` names
+      // the frame the criterion names, not the settle a step later.
+      handle.enqueue(frame(assistantEvent('Finished')));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.answerComplete()).toBe(true);
+      expect(store.inFlight()).toBe(true);
+      expect(store.phase()).toBe('streaming');
+
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.inFlight()).toBe(false);
+    });
+
+    it('says nothing at rest, and announces the answer as a backstop when it lands', async () => {
+      setup();
+      expect(store.turnStatus()).toBe('');
+
+      const handle = await startBoundTurn();
+      expect(store.turnStatus()).toBe('Waiting for a response');
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Clear skies.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.turnStatus()).toBe('Writing the answer');
+
+      handle.enqueue(frame(assistantEvent('Finished')));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // Releasing the answer's own region is an `aria-busy` change with no
+      // content mutation behind it, so it rests on assistive tech replaying what
+      // it buffered. This is the channel that works either way.
+      expect(store.turnStatus()).toBe('Answer ready');
+
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.turnStatus()).toBe('');
+    });
+
+    it('names the create round trip on a first prompt', async () => {
+      setup();
+      respondWithStream(streamingResponse());
+
+      store.send('What is the weather?');
+
+      // The one window with no stream to describe, and the one a first-time user
+      // spends the longest in.
+      expect(store.phase()).toBe('creating');
+      expect(store.turnStatus()).toBe('Starting the conversation');
+
+      backend.expectOne(CREATE_URL).flush(conversationFixture());
+      await settle();
+
+      expect(store.turnStatus()).toBe('Waiting for a response');
+    });
+
+    it('changes on a status change and holds still across a run of text deltas', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      const spoken: string[] = [store.turnStatus()];
+
+      function record(): void {
+        const next = store.turnStatus();
+        if (next !== spoken[spoken.length - 1]) {
+          spoken.push(next);
+        }
+      }
+
+      handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      record();
+
+      handle.enqueue(frame(assistantEvent('ActivityCompleted', { scopeId: 'mcp-1' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      record();
+
+      for (const chunk of ['The ', 'forecast ', 'is ', 'clear.']) {
+        handle.enqueue(frame(assistantEvent('TextDelta', { text: chunk })));
+        await settle(STREAM_BATCH_WINDOW_MS);
+        record();
+      }
+
+      expect(spoken).toEqual([
+        'Waiting for a response',
+        'Andes Test MCP is running',
+        'Andes Test MCP completed',
+        'Writing the answer',
+      ]);
+    });
+  });
+
   describe('composer seeding', () => {
     it('re-seeds the same text as a fresh object after the composer consumes it', () => {
       setup();

@@ -88,6 +88,16 @@ export const CHAT_ALLOWED_TAGS: readonly string[] = [
  * through DOMPurify's `ALLOW_ARIA_ATTR` default — which the task-list checkbox
  * below depends on for its label. Turning that default off would strip the label
  * silently, so the checkbox spec asserts it rather than trusting it.
+ *
+ * `tabindex` is the one entry markdown syntax cannot produce, and it is here for
+ * the same reason `div` and `button` are in {@link CHAT_ALLOWED_TAGS}: US-603's
+ * chrome and US-1401's scrollable `<pre>` are emitted by `renderer.code`, and
+ * model text cannot mint either, because `renderer.html` drops raw HTML at the
+ * parser. Note what that costs — a regression there would let model text mint a
+ * focusable element — and note what it does *not* cost: `tabindex` is not a
+ * script vector, and `role` is deliberately still absent, so nothing here can
+ * claim a semantic it does not have. `markdown-security.spec.ts` drives a raw
+ * `<pre tabindex="0">` through the real pipeline for exactly this.
  */
 export const CHAT_ALLOWED_ATTR: readonly string[] = [
   'href',
@@ -98,6 +108,7 @@ export const CHAT_ALLOWED_ATTR: readonly string[] = [
   'disabled',
   'start',
   'align',
+  'tabindex',
 ];
 
 /**
@@ -207,11 +218,26 @@ export function chatMarkedOptionsFactory(): MarkedOptions {
     // no disabled branch to get wrong and no error to report. It is also why a
     // diagram that fails to parse can show its source: the source never left.
     const diagram = language === DIAGRAM_LANGUAGE ? ' md-diagram' : '';
-
+    // US-1401 / WCAG 2.1.1. `_markdown.scss` gives the `<pre>` `overflow: auto`,
+    // so a block wider than the column scrolls — and without `tabindex` a
+    // keyboard user cannot reach the rest of a long line at all. This is the
+    // only reason `tabindex` is in `CHAT_ALLOWED_ATTR`.
+    //
+    // **Focusable and unnamed, deliberately.** The obvious next move — an
+    // `aria-label` saying "ts code block" — is invalid: HTML-AAM maps `<pre>` to
+    // `role="generic"`, whose name is *prohibited* in ARIA 1.2, and axe's
+    // `aria-prohibited-attr` rule fails it. The two ways to name it are both
+    // worse here: `role="region"` makes every code block a landmark, and
+    // `role="group"` would put a second entry in the sanitizer profile to
+    // announce a scroll box. Nothing is lost — `tabindex` alone is what SC 2.1.1
+    // and axe's `scrollable-region-focusable` ask for, the block's own content is
+    // what a reader hears on arrival, and the Copy control beside it already
+    // carries "Copy ts code block" as its name.
     return (
       `<div class="md-code${diagram}"><div class="md-code__head">${label}` +
       `<button class="md-code__copy" type="button" aria-label="${name}">Copy</button></div>` +
-      `<pre${marker}><code${marker}>${body}\n</code></pre></div>\n`
+      `<pre${marker} tabindex="0"><code${marker}>${body}\n</code></pre>` +
+      `</div>\n`
     );
   };
 

@@ -780,6 +780,82 @@ describe('Transcript', () => {
       expect(host.querySelector('.assistant-turn__md--caret')).toBeNull();
     });
 
+    it('leaves the settled turn out of the live region, so the answer is read once (US-1402)', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-live')).toBe(
+        'polite',
+      );
+
+      handle.enqueue(frame(assistantEvent('Finished')));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // The settled entry is a different instance, rendered by this template
+      // without `[streaming]`. Passing it there would announce every answer
+      // twice, which is the regression this pins — the component's own spec
+      // cannot, because it flips the input on one instance.
+      expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-live')).toBeNull();
+      expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-busy')).toBeNull();
+    });
+
+    it('keeps the activity cards out of what the answer region announces (US-1402)', async () => {
+      // Mid-turn, because that is the only time the region exists: each card
+      // carries a state label, a kind, a source and a growing sub-status list,
+      // and flushing all of that when the answer is released is the unusable
+      // live region the third criterion forbids.
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
+      handle.enqueue(
+        frame(
+          assistantEvent('ActivityStarted', {
+            scopeId: 'agent-1',
+            parentScopeId: 'mcp-1',
+            displayName: 'Forecast Agent',
+            toolKind: 'Agent',
+            depth: 2,
+          }),
+        ),
+      );
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const region = host.querySelector('.assistant-turn__content[aria-live="polite"]');
+      expect(region).not.toBeNull();
+
+      // More than one, so the nested card exercises the inheritance rather than
+      // its own attribute — a live region covers all of its descendants, and the
+      // recursive card carries no `aria-live` of its own.
+      const cards = [...host.querySelectorAll('app-activity-card')];
+      expect(cards.length).toBeGreaterThan(1);
+      for (const card of cards) {
+        expect(region!.contains(card)).toBe(true);
+        expect(card.closest('[aria-live="off"]')).not.toBeNull();
+      }
+    });
+
+    it('releases aria-busy on the Finished frame rather than on the closing body (US-1402)', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(host.getAttribute('aria-busy')).toBe('true');
+
+      handle.enqueue(frame(assistantEvent('Finished')));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // The body is still open and the turn is still live, but the answer is
+      // complete — which is the moment the criterion names, and the moment the
+      // deferred live region beneath is released.
+      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(host.querySelector('app-assistant-turn')).not.toBeNull();
+
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(host.getAttribute('aria-busy')).toBeNull();
+    });
+
     it('renders a cut-off turn as the warning card above the partial answer', async () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial ans' })));

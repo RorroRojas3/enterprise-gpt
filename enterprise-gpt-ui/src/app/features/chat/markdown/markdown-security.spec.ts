@@ -238,6 +238,39 @@ describe('chat markdown rendering (US-601)', () => {
       expect(element.querySelector('button')).toBeNull();
     });
 
+    it('makes an overflowing block reachable by keyboard (US-1401)', async () => {
+      const element = await render('```ts\nconst a = 1;\n```\n\n```\nplain\n```');
+
+      const blocks = [...element.querySelectorAll('pre')];
+      expect(blocks.map((pre) => pre.getAttribute('tabindex'))).toEqual(['0', '0']);
+
+      // Focusable and *unnamed*, and both halves are the assertion. `<pre>` maps to
+      // `role="generic"`, whose name ARIA 1.2 prohibits, so an `aria-label` here
+      // would fail axe rather than help anyone; naming it properly would mean
+      // `role="group"` and a wider sanitizer profile for a scroll box. The Copy
+      // control beside it carries the name a reader needs.
+      expect(blocks.map((pre) => pre.getAttribute('aria-label'))).toEqual([null, null]);
+      expect(blocks.map((pre) => pre.getAttribute('role'))).toEqual([null, null]);
+      expect(element.querySelector('.md-code__copy')?.getAttribute('aria-label')).toBe(
+        'Copy ts code block',
+      );
+    });
+
+    it('refuses a tabindex the model wrote, which is what admitting one costs', async () => {
+      // `tabindex` joined the profile for the block above, so it joins `div` and
+      // `button` in resting on the parser layer holding. A marked upgrade that
+      // routed a token kind past `renderer.html` would let model text mint a
+      // focusable element anywhere in an answer; this is that alarm.
+      const element = await render(
+        '<pre tabindex="0">x</pre>\n\n<div tabindex="0">y</div>\n\n<span tabindex="0">z</span>',
+      );
+
+      expect(element.querySelector('[tabindex]')).toBeNull();
+      expect(element.querySelector('pre')).toBeNull();
+      // `role` never entered the profile, so nothing can claim a semantic either.
+      expect(sanitizeChatMarkdown('<pre role="region" tabindex="0">x</pre>')).not.toContain('role');
+    });
+
     it('refuses an info string that is not a language, rather than escaping it', async () => {
       const element = await render('```ts"onload=alert(1)\nconst a = 1;\n```');
 

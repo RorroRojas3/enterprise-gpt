@@ -36,7 +36,10 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
  *
  * `aria-busy` rides the host — the transcript container — for the length of a
  * turn, so assistive tech treats the region as settling rather than
- * announcing every re-render (US-406; the live-region work proper is US-1402).
+ * announcing every re-render (US-406). US-1402 made it release on the folded
+ * `Finished` and gave the streaming answer its own polite live region beneath
+ * it; the in-flight announcements a reader actually hears are `Chat`'s, because
+ * anything inside this host is deferred along with the answer.
  *
  * The host also carries **one** click listener for every code block's Copy
  * control (US-603). The controls themselves are part of the rendered markdown,
@@ -63,8 +66,14 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
   // Reading the stored messages counts as busy too (US-410): the skeleton is
   // aria-hidden, so without this the region is silently empty and then
   // silently full.
+  //
+  // `answerComplete` rather than `inFlight` alone (US-1402): the criterion says
+  // the region settles when `Finished` *arrives*, and the fold sets that a step
+  // before the settle clears `phase`. Reading the frame is also what leaves the
+  // live turn mounted at the moment its deferred live region is released.
   host: {
-    '[attr.aria-busy]': "turn.inFlight() || turn.historyPending() ? 'true' : null",
+    '[attr.aria-busy]':
+      "turn.historyPending() || (turn.inFlight() && !turn.answerComplete()) ? 'true' : null",
     '(click)': 'onClick($event)',
   },
 })
