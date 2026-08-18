@@ -28,4 +28,9 @@
 @import 'bootstrap/scss/helpers/visually-hidden';
 @import 'bootstrap/scss/helpers/stacks';
 @import 'bootstrap/scss/helpers/text-truncation';
-@import 'bootstrap/scss/helpers/focus-ring';
+// `bootstrap/scss/helpers/focus-ring` is deliberately NOT imported. Nothing uses
+// `.focus-ring`, and what it emits is a trap for whoever first reaches for it by
+// name: `outline: 0` plus a shadow in `--bs-focus-ring-color`, which is Bootstrap's
+// default `rgba(13,110,253,.25)` — off-palette and about 1.4:1, i.e. the SC 1.4.11
+// failure US-1401 spent its budget removing. The app's ring is the `--focus-ring`
+// token, applied by `_focus.scss` and by `_bootstrap-overrides.scss`.

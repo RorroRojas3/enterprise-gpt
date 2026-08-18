@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments, walk } from './lib/source-scan.mjs';
 
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const REPO_ROOT = resolve(UI_ROOT, '..');
@@ -208,6 +209,53 @@ const CONTRAST_PAIRS = [
   // measured.
   { background: 'code-head', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
   { background: 'code-bg', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
+  // US-1401. `_tokens.scss` claims --focus-ring clears 3:1 "on every surface in
+  // the kit"; until now nothing measured it, which is how four controls came to
+  // draw their ring from --ring instead and fail SC 1.4.11 with every gate green.
+  //
+  // These five are the surfaces a ring is drawn *on*: the page, both card surfaces,
+  // the hovered/active row and the thinking panel. Everything else a stylesheet uses
+  // as a background is excluded on the record below, and the guard after
+  // CONTRAST_PAIRS is what makes that a decision rather than an oversight.
+  //
+  // The recurring reason for an exclusion is worth stating once: **a ring drawn with
+  // `outline-offset` is not on the control it belongs to.** It sits in the gap, on
+  // whatever is behind — so a filled control's own colour is not the adjacent one.
+  // That is why --btnP-bg is absent even though the ring measures **1.00:1** against
+  // it in dark, where the button fill *is* the focus token. The corollary is the
+  // trap: **an inset ring on a filled control would be invisible and this table would
+  // not catch it.** The two inset rings that exist (`menu.scss`,
+  // `project-picker.scss`) set `--surface-2` on the same `:focus-visible` rule, which
+  // is measured.
+  //
+  // --fail is measured too: `_kit.scss` draws the invalid field's ring from it, so it
+  // is a focus indicator whether or not it is named like one.
+  { background: 'surface', foregrounds: ['fail'], minimum: NON_TEXT_MINIMUM },
+  {
+    background: 'surface',
+    foregrounds: ['focus-ring'],
+    minimum: NON_TEXT_MINIMUM,
+  },
+  {
+    background: 'surface-2',
+    foregrounds: ['focus-ring'],
+    minimum: NON_TEXT_MINIMUM,
+  },
+  {
+    background: 'bs-body-bg',
+    foregrounds: ['focus-ring'],
+    minimum: NON_TEXT_MINIMUM,
+  },
+  {
+    background: 'active-bg',
+    foregrounds: ['focus-ring'],
+    minimum: NON_TEXT_MINIMUM,
+  },
+  {
+    background: 'think-bg',
+    foregrounds: ['focus-ring'],
+    minimum: NON_TEXT_MINIMUM,
+  },
 ];
 
 /** WCAG 2.1 relative luminance of a `#rrggbb` value. */
@@ -277,6 +325,99 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
+// US-1401. The focus pairs above are hand-written too, and the way that list rots is
+// a *new* surface: a ring drawn on it would be measured by nothing, and every gate
+// would stay green.
+//
+// So the surfaces are read out of the stylesheets rather than guessed from token
+// names. A name heuristic looked tidier and was wrong — `--brand` and `--accent` are
+// both painted as backgrounds under focusable content (`.skip-link`, the recording
+// pill, the active sub-nav pill, the user footer, the attachment chip) and neither
+// name ends in `bg`. Every token any stylesheet sets as a background has to be either
+// measured against the ring or excluded on the record here.
+const FOCUS_RING = 'focus-ring';
+
+/** Why a surface the ring could land on is not measured against it. */
+const FOCUS_SURFACE_EXCLUSIONS = {
+  bubble: 'no focusable content on it; the message footer sits below the bubble',
+  'btnP-bg': 'the ring is offset, so it sits on the page behind the button, not the fill',
+  'btnP-hover': 'the same button, hovered or active — and the ring is offset off it too',
+  brand: 'the same — offset rings on the skip link, the sub-nav pill and the user footer',
+  accent: 'the same, plus the code surface, where the ring *is* --accent and is measured above',
+  'code-bg': 'the code surface draws its ring from --accent, measured above',
+  'warn-bg': 'a translucent wash in dark; this check reads six-digit hex only',
+  fail: 'measured above, as the invalid field ring rather than as a surface',
+  'tooltip-bg':
+    'the flyout is an aria-hidden span holding text and nothing else — no control ' +
+    'is ever focused on it, and the host it names is on the page surface',
+  'surface-2': 'measured above',
+  'code-head': 'the code block head draws its ring from --accent, measured above',
+  // Six fills that are shapes rather than surfaces: nothing is ever focused *on*
+  // one, so no ring is ever adjacent to one. A control focused beside them is on
+  // the surface underneath, which is measured.
+  ok: 'a StatusDot fill — an 8px dot, not a surface',
+  warn: 'a StatusDot fill, and a 10% wash on the two deactivate dialogs',
+  muted: 'a StatusDot fill',
+  'provider-azure-openai': 'a provider dot in frame 2b',
+  'provider-bedrock': 'a provider dot in frame 2b',
+  'provider-anthropic': 'a provider dot in frame 2b',
+  'toast-accent': "the toast's 4px left edge",
+  'bs-border-color': 'a 1px separator rule in the menu and the picker',
+};
+
+const focusSurfaces = new Set(
+  CONTRAST_PAIRS.filter(({ foregrounds }) => foregrounds.includes(FOCUS_RING)).map(
+    ({ background }) => background,
+  ),
+);
+
+/**
+ * Every token a stylesheet paints as a background, which is every surface there is.
+ *
+ * Two forms, because the app fills a control both ways. The direct one is
+ * `background: var(--x)`. The indirect one is `--anything-bg: var(--x)`, which is how
+ * **every** Bootstrap component fill is set — `_bootstrap-overrides.scss` assigns
+ * `--bs-btn-hover-bg: var(--btnP-hover)` and Bootstrap paints from there. Matching
+ * only the direct form missed the hovered primary button entirely, and missed it
+ * *silently*, which is the failure this whole guard replaced a name heuristic to
+ * avoid.
+ *
+ * The value is captured before the tokens are read out of it, so a declaration
+ * naming two — a gradient — records both rather than the last.
+ */
+const painted = new Set();
+for (const file of walk(join(UI_ROOT, 'src'))) {
+  if (!file.endsWith('.scss')) continue;
+  const source = stripComments(readFileSync(file, 'utf8'));
+  const declarations = source.matchAll(/(?:background(?:-color|-image)?|--[\w-]*bg)\s*:([^;}]*)/g);
+  for (const [, value] of declarations) {
+    for (const [, name] of value.matchAll(/var\(--([\w-]+)\)/g)) {
+      painted.add(name);
+    }
+  }
+}
+
+for (const name of painted) {
+  if (focusSurfaces.has(name) || Object.hasOwn(FOCUS_SURFACE_EXCLUSIONS, name)) continue;
+  problems.push(
+    `--${name} is painted as a background, so a focus ring can land on it, but ` +
+      `CONTRAST_PAIRS does not measure --${FOCUS_RING} against it. Add the pair, or ` +
+      `record why not in FOCUS_SURFACE_EXCLUSIONS.`,
+  );
+}
+
+// And the record has to stay honest in the other direction too. An exclusion for a
+// token nothing paints any more is the same rot as a missing one — it reads as a
+// considered decision about a live surface, and the next reader trusts it.
+for (const name of Object.keys(FOCUS_SURFACE_EXCLUSIONS)) {
+  if (!painted.has(name)) {
+    problems.push(
+      `FOCUS_SURFACE_EXCLUSIONS records --${name}, but nothing paints it as a ` +
+        `background any more. Remove the entry.`,
+    );
+  }
+}
+
 // The list above is hand-written, so a stylesheet that repointed `.token.keyword` at
 // a different token would leave the gate measuring one nothing renders. Every
 // `--code-*` the two code stylesheets consume has to appear in it.
@@ -303,6 +444,6 @@ const measured =
 
 console.log(
   `tokens OK — ${expected.light.size} light and ${expected.dark.size} dark properties match ` +
-    `theme.css, the pre-paint shell matches the tokens, and ${measured} code-surface pairs ` +
-    `clear their WCAG minimum`,
+    `theme.css, the pre-paint shell matches the tokens, and ${measured} code-surface and ` +
+    `focus-ring pairs clear their WCAG minimum`,
 );

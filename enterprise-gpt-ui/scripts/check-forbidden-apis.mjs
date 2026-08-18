@@ -15,6 +15,21 @@ import { stripComments, walk } from './lib/source-scan.mjs';
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const SRC = join(UI_ROOT, 'src');
 
+/**
+ * Opt out of one line, for a case the scan is right about and the code is right
+ * anyway — an inset ring, or a target focused only programmatically. Same shape as
+ * `check-icon-names.mjs`'s, and deliberately per-line rather than per-file: an
+ * exemption that names the reason at the site it applies to is reviewable, and one
+ * listed in this file is not.
+ *
+ * **It applies only to rules marked `escapable`**, which is the two focus rules and
+ * nothing else. A hatch that also waved through `bypassSecurityTrustHtml` would
+ * defeat the backstop this whole script exists to be — the header above says it in
+ * full: ESLint's rule can be turned off with an inline comment, and a text scan
+ * seeing that is the entire point.
+ */
+const ESCAPE = 'focus-check-ignore-next-line';
+
 const FORBIDDEN = [
   {
     pattern: /\bbypassSecurityTrustHtml\b/,
@@ -78,6 +93,44 @@ const FORBIDDEN = [
       'app/shared/nav/user-footer/user-footer.spec.ts',
     ],
   },
+  {
+    // Suppressing the indicator is the failure US-1401 found four times: three
+    // composer controls and the two form-field rules replaced it with a translucent
+    // wash measuring about 1.2–1.4:1, and Bootstrap's own `.form-control:focus`
+    // sets `outline: 0` besides. A line that removes it and puts nothing back is a
+    // control a keyboard user cannot see themselves on.
+    //
+    // Not "…unless the same block sets a box-shadow": that would pass for a shadow
+    // in any colour, which is exactly what was wrong before. The legitimate sites
+    // carry the escape hatch and say why at the line.
+    //
+    // Every spelling that removes the ring, not only the canonical one: `outline: 0px`
+    // and `outline : none` slip past a tighter pattern, and the two longhands do the
+    // same job under another name.
+    pattern: /(^|[;{\s])outline(-width|-style)?\s*:\s*(none|0[a-z%]*)\s*(!important)?\s*[;}]/,
+    label: 'a suppressed focus indicator',
+    escapable: true,
+    why:
+      'US-1401 / WCAG 2.1 SC 1.4.11: every interactive element needs a visible ' +
+      'focus indicator at 3:1. `_focus.scss` draws one from --focus-ring for ' +
+      'anything with no rule of its own; a rule that removes it must draw its own ' +
+      `— an inset box-shadow for a full-bleed row — and say so with a \`${ESCAPE}\` comment.`,
+    exempt: [],
+  },
+  {
+    // --ring is the `ringpulse` keyframe's colour: 45% alpha, made to fade out from
+    // under a control. Used as a focus indicator it composites to about 1.4:1 on
+    // --surface, which is how four controls came to fail SC 1.4.11 while every gate
+    // stayed green. --focus-ring is the token that was measured for the job.
+    pattern: /var\(--ring\)/,
+    label: 'the pulse colour used outside its keyframe',
+    escapable: true,
+    why:
+      'US-1401: --ring exists for `ringpulse` and is translucent by design. The ' +
+      'focus indicator is --focus-ring, which check-tokens.mjs measures against ' +
+      'every surface it can land on; --ring is measured against nothing.',
+    exempt: ['styles/_motion.scss'],
+  },
 ];
 
 const findings = [];
@@ -88,10 +141,14 @@ for (const file of walk(SRC)) {
   // .scss and .ts share C-style comments; .html has its own form.
   const scannable = stripComments(source, { html: rel.endsWith('.html') });
   const lines = scannable.split('\n');
+  // Comments are blanked in `scannable`, so the escape hatch has to be read off
+  // the original text.
+  const raw = source.split('\n');
 
-  for (const { pattern, label, why, exempt } of FORBIDDEN) {
+  for (const { pattern, label, why, exempt, escapable = false } of FORBIDDEN) {
     if (exempt.includes(rel)) continue;
     lines.forEach((line, index) => {
+      if (escapable && (raw[index - 1] ?? '').includes(ESCAPE)) return;
       if (pattern.test(line)) {
         findings.push({ label, why, where: `src/${rel}:${index + 1}`, line: line.trim() });
       }

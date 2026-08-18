@@ -610,6 +610,67 @@ describe('Chat', () => {
     backend.expectNone(CREATE_URL);
   });
 
+  it('mounts the turn status region outside the transcript, empty, from first render (US-1402)', async () => {
+    await harness.navigateByUrl('/chat', Chat);
+
+    // Present before any turn and silent: a live region created together with
+    // its content is not reliably announced. The composer's own two regions —
+    // the attachment summary and the note — are empty here for the same reason.
+    const regions = [...element().querySelectorAll('[role="status"]')];
+    expect(regions.length).toBeGreaterThan(0);
+    expect(regions.map((node) => node.textContent?.trim())).toEqual(regions.map(() => ''));
+    expect(element().querySelector('app-transcript')).toBeNull();
+
+    streamFetch.mockImplementation((_input: unknown, init?: RequestInit) => {
+      const handle = streamingResponse();
+      handle.abortOn(init?.signal);
+      return Promise.resolve(handle.response);
+    });
+
+    const models = TestBed.inject(ModelCatalogStore).ensureLoaded();
+    backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true })]);
+    await models;
+    await harness.fixture.whenStable();
+
+    const prompt = element().querySelector<HTMLTextAreaElement>('.composer__prompt');
+    prompt!.value = 'First prompt';
+    prompt!.dispatchEvent(new Event('input', { bubbles: true }));
+    await harness.fixture.whenStable();
+    element().querySelector<HTMLButtonElement>('.composer__send')?.click();
+    await harness.fixture.whenStable();
+    const created = conversationFixture();
+    backend.expectOne(CREATE_URL).flush(created);
+    await harness.fixture.whenStable();
+    // The replaceUrl navigation opens the conversation, exactly as US-401's own
+    // test does; leaving it unanswered would fail `backend.verify()`.
+    backend.expectOne(detailUrl(created.id)).flush(conversationDetailFixture(created));
+    await harness.fixture.whenStable();
+
+    // Now the transcript is mounted with its own two status regions, so the
+    // separation is a real assertion rather than one that passes on absence.
+    const transcript = element().querySelector('app-transcript');
+    expect(transcript).not.toBeNull();
+    expect(transcript?.getAttribute('aria-busy')).toBe('true');
+
+    const speaking = [...element().querySelectorAll('[role="status"]')].filter(
+      (node) => (node.textContent?.trim() ?? '') !== '',
+    );
+    expect(speaking).toHaveLength(1);
+
+    // The one region carrying the announcement is outside the `aria-busy`
+    // container, where a live region would be deferred along with the answer,
+    // and outside the scroll container, so nothing about it moves the reader.
+    // What this element renders is `turnStatus`, so the store spec's remaining
+    // strings — including the `Answer ready` backstop — reach here too. Pinning
+    // those here as well would mean streaming real frames through the 16 ms
+    // buffer window on real timers, which this file has never done and which
+    // buys a second assertion of a link already proven.
+    const live = speaking[0]!;
+    expect(live.textContent?.trim()).toBe('Waiting for a response');
+    expect(transcript?.contains(live)).toBe(false);
+    expect(element().querySelector('.chat__body')?.contains(live)).toBe(false);
+  });
+
   it('runs the first send end to end: create, prepend, replace the URL, stream (US-401)', async () => {
     streamFetch.mockImplementation((_input: unknown, init?: RequestInit) => {
       const handle = streamingResponse();

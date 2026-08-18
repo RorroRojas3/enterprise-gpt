@@ -14,6 +14,7 @@ import { PREFERENCE_KEYS } from '@core/storage/local-preferences';
 import { UiStore } from '@core/ui/ui-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
+import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
@@ -478,6 +479,122 @@ describe('Shell', () => {
       expect((fixture.nativeElement as HTMLElement).classList.contains('shell--animated')).toBe(
         true,
       );
+    });
+  });
+
+  describe('keyboard operability (US-1401)', () => {
+    // jsdom implements no `<dialog>`, so the shell's own dialogs need the same
+    // shim the overlay specs use. What it cannot stand in for is the top layer,
+    // `::backdrop` or native inerting — those are checked in a browser through
+    // `/ui-kit`, which is why this spec asserts focus movement and not the trap.
+    let attached: HTMLElement | null = null;
+
+    beforeEach(() => {
+      installDialogPolyfill();
+    });
+
+    // Not at the end of the test: a failing assertion would otherwise leak the
+    // fixture host into `document.body` for every spec that follows.
+    afterEach(() => {
+      attached?.remove();
+      attached = null;
+    });
+
+    it('runs rename and delete end to end from the keyboard', async () => {
+      // Criterion 3's two remaining paths, and criterion 2's focus contract, in
+      // the place they actually meet: the sidebar row's kebab and the dialogs
+      // US-307 moved onto the shell.
+      //
+      // Activation is `.click()` throughout, and deliberately: every one of these
+      // is a native `<button>`, so Enter and Space are the platform's guarantee
+      // rather than the app's, and jsdom synthesises no click from a key event.
+      // What this pins is everything the app *is* responsible for — that each
+      // step is reachable, that focus lands where the next step needs it, and
+      // that it comes back.
+      const fixture = await render();
+      const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
+      await loadConversations(fixture, [conversation]);
+      const element = host(fixture);
+      // The fixture has to be in the document or `activeElement` is never these.
+      document.body.append(element);
+      attached = element;
+
+      // Both conversation dialogs mount on the shell (US-307), so a bare
+      // `dialog` selector finds whichever is first in the DOM rather than the
+      // one that opened.
+      const openDialog = () =>
+        [...element.querySelectorAll<HTMLDialogElement>('app-modal dialog')].find(
+          (node) => node.open,
+        );
+
+      const kebab = element.querySelector<HTMLButtonElement>('.row__menu .menu__trigger');
+      expect(kebab).not.toBeNull();
+      kebab!.focus();
+
+      // ArrowDown opens the menu *and* puts focus on the first item, which is
+      // what makes a menu button operable without a pointer at all.
+      kebab!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+      await fixture.whenStable();
+
+      const items = [...element.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+      expect(items.length).toBeGreaterThan(0);
+      expect(document.activeElement).toBe(items[0]);
+      expect(kebab!.getAttribute('aria-expanded')).toBe('true');
+
+      const rename = items.find((item) => item.textContent?.includes('Rename'));
+      rename!.click();
+      await fixture.whenStable();
+
+      // Focus moved into the dialog, onto the field the user came here to edit.
+      const dialog = openDialog();
+      expect(dialog).toBeDefined();
+      expect(dialog?.contains(document.activeElement)).toBe(true);
+      expect(dialog?.textContent).toContain('Rename conversation');
+
+      // Closing hands focus back to the control that opened it, rather than to
+      // `<body>`, which would drop a keyboard user at the top of the page.
+      //
+      // `close()`, not Escape: Escape belongs to the native `<dialog>`, and the
+      // jsdom shim implements neither it nor `cancel`. That the app does not
+      // *refuse* Escape is `modal.spec.ts`'s ("swallows Escape while a save is in
+      // flight"); what is the app's own job, and is what this pins, is where
+      // focus lands afterwards.
+      dialog!.close();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(kebab);
+
+      // Delete is the same journey to a different dialog, and the return matters
+      // more there: the row it acted on may not exist to fall back to.
+      kebab!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+      await fixture.whenStable();
+
+      const remove = [...element.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
+        item.textContent?.includes('Delete'),
+      );
+      remove!.click();
+      await fixture.whenStable();
+
+      const confirm = openDialog();
+      expect(confirm).toBeDefined();
+      expect(confirm?.textContent).toContain('Delete conversation?');
+
+      // On **Cancel**, and the identity is the assertion rather than "somewhere
+      // inside": Enter on a freshly opened destructive confirm must not destroy
+      // anything, and `contains()` would pass just as happily with focus on
+      // Delete.
+      const cancel = [...confirm!.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
+        button.textContent?.includes('Cancel'),
+      );
+      expect(document.activeElement).toBe(cancel);
+
+      confirm!.close();
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(kebab);
     });
   });
 });

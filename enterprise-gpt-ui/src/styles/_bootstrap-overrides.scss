@@ -49,10 +49,59 @@
   border-color: var(--btnP-bg);
 }
 
+// The board draws a tinted glow here — `rgba(33, 168, 216, .18)`, which composites
+// to about 1.2:1 on `--surface` and is the *only* indicator on a field, because
+// Bootstrap's `.form-control:focus` also sets `outline: 0`. It fails SC 1.4.11, so
+// the ring is the token's and the accent border stays for the board's colour
+// (US-1401). Authorised by the PRD's accessibility-precedence rule (§5): where the
+// boards and the PRD disagree on accessibility, the PRD wins.
+//
+// Not caught by `check:tokens`, which compares `:root` blocks against `theme.css`
+// and never sees a component rule — which is why nothing failed while this did.
 .form-control:focus,
 .form-select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 0.2rem rgba(33, 168, 216, 0.18);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+// The same defect as the fields above, on the three Bootstrap components that also
+// declare `outline: 0` and replace it with a tinted `box-shadow`. They need naming
+// explicitly rather than leaving `_focus.scss`'s floor to catch them: `.btn`,
+// `.nav-link` and `.form-check-input` each carry their own `:focus-visible` rule at
+// (0,2,0), which beats a bare `:focus-visible` at (0,1,0) whatever the source order.
+//
+// What they draw instead is off-palette and well under 3:1 — `--bs-btn-focus-shadow`
+// resolves to `rgba(55,81,105,.5)` on the primary button (2.4:1 light, 1.3:1 dark),
+// and `.nav-link` and the checkbox share Bootstrap's default `rgba(13,110,253,.25)`
+// at 1.41:1 and 1.31:1. Between them that is every dialog footer button, every admin
+// row action, the auth screens' calls to action, the project-detail tabs and every
+// checkbox in the app.
+//
+// `outline` with an offset rather than a flush `box-shadow`, deliberately: a ring
+// drawn *on* `--btnP-bg` measures 2.89:1 in light and 1.00:1 in dark — the fill is
+// the focus token in the dark theme — while an offset one sits on the page behind,
+// which is the surface `check-tokens.mjs` measures.
+// The checkbox takes two rules where the others take one, and **this one has to come
+// first**: both are (0,2,0), a keyboard-focused box matches both, and the later of two
+// equal rules wins — so reversing these would suppress the very ring the next rule
+// draws. Chrome does not match `:focus-visible` on a checkbox focused by pointer, so
+// overriding only that state would leave Bootstrap's blue wash on every click.
+//
+// The border goes with the wash: Bootstrap's `rgb(134,182.5,254)` is off-palette and
+// would otherwise sit beside a branded ring on every focused box.
+.form-check-input:focus {
+  border-color: var(--accent);
+  // focus-check-ignore-next-line
+  outline: none;
+  box-shadow: none;
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible,
+.form-check-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 a {

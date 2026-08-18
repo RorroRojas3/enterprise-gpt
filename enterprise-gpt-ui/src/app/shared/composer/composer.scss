@@ -10,11 +10,26 @@
   background: var(--surface);
   box-shadow: 0 1px 3px rgba(11, 31, 51, 0.05);
 
-  // The card carries the focus indication for the borderless textarea — the
-  // same treatment Bootstrap gives a focused form control.
+  // The card carries the focus indication for the borderless textarea — the same
+  // treatment Bootstrap gives a focused form control.
+  //
+  // Two changes here in US-1401, and the second follows from the first. The ring
+  // is `--focus-ring` rather than `--ring`, which is 45% alpha and composites to
+  // about 1.4:1 on `--surface`; and it is scoped with `:has()` to the *field*
+  // rather than firing on `:focus-within`. At 45% alpha a card ring under a
+  // focused button was invisible enough not to matter; solid, it would draw a
+  // second ring around the whole composer every time a keyboard user tabbed onto
+  // any of the six controls inside it — which is the opposite of "the card
+  // carries the indication for the textarea". Each control has its own ring.
+  //
+  // The border colour still follows `:focus-within`: that is the board's "this
+  // composer is active" affordance, not the focus indicator.
   &:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  &:has(.composer__prompt:focus) {
+    box-shadow: 0 0 0 2px var(--focus-ring);
   }
 }
 
@@ -62,6 +77,15 @@
   }
 
   &:focus {
+    // The field is borderless and fills the card, so what indicates its focus is
+    // the card's `&:has(.composer__prompt:focus)` ring at the top of this file —
+    // **that rule, not `:focus-within`**, which since US-1401 sets only the border
+    // colour. An outline here would draw a second ring inside the first.
+    //
+    // The coupling is a class-name string in that selector, and `composer.spec.ts`
+    // pins it: renaming this class would otherwise remove the textarea's only
+    // indicator silently, with this hatch keeping `check:forbidden` green.
+    // focus-check-ignore-next-line
     outline: none;
   }
 }
@@ -127,8 +151,8 @@
   }
 
   &:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 }
 
@@ -178,8 +202,8 @@
   }
 
   &:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   // Assigned: the folder takes the brand tone, as the board draws it.
@@ -227,8 +251,8 @@ app-icon.composer__project-caret {
   }
 
   &:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 }
 

@@ -32,6 +32,11 @@ export function installDialogPolyfill(): void {
     if (returnValue !== undefined) {
       this.returnValue = returnValue;
     }
-    this.dispatchEvent(new Event('close'));
+    // **Queued, not synchronous**, because the platform queues it — and because a
+    // synchronous shim quietly makes `Modal`'s destroy-time focus restore look
+    // redundant. That restore exists precisely for the case where the `(close)`
+    // binding is torn down before the queued event fires, so a shim that fires it
+    // inline lets the guard be deleted with every spec still green.
+    queueMicrotask(() => this.dispatchEvent(new Event('close')));
   };
 }

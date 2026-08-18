@@ -45,9 +45,13 @@ html:has(dialog[open]) {
 .form-select.is-invalid {
   border-color: var(--fail);
 
+  // Solid rather than the 18% wash it replaced, for the same reason as the valid
+  // state above (US-1401). `--fail` measures 5.30:1 on `--surface`, so an invalid
+  // field keeps its own colour *and* a compliant indicator rather than trading one
+  // for the other.
   &:focus {
     border-color: var(--fail);
-    box-shadow: 0 0 0 0.2rem rgba(192, 57, 43, 0.18);
+    box-shadow: 0 0 0 2px var(--fail);
   }
 }
 

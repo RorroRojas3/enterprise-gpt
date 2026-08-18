@@ -11,6 +11,7 @@ import { UPLOAD_FILE_GRANT, userFixture } from '@testing/session';
 import { FakeRecognition } from '@testing/speech';
 import { assistantEvent, frame, streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
+import { tabbableWithin } from '@shared/a11y/tabbable';
 import { ModelDto } from '@domain/api/model';
 import { PermissionDto } from '@domain/api/user';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
@@ -535,6 +536,124 @@ describe('Composer', () => {
       // not a control.
       expect(mic(composer.host)).toBeNull();
       expect(pill(composer.host)).toBeNull();
+    });
+  });
+
+  describe('keyboard operability (US-1401)', () => {
+    /** Every control the story names, present at once: grant, speech, conversation. */
+    async function renderFullComposer() {
+      const recognition = new FakeRecognition();
+      speech = () => recognition;
+
+      const composer = await render();
+      const session = TestBed.inject(SessionStore).ensureLoaded();
+      backend.expectOne(ME_URL).flush(userFixture({ permissions: [UPLOAD_FILE_GRANT] }));
+      await session;
+      // The composer only fetches the extension list once the grant is visible,
+      // so the render in between is what issues the request.
+      await composer.fixture.whenStable();
+      backend.expectOne(EXTENSIONS_URL).flush(SUPPORTED);
+      await TestBed.inject(SupportedExtensionsStore).ensureLoaded();
+
+      TestBed.inject(ConversationListStore).prependNewest(
+        conversationFixture({ id: CONVERSATION_ID }),
+      );
+      TestBed.inject(TurnStore).bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
+        .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });
+
+      // Named rather than left to the fixture's counter, which numbers models
+      // across the whole file and would make the tab-order assertion depend on
+      // how many tests ran before it.
+      await loadModels([modelFixture({ isDefault: true, name: 'Falcon 3' })]);
+      await composer.fixture.whenStable();
+
+      return composer;
+    }
+
+    /** The accessible name of each tab stop, in the order a browser would walk them. */
+    function tabOrder(host: HTMLElement): string[] {
+      // `tabbableWithin` is the kit's own reader — the same one the overlays use
+      // to decide where focus goes — so this asserts the order a browser would
+      // actually walk rather than the order the template happens to be written in.
+      return tabbableWithin(host).map(
+        (element) => element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '',
+      );
+    }
+
+    it('puts every control in one logical tab order, each with a name', async () => {
+      const composer = await renderFullComposer();
+
+      // Send is *not* a stop yet, and that is right: with nothing typed it is
+      // natively disabled, so a keyboard user tabs past a control that cannot act.
+      expect(tabOrder(composer.host)).not.toContain('Send');
+
+      await composer.type('What is the weather?');
+
+      expect(tabOrder(composer.host)).toEqual([
+        'Message Enterprise GPT',
+        'Attach files',
+        'Project: none. Move to a project',
+        'Model: Falcon 3',
+        'Tool servers: Tools',
+        'Dictate',
+        'Send',
+      ]);
+    });
+
+    it('keeps the card ring pointed at the field it indicates', async () => {
+      const composer = await renderFullComposer();
+      const prompt = composer.prompt();
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+
+      // The textarea is borderless and suppresses its own outline, so the card's
+      // `:has(.composer__prompt:focus)` ring is its *only* focus indicator. That
+      // couples SC 1.4.11 to a class-name string in a selector, which a rename
+      // would break silently — `check:forbidden` stays green, because the
+      // suppression carries an escape hatch. This is what notices.
+      expect(prompt.classList.contains('composer__prompt')).toBe(true);
+      expect(card?.matches(':has(.composer__prompt:focus)')).toBe(false);
+
+      prompt.focus();
+
+      expect(card?.matches(':has(.composer__prompt:focus)')).toBe(true);
+    });
+
+    it('leaves the hidden file input out of the tab order, and the picker in it', async () => {
+      const composer = await renderFullComposer();
+
+      // Off-screen rather than `display: none`, because a hidden input is not
+      // focusable and `.click()` is a no-op in some engines — so it is reachable
+      // by the button beside it and by nothing else.
+      const input = composer.host.querySelector<HTMLInputElement>('.composer__file-input');
+      expect(input).not.toBeNull();
+      expect(input?.getAttribute('tabindex')).toBe('-1');
+      expect(tabbableWithin(composer.host)).not.toContain(input);
+    });
+
+    it('keeps Stop reachable while a turn runs, and stands the rest down', async () => {
+      const composer = await renderFullComposer();
+      await composer.type('What is the weather?');
+      const send = composer.send();
+      send?.focus();
+      send?.click();
+      await composer.fixture.whenStable();
+
+      const stops = tabOrder(composer.host);
+
+      // Criterion 3's second half. The control the user just pressed *morphed*
+      // rather than being replaced, so Stop is the same element Send was — which
+      // is why focus is still on it rather than back at `<body>`, and why it is
+      // still a tab stop.
+      expect(stops).toContain('Stop');
+      expect(composer.stop()).toBe(send);
+      expect(document.activeElement).toBe(send);
+      // Attach, project and the microphone are natively disabled mid-turn and
+      // drop out; the model and tool pills stay, because reading the turn's
+      // settings back is not the same as changing them.
+      expect(stops).not.toContain('Attach files');
+      expect(stops).not.toContain('Dictate');
     });
   });
 

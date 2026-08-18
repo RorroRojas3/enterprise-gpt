@@ -41,6 +41,7 @@ import {
   foldAssistantEvents,
 } from '@domain/stream/andes/assistant-ui.contract';
 import { replayAssistantText } from '@domain/stream/replayed-turn';
+import { turnAnnouncement } from '@domain/stream/turn-announcement';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
 import {
   ReasoningTiming,
@@ -522,9 +523,31 @@ export const TurnStore = signalStore(
      * *is*, which is why this reads past it.
      */
     const modelReasoning = computed(() => hasModelReasoning(store.reasoning()));
+    /**
+     * The folded `Finished` (US-1402). Distinct from `!inFlight()`, which is one
+     * step later: the fold sets `snapshot.phase` the moment the frame lands,
+     * while the settle that clears `phase` waits for the response body to close.
+     * `aria-busy` names the frame, not the body, so the deferred live region is
+     * released while the live turn is still mounted to be read.
+     *
+     * **What this trusts is that nothing renderable follows `Finished`** — not
+     * that it terminates the stream, which it explicitly does not: the contract
+     * is blunt that "`Finished` is not a terminator … end-of-body is the
+     * terminator" (streaming contract §4.1), which is exactly why `inFlight`
+     * stays true past it and the settle waits for the body.
+     *
+     * The fold does not enforce even the weaker claim: it keeps appending
+     * `TextDelta` text to a `Completed` snapshot. A server that framed one after
+     * the other would leave the answer region live and no longer busy, and every
+     * later delta would be announced on its own. The alternative is to drop those
+     * deltas, which would lose answer text to protect an announcement; a chatty
+     * reading is the better failure of the two.
+     */
+    const answerComplete = computed(() => store.snapshot.phase() === 'Completed');
 
     return {
       inFlight,
+      answerComplete,
       /**
        * What the composer's project control acts on (US-307).
        *
@@ -575,6 +598,39 @@ export const TurnStore = signalStore(
       ),
       /** The live turn's reasoning duration for frame `1f`'s pill (US-503). */
       liveReasoningSeconds: computed(() => reasoningSeconds(store.reasoning())),
+      /**
+       * What a screen reader is told while the turn runs (US-1402).
+       *
+       * Rendered by `Chat` **outside** the transcript, because the transcript is
+       * `aria-busy` for the length of a turn and a live region inside it is
+       * deferred along with the answer. Empty at rest, so the region has
+       * something to transition *from* on the next turn.
+       *
+       * `turnAnnouncement` is pure and lives in `domain/stream/`; it changes value
+       * only on a status transition, never on a `TextDelta`, which is US-1402's
+       * third criterion satisfied by construction rather than by a timer.
+       *
+       * **`Answer ready` is the deliberate exception, and it is a backstop.**
+       * Releasing the answer's own live region is an `aria-busy` change with no
+       * accompanying content mutation, so it rests on assistive tech having
+       * buffered what it suppressed and replaying it — the spec's intent, but the
+       * least reliably implemented corner of the live-region model. A reader
+       * whose AT suppressed and forgot would otherwise meet exactly the silence
+       * this story exists to remove. Four syllables beside the answer is the
+       * cheaper of the two failures.
+       */
+      turnStatus: computed(() => {
+        if (!inFlight()) {
+          return '';
+        }
+
+        return answerComplete()
+          ? 'Answer ready'
+          : turnAnnouncement(store.snapshot(), {
+              creating: store.phase() === 'creating',
+              reasoning: modelReasoning(),
+            });
+      }),
       /**
        * Whether the transcript replaces the empty state. The history states
        * count: a conversation being read back must not show the landing

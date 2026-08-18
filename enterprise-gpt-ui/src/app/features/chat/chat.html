@@ -191,3 +191,22 @@
     <app-composer />
   </div>
 }
+
+<!--
+  US-1402: what a screen reader is told while a turn runs.
+
+  Here rather than in the transcript, and outside `.chat__body`, because the
+  transcript is `aria-busy` for the length of a turn — a live region inside it is
+  deferred along with the answer, which is exactly what makes the answer's own
+  region bearable and exactly what would silence this one.
+
+  Last in the document, like the transcript's own two regions and for the same
+  reason: `visually-hidden` is clipped rather than hidden, so a region placed at
+  the top would put "Andes Test MCP is running" above the conversation title for
+  anyone reading the page in order.
+
+  Persistent and empty at rest: a region created together with its content is not
+  reliably announced, the same rule the toast stack, the composer's attachment
+  summary and the transcript's own status line already follow.
+-->
+<p class="visually-hidden" role="status">{{ turn.turnStatus() }}</p>

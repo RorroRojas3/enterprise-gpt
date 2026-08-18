@@ -3,14 +3,38 @@
     <app-brand-logo variant="mark" />
   </div>
 
-  <div class="assistant-turn__content">
+  <!--
+    US-1402. Polite only while this instance is the streaming one: the settled
+    turn that replaces it carries nothing, so the answer is announced exactly
+    once. `aria-busy` defers everything the region accumulates until the folded
+    `Finished` clears it, which is what keeps "the streaming answer region is
+    aria-live=polite" from meaning "read every text delta"; it is released as an
+    explicit `false` rather than by removing the attribute, because that release
+    is the single mutation the whole pattern hangs on.
+
+    `aria-atomic` is left at its default: the region announces what changed, not
+    the whole answer again on every change.
+  -->
+  <div
+    class="assistant-turn__content"
+    [attr.aria-live]="streaming() ? 'polite' : null"
+    [attr.aria-busy]="streaming() ? (liveAnswer() ? 'true' : 'false') : null"
+  >
     @if (reasoningText()) {
       <!-- US-503: reasoning has no place in the arrival-order index — it is not
            a block of the answer and never interleaves with one — so it opens
            the turn rather than taking a timeline node. Absent entirely for a
            turn whose only reasoning was the server's seed, and for every
            replayed one, which stores none at all. -->
-      <app-reasoning-region [text]="reasoningText()" [durationSeconds]="reasoningSeconds()" />
+      <!-- `aria-live="off"` because the region above is polite and this is not
+           the answer: without the override, releasing the answer would flush the
+           whole reasoning summary at the reader first (US-1402). It stays fully
+           readable in browse mode. -->
+      <app-reasoning-region
+        aria-live="off"
+        [text]="reasoningText()"
+        [durationSeconds]="reasoningSeconds()"
+      />
     }
 
     <!-- Keyed on where a block starts and on the activity's own scope, both of
@@ -59,7 +83,13 @@
           }
         }
         @case ('activity') {
-          <app-activity-card [activity]="node.activity" />
+          <!-- Excluded from the answer's live region, and the override covers the
+               card's nested children with it. Each card carries a state label, a
+               kind, a source and a sub-status list that grows mid-turn; announcing
+               all of that when the answer is released is the unusable live region
+               US-1402's third criterion forbids — and `Chat`'s status region has
+               already said what each activity did, as it happened. -->
+          <app-activity-card aria-live="off" [activity]="node.activity" />
         }
       }
     }

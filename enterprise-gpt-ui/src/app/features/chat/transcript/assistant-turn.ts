@@ -134,6 +134,21 @@ export class AssistantTurn {
    */
   protected readonly copySource = computed(() => this.snapshot().text ?? '');
 
+  /**
+   * Whether the answer is still accumulating, for the live region's own
+   * `aria-busy` (US-1402).
+   *
+   * The region is polite for the whole of a streaming turn — that is the
+   * criterion — and `aria-busy` is what stops that meaning "read every delta":
+   * a busy live region accumulates its changes and exposes them once, when busy
+   * clears. It is set here as well as on the transcript because a region's own
+   * `aria-busy` is the better-honoured of the two, and it reads the folded
+   * `Finished` off the snapshot this component already receives.
+   */
+  protected readonly liveAnswer = computed(
+    () => this.streaming() && this.snapshot().phase !== 'Completed',
+  );
+
   /** The caret belongs to the last node, and only when it is a text block. */
   protected readonly caretIndex = computed(() => {
     const nodes = this.renderedNodes();

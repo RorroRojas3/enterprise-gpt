@@ -109,6 +109,18 @@
     font-family: $font-mono;
     font-size: 12.5px;
     line-height: 1.6;
+
+    // US-1401: the block is a tab stop, because `overflow: auto` makes it
+    // scrollable and the arrow keys are the only way to read past the column
+    // (WCAG 2.1.1). Inset, since the `<pre>` is flush inside the block's border
+    // and an outline would be clipped by it; `--accent` rather than
+    // `--focus-ring` for the reason the Copy control uses it — the code surface
+    // is dark in both themes, and `check-tokens.mjs` measures the pair.
+    &:focus-visible {
+      // focus-check-ignore-next-line
+      outline: none;
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
   }
 }
 
