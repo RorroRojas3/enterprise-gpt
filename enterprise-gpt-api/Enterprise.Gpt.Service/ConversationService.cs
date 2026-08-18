@@ -476,6 +476,14 @@ namespace Enterprise.Gpt.Service
             var inputTokens = report?.AssistantUsage.InputTokenCount ?? response.Usage?.InputTokenCount ?? 0;
             var outputTokens = report?.AssistantUsage.OutputTokenCount ?? response.Usage?.OutputTokenCount ?? 0;
 
+            // Read off the raw response rather than the report, which is the opposite of the two
+            // above. The middleware's aggregation carries only input, output and total, so these
+            // two arrive null on its report however faithfully the provider reported them; the
+            // response's own usage is untouched and still has them. There is no per-turn breakdown
+            // to fall back on here, because a non-streamed call produces none.
+            var cachedInputTokens = response.Usage?.CachedInputTokenCount;
+            var reasoningTokens = response.Usage?.ReasoningTokenCount;
+
             // Name and counters move together in one statement, and the usage row lands in the same
             // transaction, so a conversation whose totals include the naming call always carries the
             // row that accounts for it. Naming is a real completion against a real deployment and is
@@ -503,6 +511,8 @@ namespace Enterprise.Gpt.Service
                 Status = ConversationUsageStatuses.Completed,
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
+                CachedInputTokens = cachedInputTokens,
+                ReasoningTokens = reasoningTokens,
                 // Priced like any other call: naming is a real completion against a real
                 // deployment, so leaving it unpriced would understate a conversation's cost by
                 // exactly the call that a report is least likely to look for.
@@ -1065,6 +1075,8 @@ namespace Enterprise.Gpt.Service
                 OutputTokens = turnUsage.OutputTokens,
                 ToolInputTokens = turnUsage.ToolInputTokens,
                 ToolOutputTokens = turnUsage.ToolOutputTokens,
+                CachedInputTokens = turnUsage.CachedInputTokens,
+                ReasoningTokens = turnUsage.ReasoningTokens,
                 // Snapshotted for the same reason DeploymentName is: an administrator editing the
                 // catalog must not rewrite what past calls cost.
                 InputPricePerMillionTokens = turn.Model.InputPricePerMillionTokens,
@@ -1084,7 +1096,10 @@ namespace Enterprise.Gpt.Service
                 // Saved as one graph rather than row by row: EF assigns the sequential keys and
                 // fixes each child's ParentId from the navigation, so nesting survives without the
                 // random identifiers the comment above exists to avoid.
-                ToolCalls = turnUsage.ToolCalls
+                ToolCalls = turnUsage.ToolCalls,
+                // Empty on a non-streamed call, whose provider reports one aggregate and no
+                // breakdown. That is why a tool row's Iteration is only meaningful alongside these.
+                Turns = turnUsage.Turns
             };
 
             _ctx.Add(usage);

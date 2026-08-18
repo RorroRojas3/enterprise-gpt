@@ -33,7 +33,7 @@
     <span
       class="activity-card__name"
       [class.activity-card__name--mono]="activity().kind === 'Function'"
-      >{{ activity().displayName }}</span
+      >{{ label() }}</span
     >
     <app-kind-badge [kind]="activity().kind" />
     @if (duration() || expandable()) {

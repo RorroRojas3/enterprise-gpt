@@ -402,7 +402,7 @@ One projection trap belongs to the footer slot rather than to any input: **a con
 | `<app-attachment-chip>` | `attachment` **required**, `removable` | `removed`, `retried` | One attached file, five states |
 | `<app-project-card>` | `name`, `updatedLabel`, `link` — **required**; `description`, `favorite`, `pending` | `favoriteToggled` | Project tile; row menu projects into `[cardMenu]` |
 
-`KindBadge` renders the kind **alone**. The stream contract keeps `displayName` and `kind` apart precisely so a card reads "Jira Cloud" + "MCP tool" rather than "Calling Jira Cloud MCP", and composing them here would put the kind word back. An unrecognized kind renders as itself rather than as nothing.
+`KindBadge` renders the kind **alone**. The stream contract keeps `displayName` and `kind` apart precisely so a card reads "Create issue" + "MCP tool" — with "Jira Cloud" as the `source` subtitle beneath — rather than "Calling Jira Cloud MCP", and composing them here would put the kind word back. An unrecognized kind renders as itself rather than as nothing. The label beside the badge is not the raw `displayName` for an MCP activity: the chat feature derives it in `domain/stream/activity-label.ts`, which is a feature concern and not the kit's ([Answer Rendering §10.3](answer-rendering.md#103-the-running-commentary-is-a-pure-function-and-it-lives-outside-the-transcript)).
 
 `AttachmentChip`'s state is a **discriminated union**, not five booleans:
 
@@ -507,7 +507,7 @@ Everywhere else in the kit, `polite` is the default and the announcement is deli
 | Attachment chip | `role="status"` on the sub-status line | Ingest progress: worth hearing, not worth interrupting |
 | Fatal shell | `role="alert"` + `aria-live="assertive"`, applied **after** the content is final | The one genuinely assertive case outside toasts |
 | Streaming answer | `aria-live="polite"` **plus its own `aria-busy`**, on the live turn only; the settled turn that replaces it carries neither | The answer, **once**. A busy region accumulates its changes and exposes them when busy clears, which is the whole reason a polite region over streaming text does not read every delta (US-1402) |
-| Turn status | `role="status"`, visually hidden, rendered by `Chat` **outside** the transcript and last in the document | "Andes Test MCP is running", "Writing the answer", "1 more step failed" — the running commentary, outside the transcript because anything inside its `aria-busy` container is deferred along with the answer, and last because `visually-hidden` is clipped rather than hidden |
+| Turn status | `role="status"`, visually hidden, rendered by `Chat` **outside** the transcript and last in the document | "Get forecast is running", "Writing the answer", "1 more step failed" — the running commentary, outside the transcript because anything inside its `aria-busy` container is deferred along with the answer, and last because `visually-hidden` is clipped rather than hidden |
 | Transcript | two sibling `role="status"` regions | Abnormal turn endings (stopped, failed, cut off) and the code-block copy confirmation — kept apart because the first empties for the length of a turn while a code block can be copied mid-turn |
 | Activity cards, reasoning region | `aria-live="off"` | Nothing. They sit inside the answer's region, so releasing it would otherwise flush every card's state label, kind, source and sub-status list at the reader — a second time, since the turn status region already narrated each one as it happened |
 

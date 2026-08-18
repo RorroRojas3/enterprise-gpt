@@ -81,6 +81,20 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
         await ClearConversationUsageAsync(ctx, cancellationToken);
+
+        // Conversations reference a model too, and that reference has to be released before the
+        // delete below or it trips FK_Conversation_Model_ModelId. Released rather than deleted,
+        // unlike the usage rows above: their FK is required so the row has to go, this one is
+        // nullable, and a helper named for the model catalog has no business destroying
+        // conversations that other classes may still be arranging around.
+        //
+        // The rows it releases belong to whichever class ran before this one — every class using
+        // this reset clears models but not conversations, so the leak is shared and the failure it
+        // caused depended on class ordering, which is why it surfaced in CI and not locally.
+        await ctx.Conversations
+            .Where(x => x.ModelId != null && x.ModelId != KnownIds.SeedModelId)
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.ModelId, (Guid?)null), cancellationToken);
+
         await ctx.Models
             .Where(x => x.Id != KnownIds.SeedModelId)
             .ExecuteDeleteAsync(cancellationToken);
@@ -538,6 +552,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.ParentId, (Guid?)null), cancellationToken);
         await ctx.ConversationUsageToolCalls.ExecuteDeleteAsync(cancellationToken);
 
+        await ctx.ConversationUsageTurns.ExecuteDeleteAsync(cancellationToken);
+
         await ctx.ConversationUsage.ExecuteDeleteAsync(cancellationToken);
     }
 
@@ -615,6 +631,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             ToolName = "Weather_forecast",
             Source = "Weather",
             McpServerId = mcpServerId,
+            // The enclosing root's iteration, not one of its own: that is what the middleware
+            // reports for a nested call, and what makes a delta query group correctly.
+            Iteration = 1,
             InputTokens = 30,
             OutputTokens = 20,
             TotalTokens = 50,
@@ -631,6 +650,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             ToolName = "ResearchAgent",
             Source = "Research Agent",
             CallId = "call_1",
+            Iteration = 1,
             InputTokens = 70,
             OutputTokens = 40,
             TotalTokens = 110,
@@ -657,7 +677,30 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             DateCreated = date,
             // Flat, nested row included: this navigation is what gives each row its owning usage
             // id, and a child reachable only through its parent would be saved without one.
-            ToolCalls = [parent, child]
+            ToolCalls = [parent, child],
+            // Two model turns whose inputs and outputs partition the assistant columns above, so a
+            // reader can check that invariant against a real database rather than only in memory.
+            Turns =
+            [
+                new ConversationUsageTurn
+                {
+                    Iteration = 0,
+                    ResponseId = "resp-0",
+                    InputTokens = 4,
+                    OutputTokens = 3,
+                    TotalTokens = 7,
+                    DateCreated = date
+                },
+                new ConversationUsageTurn
+                {
+                    Iteration = 1,
+                    ResponseId = "resp-1",
+                    InputTokens = 7,
+                    OutputTokens = 4,
+                    TotalTokens = 11,
+                    DateCreated = date
+                }
+            ]
         };
 
         ctx.ConversationUsage.Add(usage);

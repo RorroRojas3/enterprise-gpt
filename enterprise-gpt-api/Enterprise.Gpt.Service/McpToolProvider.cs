@@ -242,8 +242,22 @@ namespace Enterprise.Gpt.Service
                 // MCP call attributed to this server rather than as an anonymous function, and it
                 // bridges the server's progress notifications into the streamed status feed. The
                 // renaming happens first so the tracked wrapper preserves the prefixed name.
+                //
+                // The catalog name is passed explicitly rather than letting the overload read the
+                // server's self-advertised ServerInfo name, because that name and this prefix would
+                // then be two different strings. Every consumer that has to undo the prefix — the
+                // client, which strips it to label a card with the tool that ran, and
+                // UsageReportTranslator's fallback, which matches a reported source back to a
+                // catalog row — needs the name the prefix was built from. It is also the name the
+                // user picked in the server selector, which is what they expect to see beside the
+                // tool. enableProgress is stated rather than defaulted: it is the only reason the
+                // sub-status lines exist, and a silent default flip would remove them with nothing
+                // failing.
                 var prefix = SanitizeToolNamePrefix(server.Name);
-                List<AITool> prefixedTools = [.. tools.Select(t => t.WithName($"{prefix}_{t.Name}")).WithTracking(client)];
+                List<AITool> prefixedTools =
+                [
+                    .. tools.Select(t => t.WithName($"{prefix}_{t.Name}").WithTracking(server.Name, enableProgress: true))
+                ];
 
                 _logger.LogInformation("Connected to MCP server {McpServerId} and listed {ToolCount} tools", server.Id, prefixedTools.Count);
 

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { activityLabel } from '@domain/stream/activity-label';
 import { AssistantActivity } from '@domain/stream/andes/assistant-ui.contract';
 import { KindBadge } from '@shared/badge/kind-badge/kind-badge';
 import { Icon } from '@shared/icon/icon';
@@ -14,10 +15,14 @@ let nextId = 0;
  * the work it invoked nested inside it (US-502) and its own cost behind a
  * chevron (US-504).
  *
- * `displayName` is the label and the kind is a **separate** badge — the
- * contract keeps them apart so no card ever reads "Calling Jira Cloud MCP".
- * `source` renders verbatim: the "Atlassian · host" composition is the
- * server's, arriving as one string.
+ * The label is `displayName` put through `activityLabel`, and the kind is a
+ * **separate** badge — the contract keeps them apart so no card ever reads
+ * "Calling Jira Cloud MCP". For an MCP activity `displayName` is the tool the
+ * model called, prefixed with the server it was leased from; `activityLabel`
+ * removes that prefix and reads the rest as words. `source` renders verbatim
+ * beneath it: the "Atlassian · host" composition is the server's, arriving as
+ * one string, and it is what keeps the server visible once the label stops
+ * naming it.
  *
  * Nesting is a render concern only. The vendored fold already hangs a child
  * off the parent named by its `parentScopeId`, so this component walks
@@ -40,6 +45,13 @@ export class ActivityCard {
   readonly depth = input(0);
 
   protected readonly detailId = `activity-usage-${nextId++}`;
+
+  /**
+   * What the card is called. The live region derives its own from the same
+   * function, so the two cannot disagree — but they are two computations, not
+   * one: changing this signal does not change what is announced.
+   */
+  protected readonly label = computed(() => activityLabel(this.activity()));
 
   protected readonly expanded = signal(false);
 
@@ -74,9 +86,15 @@ export class ActivityCard {
   /** No chevron on a running activity: there is nothing settled to show yet. */
   protected readonly expandable = computed(() => this.usageEntries().length > 0);
 
-  protected readonly toggleLabel = computed(
-    () => `Cost of ${this.activity().displayName || 'this activity'}`,
-  );
+  /**
+   * The chevron's accessible name. It quotes the *rendered* label rather than
+   * the raw `displayName` so that a speech-input user can reach the control by
+   * saying what they can see: the button's own content is a decorative icon, so
+   * the only text they have to go on is the card's label beside it. (Not a WCAG
+   * 2.5.3 failure — that criterion needs a visible text label, which this
+   * control does not have — but the same reasoning it exists for.)
+   */
+  protected readonly toggleLabel = computed(() => `Cost of ${this.label() || 'this activity'}`);
 
   protected toggle(): void {
     this.expanded.update((expanded) => !expanded);

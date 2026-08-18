@@ -1031,8 +1031,8 @@ describe('TurnStore', () => {
 
       expect(spoken).toEqual([
         'Waiting for a response',
-        'Andes Test MCP is running',
-        'Andes Test MCP completed',
+        'Get forecast is running',
+        'Get forecast completed',
         'Writing the answer',
       ]);
     });

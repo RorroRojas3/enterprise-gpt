@@ -17,13 +17,20 @@ public sealed class UsageReportTranslatorTests
 {
     private static readonly DateTimeOffset _date = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
 
-    private static UsageDetails Usage(long input, long output, long? total = null)
+    private static UsageDetails Usage(
+        long input,
+        long output,
+        long? total = null,
+        long? cached = null,
+        long? reasoning = null)
     {
         return new UsageDetails
         {
             InputTokenCount = input,
             OutputTokenCount = output,
-            TotalTokenCount = total ?? input + output
+            TotalTokenCount = total ?? input + output,
+            CachedInputTokenCount = cached,
+            ReasoningTokenCount = reasoning
         };
     }
 
@@ -37,6 +44,38 @@ public sealed class UsageReportTranslatorTests
         };
     }
 
+    private static ChatUsageReport ReportWithTurns(
+        UsageDetails assistant,
+        AssistantTurnUsage[] turns,
+        params ToolCallUsage[] toolCalls)
+    {
+        return new ChatUsageReport
+        {
+            AssistantUsage = assistant,
+            ToolCalls = toolCalls,
+            Turns = turns,
+            TotalUsage = assistant
+        };
+    }
+
+    private static AssistantTurnUsage Turn(
+        int iteration,
+        // Non-null on the middleware's own type, unlike the two identifiers beside it, so a turn
+        // that reported nothing is expressed as a UsageDetails whose counts are null rather than as
+        // an absent one.
+        UsageDetails? usage = null,
+        string? responseId = null,
+        string? modelId = null)
+    {
+        return new AssistantTurnUsage
+        {
+            Iteration = iteration,
+            Usage = usage ?? new UsageDetails(),
+            ResponseId = responseId,
+            ModelId = modelId
+        };
+    }
+
     private static ToolCallUsage Call(
         string toolName,
         UsageDetails? usage = null,
@@ -45,6 +84,7 @@ public sealed class UsageReportTranslatorTests
         string? callId = null,
         bool succeeded = true,
         TimeSpan duration = default,
+        int iteration = 0,
         params ToolCallUsage[] children)
     {
         return new ToolCallUsage
@@ -56,6 +96,7 @@ public sealed class UsageReportTranslatorTests
             Usage = usage,
             Succeeded = succeeded,
             Duration = duration,
+            Iteration = iteration,
             Children = children
         };
     }
@@ -360,5 +401,163 @@ public sealed class UsageReportTranslatorTests
         Assert.Equal(256, row.ToolName.Length);
         Assert.Equal(256, row.Source!.Length);
         Assert.Equal(128, row.CallId!.Length);
+    }
+
+    // The per-turn breakdown is what makes a tool's prompt cost attributable: the cost of the calls
+    // one turn issued is the growth of the prompt between that turn and the next, and neither term
+    // exists without these rows.
+    [Fact]
+    public void Translate_ReportWithTurns_RecordsOneRowPerTurnInReportOrder()
+    {
+        var report = ReportWithTurns(
+            Usage(16, 10),
+            [
+                Turn(0, Usage(5, 3), responseId: "resp-0"),
+                Turn(1, Usage(11, 7), responseId: "resp-1")
+            ],
+            Call("Weather_forecast", Usage(0, 0), kind: ToolKind.McpTool));
+
+        var turns = UsageReportTranslator.Translate(report, [], _date).Turns;
+
+        Assert.Equal([0, 1], turns.Select(turn => turn.Iteration));
+        Assert.Equal(["resp-0", "resp-1"], turns.Select(turn => turn.ResponseId));
+        Assert.Equal([5, 11], turns.Select(turn => turn.InputTokens));
+        Assert.Equal([3, 7], turns.Select(turn => turn.OutputTokens));
+        Assert.All(turns, turn => Assert.Equal(_date, turn.DateCreated));
+    }
+
+    // The turn rows partition the assistant columns rather than adding to them. A report that
+    // summed across the two would double-count every assistant token in the trail.
+    [Fact]
+    public void Translate_ReportWithTurns_TurnTokensSumToTheAssistantTotals()
+    {
+        var report = ReportWithTurns(Usage(16, 10), [Turn(0, Usage(5, 3)), Turn(1, Usage(11, 7))]);
+
+        var result = UsageReportTranslator.Translate(report, [], _date);
+
+        Assert.Equal(result.InputTokens, result.Turns.Sum(turn => turn.InputTokens ?? 0));
+        Assert.Equal(result.OutputTokens, result.Turns.Sum(turn => turn.OutputTokens ?? 0));
+    }
+
+    // A non-streamed request reports one aggregate and no breakdown. Synthesising a turn from that
+    // aggregate would manufacture an iteration nobody reported and pair it with the zero the
+    // non-streaming path stamps on every tool call, producing a delta out of thin air.
+    [Fact]
+    public void Translate_ReportWithoutTurns_RecordsNoTurnRows()
+    {
+        var report = Report(Usage(11, 7), Call("forecast", Usage(1, 1)));
+
+        var result = UsageReportTranslator.Translate(report, [], _date);
+
+        Assert.Empty(result.Turns);
+        Assert.Equal(11, result.InputTokens);
+    }
+
+    // A provider that reports a usage block with nothing in it is saying it did not count, which is
+    // not the same as counting zero — and only one of those belongs in a cost report.
+    [Fact]
+    public void Translate_TurnReportingNoCounts_LeavesThemNullRatherThanZero()
+    {
+        var report = ReportWithTurns(Usage(0, 0), [Turn(0, new UsageDetails())]);
+
+        var turn = Assert.Single(UsageReportTranslator.Translate(report, [], _date).Turns);
+
+        Assert.Null(turn.InputTokens);
+        Assert.Null(turn.OutputTokens);
+        Assert.Null(turn.TotalTokens);
+    }
+
+    // Grouping tool calls by iteration is the whole point of the column, so it has to survive the
+    // flattening that Depth and Sequence already survive.
+    [Fact]
+    public void Translate_ToolCalls_CarryTheIterationThatIssuedThem()
+    {
+        var report = ReportWithTurns(
+            Usage(0, 0),
+            [Turn(0, Usage(5, 3)), Turn(1, Usage(11, 7))],
+            Call("first", Usage(1, 1), iteration: 0),
+            Call("second", Usage(1, 1), iteration: 1));
+
+        var rows = UsageReportTranslator.Translate(report, [], _date).ToolCalls;
+
+        Assert.Equal([0, 1], rows.Select(row => row.Iteration));
+    }
+
+    // A nested call reports the iteration of the outer turn that issued its enclosing root, not one
+    // of its own — which is exactly why a delta query has to restrict to depth zero.
+    [Fact]
+    public void Translate_NestedToolCall_CarriesTheEnclosingRootsIteration()
+    {
+        var child = Call("child", Usage(1, 1), iteration: 2);
+        var report = ReportWithTurns(
+            Usage(0, 0),
+            [Turn(0, Usage(5, 3))],
+            Call("parent", Usage(4, 4), kind: ToolKind.Agent, iteration: 2, children: child));
+
+        var rows = UsageReportTranslator.Translate(report, [], _date).ToolCalls;
+
+        Assert.Equal([0, 1], rows.Select(row => row.Depth));
+        Assert.All(rows, row => Assert.Equal(2, row.Iteration));
+    }
+
+    // Same reasoning as the tool-name clip: this write runs after the answer has streamed, so an
+    // unusually long provider identifier must not fail the turn's accounting.
+    [Fact]
+    public void Translate_OversizedTurnIdentifiers_ClipsThemToTheirColumnWidths()
+    {
+        var report = ReportWithTurns(
+            Usage(0, 0),
+            [Turn(0, Usage(1, 1), responseId: new string('r', 400), modelId: new string('m', 800))]);
+
+        var turn = Assert.Single(UsageReportTranslator.Translate(report, [], _date).Turns);
+
+        Assert.Equal(ConversationUsageTurn.ResponseIdMaxLength, turn.ResponseId!.Length);
+        Assert.Equal(ConversationUsageTurn.ReportedModelIdMaxLength, turn.ReportedModelId!.Length);
+    }
+
+    // Both counts are billed subsets of their parent column, and both are dropped by the
+    // middleware's aggregation today — so this pins the wiring, not the middleware.
+    [Fact]
+    public void Translate_TurnsReportingDetailCounts_SumsThemOntoTheRow()
+    {
+        var report = ReportWithTurns(
+            Usage(16, 10),
+            [
+                Turn(0, Usage(5, 3, cached: 2, reasoning: 1)),
+                Turn(1, Usage(11, 7, cached: 4, reasoning: 3))
+            ]);
+
+        var result = UsageReportTranslator.Translate(report, [], _date);
+
+        Assert.Equal(6, result.CachedInputTokens);
+        Assert.Equal(4, result.ReasoningTokens);
+    }
+
+    // The branch between the two below: a non-null figure that is silently partial. Worth pinning
+    // because nothing on the row says so — only the turn rows do.
+    [Fact]
+    public void Translate_SomeTurnsReportingDetailCounts_SumsOnlyWhatWasReported()
+    {
+        var report = ReportWithTurns(
+            Usage(16, 10),
+            [Turn(0, Usage(5, 3, cached: 2)), Turn(1, Usage(11, 7))]);
+
+        var result = UsageReportTranslator.Translate(report, [], _date);
+
+        Assert.Equal(2, result.CachedInputTokens);
+        Assert.Null(result.ReasoningTokens);
+    }
+
+    // Null is not zero: no provider reporting a cache figure is a different fact from a cache miss,
+    // and only one of them should reach a cost report.
+    [Fact]
+    public void Translate_TurnsReportingNoDetailCounts_LeavesThemNull()
+    {
+        var report = ReportWithTurns(Usage(16, 10), [Turn(0, Usage(5, 3)), Turn(1, Usage(11, 7))]);
+
+        var result = UsageReportTranslator.Translate(report, [], _date);
+
+        Assert.Null(result.CachedInputTokens);
+        Assert.Null(result.ReasoningTokens);
     }
 }

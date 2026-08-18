@@ -11,7 +11,7 @@ That was enough while a turn was only ever "the model talking". It is not enough
 So the stream now carries **events instead of text**. Each one is a JSON object in its own SSE frame, and answer text is just one of the eight kinds:
 
 ```text
-data: {"kind":"ActivityStarted","scopeId":"s1","depth":1,"toolKind":"McpTool","displayName":"Weather","source":"Weather","timestamp":"2026-08-08T10:14:02.117+00:00"}
+data: {"kind":"ActivityStarted","scopeId":"s1","depth":1,"toolKind":"McpTool","displayName":"Weather_get_forecast","source":"Weather","timestamp":"2026-08-08T10:14:02.117+00:00"}
 
 data: {"kind":"TextDelta","depth":0,"toolKind":"Unknown","text":"It will be "}
 ```
@@ -51,8 +51,8 @@ sequenceDiagram
 |---|---|
 | Framing and serialization | `ConversationEndpoints.StreamConversationAsync` ([`ConversationEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs)) |
 | Producing the events | `ConversationService.StreamConversationCoreAsync` ([`ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs)), via `ToUiEventsAsync()` |
-| The event type and its JSON | `Andes.Extensions.AI.UI` 0.5.0 — `AssistantUiEvent`, `AssistantUiJsonContext` |
-| The client-side reducer | `Andes.Extensions.AI.UI` 0.5.0, `typescript/andes-assistant-ui.ts` (§5.2) |
+| The event type and its JSON | `Andes.Extensions.AI.UI` 0.7.0 — `AssistantUiEvent`, `AssistantUiJsonContext` |
+| The client-side reducer | `Andes.Extensions.AI.UI` 0.7.0, `typescript/andes-assistant-ui.ts` (§5.2) |
 | What the turn records | [Conversation Usage and Favourites](usage-and-favorites.md) |
 
 ## 2. Quick start
@@ -198,8 +198,8 @@ Every field except `kind`, `depth` and `timestamp` is optional and **omitted ent
 | `parentScopeId` | string | The enclosing activity, absent when the activity is top-level (§5.1) |
 | `depth` | number | Display depth: `0` request-level, `1` a top-level activity, `2` a sub-status, deeper for nesting |
 | `toolKind` | string | `Unknown`, `Function`, `McpTool` or `Agent` — a badge, kept separate from the label |
-| `displayName` | string | The clean name, with no `"Calling"` prefix and no kind word appended. Render it once and show `toolKind` as a badge; the contract carries no pre-composed header strings, so labels localize |
-| `source` | string | Where the tool came from — an MCP server's name, or an agent's |
+| `displayName` | string | The clean name, with no `"Calling"` prefix and no kind word appended. Render it once and show `toolKind` as a badge; the contract carries no pre-composed header strings, so labels localize. **What the name *is* depends on `toolKind`** — see the carve-out below |
+| `source` | string | Where the tool came from — an MCP server's name, or an agent's. For `McpTool` it is the server's **catalog** name, the one an administrator registered and the user picked in the server selector |
 | `progress` / `progressTotal` | number | Numerator and denominator for a progress bar. MCP servers report these as single-precision floats widened to `double`, so format with a rounding specifier before display |
 | `durationSeconds` | number | Elapsed time for a completion event, or the whole turn's duration on `Finished` |
 | `text` | string | The answer chunk (`TextDelta`) or the reasoning chunk (`ReasoningDelta`) |
@@ -208,6 +208,18 @@ Every field except `kind`, `depth` and `timestamp` is optional and **omitted ent
 
 > **`depth` here is not the `Depth` column in the audit trail.** The event's depth is a *display* depth that counts the request as level 0 and inserts a level for sub-statuses; the persisted [`ConversationUsageToolCall.Depth`](usage-and-favorites.md#63-coreconversationusagetoolcall) counts nesting only, so a tool the assistant called directly is `1` on the wire and `0` in the database. They answer different questions and are not interchangeable.
 
+**`displayName` means something different per `toolKind`, and that changed in 0.7.0.** The field is one string in the schema and three different things in practice:
+
+| `toolKind` | What `displayName` carries | What `source` carries |
+|---|---|---|
+| `McpTool` | The **raw MCP tool name** the model called. For a tool this API leased it is `{sanitizedServer}_{tool}` — `Weather_get_forecast` — because `McpToolProvider` renames every leased tool before handing it to the tracking wrapper | The **catalog** server name — `Weather` |
+| `Function` | The function's own identifier, a code name in whatever case the declaration used (`search_documents`) | Absent — a plain function has no origin beyond itself |
+| `Agent` | The agent's display name, already written for a reader (`Forecast Agent`) | The agent's identifier |
+
+Through 0.5.0 an `McpTool` activity put the **server** name in both fields, so a card read `Weather` twice and never named the tool that ran. Nothing in the schema changed — no field was added, removed or retyped, and `npm run check:contract` compares the vendored TypeScript rather than the meaning — so this is the kind of upgrade that passes every mechanical check and still changes what a user reads (§9).
+
+**A client is expected to undo the prefix.** `source` is the exact string the prefix was built from, which is a property of the API rather than a coincidence: `McpToolProvider` builds the prefix with `SanitizeToolNamePrefix(server.Name)` and passes that same `server.Name` to `WithTracking`, deliberately rather than letting the wrapper read the server's self-advertised `ServerInfo` name — those two strings need not agree, and if they diverged the prefix would no longer be strippable. The shipped client does the stripping in [`activity-label.ts`](../../enterprise-gpt-ui/src/app/domain/stream/activity-label.ts): sanitize `source` the same way, remove a leading `{sanitized}_`, turn the remaining underscores into spaces and upper-case the first character, so `Weather_get_forecast` + `Weather` renders as **Get forecast** with **Weather** beneath it. Every branch that cannot prove the prefix leaves the name alone — a wrong strip produces a plausible-looking wrong label, while an unstripped one is merely verbose.
+
 ### 4.3 A turn, frame by frame
 
 A turn that calls one MCP tool and then answers, with the frames' blank-line separators elided:
@@ -215,7 +227,7 @@ A turn that calls one MCP tool and then answers, with the frames' blank-line sep
 ```json
 {"kind":"Status","depth":0,"toolKind":"Unknown","message":"Starting","timestamp":"2026-08-08T10:14:01.874+00:00"}
 {"kind":"ReasoningDelta","depth":0,"toolKind":"Unknown","text":"Reviewing the request and preparing a response.\n\n"}
-{"kind":"ActivityStarted","scopeId":"s1","depth":1,"toolKind":"McpTool","displayName":"Weather","source":"Weather","timestamp":"2026-08-08T10:14:02.117+00:00"}
+{"kind":"ActivityStarted","scopeId":"s1","depth":1,"toolKind":"McpTool","displayName":"Weather_get_forecast","source":"Weather","timestamp":"2026-08-08T10:14:02.117+00:00"}
 {"kind":"ActivityProgress","scopeId":"s1","depth":2,"toolKind":"McpTool","message":"Fetching forecasts","progress":3,"progressTotal":7,"timestamp":"2026-08-08T10:14:03.402+00:00"}
 {"kind":"ActivityCompleted","scopeId":"s1","depth":1,"toolKind":"McpTool","durationSeconds":2.41,"timestamp":"2026-08-08T10:14:04.531+00:00"}
 {"kind":"TextDelta","depth":0,"toolKind":"Unknown","text":"It will be "}
@@ -224,6 +236,8 @@ A turn that calls one MCP tool and then answers, with the frames' blank-line sep
 ```
 
 The first two frames are the server's own, and **every** turn opens with them — synthesized in `ConversationService.StreamConversationCoreAsync` as plain `AssistantUiEvent` yields, not through the middleware's `ChatProgressUpdate.CreateCustom(...)`. They sit after every failure point that can still answer with problem JSON and ahead of the model's first token (§3.3), so the client hears something during model latency. The `Status` carries a real timestamp; the `ReasoningDelta` leaves it at its default, per §4.2's rule for deltas, and its trailing blank line separates it from a model's own first reasoning delta (§4.1).
+
+The MCP activity names the **tool** (`Weather_get_forecast`) and leaves the **server** in `source` (`Weather`); a client renders that pair as "Get forecast" over "Weather" (§4.2).
 
 Note what is *not* there: no prompt, no tool arguments, no tool results (§6.1).
 
@@ -243,10 +257,10 @@ Agents nest arbitrarily: an agent invoked as a tool opens its own scope, and the
 
 ### 5.2 Do not write the reducer — the package ships it
 
-`Andes.Extensions.AI.UI` 0.5.0 includes a TypeScript file that is a 1:1 mirror of the C# contract, generated against the same JSON the endpoint writes:
+`Andes.Extensions.AI.UI` 0.7.0 includes a TypeScript file that is a 1:1 mirror of the C# contract, generated against the same JSON the endpoint writes:
 
 ```text
-~/.nuget/packages/andes.extensions.ai.ui/0.5.0/typescript/andes-assistant-ui.ts
+~/.nuget/packages/andes.extensions.ai.ui/0.7.0/typescript/andes-assistant-ui.ts
 ```
 
 It exports the interfaces (`AssistantUiEvent`, `AssistantActivity`, `AssistantStatusSnapshot`, `UsageSummary`, `SubStatus`) and two functions:
@@ -297,7 +311,7 @@ This section used to record a breaking change: the old `enterprise-ui/` client r
 1. **Frame parsing** — shipped as [`createSseFrameCodec()`](../../enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts), a synchronous push decoder behind the [`StreamCodec`](../../enterprise-gpt-ui/src/app/domain/stream/stream-codec.ts) interface: §3.2's framing, a carry-over buffer for chunk boundaries that fall mid-frame or mid-character, and a `flush()` that salvages a final frame that truncation robbed of its blank line. A raw-text fallback ([`raw-text-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/raw-text-codec.ts)), selected by the `features.rawStreamCodec` config flag, serves a deployment still running a pre-framing server.
 2. **The reducer** — vendored byte-for-byte at [`domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) and drift-checked by `npm run check:contract`, exactly as §5.2 prescribes. Its fold semantics for all eight event kinds are pinned by [`assistant-ui.fold.spec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.fold.spec.ts) — which exercises the vendored `foldAssistantEvents`, never a reimplementation.
 3. **A store, not a string** — the transport half exists: [`ConversationStreamClient`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts) delivers batches of already-decoded events, checks the problem body before reading a single body byte (§3.3's "before" table), and treats a fault after the body began as §3.3's "after" case — a graceful completion, leaving "ended without `Finished`" detection to the turn store US-406 builds. The selection half also exists: [`TurnSettingsStore`](../../enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts) holds the model and MCP servers the next turn will use (US-402, US-403).
-4. **Activity rendering** — still to come (US-406 and EP-5/EP-6), on top of the snapshot the vendored fold produces.
+4. **Activity rendering** — shipped on top of the snapshot the vendored fold produces. [`ActivityCard`](../../enterprise-gpt-ui/src/app/features/chat/transcript/activity-card.ts) draws one card per activity with `toolKind` as a separate badge and `source` beneath the label, recurses into `children` for nesting, and puts each card's cost strip behind a chevron. The label is `displayName` through [`activityLabel`](../../enterprise-gpt-ui/src/app/domain/stream/activity-label.ts), which applies §4.2's per-kind carve-out. **The cost strip shows duration only** — see §9 for why no token figure reaches it.
 5. **Cancellation** — shipped with the transport: the caller's Stop, sign-out, and unsubscription compose into one `AbortSignal` that aborts the fetch. The server-side behaviour is unchanged — aborting still ends the turn, and the server still records what it spent.
 
 ## 8. Testing
@@ -320,7 +334,10 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 - **No mid-stream error signal.** A turn that faults after the first frame ends the body with no explanation (§3.3) — and since the synthetic opening pair, that includes a provider faulting on its very first token. A terminal `error` event kind would be a contract addition, not a fix, and would still not help a connection that dies.
 - **Beyond the opening pair, `Status` events are the middleware's own.** The two frames every turn opens with (§4.3) are the only events this application authors itself — yielded directly as `AssistantUiEvent`s in the service, not through the middleware. A mid-turn request-level status would still come from `ChatProgressUpdate.CreateCustom(...)`.
 - **The activity tree is not persisted for replay.** It is reconstructible from SQL but not exposed over HTTP (§6.2).
-- **`AssistantUiEvent` is a package type, not ours.** Its JSON shape is pinned by `Andes.Extensions.AI.UI` 0.5.0; a major upgrade of that package is an API change for every client of this endpoint, and should be treated as one.
+- **No per-activity token cost ever reaches the wire, and the per-turn accounting did not change that.** `AssistantActivity.usage` exists in the contract and the client already formats it, but the fold never writes it: the only `usage` on the wire is the turn total on `Finished`. Three separate things would each have to give, and they are independent. First, `ToolCallUsage.Usage` is null for an MCP tool because the MCP protocol has no token field — so the middleware has nothing to attribute. Second, what a tool *actually* costs is the growth of the **next** iteration's prompt ([usage §3.9](usage-and-favorites.md#39-turn-rows-partition-the-assistant-columns-they-never-add-to-them)), a number that does not exist yet when `ActivityCompleted` is emitted — the tool has returned, but the turn it feeds has not run. Third, by `Finished` the figure *is* computable, but no event kind attaches usage to an already-completed activity, and it would be a group figure rather than a per-tool one whenever an iteration issued several calls. So the SQL trail can answer "what did this tool cost" after the fact while the live card cannot, and that asymmetry is structural rather than an omission.
+- **`AssistantUiEvent` is a package type, not ours.** Its JSON shape is pinned by `Andes.Extensions.AI.UI` 0.7.0; a major upgrade of that package is an API change for every client of this endpoint, and should be treated as one.
+- **A package upgrade can change what a field *means* without changing the shape it has.** 0.5.0 → 0.7.0 added, removed and retyped nothing, and `npm run check:contract` — which diffs the vendored TypeScript against the package's own — passed on the new file exactly as it had on the old. What changed was the content of `displayName` on an `McpTool` activity (§4.2), which is invisible to every mechanical gate and visible to every user. Read the package's release notes on an upgrade; the drift check is not a substitute for them.
+- **A client that undoes the tool-name prefix depends on two API decisions staying true.** `McpToolProvider` must keep building the prefix from the catalog name *and* keep handing `WithTracking` that same catalog name. Reverting to the overload that reads the server's self-advertised name would leave `source` and the prefix as two different strings, and every stripped label would silently stop stripping — no error, no failing check, just verbose labels.
 
 ## 10. Key files
 
@@ -331,5 +348,7 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 | Pipeline registration (`UseToolTracking` before `UseFunctionInvocation`) | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
 | Client codec | [`enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts) |
 | Client transport | [`enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts) |
-| TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.5.0, `typescript/andes-assistant-ui.ts`, vendored at [`enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) |
+| Client label derivation (§4.2) | [`enterprise-gpt-ui/src/app/domain/stream/activity-label.ts`](../../enterprise-gpt-ui/src/app/domain/stream/activity-label.ts) |
+| The catalog name behind `source` and the tool prefix | [`Enterprise.Gpt.Service/McpToolProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/McpToolProvider.cs) (`SanitizeToolNamePrefix`, `WithTracking(server.Name, enableProgress: true)`) |
+| TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.7.0, `typescript/andes-assistant-ui.ts`, vendored at [`enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) |
 | Related reference | [Conversation Streaming Client](streaming-client.md), [Conversation Usage and Favourites](usage-and-favorites.md), [Model Management](../models/model-management.md), [Azure OpenAI Provider](../models/azure-openai.md) |

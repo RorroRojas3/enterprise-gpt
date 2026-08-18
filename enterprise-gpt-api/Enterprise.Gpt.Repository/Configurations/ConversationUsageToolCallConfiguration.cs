@@ -51,5 +51,10 @@ public sealed class ConversationUsageToolCallConfiguration : IEntityTypeConfigur
         // No index on ModelId yet: it is null on every row this application can currently write,
         // so an index would cost writes on the largest table in the schema and serve nothing. Add
         // it with the first agent that reports a model.
+
+        // None on Iteration either, deliberately. Attribution groups a single call's rows by it,
+        // and the (ConversationUsageId, Sequence) index above already seeks to those rows — the
+        // iteration is a filter over a handful of them, not a search key. A reporting query that
+        // grouped by iteration across many calls would be the thing that changes this.
     }
 }

@@ -264,6 +264,32 @@ public sealed class McpToolProviderTests : IDisposable
         await goodLease.Received(1).DisposeAsync();
     }
 
+    /// <summary>
+    /// Pins the exact substitution the tool-name prefix is built from.
+    /// </summary>
+    /// <remarks>
+    /// Two consumers undo this prefix and neither can see this method: the client, which strips it
+    /// to label an activity card with the tool that ran, reimplements it as a regular expression;
+    /// and <c>UsageReportTranslator</c>, which rebuilds the prefix to attribute a call back to a
+    /// catalog server. The cases below are the ones where a looser rule — a <c>\w</c> class, or
+    /// anything Unicode-aware — silently disagrees, which is the drift worth catching here rather
+    /// than in a mislabelled card nobody reports.
+    /// </remarks>
+    [Theory]
+    [InlineData("Weather", "Weather")]
+    // Kept, not replaced: a hyphenated server is the case a `\w` class gets wrong.
+    [InlineData("My-Server", "My-Server")]
+    [InlineData("weather_api", "weather_api")]
+    [InlineData("Andes Test MCP", "Andes_Test_MCP")]
+    [InlineData("Jira Cloud (EU)", "Jira_Cloud__EU_")]
+    // One underscore per UTF-16 code unit, because the substitution iterates chars.
+    [InlineData("Météo", "M_t_o")]
+    public void SanitizeToolNamePrefix_ServerName_ReplacesEverythingOutsideTheAsciiToolNameClass(
+        string serverName, string expected)
+    {
+        Assert.Equal(expected, McpToolProvider.SanitizeToolNamePrefix(serverName));
+    }
+
     private sealed class FakeTool : AITool
     {
     }

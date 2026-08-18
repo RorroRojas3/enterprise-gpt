@@ -21,8 +21,11 @@ const CANNED_EVENTS = {
   },
   ActivityStarted: {
     kind: 'ActivityStarted',
+    // Since Andes 0.7.0 an MCP activity's `displayName` is the tool the model called, which for a
+    // leased tool is `{sanitizedServer}_{tool}` — so this carries the prefix the client strips.
+    // The server name stays in `source`.
     scopeId: 'scope-1',
-    displayName: 'Andes Test MCP',
+    displayName: 'Weather_get_forecast',
     source: 'Weather',
     depth: 1,
     toolKind: 'McpTool',

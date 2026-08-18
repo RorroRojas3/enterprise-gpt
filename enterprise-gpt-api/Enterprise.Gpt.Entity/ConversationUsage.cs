@@ -93,6 +93,25 @@ public class ConversationUsage : BaseEntity
     public long ToolOutputTokens { get; set; }
 
     /// <summary>
+    /// Input tokens the assistant's own turns served from the provider's prompt cache, already
+    /// counted inside <see cref="InputTokens"/>. <see langword="null"/> when the provider reported
+    /// no cache figure, which is not the same as reporting a cache miss.
+    /// </summary>
+    /// <remarks>
+    /// Recorded because cached tokens bill at a discount, so <see cref="EstimatedCost"/> — which
+    /// prices every input token at the same rate — overstates a cached call. Closing that gap needs
+    /// a cached-input price on the catalog model, which does not exist yet; until it does, this
+    /// column is how a report can tell an overstatement is possible.
+    /// </remarks>
+    public long? CachedInputTokens { get; set; }
+
+    /// <summary>
+    /// Reasoning tokens the assistant's own turns produced, already counted inside
+    /// <see cref="OutputTokens"/>, on the same null terms as <see cref="CachedInputTokens"/>.
+    /// </summary>
+    public long? ReasoningTokens { get; set; }
+
+    /// <summary>
     /// What the main assistant's own turns cost, excluding tools.
     /// </summary>
     public long AssistantTokens => InputTokens + OutputTokens;
@@ -214,4 +233,14 @@ public class ConversationUsage : BaseEntity
     /// want only the top level filter on <c>ParentId == null</c>.
     /// </remarks>
     public List<ConversationUsageToolCall> ToolCalls { get; set; } = [];
+
+    /// <summary>
+    /// What the provider reported for each model turn of the call, in the order it reported them.
+    /// </summary>
+    /// <remarks>
+    /// Empty for a call that did not stream — providers report one aggregate then, and the
+    /// middleware surfaces no breakdown — and for every row written before this table existed.
+    /// Empty therefore means "no breakdown available", never "the call had no turns".
+    /// </remarks>
+    public List<ConversationUsageTurn> Turns { get; set; } = [];
 }

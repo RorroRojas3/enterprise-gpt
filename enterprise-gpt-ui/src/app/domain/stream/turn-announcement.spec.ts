@@ -39,7 +39,7 @@ describe('turnAnnouncement', () => {
   it('names the running activity', () => {
     const snapshot = fold([assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })]);
 
-    expect(turnAnnouncement(snapshot, idle)).toBe('Andes Test MCP is running');
+    expect(turnAnnouncement(snapshot, idle)).toBe('Get forecast is running');
   });
 
   it('follows the newest activity into a nested child', () => {
@@ -70,7 +70,7 @@ describe('turnAnnouncement', () => {
       assistantEvent('ActivityCompleted', { scopeId: 'agent-1', toolKind: 'Agent', depth: 2 }),
     ]);
 
-    // "Andes Test MCP is running" again would be the same string twice with one
+    // "Get forecast is running" again would be the same string twice with one
     // thing between it, carrying nothing the reader has not already heard.
     expect(turnAnnouncement(snapshot, idle)).toBe('Forecast Agent completed');
   });
@@ -85,7 +85,7 @@ describe('turnAnnouncement', () => {
       assistantEvent('ActivityFailed', { scopeId: 'fn-1' }),
     ]);
 
-    expect(turnAnnouncement(completed, idle)).toBe('Andes Test MCP completed');
+    expect(turnAnnouncement(completed, idle)).toBe('Get forecast completed');
     // Named, and the count clause suppressed rather than saying "failed" twice.
     expect(turnAnnouncement(failed, idle)).toBe('Search Documents failed');
   });
@@ -106,7 +106,7 @@ describe('turnAnnouncement', () => {
       assistantEvent('ActivityStarted', { scopeId: 'mcp-1' }),
     ]);
 
-    expect(turnAnnouncement(snapshot, idle)).toBe('Andes Test MCP is running');
+    expect(turnAnnouncement(snapshot, idle)).toBe('Get forecast is running');
   });
 
   it('carries a failure past the point the answer starts arriving', () => {
@@ -126,7 +126,7 @@ describe('turnAnnouncement', () => {
       assistantEvent('ActivityStarted', { scopeId: 'mcp-1' }),
     ]);
 
-    expect(turnAnnouncement(snapshot, idle)).toBe('Andes Test MCP is running. 1 step failed');
+    expect(turnAnnouncement(snapshot, idle)).toBe('Get forecast is running. 1 step failed');
   });
 
   it('counts the failures the headline has not already named', () => {
@@ -186,14 +186,14 @@ describe('turnAnnouncement', () => {
 
     // Twelve events — two of them text deltas — reduce to seven distinct
     // strings, every one a state change rather than a chunk of the answer, and
-    // no string repeated. `Andes Test MCP completed` is the one transition not
+    // no string repeated. `Get forecast completed` is the one transition not
     // announced, and the reason is structural rather than about `fn-1`: the
     // headline follows the pre-order-last activity, and `mcp-1` stopped being it
     // the moment `agent-1` started inside it. Removing `fn-1` from the fixture
     // would not bring it back.
     expect(spoken).toEqual([
       'Waiting for a response',
-      'Andes Test MCP is running',
+      'Get forecast is running',
       'Forecast Agent is running',
       'Forecast Agent completed',
       'Search Documents is running',

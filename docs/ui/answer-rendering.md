@@ -534,7 +534,7 @@ Neither exclusion hides anything: both stay fully readable in browse mode, where
 
 ### 10.3 The running commentary is a pure function, and it lives outside the transcript
 
-**The status region is rendered by `Chat`, outside `.chat__body`.** Anything inside the `aria-busy` container is deferred along with the answer — which is what makes the answer's region bearable and what would make this one silent. It is **last in the document**, like the transcript's own two regions and for the same reason: `visually-hidden` is clipped rather than hidden, so a region at the top would put "Andes Test MCP is running" above the conversation title for anyone reading the page in order. It is persistent and empty at rest, because a region created together with its content is not reliably announced.
+**The status region is rendered by `Chat`, outside `.chat__body`.** Anything inside the `aria-busy` container is deferred along with the answer — which is what makes the answer's region bearable and what would make this one silent. It is **last in the document**, like the transcript's own two regions and for the same reason: `visually-hidden` is clipped rather than hidden, so a region at the top would put "Get forecast is running" above the conversation title for anyone reading the page in order. It is persistent and empty at rest, because a region created together with its content is not reliably announced.
 
 What it speaks is [`turnAnnouncement`](../../enterprise-gpt-ui/src/app/domain/stream/turn-announcement.ts) — a pure module in `domain/`, framework-free, tested in Node with no `TestBed`, folded snapshot in and one string out:
 
@@ -543,10 +543,12 @@ What it speaks is [`turnAnnouncement`](../../enterprise-gpt-ui/src/app/domain/st
 | `POST api/conversations` in flight            | `Starting the conversation`       |
 | Nothing has arrived yet                       | `Waiting for a response`          |
 | The model is reasoning, past the server's seed | `Reasoning`                       |
-| An activity is running                        | `Andes Test MCP is running`       |
-| Everything settled, no text yet               | `Andes Test MCP completed` / `… failed` |
+| An activity is running                        | `Get forecast is running`       |
+| Everything settled, no text yet               | `Get forecast completed` / `… failed` |
 | Text has started                              | `Writing the answer`              |
 | Any of the above, with failures it did not name | `Writing the answer. 1 more step failed` |
+
+**An activity is named the same way here as on its card.** Both put `displayName` through [`activityLabel`](../../enterprise-gpt-ui/src/app/domain/stream/activity-label.ts), which for an MCP activity strips the `{server}_` prefix the API stamps onto every tool it leases and reads the rest as words — so the reader hears "Get forecast is running" beside a card that reads "Get forecast", rather than "Weather is running" beside a card that also says "Weather" in its subtitle. They are two computations over one function, not one shared signal: changing the card's label does not change what is announced, and each is pinned by its own spec. The derivation and the contract change behind it are in [Turn Lifecycle §8](../conversations/turn-lifecycle.md#8-rendering-the-turn) and [streaming contract §4.2](../conversations/streaming-contract.md#42-fields).
 
 **Criterion 3 is satisfied by construction rather than by throttling.** Every branch is a fact that changes only on a status transition, and the one branch that reads `snapshot.text` reads it **as a boolean** — so a thousand deltas produce one transition, empty to non-empty, and the binding writes once. Over the recorded twelve-event turn in `fullTurnEvents()` the function yields **seven distinct strings and never repeats one**.
 
@@ -558,7 +560,7 @@ Three decisions inside the module are worth recording, because each is the kind 
 
 **2. Failures are additive, never ranked.** Ranking loses them either way: put a failure first and the region freezes on it for the rest of the turn; put it last and a newer activity — or the answer starting — buries it. So the clause is appended to whatever the headline says. It is a **count** rather than a name because the snapshot records no order among terminal states, and a count is the one thing that can be derived honestly. It is net of any failure the headline already named, or two failures whose newest is one of them would be heard as three ("Search Documents failed. 1 more step failed" is the correct reading of two).
 
-**3. Word forms, not punctuation.** "Andes Test MCP is running", never "Andes Test MCP — running": at verbose punctuation levels some screen readers voice "—" as "em dash", and this string has no reader but a live region, so the connective has to be a word.
+**3. Word forms, not punctuation.** "Get forecast is running", never "Get forecast — running": at verbose punctuation levels some screen readers voice "—" as "em dash", and this string has no reader but a live region, so the connective has to be a word.
 
 ### 10.4 `Answer ready` is a backstop, not a duplicate
 
