@@ -183,6 +183,19 @@ public class ConversationEndpointsTests
     }
 
     [Fact]
+    public async Task GetConversationDocumentsAsync_ServiceReturnsDocuments_ReturnsOkWithPayload()
+    {
+        var conversationId = Guid.NewGuid();
+        List<ConversationDocumentDto> expected = [new() { Id = Guid.NewGuid(), ConversationId = conversationId, Name = "spec.pdf", Extension = ".pdf", MimeType = "application/pdf", Size = 10 }];
+        _conversationService.GetConversationDocumentsAsync(conversationId, Arg.Any<CancellationToken>()).Returns(expected);
+
+        var result = await ConversationEndpoints.GetConversationDocumentsAsync(
+            conversationId, _conversationService, TestContext.Current.CancellationToken);
+
+        Assert.Same(expected, result.Value);
+    }
+
+    [Fact]
     public async Task GetConversationMessagesAsync_ServiceReturnsTranscript_ReturnsOkWithPayload()
     {
         var id = Guid.NewGuid();

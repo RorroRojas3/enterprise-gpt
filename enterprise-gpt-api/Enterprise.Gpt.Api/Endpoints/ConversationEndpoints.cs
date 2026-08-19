@@ -49,6 +49,8 @@ public static class ConversationEndpoints
         group.MapGet("{id:guid}/messages", GetConversationMessagesAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("{id:guid}/documents", GetConversationDocumentsAsync)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         // Content-negotiated by query parameter rather than by Accept header, so a plain browser
         // link can request either format. The 400 carries an errors dictionary, because an
         // unsupported ?format= is rejected by a validator rather than by binding.
@@ -131,6 +133,16 @@ public static class ConversationEndpoints
         DateTimeOffset? before = null, CancellationToken cancellationToken = default)
     {
         var response = await conversationService.GetConversationMessagesAsync(id, take, before, cancellationToken);
+        return TypedResults.Ok(response);
+    }
+
+    // Not-found paths throw NotFoundException in the service and surface as 404 through the
+    // exception-handler chain. A conversation belonging to another user is reported the same way, so
+    // this route cannot be used to probe for conversation ids.
+    internal static async Task<Ok<List<ConversationDocumentDto>>> GetConversationDocumentsAsync(
+        Guid id, IConversationService conversationService, CancellationToken cancellationToken)
+    {
+        var response = await conversationService.GetConversationDocumentsAsync(id, cancellationToken);
         return TypedResults.Ok(response);
     }
 

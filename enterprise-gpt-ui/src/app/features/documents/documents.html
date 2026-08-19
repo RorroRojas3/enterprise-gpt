@@ -1,0 +1,174 @@
+<h1 class="documents__title font-display">Documents</h1>
+
+@if (library.error(); as error) {
+  <!--
+    Instead of the list rather than beside it: a drain that failed part-way holds a
+    set that is neither complete nor knowably incomplete, and showing it would be the
+    silently-partial listing regime A exists to avoid.
+
+    The toolbar is withheld here too — a divergence from the conversations library,
+    whose field stays up beside its panel. That field drives a *server* query a retry
+    can re-run; this one narrows rows the store holds client-side, and over a failed
+    load there is nothing to narrow. Frame 4k draws the error card alone.
+  -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="Documents couldn’t load"
+    (retried)="library.retry()"
+  />
+} @else {
+  <div class="documents__toolbar">
+    <!-- "Filter", not "Search": the criterion's own wording, and honest about the
+         mechanics — it narrows what is already here rather than asking the server. -->
+    <app-search-input
+      class="documents__search"
+      label="Filter documents by name"
+      placeholder="Filter by name"
+      [value]="name()"
+      (searched)="onSearched($event)"
+    />
+
+    <!-- Frame 4j draws the switch checked: grouped is the default, and the URL
+         records only the deviation. -->
+    <div class="form-check form-switch documents__group-toggle">
+      <input
+        id="documents-group-switch"
+        class="form-check-input"
+        type="checkbox"
+        role="switch"
+        [checked]="grouped()"
+        (change)="toggleGrouped()"
+      />
+      <label class="form-check-label" for="documents-group-switch">Group by conversation</label>
+    </div>
+
+    <!--
+      aria-hidden because the same string is handed to the status region below, which
+      announces it once when it changes. Withheld before the first response, where
+      "No documents" would be a claim rather than a count.
+    -->
+    @if (!library.isFirstLoad()) {
+      <p class="documents__count" aria-hidden="true">{{ library.countSummary() }}</p>
+    }
+  </div>
+
+  <!-- Present from first render so a changing count is announced. -->
+  <p class="visually-hidden" role="status">
+    @if (!library.isFirstLoad()) {
+      {{ library.countSummary() }}
+    }
+  </p>
+
+  @if (library.isFirstLoad()) {
+    <div class="documents__card" aria-busy="true">
+      @for (row of skeletonRows; track $index) {
+        <div class="documents__skeleton">
+          <app-skeleton variant="circle" width="16px" height="16px" />
+          <app-skeleton width="60%" />
+          <app-skeleton width="50px" />
+          <app-skeleton width="50px" />
+        </div>
+      }
+    </div>
+  } @else if (library.isEmpty()) {
+    <!--
+      Before the no-matches branch, deliberately: on a zero-document deep link that
+      carries `?name=`, "Nothing uploaded yet" is the truth — there is nothing a
+      cleared filter would reveal.
+
+      No action: uploading happens in a conversation's composer, and a button here
+      could only restate the sentence below it.
+    -->
+    <app-empty-state
+      heading="Nothing uploaded yet"
+      [headingLevel]="2"
+      illustration="ridgeline"
+      message="Attach files in any conversation and they’ll appear here."
+    />
+  } @else if (library.hasNoMatches()) {
+    <!-- Frame 4b's shape: the term named, the scope stated, one clear way out. Over a
+         truncated drain the scope line yields to the partial-set qualifier — an
+         unqualified "no matches" would claim rows the store never loaded. -->
+    <app-empty-state
+      [heading]="noMatchHeading()"
+      [headingLevel]="2"
+      [message]="library.resultsPartialReason() ?? 'Filters cover file names only.'"
+    >
+      <button
+        emptyStateAction
+        type="button"
+        class="btn btn-outline-secondary btn-sm"
+        (click)="clearFilter()"
+      >
+        Clear filter
+      </button>
+    </app-empty-state>
+  } @else {
+    <div class="documents__card">
+      @if (grouped()) {
+        @for (group of library.groups(); track trackGroup(group)) {
+          <div class="documents__group-header">
+            <!--
+              aria-controls only while its target is rendered: a collapsed group's
+              list leaves the DOM, and an id reference to nothing is an axe
+              violation, not a hint.
+            -->
+            <button
+              class="documents__group-chevron"
+              type="button"
+              [attr.aria-expanded]="isExpanded(group.conversationId)"
+              [attr.aria-controls]="
+                isExpanded(group.conversationId) ? groupBodyId(group.conversationId) : null
+              "
+              [attr.aria-label]="groupToggleLabel(group)"
+              (click)="toggleGroup(group.conversationId)"
+            >
+              <app-icon
+                [name]="isExpanded(group.conversationId) ? 'bi-chevron-down' : 'bi-chevron-right'"
+              />
+            </button>
+
+            <app-icon class="documents__group-glyph" name="bi-chat-left" />
+
+            <a class="documents__group-name" [routerLink]="[chatRoute, group.conversationId]">
+              {{ group.conversationName }}
+            </a>
+
+            <span class="documents__group-count">{{ group.countLabel }}</span>
+          </div>
+
+          @if (isExpanded(group.conversationId)) {
+            <ul
+              class="documents__list documents__group-list"
+              role="list"
+              [id]="groupBodyId(group.conversationId)"
+              [attr.aria-label]="'Documents in ' + group.conversationName"
+            >
+              @for (doc of group.documents; track doc.id) {
+                <li><app-document-row [document]="doc" [showConversation]="false" /></li>
+              }
+            </ul>
+          }
+        }
+      } @else {
+        <ul class="documents__list" role="list" aria-label="Documents">
+          @for (doc of library.results(); track doc.id) {
+            <li><app-document-row [document]="doc" /></li>
+          }
+        </ul>
+      }
+    </div>
+
+    <!--
+      One qualifier, never both: unfiltered, the ceiling notice states what the card
+      is showing; filtered, the partial-set reason qualifies the *result* instead,
+      because a count over part of the data is the claim that needs the caveat.
+    -->
+    @if (library.truncated() && !library.hasQuery()) {
+      <p class="documents__ceiling">{{ library.ceilingNotice() }}</p>
+    } @else if (library.resultsPartialReason(); as reason) {
+      <p class="documents__ceiling">{{ reason }}</p>
+    }
+  }
+}

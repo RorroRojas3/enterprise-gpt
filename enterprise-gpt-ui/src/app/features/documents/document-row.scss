@@ -1,0 +1,139 @@
+@use 'breakpoints' as bp;
+
+// Frame 4j's grid — glyph, name, size, date, badge, download — plus the flat view's
+// conversation column, which the frame's grouped rows carry in their group headers
+// instead; US-1003 is what makes that cell conditional here.
+:host {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 90px 100px 110px minmax(0, 220px) 32px;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--bs-border-color);
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+// The grouped variant (US-1003): the conversation cell is in the group header, so its
+// track goes with it rather than leaving a phantom column before the download button.
+:host(.document-row--no-conversation) {
+  grid-template-columns: 30px minmax(0, 1fr) 90px 100px 110px 32px;
+}
+
+.document-row__glyph {
+  font-size: 16px;
+
+  &--fail {
+    color: var(--fail);
+  }
+  &--ok {
+    color: var(--ok);
+  }
+  &--accent {
+    color: var(--accent);
+  }
+  &--warn {
+    color: var(--warn);
+  }
+  &--muted {
+    color: var(--muted);
+  }
+}
+
+.document-row__name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Its children are the grid items — see the template.
+.document-row__meta {
+  display: contents;
+}
+
+.document-row__size,
+.document-row__date {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.document-row__conversation {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--bs-body-color);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+}
+
+.document-row__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover:not([disabled]) {
+    background: var(--surface-2);
+    color: var(--bs-body-color);
+  }
+
+  &[disabled] {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+// Below the sidebar-in-flow width the row re-templates rather than clipping: glyph
+// and name keep the first line with the download control, and the meta wraps beneath
+// — so nothing overflows horizontally at any width (US-1403's rule).
+@include bp.mobile {
+  // Both variants: the media query adds no specificity, so without the second
+  // selector the grouped variant's six-track rule above would win here too.
+  :host,
+  :host(.document-row--no-conversation) {
+    grid-template-columns: 30px minmax(0, 1fr) 32px;
+    height: auto;
+    padding: 8px 14px;
+    row-gap: 4px;
+  }
+
+  .document-row__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .document-row__action {
+    grid-row: 1;
+    grid-column: 3;
+  }
+}

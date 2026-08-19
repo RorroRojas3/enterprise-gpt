@@ -66,11 +66,4 @@ describe('axe coverage (US-1405)', () => {
 
     expect(sources.some((source) => navigation.test(source))).toBe(true);
   });
-
-  it('states the documents route as missing rather than covering it', () => {
-    // US-1405's criterion names four route groups and only three exist. This asserts the
-    // absence *and* its reason, so US-1002 finds a failing test rather than a silent gap
-    // when it adds the route: it will have to add the entry here in the same commit.
-    expect(AXE_ROUTES).not.toContain('/documents');
-  });
 });

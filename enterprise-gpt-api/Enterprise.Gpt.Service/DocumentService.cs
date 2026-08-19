@@ -125,6 +125,20 @@ namespace Enterprise.Gpt.Service
         /// </exception>
         /// <exception cref="StorageNotConfiguredException">Thrown when storage cannot sign a link.</exception>
         Task<DocumentDownloadDto> GetProjectDocumentDownloadAsync(Guid projectId, Guid documentId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Lists the caller's active conversation documents across every conversation, most recently
+        /// uploaded first, as one page for the documents library.
+        /// </summary>
+        /// <remarks>
+        /// Paging arguments are clamped rather than rejected — <paramref name="skip"/> to zero or
+        /// above and <paramref name="take"/> to 1..100.
+        /// </remarks>
+        /// <param name="skip">The number of documents to skip.</param>
+        /// <param name="take">The maximum number of documents to return.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <returns>A page of the caller's conversation documents.</returns>
+        Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -298,10 +312,41 @@ namespace Enterprise.Gpt.Service
             _ctx.Add(document);
             await _ctx.SaveChangesAsync(cancellationToken);
 
+            // Ingestion spans seconds to minutes, and a conversation deactivated meanwhile has already
+            // run its document cascade, which never re-runs — so this insert would otherwise leave an
+            // active document under a deactivated conversation, which the listings treat as impossible.
+            // Re-checking after the save shrinks that window to the cascade's own statement gap.
+            var conversationStillActive = await _ctx.Conversations
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == conversationId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!conversationStillActive)
+            {
+                // Set-based rather than through the tracked entities: if the cascade caught these rows
+                // between the insert and the re-check, their rowversions have moved and a tracked save
+                // would throw DbUpdateConcurrencyException; this shape is a no-op in that case.
+                var deactivatedAt = DateTimeOffset.UtcNow;
+
+                await _ctx.ConversationDocumentChunks
+                    .Where(c => c.ConversationDocumentId == document.Id && !c.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(c => c
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                await _ctx.ConversationDocuments
+                    .Where(d => d.Id == document.Id && !d.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(d => d
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                _logger.LogWarning("Conversation {ConversationId} was deactivated while job {JobId} ingested document {DocumentId}; the document was deactivated to match", conversationId, jobId, document.Id);
+                throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
+            }
+
             _jobStatusStore.Complete(jobId, document.Id, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed");
             _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, ingestion.Chunks.Count);
 
-            return document.MapToChatDocumentDto();
+            return document.MapToConversationDocumentDto();
         }
 
         /// <inheritdoc />
@@ -343,6 +388,34 @@ namespace Enterprise.Gpt.Service
 
             _ctx.Add(document);
             await _ctx.SaveChangesAsync(cancellationToken);
+
+            // Same mid-ingest deactivation window as the conversation path: the project's document
+            // cascade never re-runs, so a row persisted after it must deactivate itself to match.
+            var projectStillActive = await _ctx.Projects
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == projectId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!projectStillActive)
+            {
+                // Set-based for the same reason as the conversation path: idempotent against the
+                // cascade having already deactivated these rows, with no concurrency token involved.
+                var deactivatedAt = DateTimeOffset.UtcNow;
+
+                await _ctx.ProjectDocumentChunks
+                    .Where(c => c.ProjectDocumentId == document.Id && !c.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(c => c
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                await _ctx.ProjectDocuments
+                    .Where(d => d.Id == document.Id && !d.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(d => d
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                _logger.LogWarning("Project {ProjectId} was deactivated while job {JobId} ingested document {DocumentId}; the document was deactivated to match", projectId, jobId, document.Id);
+                throw new NotFoundException($"Project with id '{projectId}' was not found.");
+            }
 
             _jobStatusStore.Complete(jobId, document.Id, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed");
             _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, ingestion.Chunks.Count);
@@ -388,6 +461,46 @@ namespace Enterprise.Gpt.Service
                 .FirstOrDefaultAsync(cancellationToken);
 
             return BuildDownload(document, documentId, userId);
+        }
+
+        /// <inheritdoc />
+        public async Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+        {
+            // Clamped rather than validated: the paging arguments come straight off the query
+            // string, and take = 0 would divide by zero when computing CurrentPage below.
+            skip = Math.Max(skip, 0);
+            take = Math.Clamp(take, 1, 100);
+
+            var userId = _tokenService.GetOid();
+
+            // No conversation-active predicate: DeactivateConversationAsync and its bulk sibling
+            // deactivate the conversation's documents in the same operation, and ingestion re-checks
+            // the conversation after persisting, so an active document implies an active conversation.
+            // The Conversation join in the projection exists only to carry the name, and the
+            // (UserId, DateDeactivated) index serves this filter.
+            var query = _ctx.ConversationDocuments
+                .AsNoTracking()
+                .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                // Id breaks ties: DateCreated alone is not a total order, so two documents ingested
+                // in the same tick could straddle a page boundary and be duplicated or skipped.
+                .OrderByDescending(x => x.DateCreated)
+                .ThenByDescending(x => x.Id)
+                .Skip(skip)
+                .Take(take)
+                .Select(ConversationDocumentMapper.MapToUserDocumentDtoExpression)
+                .ToListAsync(cancellationToken);
+
+            return new PaginatedResponseDto<UserDocumentDto>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                PageSize = take,
+                CurrentPage = (skip / take) + 1
+            };
         }
 
         #region Downloads

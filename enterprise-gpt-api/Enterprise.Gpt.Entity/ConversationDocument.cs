@@ -1,5 +1,4 @@
-﻿using Enterprise.Gpt.Dto;
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Enterprise.Gpt.Entity
 {
@@ -11,18 +10,5 @@ namespace Enterprise.Gpt.Entity
         public Conversation Conversation { get; set; } = null!;
 
         public List<ConversationDocumentChunk> Chunks { get; set; } = [];
-    }
-
-    public static class ChatDocumentExtensions
-    {
-        public static ConversationDocumentDto MapToChatDocumentDto(this ConversationDocument source)
-        {
-            return new ConversationDocumentDto
-            {
-                Id = source.Id,
-                ConversationId = source.ConversationId,
-                Name = source.Name
-            };
-        }
     }
 }

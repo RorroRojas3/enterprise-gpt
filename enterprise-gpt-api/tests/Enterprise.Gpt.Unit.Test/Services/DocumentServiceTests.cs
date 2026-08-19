@@ -1,6 +1,5 @@
 using Azure.Storage.Sas;
 using FluentValidation;
-using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -80,7 +79,7 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     private async Task<Conversation> AddConversationAsync(
-        Guid? userId = null, DateTimeOffset? deactivated = null, Guid? projectId = null)
+        Guid? userId = null, DateTimeOffset? deactivated = null, Guid? projectId = null, string? name = null)
     {
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
@@ -88,7 +87,7 @@ public sealed class DocumentServiceTests : IDisposable
             Id = Guid.NewGuid(),
             UserId = userId ?? KnownIds.SeedUserId,
             ProjectId = projectId,
-            Name = "Test Conversation",
+            Name = name ?? "Test Conversation",
             DateCreated = date,
             DateModified = date,
             DateDeactivated = deactivated
@@ -277,6 +276,27 @@ public sealed class DocumentServiceTests : IDisposable
         Assert.Equal(["chunk 0", "chunk 1", "chunk 2"], document.Chunks.OrderBy(c => c.Index).Select(c => c.Text));
         Assert.Equal([10, 11, 12], document.Chunks.OrderBy(c => c.Index).Select(c => c.TokenCount));
         Assert.Equal([1, 2, 3], document.Chunks.OrderBy(c => c.Index).Select(c => c.SourceNumber));
+    }
+
+    [Fact]
+    public async Task CreateConversationDocumentAsync_ConversationDeactivatedDuringIngestion_DeactivatesTheDocumentAndThrows()
+    {
+        // The enqueue-time ownership check lives in QueueConversationDocumentAsync; by the time this
+        // method persists, the conversation can be gone. A deactivated seed models that window.
+        var conversation = await AddConversationAsync(deactivated: DateTimeOffset.UtcNow);
+        SetUpPipeline(chunkCount: 2);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
+
+        using var ctx = _fixture.CreateContext();
+        var document = await ctx.ConversationDocuments
+            .AsNoTracking()
+            .Include(d => d.Chunks)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(document.DateDeactivated);
+        Assert.All(document.Chunks, chunk => Assert.NotNull(chunk.DateDeactivated));
     }
 
     [Fact]
@@ -582,6 +602,25 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateProjectDocumentAsync_ProjectDeactivatedDuringIngestion_DeactivatesTheDocumentAndThrows()
+    {
+        var project = await AddProjectAsync(deactivated: DateTimeOffset.UtcNow);
+        SetUpPipeline(chunkCount: 2);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
+
+        using var ctx = _fixture.CreateContext();
+        var document = await ctx.ProjectDocuments
+            .AsNoTracking()
+            .Include(d => d.Chunks)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(document.DateDeactivated);
+        Assert.All(document.Chunks, chunk => Assert.NotNull(chunk.DateDeactivated));
+    }
+
+    [Fact]
     public async Task CreateProjectDocumentAsync_ValidDocument_StoresTheBlobUnderAProjectScopedKey()
     {
         // The literal "projects" segment is what keeps a project key from ever colliding with a
@@ -731,9 +770,10 @@ public sealed class DocumentServiceTests : IDisposable
 
     private async Task<ConversationDocument> AddConversationDocumentAsync(
         Conversation conversation, string name = "quarterly report.pdf",
-        string mimeType = "application/pdf", DateTimeOffset? deactivated = null, Guid? uploadedBy = null)
+        string mimeType = "application/pdf", DateTimeOffset? deactivated = null, Guid? uploadedBy = null,
+        DateTimeOffset? dateCreated = null)
     {
-        var date = DateTimeOffset.UtcNow;
+        var date = dateCreated ?? DateTimeOffset.UtcNow;
         var document = new ConversationDocument
         {
             Id = Guid.NewGuid(),
@@ -1125,6 +1165,108 @@ public sealed class DocumentServiceTests : IDisposable
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.GetProjectDocumentDownloadAsync(project.Id, Guid.NewGuid(), TestContext.Current.CancellationToken));
+    }
+    #endregion
+
+    #region GetUserDocumentsAsync
+    [Fact]
+    public async Task GetUserDocumentsAsync_DocumentsAcrossConversations_ReturnsThemNewestFirstWithConversationNames()
+    {
+        var date = DateTimeOffset.UtcNow;
+        var planning = await AddConversationAsync(name: "Planning");
+        var research = await AddConversationAsync(name: "Research");
+        var older = await AddConversationDocumentAsync(planning, "budget.pdf", dateCreated: date.AddMinutes(-5));
+        var newer = await AddConversationDocumentAsync(research, "findings.pdf", dateCreated: date);
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal([newer.Id, older.Id], result.Items.Select(x => x.Id));
+        Assert.Equal([research.Id, planning.Id], result.Items.Select(x => x.ConversationId));
+        Assert.Equal(["Research", "Planning"], result.Items.Select(x => x.ConversationName));
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_AnotherUsersDocuments_AreExcluded()
+    {
+        var otherUser = await AddUserAsync();
+        await AddConversationDocumentAsync(await AddConversationAsync(userId: otherUser.Id));
+        var document = await AddConversationDocumentAsync(await AddConversationAsync());
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(document.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_DeactivatedDocument_IsExcluded()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, deactivated: DateTimeOffset.UtcNow);
+        var live = await AddConversationDocumentAsync(conversation);
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(live.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_ProjectDocuments_AreNotIncluded()
+    {
+        await AddProjectDocumentAsync(await AddProjectAsync());
+        var document = await AddConversationDocumentAsync(await AddConversationAsync());
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(document.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_SecondPage_ReturnsTheRemainderWithTheFullCount()
+    {
+        var conversation = await AddConversationAsync();
+        var date = DateTimeOffset.UtcNow;
+        var oldest = await AddConversationDocumentAsync(conversation, dateCreated: date.AddMinutes(-2));
+        await AddConversationDocumentAsync(conversation, dateCreated: date.AddMinutes(-1));
+        await AddConversationDocumentAsync(conversation, dateCreated: date);
+
+        var result = await _service.GetUserDocumentsAsync(skip: 2, take: 2, TestContext.Current.CancellationToken);
+
+        Assert.Equal(oldest.Id, Assert.Single(result.Items).Id);
+        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(2, result.PageSize);
+        Assert.Equal(2, result.CurrentPage);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_DocumentsCreatedInTheSameInstant_TieBreakOnIdKeepsPagesDisjoint()
+    {
+        var conversation = await AddConversationAsync();
+        var date = DateTimeOffset.UtcNow;
+        await AddConversationDocumentAsync(conversation, dateCreated: date);
+        await AddConversationDocumentAsync(conversation, dateCreated: date);
+        await AddConversationDocumentAsync(conversation, dateCreated: date);
+
+        var firstPage = await _service.GetUserDocumentsAsync(skip: 0, take: 2, TestContext.Current.CancellationToken);
+        var secondPage = await _service.GetUserDocumentsAsync(skip: 2, take: 2, TestContext.Current.CancellationToken);
+
+        var seen = firstPage.Items.Concat(secondPage.Items).Select(x => x.Id).ToList();
+        Assert.Equal(3, seen.Count);
+        Assert.Equal(3, seen.Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(500)]
+    public async Task GetUserDocumentsAsync_TakeOutsideTheAllowedRange_IsClamped(int take)
+    {
+        await AddConversationDocumentAsync(await AddConversationAsync());
+
+        var result = await _service.GetUserDocumentsAsync(skip: 0, take: take, TestContext.Current.CancellationToken);
+
+        Assert.Single(result.Items);
+        Assert.InRange(result.PageSize, 1, 100);
     }
     #endregion
 }

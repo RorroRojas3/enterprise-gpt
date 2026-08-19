@@ -80,6 +80,34 @@ export interface DocumentDownloadDto {
 }
 
 /**
+ * A document the signed-in user uploaded, as `GET api/documents` returns one.
+ *
+ * Mirrors `Enterprise.Gpt.Dto.UserDocumentDto`. The route answers with the standard
+ * `PaginatedResponseDto` envelope, ordered by **`dateCreated` descending** (with `id`
+ * breaking ties), so the client renders the server's order rather than re-sorting it.
+ * Like `ProjectDocumentDto`, the wire shape also emits a read-only `documentId` alias
+ * of the same value; only {@link id} is modelled here — a second name for one value in
+ * store state is a bug waiting to be written.
+ */
+export interface UserDocumentDto {
+  readonly id: string;
+  /** The conversation the document was uploaded into. */
+  readonly conversationId: string;
+  /** The original file name as uploaded. */
+  readonly name: string;
+  /** Lower-cased, **including the leading dot** — `.pdf`, not `pdf`. */
+  readonly extension: string;
+  /** The content type the client reported at upload time. */
+  readonly mimeType: string;
+  /** Bytes. */
+  readonly size: number;
+  /** ISO 8601 with offset — when ingestion finished, not when the upload started. */
+  readonly dateCreated: string;
+  /** The owning conversation's name — present only on the cross-conversation route. */
+  readonly conversationName: string;
+}
+
+/**
  * What a document hangs off.
  *
  * Upload and download are both routed by the parent — `documents/conversations/{id}`

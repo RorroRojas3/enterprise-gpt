@@ -1,0 +1,187 @@
+@use 'breakpoints' as bp;
+
+// Frame 4j's column: the title, then the toolbar, then the card-surfaced list.
+//
+// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll
+// itself is *clipped* below the fold rather than scrolled — the same fix every
+// shell child carries. `min-height: 0` is what lets the flex item shrink enough
+// for `overflow-y` to engage.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px 34px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+// The board's gutters are drawn at 1440px; on a phone they would spend 68px on
+// nothing.
+@include bp.mobile {
+  :host {
+    padding: 18px 14px;
+  }
+}
+
+.documents__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+// Wraps rather than overflowing, like every toolbar here: only the field can shrink
+// (WCAG SC 1.4.10 Reflow).
+.documents__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+// The board's 320px field. It shrinks rather than overflowing the toolbar.
+.documents__search {
+  flex: 0 1 320px;
+  min-width: 0;
+}
+
+.documents__group-toggle {
+  flex: none;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+
+  .form-check-input,
+  .form-check-label {
+    cursor: pointer;
+  }
+}
+
+// The far end of the toolbar, as the conversations library places its counter.
+.documents__count {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+@include bp.mobile {
+  .documents__count {
+    display: none;
+  }
+}
+
+.documents__card {
+  background: var(--surface);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.documents__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  // The row draws its own bottom border; the card's edge — or the next group's
+  // tinted header — supplies the last one.
+  li:last-child app-document-row {
+    border-bottom: 0;
+  }
+}
+
+// Frame 4j's group header: chevron, conversation glyph and link, then the count.
+.documents__group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--bs-border-color);
+  font-size: 13px;
+}
+
+.documents__group-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--bs-body-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+}
+
+.documents__group-glyph {
+  flex: none;
+  color: var(--brand);
+  font-size: 13px;
+}
+
+.documents__group-name {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+}
+
+.documents__group-count {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+// The board's 34px indent for rows under a header. A parent rule on the host wins
+// over the row's own `:host` padding because scoped parent selectors carry higher
+// specificity.
+.documents__group-list li app-document-row {
+  padding-left: 34px;
+}
+
+.documents__skeleton {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 90px 100px;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--bs-border-color);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.documents__ceiling {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}

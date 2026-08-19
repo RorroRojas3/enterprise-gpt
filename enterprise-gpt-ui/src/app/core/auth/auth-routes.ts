@@ -35,5 +35,8 @@ export const CONVERSATIONS_ROUTE = '/conversations';
 /** EP-9's projects grid, frame `4c`. A project's detail screen is a child of it. */
 export const PROJECTS_ROUTE = '/projects';
 
+/** EP-10's documents library, frame `4j`. */
+export const DOCUMENTS_ROUTE = '/documents';
+
 /** The administration area. Behind `adminCanMatch`, so its chunk is withheld, not hidden. */
 export const ADMIN_ROUTE = '/admin';
