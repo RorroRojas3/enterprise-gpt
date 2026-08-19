@@ -2631,6 +2631,94 @@ public sealed class ConversationServiceTests : IDisposable
     }
     #endregion
 
+    #region Document listing
+    private async Task<ConversationDocument> AddConversationDocumentAsync(
+        Conversation conversation, string name = "quarterly report.pdf",
+        DateTimeOffset? deactivated = null, DateTimeOffset? dateCreated = null)
+    {
+        var date = dateCreated ?? DateTimeOffset.UtcNow;
+        var document = new ConversationDocument
+        {
+            Id = Guid.NewGuid(),
+            UserId = conversation.UserId,
+            ConversationId = conversation.Id,
+            Name = name,
+            Extension = System.IO.Path.GetExtension(name).ToLowerInvariant(),
+            MimeType = "application/pdf",
+            Size = 2048,
+            Path = $"{conversation.UserId}/{conversation.Id}/{Guid.NewGuid()}.pdf",
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.ConversationDocuments.Add(document);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return document;
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentsAsync_OwnedConversation_ReturnsOnlyItsActiveDocuments()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+        await AddConversationDocumentAsync(await AddConversationAsync());
+
+        var result = await _service.GetConversationDocumentsAsync(conversation.Id, TestContext.Current.CancellationToken);
+
+        var only = Assert.Single(result);
+        Assert.Equal(document.Id, only.Id);
+        Assert.Equal(document.Id, only.DocumentId);
+        Assert.Equal(conversation.Id, only.ConversationId);
+        Assert.Equal(".pdf", only.Extension);
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentsAsync_MultipleDocuments_ReturnsNewestFirst()
+    {
+        var conversation = await AddConversationAsync();
+        var date = DateTimeOffset.UtcNow;
+        var older = await AddConversationDocumentAsync(conversation, dateCreated: date.AddMinutes(-5));
+        var newer = await AddConversationDocumentAsync(conversation, dateCreated: date);
+
+        var result = await _service.GetConversationDocumentsAsync(conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal([newer.Id, older.Id], result.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentsAsync_DeactivatedDocument_IsExcluded()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, deactivated: DateTimeOffset.UtcNow);
+
+        Assert.Empty(await _service.GetConversationDocumentsAsync(conversation.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentsAsync_ConversationOwnedByAnotherUser_ThrowsNotFound()
+    {
+        var otherUser = await AddUserAsync();
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation);
+        _tokenService.GetOid().Returns(otherUser.Id);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentsAsync(conversation.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentsAsync_DeactivatedConversation_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync(deactivated: true);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.GetConversationDocumentsAsync(conversation.Id, TestContext.Current.CancellationToken));
+    }
+    #endregion
+
     /// <summary>
     /// Captures the <see cref="ChatOptions"/> and messages the service builds and yields a short,
     /// fixed stream. <see cref="GetResponseAsync"/> throws so any unexpected trip through the

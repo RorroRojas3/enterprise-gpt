@@ -106,6 +106,14 @@ export const routes: Routes = [
                 loadChildren: () => import('@features/projects/projects.routes'),
               },
               {
+                // Lazy like every other shell child: US-1002's screen and its store
+                // are code a reader who only ever opens /chat never runs.
+                path: 'documents',
+                loadComponent: () =>
+                  import('@features/documents/documents').then((m) => m.Documents),
+                title: 'Documents — Enterprise GPT',
+              },
+              {
                 // canMatch belongs on the route that owns loadChildren: a parent's runs
                 // before the child config is resolved, a child's runs after. It still
                 // runs during URL recognition from inside the shell, so a non-admin's

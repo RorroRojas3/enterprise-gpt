@@ -39,7 +39,7 @@ So the work is one new test target, one harness, five audit specs, one coverage 
 ```bash
 # from enterprise-gpt-ui/
 npx --no playwright install chromium   # once per machine
-npm run test:a11y                      # 32 audits in headless Chromium
+npm run test:a11y                      # 36 audits in headless Chromium
 ```
 
 `pretest:a11y` runs `npm run assets` first, so the generated fonts and icon sprite exist — exactly as `pretest` does for `npm test`.
@@ -107,6 +107,7 @@ export const AXE_ROUTES = [
   '/chat',
   '/conversations',
   '/projects',
+  '/documents',
   '/admin/users',
   '/admin/models',
   '/admin/mcps',
@@ -114,7 +115,7 @@ export const AXE_ROUTES = [
 ];
 ```
 
-Every one of the seven is rendered in both themes. Five spec files, **32 tests**:
+Every one of the eight is rendered in both themes. Six spec files, **36 tests**:
 
 | Spec                             | Tests | What it renders                                                                                                      |
 | -------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
@@ -122,11 +123,12 @@ Every one of the seven is rendered in both themes. Five spec files, **32 tests**
 | `admin.a11y.spec.ts`             | 8     | The four admin tabs × two themes, through `admin.routes.ts` with real stores and real data                            |
 | `chat.a11y.spec.ts`              | 4     | The empty chat screen and an open conversation × two themes                                                          |
 | `projects.a11y.spec.ts`          | 4     | The projects grid and the conversation library × two themes                                                          |
+| `documents.a11y.spec.ts`         | 4     | The documents library × two themes × both of US-1003's view modes — the grouped default and `?view=flat` render different anatomies |
 | `unavailable-panel.a11y.spec.ts` | 3     | The harness smoke test (§3), plus the panel itself × two themes                                                      |
 
 The audits mount screens **through their real routes with real fixture data**, not components in isolation with empty state — which is the configuration in which almost nothing is wrong. Each attaches its element to `document.body`, because axe reads computed style and a detached element has none.
 
-**`/documents` is absent, and that is not an oversight.** US-1405's criterion names it, but no such route exists: EP-10 is unstarted and US-1002 is the story that creates it, under the rule the admin epic settled — a route is added by the story that builds it. `a11y-coverage.spec.ts` asserts the absence _and_ its reason, so US-1002 meets a failing test rather than a silent gap.
+**`/documents` arrived with US-1002 (2026-08-19), exactly the way the guard demanded.** While EP-10 was unstarted the route was deliberately absent — under the rule the admin epic settled, a route is added by the story that builds it — and `a11y-coverage.spec.ts` asserted the absence _and_ its reason so US-1002 would meet a failing test rather than a silent gap. That story landed the route, its `AXE_ROUTES` entry and `documents.a11y.spec.ts` in one change and deleted the absence assertion with it, completing US-1405's four named route groups ([Documents Library §7](documents-library.md#7-accessibility)).
 
 **`/ui-kit` is excluded deliberately.** It is `canMatch: [() => isDevMode()]` and never matched in a production build, so a violation there ships to nobody.
 
@@ -195,7 +197,6 @@ Two steps were added to the existing `Lint, test, build` job in `ui-ci.yml`, plu
 ## 9. Limits, recorded rather than hidden
 
 - **`moderate` and `minor` violations are discarded**, and `incomplete` results are never populated (§4). Nothing surfaces them.
-- **`/documents` is not audited**, because the route does not exist. US-1002 adds both (§5.1).
 - **Automated testing finds a minority of accessibility defects.** This run is a floor, not a certificate; US-1402's screen-reader pass against real assistive technology is still outstanding and is tracked in the build order.
 - **The audits mount routes, not the full application.** Only `shell.a11y.spec.ts` renders the real landmark structure, which is why it is the only one with `region` enabled.
 - **The suppressed-indicator scan still reads `src/` only** — a US-1401 limit this story did not close; axe now measures the rendered result, which narrows the gap without shutting it.

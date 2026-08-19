@@ -20,6 +20,7 @@ using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Entity.Transcripts;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Mappers;
 using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
@@ -41,6 +42,16 @@ namespace Enterprise.Gpt.Service
         /// <returns>The conversation.</returns>
         /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
         Task<ConversationDetailDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Lists the active documents of one of the caller's conversations, most recently uploaded
+        /// first.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>The conversation's documents.</returns>
+        /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
+        Task<List<ConversationDocumentDto>> GetConversationDocumentsAsync(Guid id, CancellationToken cancellationToken = default);
 
         Task<ConversationDto> CreateConversationAsync(CreateConversationActionDto request, CancellationToken cancellationToken = default);
 
@@ -213,6 +224,20 @@ namespace Enterprise.Gpt.Service
                 .ToListAsync(cancellationToken);
 
             return conversation;
+        }
+
+        /// <inheritdoc />
+        public async Task<List<ConversationDocumentDto>> GetConversationDocumentsAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            var userId = _tokenService.GetOid();
+            await EnsureConversationExistsAsync(id, userId, cancellationToken);
+
+            return await _ctx.ConversationDocuments
+                .AsNoTracking()
+                .Where(x => x.ConversationId == id && !x.DateDeactivated.HasValue)
+                .OrderByDescending(x => x.DateCreated)
+                .Select(ConversationDocumentMapper.MapToConversationDocumentDtoExpression)
+                .ToListAsync(cancellationToken);
         }
 
         public async Task<ConversationDto> CreateConversationAsync(CreateConversationActionDto request, CancellationToken cancellationToken = default)
@@ -1197,6 +1222,28 @@ namespace Enterprise.Gpt.Service
                 _logger.LogError(
                     "Writing the transcript for conversation {Id} failed ({Failure}); the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
                     conversationId, result.Describe(), usage.Id, assistantMessageId);
+            }
+        }
+
+        /// <summary>
+        /// Throws when the conversation does not exist, is deactivated, or belongs to another user.
+        /// </summary>
+        /// <param name="id">The unique identifier of the conversation.</param>
+        /// <param name="userId">The object identifier of the calling user.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <exception cref="NotFoundException">The conversation is not an active conversation of this user.</exception>
+        private async Task EnsureConversationExistsAsync(Guid id, Guid userId, CancellationToken cancellationToken)
+        {
+            var exists = await _ctx.Conversations
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!exists)
+            {
+                // Deliberately indistinguishable from "does not exist" so this cannot be used to
+                // probe for conversation ids belonging to other users.
+                _logger.LogWarning("Conversation {ConversationId} not found, deactivated, or not owned by user {UserId}", id, userId);
+                throw new NotFoundException($"Conversation with id {id} not found");
             }
         }
 

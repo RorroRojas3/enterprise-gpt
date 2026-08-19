@@ -765,11 +765,12 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="deactivated">Whether the conversation is soft-deleted.</param>
     /// <param name="projectId">The project the conversation belongs to, if any.</param>
     /// <param name="modelId">The model its most recent turn ran with, if any.</param>
+    /// <param name="name">The conversation name.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted conversation.</returns>
     public async Task<Guid> AddConversationAsync(
         Guid? userId = null, bool deactivated = false, Guid? projectId = null, Guid? modelId = null,
-        CancellationToken cancellationToken = default)
+        string name = "Integration Conversation", CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -781,7 +782,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             UserId = userId ?? TestUsers.RegularUserId,
             ProjectId = projectId,
             ModelId = modelId,
-            Name = "Integration Conversation",
+            Name = name,
             DateCreated = date,
             DateModified = date,
             DateDeactivated = deactivated ? date : null

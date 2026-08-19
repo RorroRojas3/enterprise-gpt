@@ -23,9 +23,7 @@
     ]
   },
   "model": "opus",
-  "availableModels": [
-    "opus"
-  ],
+  "availableModels": ["opus"],
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "microsoft-learn",

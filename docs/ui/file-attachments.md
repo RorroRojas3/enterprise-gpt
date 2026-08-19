@@ -431,7 +431,7 @@ Nothing EP-8 added is in the initial graph. `UploadStore` is provided by `Chat`,
 
 - **Detaching a document from a conversation.** There is **no `DELETE` route** for a conversation document; only project documents have one. Once a job succeeds, dismissing the chip hides it and nothing more, and the control renames itself to say so (§4.1). Closing this needs a backend enabler, and it is recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table.
 - **Dropping a folder.** `FileDropTarget` emits nothing for a drop whose `dataTransfer.files` is empty, which is what several browsers report for a directory; reading one needs `webkitGetAsEntry()`. Emitting nothing is a visible no-op the user can retry, where emitting `[]` would be a silent one.
-- **A conversation's existing documents.** The chips describe *this draft's* attachments. Listing what a conversation already holds is US-1001/US-1002 on the enabler track.
+- **A conversation's existing documents.** The chips describe *this draft's* attachments. Listing what a conversation — or the user — already holds shipped with US-1001/US-1002: `GET api/conversations/{id}/documents` and the `/documents` library over `GET api/documents` ([Documents Library](documents-library.md)). The chips deliberately stay draft-only.
 - **A project's files panel.** US-905, which provides a second `UploadStore` with `{ kind: 'project', id }` and reuses everything in `core/documents/` unchanged — which is why `UploadTarget` is a discriminated pair rather than a bare id.
 - **Downloading the conversation itself.** US-1502, whose control takes the composer's `composer__aux` class and inherits the in-flight dimming for free.
 

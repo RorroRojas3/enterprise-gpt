@@ -272,6 +272,101 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
     #endregion
 
+    #region Document listing
+    [Fact]
+    public async Task GetConversationDocuments_OwnedConversationWithDocuments_ReturnsThem()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var documentId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "handbook.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        var otherConversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            otherConversationId, "other.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(1))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var documents = await client.GetFromJsonAsync<List<ConversationDocumentDto>>(
+            $"api/conversations/{conversationId}/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(documents);
+        var document = Assert.Single(documents);
+        Assert.Equal(documentId, document.Id);
+        Assert.Equal(documentId, document.DocumentId);
+        Assert.Equal(conversationId, document.ConversationId);
+        Assert.Equal("handbook.pdf", document.Name);
+        Assert.Equal(".pdf", document.Extension);
+        Assert.Equal("application/octet-stream", document.MimeType);
+        Assert.Equal(1024, document.Size);
+        Assert.NotEqual(default, document.DateCreated);
+    }
+
+    [Fact]
+    public async Task GetConversationDocuments_NoDocuments_ReturnsEmpty()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var documents = await client.GetFromJsonAsync<List<ConversationDocumentDto>>(
+            $"api/conversations/{conversationId}/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(documents);
+        Assert.Empty(documents);
+    }
+
+    [Fact]
+    public async Task GetConversationDocuments_DeactivatedDocument_IsExcluded()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "gone.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
+        var keptId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "kept.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(1))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var documents = await client.GetFromJsonAsync<List<ConversationDocumentDto>>(
+            $"api/conversations/{conversationId}/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(documents);
+        Assert.Equal(keptId, Assert.Single(documents).Id);
+    }
+
+    // Reported as not-found rather than forbidden so the route cannot be used to probe for ids.
+    [Fact]
+    public async Task GetConversationDocuments_AnotherUsersConversation_ReturnsNotFound()
+    {
+        var theirs = await _fixture.AddConversationAsync(TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync($"api/conversations/{theirs}/documents", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetConversationDocuments_DeactivatedConversation_ReturnsNotFound()
+    {
+        var id = await _fixture.AddConversationAsync(deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync($"api/conversations/{id}/documents", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetConversationDocuments_UnknownConversation_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync($"api/conversations/{Guid.NewGuid()}/documents", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+    #endregion
+
     #region Writes
     [Fact]
     public async Task CreateConversation_Standalone_ReturnsCreatedWithLocation()

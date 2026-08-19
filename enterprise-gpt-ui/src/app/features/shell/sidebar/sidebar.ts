@@ -15,6 +15,7 @@ import {
   ADMIN_ROUTE,
   CHAT_ROUTE,
   CONVERSATIONS_ROUTE,
+  DOCUMENTS_ROUTE,
   PROJECTS_ROUTE,
 } from '@core/auth/auth-routes';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -58,10 +59,10 @@ const SKELETON_ROWS = 6;
  * The persistent navigation of frames `3a` (260px) and `3b` (the 60px icon strip).
  *
  * **Only entries whose route exists are rendered.** The board draws five — Chat,
- * Conversations, Projects, Documents, Admin — and EP-10 still builds Documents,
- * because a link to a route that redirects back to `/chat` is worse than no link. Each
- * arrives with its own epic, the way US-203 has the Admin entry absent rather than
- * shown-and-disabled for a non-administrator; Projects arrived with US-901.
+ * Conversations, Projects, Documents, Admin — and all five now exist. Each arrived
+ * with its own epic, the way US-203 has the Admin entry absent rather than
+ * shown-and-disabled for a non-administrator; Projects arrived with US-901 and
+ * Documents with US-1002.
  *
  * The **Favorite projects** section between the nav and the list is US-910 and is
  * deliberately not built: its pins are device-local until the backend enabler (US-909)
@@ -140,6 +141,7 @@ export class Sidebar {
       restricted: false,
     },
     { label: 'Projects', icon: 'bi-folder2', link: PROJECTS_ROUTE, restricted: false },
+    { label: 'Documents', icon: 'bi-file-earmark-text', link: DOCUMENTS_ROUTE, restricted: false },
     ...(this._session.isAdministrator()
       ? ([{ label: 'Admin', icon: 'bi-sliders', link: ADMIN_ROUTE, restricted: true }] as const)
       : []),

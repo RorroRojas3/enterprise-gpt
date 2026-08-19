@@ -108,7 +108,7 @@ Three seams already exist for it, so the story is additive rather than a refacto
 
 ### 2.3 Adding a nav entry
 
-`Sidebar.navItems` is a `computed` over the session, and **only entries whose route exists are rendered**. The board draws five; Conversations arrived with US-701 ([Conversation Library §6](conversation-library.md#6-route-nav-entry-and-bundle)), and the remaining two belong to EP-9 and EP-10, because a link that redirects back to `/chat` is worse than no link. Add yours with its own epic:
+`Sidebar.navItems` is a `computed` over the session, and **only entries whose route exists are rendered**. The board draws five, and all five now exist — Conversations arrived with US-701 ([Conversation Library §6](conversation-library.md#6-route-nav-entry-and-bundle)), Projects with US-901 ([Projects §11](projects.md#11-route-nav-entry-and-bundle)) and Documents with US-1002 ([Documents Library §8](documents-library.md#8-route-nav-entry-and-bundle)) — each with its own epic, because a link that redirects back to `/chat` is worse than no link. Add yours the same way:
 
 ```ts
 { label: 'Projects', icon: 'bi-folder', link: PROJECTS_ROUTE, restricted: false }
@@ -556,7 +556,7 @@ Written at the end of EP-3; the first four rows have since been struck through b
 | ~~The composer, the transcript, and the streamed turn~~        | EP-4, EP-5, EP-6       | Shipped — [Turn Lifecycle](../conversations/turn-lifecycle.md) and [Answer Rendering](answer-rendering.md). EP-4 closed with US-408–US-413; EP-5 and EP-6 have stories left |
 | ~~The suggested prompt chips on the empty state~~              | US-401                 | Shipped there, as US-303 deferred them (§7.3)                                                                                                                               |
 | ~~The Conversations nav entry~~                                | US-701                 | Shipped with the route it points at — [Conversation Library](conversation-library.md)                                                                                       |
-| The Projects and Documents nav entries                         | EP-9, EP-10            | Each arrives with its epic; `navItems` renders only routes that exist                                                                                                       |
+| ~~The Projects and Documents nav entries~~                     | EP-9, EP-10            | Shipped with their routes — Projects with US-901 ([Projects](projects.md)), Documents with US-1002 ([Documents Library](documents-library.md)); `navItems` renders only routes that exist |
 | The **Favorite projects** section between the nav and the list | US-910                 | Its pins are device-local until the backend enabler US-909 lands, and a section that has to say so has to exist first                                                       |
 | ~~`isFavorite` on the search request~~                         | US-703                 | Shipped on the conversations library, not the sidebar — [Conversation Library §2.2](conversation-library.md#22-the-two-url-parameters). The sidebar still has no control to undo such a filter, so it still never sends it |
 | Server-side sort on the list                                   | US-706                 | Until then the list is regime B: server order, no sort control. US-705 now _states_ that on the library screen (§3.1)                                                        |

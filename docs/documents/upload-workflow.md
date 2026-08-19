@@ -214,6 +214,8 @@ Reports are delivered through a private `InlineProgress<T>` rather than `System.
 
 Covered in §5 and §6. The final write is a **single `SaveChangesAsync`** covering the `ConversationDocument` and all of its `ConversationDocumentChunk` children, so a document is never half-indexed. `CreateConversationDocumentAsync` does not wrap itself in `try`/`catch`: anything it throws reaches `BackgroundJobProcessor.ProcessAsync`, which logs it and marks the job `Failed`.
 
+After the save, both ingest paths **re-check that the parent is still active** (US-1001, 2026-08-19): ingestion spans seconds to minutes, and a conversation or project deactivated meanwhile has already run its document cascade, which never re-runs — so a row persisted after it would linger as an active orphan under a deactivated parent. When the re-check fails, the just-inserted document and chunks are deactivated set-based via `ExecuteUpdateAsync` (idempotent if the cascade did catch them — no rowversion involved) and the job fails with the same not-found message an upload into a deleted parent gets. See [Documents Library §3.4](../ui/documents-library.md#34-the-ingestion-re-check).
+
 ## 5. Chunking
 
 [`TokenTextChunker`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs) repacks extracted segments into **chunks of at most 512 tokens with 128 tokens of overlap** (`Documents:Chunking`). It is registered as a **singleton** because constructing its tokenizer loads and indexes a large vocabulary, which must not happen per request.

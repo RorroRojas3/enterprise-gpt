@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.HttpResults;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Enterprise.Gpt.Api.Endpoints;
@@ -118,6 +117,35 @@ public sealed class DocumentEndpointsTests
                 && f.Content.Length > 0
                 && f.Length == f.Content.Length),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_ServiceReturnsAPage_ReturnsOkWithPayload()
+    {
+        var expected = new PaginatedResponseDto<UserDocumentDto>
+        {
+            Items = [new UserDocumentDto { Id = Guid.NewGuid(), ConversationId = Guid.NewGuid(), ConversationName = "Planning", Name = "spec.pdf", Extension = ".pdf", MimeType = "application/pdf", Size = 10 }],
+            TotalCount = 1,
+            PageSize = 20,
+            CurrentPage = 1
+        };
+        _documentService.GetUserDocumentsAsync(0, 20, Arg.Any<CancellationToken>()).Returns(expected);
+
+        var result = await DocumentEndpoints.GetUserDocumentsAsync(
+            _documentService, 0, 20, TestContext.Current.CancellationToken);
+
+        Assert.Same(expected, result.Value);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NoQueryString_UsesTheDefaultPage()
+    {
+        _documentService.GetUserDocumentsAsync(0, 20, Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<UserDocumentDto>());
+
+        await DocumentEndpoints.GetUserDocumentsAsync(_documentService, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _documentService.Received(1).GetUserDocumentsAsync(0, 20, Arg.Any<CancellationToken>());
     }
 
     [Fact]

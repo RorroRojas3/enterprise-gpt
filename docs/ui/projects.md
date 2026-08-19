@@ -609,7 +609,7 @@ The re-read is the half that is easy to leave out. The sidebar row kebab opens t
 
 `/projects` is a lazy `loadChildren` under the shell, and `loadChildren` rather than two sibling `loadComponent`s because it is the shared route both screens hang off. No guard of its own: the tree already sits behind `authGuard` and `sessionGuard`, and projects are scoped to their owner server-side, so there is nothing here a permission could gate.
 
-The sidebar's **Projects** entry (`bi-folder2`) appears now that there is a route to point it at — the sidebar renders only entries whose route exists, and a link that redirects back to `/chat` is worse than no link ([Shell and Navigation §2.3](shell-and-navigation.md#23-adding-a-nav-entry)). Documents is still absent, and belongs to EP-10.
+The sidebar's **Projects** entry (`bi-folder2`) appears now that there is a route to point it at — the sidebar renders only entries whose route exists, and a link that redirects back to `/chat` is worse than no link ([Shell and Navigation §2.3](shell-and-navigation.md#23-adding-a-nav-entry)). Documents arrived the same way with EP-10's US-1002 ([Documents Library](documents-library.md)).
 
 |                          | Initial raw   | Initial transfer | Budget (warn / error) |
 | ------------------------ | ------------- | ---------------- | --------------------- |

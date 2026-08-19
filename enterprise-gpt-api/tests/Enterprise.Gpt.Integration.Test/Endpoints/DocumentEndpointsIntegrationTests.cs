@@ -746,6 +746,123 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
     #endregion
 
+    #region Listing
+    [Fact]
+    public async Task GetDocuments_Anonymous_ReturnsUnauthorized()
+    {
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.GetAsync("api/documents", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+        Assert.Equal("Unauthorized", problem.Title);
+    }
+
+    [Fact]
+    public async Task GetDocuments_DocumentsAcrossConversations_ReturnsThemWithConversationIdAndName()
+    {
+        var planningId = await _fixture.AddConversationAsync(name: "Planning", cancellationToken: TestContext.Current.CancellationToken);
+        var researchId = await _fixture.AddConversationAsync(name: "Research", cancellationToken: TestContext.Current.CancellationToken);
+        var budgetId = await _fixture.AddConversationDocumentAsync(
+            planningId, "budget.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        var findingsId = await _fixture.AddConversationDocumentAsync(
+            researchId, "findings.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(1))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(2, page.TotalCount);
+        var budget = Assert.Single(page.Items, x => x.Id == budgetId);
+        Assert.Equal(planningId, budget.ConversationId);
+        Assert.Equal("Planning", budget.ConversationName);
+        var findings = Assert.Single(page.Items, x => x.Id == findingsId);
+        Assert.Equal(researchId, findings.ConversationId);
+        Assert.Equal("Research", findings.ConversationName);
+    }
+
+    [Fact]
+    public async Task GetDocuments_AnotherUsersDocuments_AreExcluded()
+    {
+        var theirConversation = await _fixture.AddConversationAsync(TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            theirConversation, "theirs.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            userId: TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        var myConversation = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var mineId = await _fixture.AddConversationDocumentAsync(
+            myConversation, "mine.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(1))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(mineId, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetDocuments_NoDocuments_ReturnsAnEmptyPage()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetDocuments_TakeOfZero_IsClampedRatherThanReturningServerError()
+    {
+        // Straight off the query string: unclamped, this would divide by zero computing CurrentPage.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "paging.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync("api/documents?take=0&skip=-1", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var page = await response.Content.ReadFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(TestContext.Current.CancellationToken);
+        Assert.NotNull(page);
+        Assert.InRange(page.PageSize, 1, 100);
+    }
+
+    // End to end through the real pipeline: what ingestion persists is what both listings serve.
+    [Fact]
+    public async Task GetDocuments_AfterAnUpload_ListsTheIngestedDocument()
+    {
+        var conversationId = await _fixture.AddConversationAsync(name: "Ingestion Conversation", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var conversationDocuments = await client.GetFromJsonAsync<List<ConversationDocumentDto>>(
+            $"api/conversations/{conversationId}/documents", TestContext.Current.CancellationToken);
+        Assert.NotNull(conversationDocuments);
+        var listed = Assert.Single(conversationDocuments);
+        Assert.Equal(status.DocumentId, listed.Id);
+        Assert.Equal("notes.txt", listed.Name);
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+        Assert.NotNull(page);
+        var userDocument = Assert.Single(page.Items, x => x.Id == status.DocumentId);
+        Assert.Equal(conversationId, userDocument.ConversationId);
+        Assert.Equal("Ingestion Conversation", userDocument.ConversationName);
+    }
+    #endregion
+
     #region Status
     [Fact]
     public async Task GetJobStatus_UnknownJob_ReturnsNotFound()

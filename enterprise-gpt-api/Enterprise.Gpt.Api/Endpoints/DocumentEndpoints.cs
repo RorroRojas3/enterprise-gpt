@@ -12,10 +12,11 @@ using Enterprise.Gpt.Service.Settings;
 namespace Enterprise.Gpt.Api.Endpoints
 {
     /// <summary>
-    /// Minimal API endpoints for document upload and download, into and out of either a conversation or
-    /// a project. Uploading is gated by the <c>Upload File</c> permission, which every user holds by
-    /// default; downloading is gated on owning the parent, and reading job status and the
-    /// supported-format list is available to any authenticated caller.
+    /// Minimal API endpoints for documents: upload and download, into and out of either a conversation
+    /// or a project, plus the caller-scoped listing behind the documents library. Uploading is gated by
+    /// the <c>Upload File</c> permission, which every user holds by default; downloading is gated on
+    /// owning the parent, listing is scoped to the caller's own documents, and reading job status and
+    /// the supported-format list is available to any authenticated caller.
     /// </summary>
     /// <remarks>
     /// The conversation routes match the <c>DocumentsController</c> they replaced exactly, so existing
@@ -64,6 +65,14 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status400BadRequest)
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);
+
+            // A bare GET on the group root, so it collides with none of the multi-segment routes below.
+            // Not gated on Upload File, like the downloads: that permission is about adding documents,
+            // and this is a read scoped to the caller. The 400 is a binding failure on ?skip= or
+            // ?take=, so it carries no errors dictionary — ProducesProblem(400), not
+            // ProducesValidationProblem().
+            group.MapGet("", GetUserDocumentsAsync)
+                .ProducesProblem(StatusCodes.Status400BadRequest);
 
             // Three segments, so neither route collides with upload-status/{jobId} or file-extensions.
             // Not gated on Upload File: that permission is about adding documents, and owning the
@@ -120,6 +129,18 @@ namespace Enterprise.Gpt.Api.Endpoints
             var response = await documentService.QueueProjectDocumentAsync(projectId, fileDto, cancellationToken);
 
             return TypedResults.Accepted($"/api/documents/upload-status/{response.Id}", response);
+        }
+
+        // Query parameters carry defaults so the paging arguments stay optional — an absent ?skip=
+        // would otherwise fail binding with a 400 — which forces them behind the injected service,
+        // as C# requires optional parameters last.
+        internal static async Task<Ok<PaginatedResponseDto<UserDocumentDto>>> GetUserDocumentsAsync(
+            IDocumentService documentService, int skip = 0, int take = 20,
+            CancellationToken cancellationToken = default)
+        {
+            var response = await documentService.GetUserDocumentsAsync(skip, take, cancellationToken);
+
+            return TypedResults.Ok(response);
         }
 
         // The response carries a signed URL rather than the file itself, so storage serves the bytes and

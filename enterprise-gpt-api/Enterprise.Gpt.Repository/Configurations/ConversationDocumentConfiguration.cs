@@ -24,8 +24,13 @@ namespace Enterprise.Gpt.Repository.Configurations
                 .WithOne(x => x.ConversationDocument)
                 .HasForeignKey(x => x.ConversationDocumentId);
 
-            // Documents are always listed for one conversation at a time, filtered to the active ones.
+            // Serves the per-conversation listing: one conversation's documents, filtered to the
+            // active ones.
             builder.HasIndex(x => new { x.ConversationId, x.DateDeactivated });
+
+            // Serves the caller-scoped cross-conversation listing, which filters on the owner rather
+            // than a conversation.
+            builder.HasIndex(x => new { x.UserId, x.DateDeactivated });
         }
     }
 }
