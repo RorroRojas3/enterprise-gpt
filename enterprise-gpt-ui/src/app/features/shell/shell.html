@@ -10,15 +10,106 @@
 -->
 <a class="skip-link" href="#main-content" (click)="skipToMain($event)">Skip to main content</a>
 
-<app-sidebar class="shell__sidebar" />
+<!-- Frame 1d's 54px bar. Below 768px it is the only way to reach the sidebar. -->
+@if (mode() === 'mobile') {
+  <app-mobile-navbar (menuRequested)="openOverlay()" />
+}
+
+<!--
+  **One declaration, rendered at exactly one of the two outlets below.** Both of
+  `Sidebar`'s branches emit `<nav id="sidebar-primary" aria-label="Primary">`, so a
+  second instance would put two elements with one id and two navigations with one name
+  in the document — `duplicate-id` at serious impact, and two "Primary" landmarks for
+  anyone navigating by them. Two call sites guarded by two conditions is two places for
+  a later edit to break that; one template cannot.
+-->
+<ng-template #sidebarPanel>
+  <app-sidebar
+    class="shell__sidebar"
+    [mode]="sidebarMode()"
+    (toggled)="onSidebarToggled()"
+    (searchRequested)="onSearchRequested()"
+  />
+</ng-template>
+
+@if (mode() !== 'mobile') {
+  @if (tabletOverlayOpen()) {
+    <!--
+      Frame 3g's empty 60px column. The expanded panel is taken out of the flow, and
+      this holds the track it left so `.shell__main` sees the identical flex layout
+      open or closed — which is how "the main content never reflows" is guaranteed
+      structurally rather than by arithmetic.
+    -->
+    <div class="shell__rail" aria-hidden="true"></div>
+
+    <!--
+      Frame 3g draws the backdrop over the content. `pointerdown`, not `click`: the
+      panel is dismissed on the press, matching every other dismissal in the app.
+      Inert to assistive technology — `.shell__main` carries `inert` while it is up, so
+      there is nothing behind it to reach, and Escape is the keyboard path.
+    -->
+    <div class="shell__backdrop" aria-hidden="true" (pointerdown)="dismissOverlay()"></div>
+  }
+
+  <ng-container [ngTemplateOutlet]="sidebarPanel" />
+}
 
 <!--
   tabindex="-1" so focus can actually be moved here. Without it the browser scrolls to
   the target and leaves focus on <body>, and the next Tab restarts at the top of the page.
+
+  `inert` while the tablet overlay is up: the backdrop makes the content unclickable, and
+  without this it would still be reachable by Tab — a backdrop that lies to the keyboard.
+  The mobile drawer needs none of this, because a modal <dialog> inerts the page itself.
 -->
-<main #main id="main-content" class="shell__main" tabindex="-1">
+<main
+  #main
+  id="main-content"
+  class="shell__main"
+  tabindex="-1"
+  [attr.inert]="tabletOverlayOpen() ? '' : null"
+>
   <router-outlet />
 </main>
+
+<!--
+  Frame 3e's full-screen drawer. `Offcanvas` rather than a second <dialog> wrapper:
+  sharing the mechanism keeps one set of focus and dismissal semantics rather than two,
+  which is the rule that component's own docs state. `bare` strips its padding and clips
+  its heading, because the sidebar owns its own edges.
+
+  The content is guarded by `@if` and not merely hidden: the <dialog> element is always
+  in the DOM, so an unguarded `<app-sidebar>` here would be the second copy the template
+  above exists to prevent — present at every width, open or not.
+-->
+<app-offcanvas
+  side="start"
+  width="100%"
+  heading="Navigation"
+  [bare]="true"
+  [open]="mobileDrawerOpen()"
+  (openChange)="onDrawerOpenChange($event)"
+>
+  @if (mobileDrawerOpen()) {
+    <!--
+      Frame 3e's close control. It belongs to the shell rather than to the sidebar,
+      because what it dismisses is the shell's overlay — which is also why the sidebar
+      suppresses its own chevron in this mode. `data-modal-autofocus` puts the opening
+      focus here rather than on the first conversation row.
+    -->
+    <button
+      class="shell__drawer-close"
+      type="button"
+      data-modal-autofocus
+      aria-label="Close navigation"
+      (click)="onDrawerOpenChange(false)"
+    >
+      <app-icon name="bi-x-lg" />
+    </button>
+
+    <ng-container [ngTemplateOutlet]="sidebarPanel" />
+  }
+</app-offcanvas>
 
 <!--
   The conversation dialogs mount once, here, because the shell wraps both of their

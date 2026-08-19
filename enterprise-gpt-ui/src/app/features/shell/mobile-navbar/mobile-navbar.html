@@ -1,0 +1,33 @@
+<!--
+  aria-haspopup="dialog" and deliberately no aria-expanded: what opens is a modal
+  <dialog> in the top layer, which inerts this button rather than revealing a region
+  beside it. The same call chat.html makes on "Move to project".
+-->
+<button
+  class="navbar__menu"
+  type="button"
+  aria-label="Open navigation"
+  aria-haspopup="dialog"
+  (click)="menuRequested.emit()"
+>
+  <app-icon name="bi-list" />
+</button>
+
+<!--
+  Decorative: the text beside it already names the product, so an alt here would have a
+  screen reader read the name twice.
+-->
+<app-brand-logo class="navbar__mark" variant="mark" alt="" />
+
+<!--
+  A <span>, never a heading. The routed screen below owns the document's only <h1> —
+  on chat that is the conversation name, clipped at this width but still announced —
+  and promoting brand text to a heading would give the page two.
+-->
+<span class="navbar__title">{{ chrome().title ?? 'Enterprise GPT' }}</span>
+
+@if (chrome().actions; as actions) {
+  <div class="navbar__actions">
+    <ng-container [ngTemplateOutlet]="actions" />
+  </div>
+}

@@ -207,12 +207,12 @@
 // Frame 1h's warn treatment. It sits *under* the still-visible source, so the
 // reader has the diagram's text and the reason it is not a picture together.
 //
-// The border and the background carry the warning; the text does not. `--warn` as a
-// `color` measures 3.99:1 on `--warn-bg` in light — below AA, and an open question
-// in the PRD whose fix belongs upstream in the design bundle rather than as a local
-// override. `TurnNoticeCard` already inherits `--bs-body-color` on the same surface
-// for the same reason, so this matches it rather than adding a second instance of
-// the defect.
+// The border and the background carry the warning; the text does not, and it stays
+// that way. `--warn` as a `color` used to measure 3.99:1 on `--warn-bg` in light —
+// below AA — which is why this inherits `--bs-body-color`, as `TurnNoticeCard` does on
+// the same surface. US-1405 raised the token upstream in the design bundle to 4.56:1
+// on this panel, so the constraint is gone; the treatment is kept because the board
+// draws it this way and `check-tokens.mjs` now measures the pair either way.
 .md-diagram__notice {
   margin: 0;
   padding: 8px 14px;

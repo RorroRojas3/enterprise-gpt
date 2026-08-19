@@ -176,6 +176,51 @@ jobs:
       - name: Build
         run: npm run build
 
+      # A step in this job rather than a job of its own, deliberately: a new job name has
+      # to be added to branch protection by hand, and a required check nobody adds is a
+      # gate that never runs. See docs/ci/pull-request-checks.md §4.
+      #
+      # Last, and after `Build`, following the ordering §7 states: the cheapest gates
+      # report first. This is the most expensive step in the job — it runs a second
+      # Angular build of its own and launches a browser — so ahead of `Build` one contrast
+      # failure would hide the bundle-budget result and cost a second round trip.
+      #
+      # `--with-deps` installs the system libraries Chromium needs on a bare runner.
+      # `--no` makes a missing local binary a loud failure instead of npx silently
+      # fetching an unpinned `playwright` from the registry and running it against the
+      # checkout — the version is pinned by package-lock.json and nothing else, since
+      # dependabot tracks only the github-actions ecosystem here.
+      - name: Install Chromium for the accessibility audit
+        timeout-minutes: 5
+        run: npx --no playwright install --with-deps chromium
+
+      # US-1405. axe-core over every route the app has, at three viewport widths and in
+      # both themes, in a real browser — jsdom computes no style, so a jsdom run would
+      # report the colour rules as `incomplete` and pass. Fails on any violation rated
+      # serious or critical.
+      - name: Accessibility
+        timeout-minutes: 10
+        run: npm run test:a11y
+
+      # `failure()` and `ignore`, the opposite of the JUnit upload above: a green run
+      # leaves nothing behind by design, so an empty path is the normal case rather than a
+      # sign the reporter wiring broke. Vitest's browser mode writes a screenshot per
+      # failed assertion, which is the only evidence a violation reproducing solely on CI
+      # leaves anywhere.
+      #
+      # Both paths carry the `enterprise-gpt-ui/` prefix: upload-artifact resolves against
+      # the workspace root and ignores `defaults.run.working-directory`.
+      - name: Upload accessibility failure screenshots
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-a11y-failures
+          path: |
+            enterprise-gpt-ui/src/**/__screenshots__/**
+            enterprise-gpt-ui/.vitest-attachments/**
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The US-107 drift gate. Isolated because it is the only thing here that needs the
   # .NET toolchain, and ~60s of restore does not belong on the critical path of every
   # UI pull request.

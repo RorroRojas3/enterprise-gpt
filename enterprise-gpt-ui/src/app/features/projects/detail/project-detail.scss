@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 // Frame 4e's column: header, composer, tab strip, panel.
 :host {
   display: flex;
@@ -6,7 +8,7 @@
   padding: 26px 34px;
 }
 
-@media (max-width: 767px) {
+@include bp.mobile {
   :host {
     padding: 18px 14px;
   }
@@ -98,4 +100,15 @@
 // Frame 4e caps the composer at the same 900px as the panels below it.
 .detail__composer {
   max-width: 900px;
+}
+
+// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
+// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
+// the chat route escaped it, because `.chat__body` is its own scroll container.
+//
+// `min-height: 0` is required for the same reason `shell.scss` needs `min-width: 0`: a
+// flex item will not shrink below its content, so `overflow-y` alone would never engage.
+:host {
+  min-height: 0;
+  overflow-y: auto;
 }

@@ -28,7 +28,7 @@
     [style.top.px]="position().top"
     [style.bottom.px]="position().bottom"
     [style.left.px]="position().left"
-    [style.width.px]="panelWidth()"
+    [style.width.px]="position().width ?? panelWidth()"
     (keydown)="onPanelKeydown($event)"
     (keydown.escape)="close()"
     (click)="onPanelClick($event)"

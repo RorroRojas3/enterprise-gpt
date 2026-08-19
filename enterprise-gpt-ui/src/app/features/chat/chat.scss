@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: flex;
   flex: 1;
@@ -163,5 +165,41 @@ app-icon.chat__menu-chevron {
   &:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
+  }
+}
+
+// ── Frame 1d: below 768px ────────────────────────────────────────────────────
+@include bp.mobile {
+  // The bar is gone — the shell's 54px navbar replaces it, and the star and kebab
+  // render there. The <h1> stays, and is **clipped rather than removed**: it is the
+  // document's only level-one heading, and `display: none` would take it and the
+  // skeleton that stands in for a name still in flight out of the accessibility tree
+  // with it. Same call, for the same reason, as the order explanation in
+  // `conversations.scss`.
+  .chat__header {
+    height: 0;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .chat__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  // Frame 1d's gutters: 16px around the transcript, 12px around the composer. The
+  // safe-area insets are added rather than substituted, because `viewport-fit=cover`
+  // puts both edges under the device's rounded corners in landscape.
+  .chat__transcript {
+    padding-inline: calc(16px + var(--safe-left)) calc(16px + var(--safe-right));
+  }
+
+  .chat__composer {
+    padding-inline: calc(12px + var(--safe-left)) calc(12px + var(--safe-right));
+    padding-bottom: calc(16px + var(--safe-bottom));
   }
 }

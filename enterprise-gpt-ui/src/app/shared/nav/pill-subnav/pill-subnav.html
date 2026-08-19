@@ -9,6 +9,9 @@
           [routerLink]="item.link"
         >
           {{ item.label }}
+          @if (item.count !== undefined && item.count !== null) {
+            <span class="pill-subnav__count">{{ item.count }}</span>
+          }
         </a>
       </li>
     }

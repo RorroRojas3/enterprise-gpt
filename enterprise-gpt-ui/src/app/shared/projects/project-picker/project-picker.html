@@ -5,6 +5,12 @@
     aria-modal is deliberately absent — because the page behind it stays live, exactly
     as it does behind a kebab.
   -->
+  <!--
+    The width is written inline at every viewport, as `Menu` does, so `PANEL_WIDTH` in
+    the component is the only place it is stated. Leaving it to the stylesheet above the
+    breakpoint would mean the same number in two files, with the placement deciding
+    whether the panel fits from one of them and the browser rendering the other.
+  -->
   <div
     #panel
     class="picker"
@@ -14,6 +20,7 @@
     [style.top.px]="position().top"
     [style.bottom.px]="position().bottom"
     [style.left.px]="position().left"
+    [style.width.px]="position().width ?? panelWidth"
     (keydown)="onKeydown($event)"
     (focusout)="onFocusOut($event)"
   >

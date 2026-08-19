@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 // Global rules the UI kit needs and component encapsulation cannot reach.
 // ── Skip link ────────────────────────────────────────────────────────────────
 // Off-screen until focused. Rendered by the shell (US-301) and styled here because it
@@ -117,10 +119,37 @@ html:has(dialog[open]) {
   }
 }
 
+// ── Safe areas ───────────────────────────────────────────────────────────────
+// The four device insets, once, as tokens. `index.html` carries `viewport-fit=cover`
+// (US-1403), which is what makes these resolve to anything but zero — and which also
+// means the layout viewport now extends under the notch and the home indicator, so a
+// surface that touches an edge has to add the inset back.
+//
+// Tokens rather than `env()` at the call sites for the reason `--toast-top` is a token:
+// the fallback belongs in one place. `env()` with no fallback is invalid in a browser
+// that does not know the keyword, and that failure mode is one dropped declaration
+// rather than a visible one.
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
 // ── Toast region ─────────────────────────────────────────────────────────────
 // Fixed, so it is positioned here rather than inside the component: 76px clears the
 // 52px chat header plus its rule. One place owns the number.
 :root {
   --toast-top: 76px;
   --toast-right: 20px;
+}
+
+// Below the mobile breakpoint the bar above the toast is the shell's 54px navbar, not
+// the chat header — and with `viewport-fit=cover` it sits below the notch. Same 23px
+// gap as the desktop figure, so the two move together.
+@include bp.mobile {
+  :root {
+    --toast-top: calc(78px + var(--safe-top));
+    --toast-right: calc(12px + var(--safe-right));
+  }
 }

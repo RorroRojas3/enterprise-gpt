@@ -37,6 +37,18 @@ export class Offcanvas {
   readonly heading = input.required<string>();
   readonly side = input<'start' | 'end'>('end');
   readonly width = input<string>('420px');
+  /**
+   * Strips the panel's own chrome for content that already owns its edges — the shell's
+   * mobile sidebar drawer (US-1403), whose sidebar draws its own brand row, padding and
+   * scroll container.
+   *
+   * The heading is **clipped, not removed**. A modal `<dialog>` needs an accessible
+   * name and `aria-labelledby` points at that `<h2>`; `display: none` would take it out
+   * of the accessibility tree and leave the dialog unnamed. Same call, for the same
+   * reason, as the order explanation in `conversations.scss`.
+   */
+  readonly bare = input<boolean>(false);
+
   readonly dismissible = input<boolean>(true);
   readonly busy = input<boolean>(false);
   readonly closed = output<void>();

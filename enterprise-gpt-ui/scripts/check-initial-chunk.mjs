@@ -48,6 +48,13 @@ const FORBIDDEN = [
   // it off the wire, but one stray static import from a shared module would put it in
   // the initial graph and hand it to everyone before any guard ran.
   { label: 'admin area (US-203)', match: /(^|\/)src\/app\/features\/admin\// },
+  // US-1405. `axe-core` is a devDependency of roughly 600 kB, reached only from
+  // `*.a11y.spec.ts` through `src/testing/a11y.ts`. The initial graph has well under a
+  // kilobyte of headroom, so an accidental application import would not merely regress
+  // the budget — it would ship an accessibility auditor to every user. Nothing else here
+  // would catch it: a spec-only dependency is invisible to the budgets, which measure the
+  // build rather than the test target.
+  { label: 'the axe auditor (US-1405)', match: /(^|\/)node_modules\/axe-core\// },
 ];
 
 function die(...lines) {

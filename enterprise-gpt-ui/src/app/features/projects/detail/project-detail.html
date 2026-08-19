@@ -59,50 +59,59 @@
     <app-composer />
   </div>
 
-  <nav class="detail__tabs" aria-label="Project sections">
-    <ul class="nav nav-tabs">
-      <li class="nav-item">
-        <a
-          class="nav-link"
-          routerLink="instructions"
-          routerLinkActive="active"
-          ariaCurrentWhenActive="page"
-        >
-          Instructions
-        </a>
-      </li>
-      <li class="nav-item">
-        <a
-          class="nav-link"
-          routerLink="files"
-          routerLinkActive="active"
-          ariaCurrentWhenActive="page"
-        >
-          Files
-          <!-- The board renders the count as a smaller run beside the label. It is
-               withheld until the panel has actually read the list, because "Files 0"
-               on a project that has four is worse than no count at all. -->
-          @if (filesCount() !== null) {
-            <span class="detail__tab-count">{{ filesCount() }}</span>
-          }
-        </a>
-      </li>
-      <li class="nav-item">
-        <a
-          class="nav-link"
-          routerLink="conversations"
-          routerLinkActive="active"
-          ariaCurrentWhenActive="page"
-        >
-          Conversations
-          <!-- Withheld until read, for the reason the file count above is. -->
-          @if (conversationsCount() !== null) {
-            <span class="detail__tab-count">{{ conversationsCount() }}</span>
-          }
-        </a>
-      </li>
-    </ul>
-  </nav>
+  <!--
+    Below 768px this becomes the pill strip the administration area already uses. The
+    links, their `aria-current` and the routes behind them are identical in both — see
+    the note on `isNarrow` for why this is a strip rather than frame `4e`'s accordion.
+  -->
+  @if (isNarrow()) {
+    <app-pill-subnav [items]="pills()" ariaLabel="Project sections" />
+  } @else {
+    <nav class="detail__tabs" aria-label="Project sections">
+      <ul class="nav nav-tabs">
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            routerLink="instructions"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+          >
+            Instructions
+          </a>
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            routerLink="files"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+          >
+            Files
+            <!-- The board renders the count as a smaller run beside the label. It is
+                 withheld until the panel has actually read the list, because "Files 0"
+                 on a project that has four is worse than no count at all. -->
+            @if (filesCount() !== null) {
+              <span class="detail__tab-count">{{ filesCount() }}</span>
+            }
+          </a>
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            routerLink="conversations"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+          >
+            Conversations
+            <!-- Withheld until read, for the reason the file count above is. -->
+            @if (conversationsCount() !== null) {
+              <span class="detail__tab-count">{{ conversationsCount() }}</span>
+            }
+          </a>
+        </li>
+      </ul>
+    </nav>
+  }
 } @else if (project.isFirstLoad()) {
   <div class="detail__header" aria-busy="true">
     <div class="detail__identity">

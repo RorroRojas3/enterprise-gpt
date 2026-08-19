@@ -14,6 +14,9 @@ import { UploadStore } from '@core/documents/upload-store';
 import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { Composer } from '@shared/composer/composer';
 import { Icon } from '@shared/icon/icon';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
+import { PillItem, PillSubnav } from '@shared/nav/pill-subnav/pill-subnav';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
@@ -43,6 +46,7 @@ import { ProjectStore } from './project-store';
     Composer,
     Icon,
     Menu,
+    PillSubnav,
     MenuItem,
     MenuSeparator,
     RouterLink,
@@ -81,6 +85,29 @@ export class ProjectDetail {
 
   /** Frame `4e`'s count beside the Conversations tab (US-908), withheld the same way. */
   protected readonly conversationsCount = computed(() => this._conversations.count());
+
+  /**
+   * Below 768px the tab strip becomes the same scrollable pill strip the administration
+   * area uses (frame `5m`'s treatment). Frame `4e`'s caption asks for stacked accordions
+   * instead; that is a **deliberate departure**, agreed before implementation. These
+   * three tabs are real child routes, one of them behind a `canDeactivate` guard that
+   * can *refuse* the navigation — so a disclosure marked `aria-expanded` would announce
+   * a state the control neither owns nor can guarantee. `aria-current="page"` on a link
+   * is the honest statement, and reusing the strip means one responsive navigation
+   * pattern in the application rather than two.
+   */
+  protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
+
+  protected readonly pills = computed<readonly PillItem[]>(() => [
+    { id: 'instructions', label: 'Instructions', link: 'instructions' },
+    { id: 'files', label: 'Files', link: 'files', count: this.filesCount() },
+    {
+      id: 'conversations',
+      label: 'Conversations',
+      link: 'conversations',
+      count: this.conversationsCount(),
+    },
+  ]);
 
   constructor() {
     // A computation, not a value: navigating from one project to another reuses this

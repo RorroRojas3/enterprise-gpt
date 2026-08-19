@@ -263,6 +263,14 @@ The glyph is a second, quieter constraint: `AdminTab.icon` is typed `IconName`, 
 
 The rail becomes frame `5m`'s scrollable pill strip, through the existing `PillSubnav`. The breakpoint is fixed rather than an input, and it is the same one `DataTable` collapses at — a caller choosing a different width would put the rail and the rows out of step. `ADMIN_PILLS` is derived from `ADMIN_TABS`, so the reports entry arrived here for free — but US-1209's first criterion is about the rail marking the open tab, and below the breakpoint the rail **is** this strip, which is why a spec opens `/admin/reports` narrow as well as wide.
 
+Both criteria US-1403 asks of this area — tables to cards at 44px targets, and the rail to pills — were therefore already met when that story opened. Three things about the area did change with it, and all three are worth knowing:
+
+- **The breakpoint is no longer spelled here.** The rail and `DataTable` both read `MOBILE_VIEWPORT` from `shared/layout/breakpoints.ts`, and the stylesheet uses the `bp.mobile` mixin. That was not only tidiness: this area used `(max-width: 767px)` while the record uses `767.98px`, so a viewport reported as 767.5px — browser zoom, or Windows display scaling — matched **neither**, and got the desktop rail beside mobile cards. `npm run lint` now refuses a hand-written breakpoint anywhere ([Responsive layout §3](responsive-layout.md#3-one-breakpoint-record-two-copies-two-gates)).
+- **`AdminLayout` scrolls itself.** `.shell__main` is `overflow: hidden`, so a routed screen with no scroll container of its own is _clipped_ below the fold rather than scrolled — silently, and at every width. The host takes `overflow-y: auto` and **keeps** its `min-height: 100%`, which is what makes the rail span the pane when a tab's content is short ([Responsive layout §9.2](responsive-layout.md#92-four-routed-screens-clipped-below-the-fold)).
+- **It publishes the mobile navbar's title.** Frame `5m` captions the bar "Admin" and draws no trailing control, so `AdminLayout` publishes a title and no actions into `ShellChrome`, `{ optional: true }` because every tab spec renders it through `RouterTestingHarness` with no shell around it, and clears on destroy or the title outlives the area and captions the chat screen ([Shell and Navigation §5.6](shell-and-navigation.md#56-shellchrome--what-a-routed-screen-puts-in-the-mobile-navbar)).
+
+All four tabs are also audited by axe in both themes, at a desktop width, since US-1405 — which is where the dark `--active-bg` failure on this rail's active pill was found ([Accessibility audit §6.2](accessibility-audit.md#62-dark---active-bg-173a58-to-16354d)).
+
 ### 3.4 The reports tab: the URL exists, the dashboard does not (US-1209)
 
 The fourth tab exists **so that its URL does**. US-1209's first criterion names four URLs, `/admin/reports` among them, each of which has to render as the active tab with the rail marking it — and a tab whose route is missing cannot be marked. That is the whole reason this screen shipped now, and it settles a deadlock: §3.2 and the comments in `admin-tabs.ts` had booked the fourth tab to US-1302, but US-1302 `Depends on: US-1209`, so each was waiting on the other. §3.2's rule was never what stood in the way — it names the story that builds the route, and here that story is US-1209. Design frame `5i`, labelled "Reports — unavailable panel (current state)" and captioned "Required frame", is the authority for shipping it in this state rather than not at all.
@@ -794,7 +802,7 @@ The root store's handler calls `reload()` rather than `ensureLoaded()`, for §10
 
 ### 12.1 The bundle
 
-The initial bundle measures **669.78 kB raw / 168.95 kB transfer** against the 670 kB warning and 720 kB error ceiling, with `styles` unchanged at 63.96 kB. No re-baseline — and **0.22 kB of headroom left**, so the next root-scoped store trips the warning.
+The initial bundle measures **669.78 kB raw / 168.95 kB transfer** against the 670 kB warning and 720 kB error ceiling in force at the time, with `styles` unchanged at 63.96 kB. No re-baseline — and **0.22 kB of headroom left**, so the next root-scoped store trips the warning. (US-1405 has since moved the two warning lines to 675 kB and 66 kB against a measured 670.33 / 64.47 kB; the ceilings are unchanged. See [Accessibility audit §7](accessibility-audit.md#7-budgets).)
 
 | Story           | Initial raw   | Δ            | What landed on the graph                                                                                               |
 | --------------- | ------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
@@ -995,6 +1003,8 @@ And on the MCP servers tab:
 | A mobile card prints the server name twice                                                    | The visually-hidden "Linked permission:" label came off the badges slot, which has no column header below the breakpoint (§11.2)                                                              |
 | Editing a server registered with an unknown auth type leaves Save dead and silent             | `authTypeError` or the `unsupportedAuthType` message was gated on `touched`. Nobody typed the value, and the disabled Save prevents the interaction that would reveal it (§11.3)              |
 | "Entra ID (on behalf of)" is ellipsised in every row                                          | The Auth column was returned to frame `5g`'s 90px. It holds one of two values and the wider one never fits (§11.2)                                                                            |
+| A long table is cut off at the bottom of the pane and will not scroll                         | `overflow-y: auto` came off the `AdminLayout` host. `.shell__main` is `overflow: hidden` and clips whatever does not scroll itself (§3.3)                                                     |
+| The mobile navbar still reads "Admin" after navigating to chat                                | The layout did not `clear()` its `ShellChrome` entry on destroy (§3.3)                                                                                                                        |
 
 ## 16. Key files
 

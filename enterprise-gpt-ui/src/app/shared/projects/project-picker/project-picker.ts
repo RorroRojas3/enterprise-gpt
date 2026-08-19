@@ -25,6 +25,13 @@ import { AnchoredPosition, anchoredPosition } from '@shared/overlay/anchored-pan
 let nextId = 0;
 
 /**
+ * The panel's width, mirroring `.picker` in the stylesheet. Named here as well so the
+ * placement can decide whether it still fits the viewport; the inline width the
+ * full-width branch returns wins over the CSS one, and `null` leaves it alone.
+ */
+const PANEL_WIDTH = 320;
+
+/**
  * Frame `2e`: the searchable project list, with "Remove from project" and a pinned
  * "New project" (US-307).
  *
@@ -84,7 +91,15 @@ export class ProjectPicker {
 
   protected readonly panelId = `project-picker-${nextId++}`;
   protected readonly listId = `${this.panelId}-list`;
-  protected readonly position = signal<AnchoredPosition>({ top: 0, bottom: null, left: 0 });
+  /** Bound in the template, so the width lives here alone rather than here and in CSS. */
+  protected readonly panelWidth = PANEL_WIDTH;
+
+  protected readonly position = signal<AnchoredPosition>({
+    top: 0,
+    bottom: null,
+    left: 0,
+    width: null,
+  });
 
   /**
    * The filter term, local to this instance.
@@ -143,19 +158,35 @@ export class ProjectPicker {
           return null;
         }
 
-        return this.anchor().getBoundingClientRect();
+        // Both reads happen here rather than in `write`, as `Menu` does: they are both
+        // layout reads, and the phase split exists to keep them out of the write pass.
+        // `documentElement.clientWidth` for the width, deliberately, and `innerWidth`
+        // for nothing: a `position: fixed` panel's containing block **excludes** the
+        // classic scrollbar, so sizing it from `innerWidth` overhangs by the scrollbar's
+        // thickness and produces the horizontal scrollbar US-1403's last criterion
+        // forbids — on exactly the desktop browser someone narrows to check it. It is
+        // the JS spelling of the `100vw` mistake `offcanvas.scss` calls out one file
+        // over.
+        const view = this.document.defaultView;
+        return {
+          anchor: this.anchor().getBoundingClientRect(),
+          viewport: {
+            width: this.document.documentElement.clientWidth,
+            height: view?.innerHeight ?? this.document.documentElement.clientHeight,
+          },
+        };
       },
-      write: (rect) => {
-        const box = rect();
+      write: (measured) => {
+        const box = measured();
         const panel = this.panelRef();
         if (!box || !panel) {
           return;
         }
 
-        const viewportHeight =
-          this.document.defaultView?.innerHeight ?? this.document.documentElement.clientHeight;
+        // PANEL_WIDTH rather than the measured width, for the reason `Menu` gives: the
+        // measurement lags a pass behind the width that was bound.
         this.position.set(
-          anchoredPosition(box, panel.nativeElement.offsetWidth, viewportHeight, {
+          anchoredPosition(box.anchor, PANEL_WIDTH, box.viewport, {
             direction: this.direction(),
             align: this.align(),
           }),

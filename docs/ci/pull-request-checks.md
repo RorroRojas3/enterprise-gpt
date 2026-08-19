@@ -11,7 +11,7 @@ The thing worth reading even if you never touch a workflow file: **both workflow
 | Workflow         | Jobs (and their check names)                                      | Runs                                                                                                                            |
 | ---------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **`api-ci.yml`** | `Detect API changes` → `Unit tests`, `Integration tests`          | 1152 unit tests with no Docker; 250 integration tests against real containers                                                   |
-| **`ui-ci.yml`**  | `Detect UI changes` → `Lint, test, build`, `Andes contract drift` | Prettier, ESLint + the three Node checks, Vitest, the production build and its bundle gates; and the US-107 contract comparison |
+| **`ui-ci.yml`**  | `Detect UI changes` → `Lint, test, build`, `Andes contract drift` | Prettier, ESLint + the three Node checks, Vitest, the production build and its bundle gates, then a Chromium install and the axe-core accessibility audit; and the US-107 contract comparison |
 
 Both fire on `push` to `master`, on `pull_request` against `master`, and on `merge_group` — the last so the checks still report if a merge queue is ever enabled. Neither carries a `paths:` filter.
 
@@ -30,12 +30,15 @@ dotnet test tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Tes
 
 # in enterprise-gpt-ui/   — what "Lint, test, build" runs
 npm ci && npm run format:check && npm run lint && npm run test:ci && npm run build
+npx --no playwright install --with-deps chromium && npm run test:a11y
 
 # in enterprise-gpt-ui/   — what "Andes contract drift" runs, after a restore of Enterprise.Gpt.Service
 npm run check:contract
 ```
 
 `npm run test:ci` is `npm test` plus a JUnit report at `enterprise-gpt-ui/test-results/ui.junit.xml`, which CI uploads as an artifact; `test-results/` is gitignored. It has its own `pretest:ci` so the generated fonts and icons are built before it, exactly as `pretest` does for `npm test`.
+
+`npm run test:a11y` is a **second Vitest target** (`test-a11y` in `angular.json`) running the `*.a11y.spec.ts` files in headless Chromium, which the main `test` target excludes. It has its own `pretest:a11y` for the same generated assets. On a workstation the `--with-deps` half of the install can be dropped; the system libraries are a bare-runner concern. See [Accessibility audit](../ui/accessibility-audit.md).
 
 ## 3. Why the `paths:` filters are gone
 
@@ -114,7 +117,19 @@ If the Cosmos emulator proves flaky, the fix is a fourth job filtered with `--fi
 
 ## 7. UI CI
 
-`Lint, test, build` runs `npm ci`, then `format:check`, `lint`, `test:ci`, the results upload, and `build` — in that order, so a formatting or lint failure is reported in seconds rather than after a production build. The checkout is deliberately **full, never sparse**: `check:tokens` reads `../docs/design/project/theme.css` from outside the UI tree. Node comes from `node-version-file: enterprise-gpt-ui/package.json`, so the runner follows the `engines.node` range rather than a second copy of it in YAML.
+`Lint, test, build` runs `npm ci`, then `format:check`, `lint`, `test:ci`, the results upload, `build`, a Chromium install, `test:a11y`, and — only on failure — a screenshot upload. That order is the job's one rule: **the cheapest gates report first**, so a formatting or lint failure is reported in seconds rather than after a production build, and the accessibility audit is last because it is the most expensive step in the job. It runs a second Angular build of its own and launches a browser; placed ahead of `Build`, one contrast failure would hide the bundle-budget result and cost a second round trip.
+
+Three environmental invariants this job depends on, in the order they will bite:
+
+- **The checkout is full, never sparse.** `check:tokens` reads `../docs/design/project/theme.css` from outside the UI tree.
+- **The generated assets must exist before either test run.** `pretest:ci` and `pretest:a11y` both run `npm run assets`; a target added without its `pre*` script fails on a missing icon sprite rather than on anything it was written to check.
+- **The job needs a browser.** `npx --no playwright install --with-deps chromium` puts one on the runner. `--with-deps` installs the system libraries Chromium needs on a bare image, and `--no` makes a missing local binary a loud failure instead of npx silently fetching an unpinned `playwright` from the registry and running it against the checkout — the version is pinned by `package-lock.json` and by nothing else, since dependabot tracks only the `github-actions` ecosystem here (§10).
+
+Node comes from `node-version-file: enterprise-gpt-ui/package.json`, so the runner follows the `engines.node` range rather than a second copy of it in YAML.
+
+**Both accessibility steps are steps in this job rather than a job of their own, deliberately.** A new job name has to be added to branch protection by hand (§4), and a required check nobody adds is a gate that never runs — so US-1405 shipped without changing any check name, and branch protection needs no change.
+
+The screenshot upload is the mirror image of the JUnit one beside it: `if: ${{ failure() }}` with `if-no-files-found: ignore`, because a green run leaves nothing behind by design and an empty path is the normal case rather than a sign the wiring broke. Vitest's browser mode writes a screenshot per failed assertion, which is the only evidence a violation reproducing solely on CI leaves anywhere. Both of its paths carry the `enterprise-gpt-ui/` prefix, because `upload-artifact` resolves against the workspace root and ignores `defaults.run.working-directory`.
 
 `Andes contract drift` is isolated because it is the only thing here that needs the .NET toolchain, and ~60s of restore does not belong on the critical path of every UI pull request. It restores `Enterprise.Gpt.Service` — the lighter of the two projects that reference `Andes.Extensions.AI.UI` — and the invariant it depends on is worth knowing: **some** project restored there must still reference the package, or the check fails with "not on this machine" for a reason nobody will connect to a `.csproj` edit. Restore `Enterprise.Gpt.Api` instead if `Service` ever drops it.
 
@@ -147,6 +162,8 @@ Test results upload under `if: ${{ !cancelled() }}` rather than `always()`, beca
 | **`dependabot.yml` tracks only the `github-actions` ecosystem**                                                                        | Deliberate. `nuget` and `npm` are adjacent to this work rather than part of it, and both would open a much larger update surface than SHA-pinned actions                                |
 | **The `changes` allowlists are hand-maintained** (§5)                                                                                  | Nothing generates them, and a missing entry under-runs the gates. Check them when adding a file outside the two project trees                                                           |
 | **Every pull request pays for a `changes` job**                                                                                        | The price of a check that can be required (§3)                                                                                                                                          |
+| **The Chromium download is not cached**, so every UI pull request pays for it                                                          | It is a step on the job's tail rather than its critical path, and a Playwright browser cache keyed correctly is its own change. Re-measure before adding one                            |
+| **The accessibility audit lives inside `Lint, test, build`**, so its result is not separately visible in the checks list               | Deliberate (§7): a separate job would need a branch-protection change nobody would make, and an unrequired check is worse than a step that reddens a required one                       |
 
 ## 11. Troubleshooting
 
@@ -160,6 +177,8 @@ Test results upload under `if: ${{ !cancelled() }}` rather than `always()`, beca
 | `check:contract` reports the package is "not on this machine"                    | The restored project no longer references `Andes.Extensions.AI.UI` (§7)                                                                           |
 | `Integration tests` reddens with no change in this repository                    | An upstream push to a `*-latest` image tag (§10)                                                                                                  |
 | Three merges land together and the middle commit has no result                   | The concurrency group was keyed on the ref rather than the SHA (§9)                                                                               |
+| `Lint, test, build` is red and the log ends in a browser launch error            | The Chromium install step failed or was removed. It is what puts a browser on the runner for `test:a11y` (§7)                                     |
+| An accessibility violation reproduces only on CI                                 | Download the `ui-a11y-failures` artifact — the browser-mode screenshots are the only record, and a green run uploads nothing (§7)                 |
 
 ## 12. Key files
 
@@ -168,6 +187,7 @@ Test results upload under `if: ${{ !cancelled() }}` rather than `always()`, beca
 | API workflow                    | [`.github/workflows/api-ci.yml`](../../.github/workflows/api-ci.yml)                                                                                                             |
 | UI workflow                     | [`.github/workflows/ui-ci.yml`](../../.github/workflows/ui-ci.yml)                                                                                                               |
 | Action version updates          | [`.github/dependabot.yml`](../../.github/dependabot.yml)                                                                                                                         |
-| The UI's CI test script         | [`enterprise-gpt-ui/package.json`](../../enterprise-gpt-ui/package.json) — `test:ci`, `pretest:ci`                                                                               |
+| The UI's CI test scripts        | [`enterprise-gpt-ui/package.json`](../../enterprise-gpt-ui/package.json) — `test:ci`, `pretest:ci`, `test:a11y`, `pretest:a11y`                                                  |
+| The accessibility target        | [`enterprise-gpt-ui/angular.json`](../../enterprise-gpt-ui/angular.json) — `test-a11y`                                                                                           |
 | Integration test infrastructure | [`tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/) — the two image tags live here |
-| Related reference               | [Frontend Foundation](../ui/frontend-foundation.md) for the UI gates themselves, [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md)                                    |
+| Related reference               | [Frontend Foundation](../ui/frontend-foundation.md) for the UI gates themselves, [Accessibility audit](../ui/accessibility-audit.md), [Design System §10](../ui/design-system.md#10-gates), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |

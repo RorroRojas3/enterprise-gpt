@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: flex;
   flex: 1;
@@ -65,7 +67,7 @@
 }
 
 // Frame 3g: the same screen at 768–1023px drops to a smaller lockup and heading.
-@media (max-width: 1023.98px) {
+@include bp.below-desktop {
   .chat-empty {
     gap: 16px;
   }

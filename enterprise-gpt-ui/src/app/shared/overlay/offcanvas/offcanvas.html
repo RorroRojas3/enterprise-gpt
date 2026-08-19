@@ -8,6 +8,7 @@
   #dialog
   class="offcanvas-panel"
   [class.offcanvas-panel--start]="side() === 'start'"
+  [class.offcanvas-panel--bare]="bare()"
   [style.--offcanvas-width]="width()"
   [attr.aria-labelledby]="headingId"
   [attr.aria-busy]="busy() ? 'true' : null"

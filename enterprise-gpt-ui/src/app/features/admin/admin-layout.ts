@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { ShellChrome } from '@core/ui/shell-chrome';
 import { Icon } from '@shared/icon/icon';
 import { PillSubnav } from '@shared/nav/pill-subnav/pill-subnav';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
 import { injectMediaQuery } from '@shared/layout/media-query';
 import { ADMIN_PILLS, ADMIN_TABS } from './admin-tabs';
 
@@ -34,5 +36,19 @@ export class AdminLayout {
    * the same reason: the boards restructure at one width, and a caller choosing a
    * different one would put the rail and the rows out of step.
    */
-  protected readonly isNarrow = injectMediaQuery('(max-width: 767px)');
+  protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
+
+  constructor() {
+    // Frame `5m` titles the mobile navbar "Admin" rather than with the product name,
+    // and draws no trailing control — so this publishes a title and no actions.
+    //
+    // `optional`, because `admin-layout.spec.ts` and every tab spec render this
+    // component through `RouterTestingHarness` with no shell around it. Cleared on
+    // destroy, or the title outlives the area and captions the chat screen.
+    const chrome = inject(ShellChrome, { optional: true });
+    if (chrome !== null) {
+      chrome.publish({ title: 'Admin' });
+      inject(DestroyRef).onDestroy(() => chrome.clear());
+    }
+  }
 }

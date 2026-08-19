@@ -45,7 +45,11 @@ yarn-error.log
 /libpeerconnection.log
 testem.log
 /typings
+# Vitest browser mode (the `test-a11y` target) writes these when an assertion fails:
+# a screenshot per failure, and the attachment store behind them. Diagnostics, not
+# artifacts — the audit is reproducible from the spec.
 __screenshots__/
+.vitest-attachments/
 
 # System files
 .DS_Store

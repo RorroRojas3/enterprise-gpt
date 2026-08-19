@@ -4,7 +4,16 @@
     <meta charset="utf-8" />
     <title>Enterprise GPT</title>
     <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      `viewport-fit=cover` is US-1403's, and it is not cosmetic: without it every
+      `env(safe-area-inset-*)` resolves to 0px, so the safe-area padding frame `1d`
+      asks for would be a no-op that looks implemented. With it the layout viewport
+      extends *under* the notch and the home indicator, which is why `_kit.scss`
+      exposes the four insets as tokens and the navbar, the composer, the transcript
+      gutters and the mobile drawer all consume them. Removing it silently un-pads
+      those four; removing their padding silently puts content under the notch.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <!--
       Only the two faces on the critical path: Inter 400 carries all body copy, and

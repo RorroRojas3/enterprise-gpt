@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: flex;
   gap: 30px;
@@ -8,7 +10,7 @@
 }
 
 // Below the breakpoint the rail is a strip above the content rather than beside it.
-@media (max-width: 767px) {
+@include bp.mobile {
   :host {
     flex-direction: column;
     gap: 16px;
@@ -88,4 +90,16 @@
   // on a definiteness the Flexbox spec does not guarantee through this chain.
   display: flex;
   flex-direction: column;
+}
+
+// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
+// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
+// the chat route escaped it, because `.chat__body` is its own scroll container.
+//
+// `min-height: 100%` above is deliberately **kept**: it is what makes the rail span the
+// pane when a tab's content is short, and dropping it to zero would let the host
+// collapse to its content and take the rail with it. The pane has a definite height, so
+// `100%` resolves and this scrolls the overflow rather than shrinking to avoid it.
+:host {
+  overflow-y: auto;
 }

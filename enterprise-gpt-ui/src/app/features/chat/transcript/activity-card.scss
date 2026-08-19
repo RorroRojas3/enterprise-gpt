@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: block;
 }
@@ -200,7 +202,7 @@
 // the outermost rail insets. Deeper rails keep the border — it is what says
 // "inside" — but stop compounding the ~33px each one costs, which on a 390px
 // viewport leaves a third-level card no room for its own label.
-@media (max-width: 767.98px) {
+@include bp.mobile {
   .activity-card--depth-1,
   .activity-card--depth-2 {
     > .activity-card__children {

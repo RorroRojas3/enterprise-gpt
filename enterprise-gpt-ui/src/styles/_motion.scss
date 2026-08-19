@@ -6,7 +6,16 @@
 // `_placeholders.scss` are excluded from the stylesheet — each would add a fifth.
 
 // One transition scale, referenced rather than restated: 150ms for hover and colour
-// changes, 200ms for layout (sidebar width, message appearance).
+// changes, 200ms for layout.
+//
+// PRD §5 states a third timing, "200ms for message appearance", and **the application
+// does not implement it**: a message is inserted with no transition and no animation,
+// and the only motion in the transcript is the `blink` caret. US-1404 chose to record
+// that rather than close it — adding an animation inside the story whose whole purpose
+// is to suppress animation is the wrong direction, and a fade-slide on insertion would
+// also disturb the live-region contract US-1402 built, where the settled turn that
+// replaces the streaming one must not re-announce. `--t-slow`'s example is therefore
+// the sidebar width, which is real, rather than a message appearance that is not.
 :root {
   --t-fast: 150ms;
   --t-slow: 200ms;
@@ -54,13 +63,33 @@
 // The one place `!important` is warranted: this block exists specifically to defeat
 // authored declarations, and Bootstrap's own `_reboot.scss` ships the same rule.
 // Keep it last in `styles.scss` so nothing can be emitted after it.
+//
+// **This block is sufficient on its own for every animation the app runs**, which
+// US-1404 verified site by site rather than assuming. Floored to one iteration of
+// 0.01ms with no `animation-fill-mode`, each of the four keyframes settles somewhere
+// harmless: `spin` ends at `rotate(360deg)`, which is where it started; both `ringpulse`
+// sites end with no box-shadow, and neither the jump-to-latest control nor the recording
+// pill needs one to be legible — the pill keeps its tint and its elapsed timer.
+//
+// The two delays are zeroed as well. Bootstrap's own reboot omits them, which is where
+// this block's shape came from, but that omission is a gap rather than a decision: a
+// delay survives a floored duration and reappears as a late jump. Nothing in `src/`
+// declares one today, which is exactly when it is cheap to close.
+//
+// Four sites still carry a local override, and each is there because the floored
+// end-state would be *wrong* rather than merely still: the `blink` caret would settle
+// invisible (`_markdown.scss`), `ridgedash` would leave a blank gap in the ridgeline,
+// the activity spinner keeps a recognisable three-quarter arc, and the toast's drain bar
+// is hidden outright rather than flashed to empty.
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }

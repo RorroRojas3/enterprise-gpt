@@ -1,11 +1,11 @@
 body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#E4EBF1}
 :root,[data-bs-theme=light]{--bs-body-bg:#F7FAFC;--bs-body-color:#16283A;--bs-border-color:#DCE5EE;--bs-secondary-color:#5A6E82;--bs-link-color:#14324F;--bs-link-hover-color:#0B1F33;
---surface:#FFFFFF;--surface-2:#EFF4F9;--muted:#5A6E82;--brand:#14324F;--accent:#21A8D8;--ok:#2E9C58;--warn:#A96A10;--warn-bg:#FBF3E0;--warn-border:#E7CE9C;--fail:#C0392B;
+--surface:#FFFFFF;--surface-2:#EFF4F9;--muted:#5A6E82;--brand:#14324F;--accent:#21A8D8;--ok:#2E9C58;--warn:#9C6210;--warn-bg:#FBF3E0;--warn-border:#E7CE9C;--fail:#C0392B;
 --bubble:#14324F;--bubble-fg:#FFFFFF;--think-bg:#EAF1F8;--active-bg:#E7EFF7;--ring:rgba(33,168,216,.45);
 --code-bg:#0B1F33;--code-head:#122A42;--code-fg:#D7E3EE;--btnP-bg:#14324F;--btnP-fg:#FFFFFF;--btnP-hover:#0F2740;--show-light:inline;--show-dark:none}
 [data-bs-theme=dark]{--bs-body-bg:#0B1F33;--bs-body-color:#E6EDF4;--bs-border-color:#1E3A55;--bs-secondary-color:#8FA3B8;--bs-link-color:#21A8D8;--bs-link-hover-color:#63C6E6;
 --surface:#122A42;--surface-2:#17324D;--muted:#8FA3B8;--brand:#21A8D8;--accent:#21A8D8;--ok:#4CC47A;--warn:#E3AC45;--warn-bg:rgba(227,172,69,.13);--warn-border:rgba(227,172,69,.4);--fail:#E4655A;
---bubble:#1B4266;--bubble-fg:#EAF2F9;--think-bg:#0F2A44;--active-bg:#173A58;--ring:rgba(33,168,216,.5);
+--bubble:#1B4266;--bubble-fg:#EAF2F9;--think-bg:#0F2A44;--active-bg:#16354D;--ring:rgba(33,168,216,.5);
 --code-bg:#081827;--code-head:#0F2438;--code-fg:#D7E3EE;--btnP-bg:#21A8D8;--btnP-fg:#062231;--btnP-hover:#45B9E1;--show-light:none;--show-dark:inline}
 .btn-primary{--bs-btn-bg:var(--btnP-bg);--bs-btn-border-color:var(--btnP-bg);--bs-btn-color:var(--btnP-fg);--bs-btn-hover-bg:var(--btnP-hover);--bs-btn-hover-border-color:var(--btnP-hover);--bs-btn-hover-color:var(--btnP-fg);--bs-btn-active-bg:var(--btnP-hover);--bs-btn-active-border-color:var(--btnP-hover);--bs-btn-active-color:var(--btnP-fg);--bs-btn-disabled-bg:var(--btnP-bg);--bs-btn-disabled-border-color:var(--btnP-bg);--bs-btn-disabled-color:var(--btnP-fg)}
 .btn-outline-secondary{--bs-btn-color:var(--bs-body-color);--bs-btn-border-color:var(--bs-border-color);--bs-btn-hover-bg:var(--surface-2);--bs-btn-hover-color:var(--bs-body-color);--bs-btn-hover-border-color:var(--bs-border-color);--bs-btn-active-bg:var(--surface-2);--bs-btn-active-color:var(--bs-body-color);--bs-btn-active-border-color:var(--bs-border-color)}
