@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 // Frame 4c's column: the title, a toolbar, then the card grid.
 :host {
   display: flex;
@@ -8,7 +10,7 @@
 
 // The board's gutters are drawn at 1440px, and at 360px they would spend 68px of the
 // viewport on nothing.
-@media (max-width: 767px) {
+@include bp.mobile {
   :host {
     padding: 18px 14px;
   }
@@ -56,7 +58,18 @@
   color: var(--muted);
 }
 
+// Frame `4c`'s three-up card grid — which the screen has never actually had. The
+// template asked for it with `row g-3` and `col-12 col-md-6 col-xl-4`, and none of
+// those classes is defined: `_bootstrap-components.scss` omits `bootstrap/scss/grid`
+// on purpose, at 10.8 kB, with a comment promising this rule as the replacement.
+//
+// `min(280px, 100%)` rather than the bare 280px that comment names: a hard 280px track
+// minimum overflows its container below roughly a 308px viewport, which is exactly the
+// horizontal scrollbar US-1403's last criterion is about.
 .projects__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: 16px;
   margin: 0;
 }
 
@@ -71,4 +84,15 @@
   background: var(--surface);
   border: 1px solid var(--bs-border-color);
   border-radius: 12px;
+}
+
+// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
+// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
+// the chat route escaped it, because `.chat__body` is its own scroll container.
+//
+// `min-height: 0` is required for the same reason `shell.scss` needs `min-width: 0`: a
+// flex item will not shrink below its content, so `overflow-y` alone would never engage.
+:host {
+  min-height: 0;
+  overflow-y: auto;
 }

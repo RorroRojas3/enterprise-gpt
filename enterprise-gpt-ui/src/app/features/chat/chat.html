@@ -1,4 +1,105 @@
 <!--
+  The star and the kebab, declared once and rendered at exactly one place: the 52px
+  header below, or frame `1d`'s navbar through `ShellChrome` when the viewport is
+  narrower than 768px and that header has given up its bar.
+
+  One declaration and not two, because a `TemplateRef` rendered in both would put two
+  of this menu — and two project pickers, each with its own open state — in the
+  document at the same time.
+-->
+<ng-template #navbarActions>
+  <!--
+    US-308: the star and the kebab route through the same ConversationActionsStore
+    flows as the sidebar row — nothing reimplemented. Both wait for a full DTO
+    (`current`) because rename must echo the fresh projectId and every action names
+    the conversation, so a deep link shows neither for one round trip rather than
+    acting on a guess. US-1403 retired the last of the three criteria deferred out of
+    US-308: below 768px these controls move into frame 1d's navbar rather than
+    disappearing with the bar that used to hold them.
+  -->
+  @if (conversation.current(); as current) {
+    <!--
+      A label swap and a state class rather than aria-pressed, exactly as on
+      project-card: the label already says which way the control goes, and carrying
+      the state twice announces as "Unfavourite …, pressed". Native [disabled] is
+      right here — unlike the kebab's items, this button is not part of a
+      roving-focus panel it would drop out of.
+    -->
+    <button
+      class="chat__star"
+      type="button"
+      [class.chat__star--on]="conversation.isFavorite()"
+      [attr.aria-label]="(conversation.isFavorite() ? 'Unfavourite ' : 'Favourite ') + current.name"
+      [disabled]="conversation.actionPending()"
+      (click)="actions.toggleFavorite(current)"
+    >
+      <app-icon [name]="conversation.isFavorite() ? 'bi-star-fill' : 'bi-star'" />
+    </button>
+
+    <!--
+      aria-disabled, never the native attribute: a natively disabled item cannot
+      take focus, which strands the menu's roving focus and its Escape handling.
+      The store's begin* methods already refuse a pending row, so the click is a
+      guarded no-op, not a hole.
+    -->
+    <app-menu #headerMenu class="chat__menu" [label]="'Actions for ' + current.name">
+      <button
+        appMenuItem
+        type="button"
+        [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+        (click)="actions.beginRename(current)"
+      >
+        <app-icon name="bi-pencil" />
+        Rename
+      </button>
+      <!--
+        US-307, in the order frame 3a's kebab draws them. The chevron is the board's
+        submenu affordance; what opens is a dialog rather than a nested menu, which is
+        what aria-haspopup announces. Remove is absent for a standalone conversation
+        rather than rendered inert.
+      -->
+      <button
+        appMenuItem
+        type="button"
+        aria-haspopup="dialog"
+        [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+        (click)="openPicker(headerMenu)"
+      >
+        <app-icon name="bi-folder-symlink" />
+        <span class="chat__menu-label">Move to project</span>
+        <app-icon class="chat__menu-chevron" name="bi-chevron-right" />
+      </button>
+      @if (current.projectId !== null) {
+        <button
+          appMenuItem
+          type="button"
+          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+          (click)="actions.moveToProject(current, null)"
+        >
+          <app-icon name="bi-folder-minus" />
+          Remove from project
+        </button>
+      }
+      <hr appMenuSeparator />
+      <button
+        appMenuItem
+        type="button"
+        class="menu__item--danger"
+        [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
+        (click)="actions.beginDelete(current)"
+      >
+        <app-icon name="bi-trash3" />
+        Delete
+      </button>
+    </app-menu>
+
+    @if (pickerOpen() && pickerAnchor(); as anchor) {
+      <app-project-picker [conversation]="current" [anchor]="anchor" [(open)]="pickerOpen" />
+    }
+  }
+</ng-template>
+
+<!--
   Frame 1b's header bar. Rendered only when a conversation is open: frame 1a has no
   header at all, and an empty 52px rule above the empty state is not the same screen.
 -->
@@ -19,95 +120,12 @@
     </h1>
 
     <!--
-      US-308: the star and the kebab route through the same ConversationActionsStore
-      flows as the sidebar row — nothing reimplemented. Both wait for a full DTO
-      (`current`) because rename must echo the fresh projectId and every action names
-      the conversation, so a deep link shows neither for one round trip rather than
-      acting on a guess. Deliberately absent until its story lands: the sub-768px
-      collapse into frame 1d's mobile navbar (US-1403, which builds the responsive
-      shell it collapses into).
+      Rendered here only while the header has a bar to hold it. Below 768px frame
+      `1d` replaces that bar with the shell's navbar, and the same template is
+      rendered there instead — never in both.
     -->
-    @if (conversation.current(); as current) {
-      <!--
-        A label swap and a state class rather than aria-pressed, exactly as on
-        project-card: the label already says which way the control goes, and carrying
-        the state twice announces as "Unfavourite …, pressed". Native [disabled] is
-        right here — unlike the kebab's items, this button is not part of a
-        roving-focus panel it would drop out of.
-      -->
-      <button
-        class="chat__star"
-        type="button"
-        [class.chat__star--on]="conversation.isFavorite()"
-        [attr.aria-label]="
-          (conversation.isFavorite() ? 'Unfavourite ' : 'Favourite ') + current.name
-        "
-        [disabled]="conversation.actionPending()"
-        (click)="actions.toggleFavorite(current)"
-      >
-        <app-icon [name]="conversation.isFavorite() ? 'bi-star-fill' : 'bi-star'" />
-      </button>
-
-      <!--
-        aria-disabled, never the native attribute: a natively disabled item cannot
-        take focus, which strands the menu's roving focus and its Escape handling.
-        The store's begin* methods already refuse a pending row, so the click is a
-        guarded no-op, not a hole.
-      -->
-      <app-menu class="chat__menu" [label]="'Actions for ' + current.name">
-        <button
-          appMenuItem
-          type="button"
-          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
-          (click)="actions.beginRename(current)"
-        >
-          <app-icon name="bi-pencil" />
-          Rename
-        </button>
-        <!--
-          US-307, in the order frame 3a's kebab draws them. The chevron is the board's
-          submenu affordance; what opens is a dialog rather than a nested menu, which is
-          what aria-haspopup announces. Remove is absent for a standalone conversation
-          rather than rendered inert.
-        -->
-        <button
-          appMenuItem
-          type="button"
-          aria-haspopup="dialog"
-          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
-          (click)="openPicker()"
-        >
-          <app-icon name="bi-folder-symlink" />
-          <span class="chat__menu-label">Move to project</span>
-          <app-icon class="chat__menu-chevron" name="bi-chevron-right" />
-        </button>
-        @if (current.projectId !== null) {
-          <button
-            appMenuItem
-            type="button"
-            [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
-            (click)="actions.moveToProject(current, null)"
-          >
-            <app-icon name="bi-folder-minus" />
-            Remove from project
-          </button>
-        }
-        <hr appMenuSeparator />
-        <button
-          appMenuItem
-          type="button"
-          class="menu__item--danger"
-          [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
-          (click)="actions.beginDelete(current)"
-        >
-          <app-icon name="bi-trash3" />
-          Delete
-        </button>
-      </app-menu>
-
-      @if (pickerOpen() && pickerAnchor(); as anchor) {
-        <app-project-picker [conversation]="current" [anchor]="anchor" [(open)]="pickerOpen" />
-      }
+    @if (!isNarrow()) {
+      <ng-container [ngTemplateOutlet]="navbarActions" />
     }
   </header>
 }

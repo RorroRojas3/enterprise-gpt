@@ -2,23 +2,29 @@ import {
   ChangeDetectionStrategy,
   Component,
   DOCUMENT,
+  DestroyRef,
   Injector,
+  TemplateRef,
   afterNextRender,
   inject,
   input,
   signal,
   viewChild,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Events } from '@ngrx/signals/events';
 import { provideComposerHost } from '@core/chat/composer-host';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { canRetry } from '@core/errors/error-message';
+import { ShellChrome } from '@core/ui/shell-chrome';
 import { conversationEvents } from '@core/events/conversation-events';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { Icon } from '@shared/icon/icon';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
 import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
@@ -53,6 +59,7 @@ import { UploadStore } from '@core/documents/upload-store';
     Menu,
     MenuItem,
     MenuSeparator,
+    NgTemplateOutlet,
     ProjectPicker,
     Skeleton,
     Transcript,
@@ -89,7 +96,20 @@ export class Chat {
   protected readonly actions = inject(ConversationActionsStore);
   protected readonly turn = inject(TurnStore);
   private readonly uploads = inject(UploadStore);
-  private readonly menu = viewChild(Menu);
+
+  /**
+   * The star and the kebab, declared once and rendered at one of two places: the 52px
+   * header at desktop, and — through {@link ShellChrome} — frame `1d`'s navbar below
+   * 768px, which the shell owns because the hamburger beside them opens the sidebar.
+   */
+  private readonly navbarActions = viewChild<TemplateRef<unknown>>('navbarActions');
+
+  /**
+   * Which of the two renders it. Exactly one does at any width, because a `TemplateRef`
+   * instantiated twice would put two of this menu — and two project pickers — in the
+   * document at once.
+   */
+  protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
 
   /** Frame `2e`'s panel, opened from the header kebab and anchored where the kebab was. */
   protected readonly pickerOpen = signal(false);
@@ -155,6 +175,28 @@ export class Chat {
           );
         });
       });
+
+    // The navbar slot. `optional`, because every route spec instantiates this component
+    // without a shell around it, and a required dependency would make this seam a reason
+    // to rewrite them all.
+    //
+    // Published once rather than from an effect: the template reference is fixed for the
+    // life of the component, and only *where* it is rendered changes with the viewport.
+    // Cleared on destroy, or the conversation kebab outlives the conversation and
+    // appears over the next screen.
+    const chrome = inject(ShellChrome, { optional: true });
+    if (chrome !== null) {
+      afterNextRender(
+        () => {
+          const actions = this.navbarActions();
+          if (actions !== undefined) {
+            chrome.publish({ actions });
+          }
+        },
+        { injector },
+      );
+      inject(DestroyRef).onDestroy(() => chrome.clear());
+    }
   }
 
   /**
@@ -164,9 +206,8 @@ export class Chat {
    * closes on this same click, and a template binding would read its trigger on the
    * first change-detection pass, before the menu's view exists.
    */
-  protected openPicker(): void {
-    const menu = this.menu();
-    if (menu === undefined || this.conversation.actionPending()) {
+  protected openPicker(menu: Menu): void {
+    if (this.conversation.actionPending()) {
       return;
     }
 

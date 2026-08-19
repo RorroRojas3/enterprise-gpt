@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 // Frame 4a's column: the title, a toolbar, then the card-surfaced table.
 :host {
   display: flex;
@@ -8,7 +10,7 @@
 
 // The board's gutters are drawn at 1440px. Kept below the width where DataTable
 // switches to cards they would spend 68px of a 360px phone on nothing.
-@media (max-width: 767px) {
+@include bp.mobile {
   :host {
     padding: 18px 14px;
   }
@@ -38,7 +40,7 @@
 // of the accessibility tree with it, and the explanation lives inside this element —
 // so hiding it would leave US-705's criterion unmet on every phone rather than just
 // unseen.
-@media (max-width: 767px) {
+@include bp.mobile {
   .conversations__order {
     position: absolute;
     width: 1px;
@@ -237,4 +239,15 @@ app-icon.conversations__menu-chevron {
   &--on {
     color: var(--accent);
   }
+}
+
+// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
+// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
+// the chat route escaped it, because `.chat__body` is its own scroll container.
+//
+// `min-height: 0` is required for the same reason `shell.scss` needs `min-width: 0`: a
+// flex item will not shrink below its content, so `overflow-y` alone would never engage.
+:host {
+  min-height: 0;
+  overflow-y: auto;
 }

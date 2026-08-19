@@ -256,6 +256,33 @@ const CONTRAST_PAIRS = [
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
+  // US-1405, closing the `--warn` open question in the PRD's §9. Light `#A96A10`
+  // measured 4.41:1 on white, 4.21:1 on the page and 3.99:1 on its own tinted panel —
+  // all below AA for text under 18.66px — and it is used as a `color` in eight
+  // stylesheets. The value moved upstream in `docs/design/project/theme.css`, because
+  // this check enforces parity with the design bundle and a local override would fail
+  // it; these three pairs are what stop it drifting back.
+  //
+  // TEXT_MINIMUM rather than NON_TEXT: some of the eight are icons, which would only
+  // need 3:1, but several are running text and the same token serves both. Measuring
+  // the stricter of the two is the honest reading.
+  //
+  // `under` is what makes the third measurable in dark, where `--warn-bg` is an rgba
+  // over the card it sits on rather than an opaque colour.
+  { background: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
+  { background: 'bs-body-bg', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
+  { background: 'warn-bg', under: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
+  // US-1405, and the pair the axe run found rather than this table: the active entry in
+  // the administration rail, the sidebar's active navigation link and the paginator's
+  // current page all render `--brand` on `--active-bg`, which measured **4.29:1** in dark
+  // against a 4.5:1 minimum for 13.5px text. The board specifies that pairing, so the
+  // correction went upstream in `theme.css` — dark `--active-bg` `#173A58` → `#16354D` —
+  // under the PRD's rule that this document wins over the boards on accessibility.
+  //
+  // It went undetected for three stories because nothing measured it: the surfaces guard
+  // below checks every painted background against `--focus-ring`, not against the text
+  // drawn on it. This row is what makes the fix permanent.
+  { background: 'active-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
 ];
 
 /** WCAG 2.1 relative luminance of a `#rrggbb` value. */
@@ -283,6 +310,16 @@ function composite(base, wash) {
 }
 
 const HEX = /^#[0-9a-f]{6}$/;
+const RGBA = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/;
+
+/** A translucent token value as {@link composite} takes it, or null if it is not one. */
+function asWash(value) {
+  const parts = RGBA.exec(value ?? '');
+  if (parts === null) return null;
+
+  const hex = (channel) => Number(channel).toString(16).padStart(2, '0');
+  return { colour: '#' + hex(parts[1]) + hex(parts[2]) + hex(parts[3]), alpha: Number(parts[4]) };
+}
 const palette = {
   light: new Map([...actual.light, ...mapEntries(tokensScss, 'extra-light')]),
   dark: new Map([...actual.dark, ...mapEntries(tokensScss, 'extra-dark')]),
@@ -297,15 +334,32 @@ function unmeasurable(theme, name, value) {
 }
 
 for (const theme of ['light', 'dark']) {
-  for (const { background, foregrounds, minimum, over } of CONTRAST_PAIRS) {
-    const backgroundValue = palette[theme].get(background);
+  for (const { background, foregrounds, minimum, over, under } of CONTRAST_PAIRS) {
+    let backgroundValue = palette[theme].get(background);
+    let backgroundName = `--${background}`;
+
+    // A token that is translucent in one theme and opaque in the other — `--warn-bg` is
+    // a hex in light and an rgba in dark — is still one surface, and the reader sees
+    // whatever it resolves to. `under` names what it is painted on so both themes can be
+    // measured, rather than the dark half being reported as unmeasurable.
+    const tint = asWash(backgroundValue);
+    if (tint !== null && under !== undefined) {
+      const beneath = palette[theme].get(under);
+      if (!HEX.test(beneath ?? '')) {
+        problems.push(unmeasurable(theme, under, beneath));
+        continue;
+      }
+      backgroundValue = composite(beneath, tint);
+      backgroundName = `--${background} over --${under}`;
+    }
+
     if (!HEX.test(backgroundValue ?? '')) {
       problems.push(unmeasurable(theme, background, backgroundValue));
       continue;
     }
 
     const surface = over === undefined ? backgroundValue : composite(backgroundValue, over);
-    const surfaceName = over === undefined ? `--${background}` : `--${background} + hover wash`;
+    const surfaceName = over === undefined ? backgroundName : `${backgroundName} + hover wash`;
 
     for (const foreground of foregrounds) {
       const foregroundValue = palette[theme].get(foreground);
@@ -435,6 +489,139 @@ for (const file of ['_prism.scss', '_markdown.scss']) {
   }
 }
 
+// ── Keyframe parity (US-1404) ────────────────────────────────────────────────
+// US-1404's fourth criterion asks that all four keyframes "run as theme.css defines
+// them". `check-forbidden-apis.mjs` refuses a fifth; this holds the four to the design
+// bundle, which nothing did before — a transcription that drifted would have changed
+// how the app moves with every gate still green.
+//
+// Compared with whitespace and the optional trailing semicolon removed, and nothing
+// else: `_motion.scss` is Prettier-formatted and theme.css is minified, so those are
+// the only differences that are *not* a change of behaviour.
+{
+  const MOTION = join(UI_ROOT, 'src', 'styles', '_motion.scss');
+  const motion = stripComments(readFileSync(MOTION, 'utf8'));
+  const design = readFileSync(THEME_CSS, 'utf8');
+
+  /**
+   * The body of one `@keyframes`, brace-matched so a nested block cannot end it early.
+   *
+   * Located with `indexOf` rather than a built RegExp: the next character after the name
+   * is checked directly, which is both simpler and what stops `spin` matching `spinner`.
+   */
+  const bodyOf = (source, name) => {
+    const marker = '@keyframes ' + name;
+    let at = -1;
+    for (let from = source.indexOf(marker); from >= 0; from = source.indexOf(marker, from + 1)) {
+      const next = source[from + marker.length];
+      if (next === '{' || next === ' ' || next === '\n' || next === '\r' || next === '\t') {
+        at = from;
+        break;
+      }
+    }
+    if (at < 0) return null;
+
+    let depth = 0;
+    for (let i = source.indexOf('{', at); i < source.length; i++) {
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}' && --depth === 0) {
+        return source
+          .slice(source.indexOf('{', at) + 1, i)
+          .replace(/\s+/g, '')
+          .replace(/;(?=\}|$)/g, '')
+          .toLowerCase();
+      }
+    }
+    return null;
+  };
+
+  for (const name of ['blink', 'spin', 'ringpulse', 'ridgedash']) {
+    const ours = bodyOf(motion, name);
+    const theirs = bodyOf(design, name);
+
+    if (ours === null) {
+      problems.push(`_motion.scss no longer defines @keyframes ${name}, which theme.css does`);
+    } else if (theirs === null) {
+      problems.push(`theme.css no longer defines @keyframes ${name} — the design bundle moved`);
+    } else if (ours !== theirs) {
+      problems.push(
+        `@keyframes ${name} has drifted from theme.css. Design: ${theirs}. App: ${ours}`,
+      );
+    }
+  }
+}
+
+// ── Breakpoint parity (US-1403) ───────────────────────────────────────────────
+// The three application modes are stated twice by necessity — Sass cannot read a
+// TypeScript constant and `matchMedia` cannot read a Sass variable — so the two copies
+// are compared here rather than trusted. `check-forbidden-apis.mjs` stops a third copy
+// appearing; this stops the two that must exist from drifting.
+//
+// Both halves are checked: the whole-number minimum, and the fractional maximum in each
+// mixin. The fraction is the half that rots silently — a `767px` maximum beside a
+// `768px` minimum looks tidier and leaves a 0.98px band matching no mode at all.
+{
+  // Comment-stripped, because both files *document* the fractional-maximum bug by
+  // quoting the wrong queries. Scanning the prose would fail the gate on its own
+  // explanation.
+  const scss = stripComments(
+    readFileSync(join(UI_ROOT, 'src', 'styles', '_breakpoints.scss'), 'utf8'),
+  );
+  const ts = stripComments(
+    readFileSync(join(UI_ROOT, 'src', 'app', 'shared', 'layout', 'breakpoints.ts'), 'utf8'),
+  );
+
+  const read = (source, pattern, what) => {
+    const found = source.match(pattern);
+    if (!found) {
+      problems.push(`Could not read ${what} — the breakpoint parity check cannot run`);
+      return null;
+    }
+    return found[1];
+  };
+
+  const pairs = [
+    [
+      'tablet',
+      read(scss, /\$bp-tablet-min:\s*(\d+)px/, '$bp-tablet-min'),
+      read(ts, /TABLET_MIN_WIDTH = (\d+)/, 'TABLET_MIN_WIDTH'),
+    ],
+    [
+      'desktop',
+      read(scss, /\$bp-desktop-min:\s*(\d+)px/, '$bp-desktop-min'),
+      read(ts, /DESKTOP_MIN_WIDTH = (\d+)/, 'DESKTOP_MIN_WIDTH'),
+    ],
+  ];
+
+  for (const [name, fromScss, fromTs] of pairs) {
+    if (fromScss !== null && fromTs !== null && fromScss !== fromTs) {
+      problems.push(
+        `The ${name} breakpoint is ${fromScss}px in _breakpoints.scss and ${fromTs}px in ` +
+          'breakpoints.ts. They describe one edge and must be the same number.',
+      );
+    }
+  }
+
+  // Every maximum, in both files, is one hundredth below a minimum that exists.
+  const minima = new Set(pairs.flatMap(([, value]) => (value === null ? [] : [Number(value)])));
+  for (const [file, source] of [
+    ['_breakpoints.scss', scss],
+    ['breakpoints.ts', ts],
+  ]) {
+    for (const [, maximum] of source.matchAll(/max-width:\s*([\d.]+)px/g)) {
+      // Rounded rather than compared raw: `767.98 + 0.02` lands on exactly 768 at double
+      // precision by luck, and the next pair of numbers may not be as lucky.
+      if (!minima.has(Math.round((Number(maximum) + 0.02) * 100) / 100)) {
+        problems.push(
+          `${file} carries a maximum of ${maximum}px, which is not 0.02px below any ` +
+            'declared minimum. A whole-number maximum beside a whole-number minimum ' +
+            'leaves a fractional viewport matching neither mode.',
+        );
+      }
+    }
+  }
+}
+
 if (problems.length > 0) {
   die(...problems, '', `tokens:   ${TOKENS}`, `design:   ${THEME_CSS}`, `shell:    ${INDEX}`);
 }
@@ -444,6 +631,7 @@ const measured =
 
 console.log(
   `tokens OK — ${expected.light.size} light and ${expected.dark.size} dark properties match ` +
-    `theme.css, the pre-paint shell matches the tokens, and ${measured} code-surface and ` +
-    `focus-ring pairs clear their WCAG minimum`,
+    `theme.css, the pre-paint shell matches the tokens, the four keyframes and the two ` +
+    `breakpoints match it too, and ${measured} code-surface and focus-ring pairs clear ` +
+    `their WCAG minimum`,
 );

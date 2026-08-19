@@ -7,11 +7,25 @@
  * drive it with {@link setMediaQuery}.
  */
 
+// A relative specifier, not the `@shared/*` alias: this module is reached through
+// `setup-dom.ts`, which the unit-test builder loads as a Vite `setupFile` — outside
+// the alias map the application's own imports resolve through. Every other file in
+// `src/testing/` avoids app imports entirely, so this is the first to meet it.
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '../app/shared/layout/breakpoints';
+
 /** The query `ThemeService` watches. */
 export const PREFERS_DARK = '(prefers-color-scheme: dark)';
 
-/** The query components use for the mobile breakpoint. */
-export const NARROW_VIEWPORT = '(max-width: 767px)';
+/**
+ * The mobile breakpoint, re-exported rather than restated.
+ *
+ * The fake matches on the query *string*, so a spec that drives a value the code never
+ * asked for silently drives nothing. Re-exporting is what makes that impossible.
+ */
+export const NARROW_VIEWPORT = MOBILE_VIEWPORT;
+
+/** Frame `3g`'s band, on the same terms. Mutually exclusive with {@link NARROW_VIEWPORT}. */
+export const TABLET_VIEWPORT_QUERY = TABLET_VIEWPORT;
 
 interface Registry {
   readonly matches: Map<string, boolean>;

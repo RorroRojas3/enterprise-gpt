@@ -91,7 +91,12 @@ export class Menu {
 
   protected readonly panelId = `menu-panel-${nextId++}`;
   /** Placed by `anchoredPosition`, which US-307's project picker shares. */
-  protected readonly position = signal<AnchoredPosition>({ top: 0, bottom: null, left: 0 });
+  protected readonly position = signal<AnchoredPosition>({
+    top: 0,
+    bottom: null,
+    left: 0,
+    width: null,
+  });
 
   /** Set when opening by keyboard, so focus lands on the right end of the list. */
   private focusLastOnOpen = false;
@@ -133,18 +138,36 @@ export class Menu {
         if (!this.open() || !this.panelRef()) {
           return null;
         }
-        return this.triggerRef().nativeElement.getBoundingClientRect();
+        // The viewport is read here too, and not in `write` where it used to be: both
+        // are layout reads, and the phase split exists precisely to keep them out of
+        // the write pass.
+        // `documentElement.clientWidth` for the width, deliberately, and `innerWidth`
+        // for nothing: a `position: fixed` panel's containing block **excludes** the
+        // classic scrollbar, so sizing it from `innerWidth` overhangs by the scrollbar's
+        // thickness and produces the horizontal scrollbar US-1403's last criterion
+        // forbids — on exactly the desktop browser someone narrows to check it. It is
+        // the JS spelling of the `100vw` mistake `offcanvas.scss` calls out one file
+        // over.
+        const view = this.document.defaultView;
+        return {
+          anchor: this.triggerRef().nativeElement.getBoundingClientRect(),
+          viewport: {
+            width: this.document.documentElement.clientWidth,
+            height: view?.innerHeight ?? this.document.documentElement.clientHeight,
+          },
+        };
       },
-      write: (rect) => {
-        const box = rect();
+      write: (measured) => {
+        const box = measured();
         const panel = this.panelRef();
         if (!box || !panel) {
           return;
         }
-        const viewportHeight =
-          this.document.defaultView?.innerHeight ?? this.document.documentElement.clientHeight;
+        // `panelWidth()`, not the panel's measured `offsetWidth`: the measurement
+        // reflects whatever width was bound on the previous pass, so the first open at
+        // a narrow width would compute its inset from a stale number.
         this.position.set(
-          anchoredPosition(box, panel.nativeElement.offsetWidth, viewportHeight, {
+          anchoredPosition(box.anchor, this.panelWidth(), box.viewport, {
             direction: this.direction(),
             align: this.align(),
           }),

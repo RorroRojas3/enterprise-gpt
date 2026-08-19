@@ -1,0 +1,56 @@
+// The application's two layout breakpoints, for stylesheets. US-1403.
+//
+// **NOTHING IN THIS FILE MAY EMIT CSS.** That prohibition is what makes the file safe
+// to `@use` from a component stylesheet, and it is the whole difference from
+// `_tokens.scss`, which may never be `@use`d: that partial emits `:root` blocks, so
+// every component loading it would re-emit the token table into its own scoped
+// stylesheet. Variables and mixins emit nothing until a mixin is included, so this file
+// costs zero bytes however many stylesheets load it. Add a declaration at the top level
+// here and that stops being true, silently.
+//
+// `angular.json`'s `stylePreprocessorOptions.includePaths: ["src/styles"]` applies to
+// component stylesheets as well as `src/styles.scss`, which is what makes
+// `@use 'breakpoints'` resolve by bare name from anywhere under `src/`.
+//
+// Mixins rather than bare variables at the call sites, because
+// `@media (max-width: $bp-tablet-min - 0.02px)` written twelve times is twelve chances
+// to write `- 1px` instead. The values match `src/app/shared/layout/breakpoints.ts`,
+// where the comment explains why the maximum is fractional and the minimum is not.
+//
+// These are the *application's* three modes. A component may still choose a width of
+// its own for reflowing its own contents — `project-files.scss` at 575px and the two
+// admin form dialogs at 480px do — but it must not spell one of these two numbers to
+// mean something local.
+
+$bp-tablet-min: 768px; // at or above this, the sidebar is in the flow
+$bp-desktop-min: 1024px; // at or above this, the sidebar is persistent
+
+@mixin mobile {
+  @media (max-width: 767.98px) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (min-width: 768px) and (max-width: 1023.98px) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media (min-width: 1024px) {
+    @content;
+  }
+}
+
+@mixin below-desktop {
+  @media (max-width: 1023.98px) {
+    @content;
+  }
+}
+
+@mixin tablet-up {
+  @media (min-width: 768px) {
+    @content;
+  }
+}

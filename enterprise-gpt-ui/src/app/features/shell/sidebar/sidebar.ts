@@ -1,10 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   Injector,
   afterNextRender,
   computed,
   inject,
+  input,
+  output,
   viewChild,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
@@ -17,7 +20,6 @@ import {
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { canRetry } from '@core/errors/error-message';
 import { SessionStore } from '@core/session/session-store';
-import { UiStore } from '@core/ui/ui-store';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { EmptyState } from '@shared/feedback/empty-state/empty-state';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
@@ -29,6 +31,16 @@ import { UserFooter } from '@shared/nav/user-footer/user-footer';
 import { Tooltip } from '@shared/overlay/tooltip/tooltip';
 import { Ridgeline } from '@shared/ridgeline/ridgeline';
 import { ConversationRow } from './conversation-row';
+
+/**
+ * How the sidebar is being rendered.
+ *
+ * `overlay` is the 260px panel **without** its collapse chevron: inside frame `3e`'s
+ * mobile drawer there is no collapsed state to go to, and the shell's own close button
+ * already sits where the chevron would — one control that dismisses, not two that
+ * disagree.
+ */
+export type SidebarMode = 'expanded' | 'strip' | 'overlay';
 
 /** One entry in the sidebar's primary navigation. */
 interface NavItem {
@@ -82,12 +94,37 @@ const SKELETON_ROWS = 6;
 })
 export class Sidebar {
   private readonly _session = inject(SessionStore);
-  private readonly _ui = inject(UiStore);
   private readonly _injector = inject(Injector);
   private readonly _search = viewChild(SearchInput);
 
+  /**
+   * Only one of the two branches is ever in the DOM, so both chevrons carry this
+   * reference and at most one resolves. It exists so the control can be re-focused
+   * after a toggle destroys the one that was pressed.
+   */
+  private readonly _collapseControl = viewChild<ElementRef<HTMLButtonElement>>('collapseControl');
+
+  /**
+   * **Controlled, not self-driving.** The sidebar used to read `UiStore` and write the
+   * persisted preference itself. It cannot any more: at tablet width the same chevron
+   * must open a transient overlay *without* touching that preference (frame `3g` calls
+   * the strip the viewport's default, not the user's choice), and only the shell knows
+   * the viewport. Keeping the policy here would mean the sidebar deciding a question it
+   * cannot see the inputs to.
+   */
+  readonly mode = input.required<SidebarMode>();
+
+  /** Either chevron. What it means is the shell's to decide. */
+  readonly toggled = output<void>();
+
+  /** The strip's search button: expand, whatever expanding means at this width. */
+  readonly searchRequested = output<void>();
+
   protected readonly conversations = inject(ConversationListStore);
-  protected readonly collapsed = this._ui.sidebarCollapsed;
+  protected readonly collapsed = computed(() => this.mode() === 'strip');
+
+  /** Frame `3e` draws the shell's close button where this would sit. */
+  protected readonly showCollapse = computed(() => this.mode() !== 'overlay');
   protected readonly chatRoute = CHAT_ROUTE;
   protected readonly skeletonRows = Array.from({ length: SKELETON_ROWS });
 
@@ -118,8 +155,18 @@ export class Sidebar {
     () => this.conversations.isPending() && this.conversations.entities().length === 0,
   );
 
+  /**
+   * Toggling swaps two mutually exclusive branches, which destroys the button that was
+   * just pressed and drops focus to `<body>` — where the next Tab restarts at the top of
+   * the page. Focus therefore follows to the control that replaced it, after the render
+   * that creates it. Harmless at desktop and a dead end at tablet, where this chevron is
+   * how the overlay is dismissed.
+   */
   protected toggle(): void {
-    this._ui.toggleSidebar();
+    this.toggled.emit();
+    afterNextRender(() => this._collapseControl()?.nativeElement.focus(), {
+      injector: this._injector,
+    });
   }
 
   /**
@@ -128,8 +175,19 @@ export class Sidebar {
    * because the field does not exist in the DOM until the expanded branch is drawn.
    */
   protected expandAndSearch(): void {
-    this._ui.setSidebarCollapsed(false);
+    this.searchRequested.emit();
     afterNextRender(() => this._search()?.focusField(), { injector: this._injector });
+  }
+
+  /**
+   * Puts focus on whichever collapse control this width renders.
+   *
+   * Public because the shell needs it after dismissing the tablet overlay, and the
+   * alternative — the shell querying `.strip__button` by document order — picks a class
+   * shared by four other controls.
+   */
+  focusCollapseControl(): void {
+    this._collapseControl()?.nativeElement.focus();
   }
 
   protected clearSearch(): void {

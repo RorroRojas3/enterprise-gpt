@@ -37,14 +37,12 @@
     (retried)="projects.retry()"
   />
 } @else if (projects.isFirstLoad()) {
-  <div class="projects__grid row g-3" aria-busy="true">
+  <div class="projects__grid" aria-busy="true">
     @for (card of skeletonCards; track $index) {
-      <div class="col-12 col-md-6 col-xl-4">
-        <div class="projects__skeleton">
-          <app-skeleton width="60%" />
-          <app-skeleton [lines]="2" />
-          <app-skeleton width="35%" />
-        </div>
+      <div class="projects__skeleton">
+        <app-skeleton width="60%" />
+        <app-skeleton [lines]="2" />
+        <app-skeleton width="35%" />
       </div>
     }
   </div>
@@ -94,12 +92,17 @@
     </p>
   }
 
-  <!-- The board draws three columns at 1440; its own caption gives the responsive
-       rule, which is what this follows. -->
-  <div class="projects__grid row g-3">
+  <!--
+    The board draws three columns at 1440 and its caption gives the responsive rule.
+    This used to be written with `row g-3` and `col-12 col-md-6 col-xl-4`, and none of
+    those classes exists: `_bootstrap-components.scss` deliberately omits
+    `bootstrap/scss/grid`, so the "grid" was a plain block stack at every width. The
+    intrinsic `auto-fill` track in `projects.scss` is the replacement that file's own
+    comment promised.
+  -->
+  <div class="projects__grid">
     @for (project of projects.entities(); track trackId(project)) {
-      <div class="col-12 col-md-6 col-xl-4">
-        <!--
+      <!--
           The star is withheld rather than left inert. `ProjectCard` offers the one
           frame `4c` draws, but no project favourite exists on the wire until US-909 —
           a control that can be pressed and never persisted is worse than one that is
@@ -109,15 +112,15 @@
           against whichever route happens to host the card, and this component's own
           route is a path-less child.
         -->
-        <app-project-card
-          [name]="project.name"
-          [description]="project.description ?? ''"
-          [updatedLabel]="updatedLabel(project)"
-          [link]="linkFor(project)"
-          [showFavorite]="false"
-          [pending]="actions.isRowPending(project.id)"
-        >
-          <!-- Frame `4c`'s caption: Rename, Delete. Both route through
+      <app-project-card
+        [name]="project.name"
+        [description]="project.description ?? ''"
+        [updatedLabel]="updatedLabel(project)"
+        [link]="linkFor(project)"
+        [showFavorite]="false"
+        [pending]="actions.isRowPending(project.id)"
+      >
+        <!-- Frame `4c`'s caption: Rename, Delete. Both route through
                `ProjectActionsStore` and its shared dialogs rather than being
                reimplemented here, so the detail screen's own header offers the same
                two without a second copy of either flow.
@@ -126,30 +129,29 @@
                instant it is pressed, so a keyboard reader would land on `<body>` for
                the whole round trip. Both `beginEdit` and `beginDelete` refuse on the
                pending id, so the guard is real either way. -->
-          <app-menu cardMenu [label]="'Actions for ' + project.name">
-            <button
-              appMenuItem
-              type="button"
-              [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
-              (click)="beginEdit(project)"
-            >
-              <app-icon name="bi-pencil" />
-              Rename
-            </button>
-            <hr appMenuSeparator />
-            <button
-              appMenuItem
-              type="button"
-              class="menu__item--danger"
-              [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
-              (click)="beginDelete(project)"
-            >
-              <app-icon name="bi-trash3" />
-              Delete
-            </button>
-          </app-menu>
-        </app-project-card>
-      </div>
+        <app-menu cardMenu [label]="'Actions for ' + project.name">
+          <button
+            appMenuItem
+            type="button"
+            [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
+            (click)="beginEdit(project)"
+          >
+            <app-icon name="bi-pencil" />
+            Rename
+          </button>
+          <hr appMenuSeparator />
+          <button
+            appMenuItem
+            type="button"
+            class="menu__item--danger"
+            [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
+            (click)="beginDelete(project)"
+          >
+            <app-icon name="bi-trash3" />
+            Delete
+          </button>
+        </app-menu>
+      </app-project-card>
     }
   </div>
 }

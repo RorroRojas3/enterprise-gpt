@@ -39,3 +39,10 @@
   background: var(--brand);
   color: var(--btnP-fg);
 }
+
+// The board's count treatment on the wide strip: a smaller run beside the label, not a
+// badge.
+.pill-subnav__count {
+  margin-inline-start: 4px;
+  font-size: 11px;
+}

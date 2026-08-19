@@ -9,6 +9,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { CardRow } from '@shared/data/card-row/card-row';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
 import { injectMediaQuery } from '@shared/layout/media-query';
 import { toggleRow } from '../row-selection';
 import { TableCell } from './table-cell';
@@ -93,7 +94,7 @@ export class DataTable<T> {
    * its argument once at construction, so a per-instance value could not be honoured
    * without rebuilding the listener, and no screen in the design wants a different one.
    */
-  protected readonly isNarrow = injectMediaQuery('(max-width: 767px)');
+  protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
 
   protected readonly cellTemplates = computed(
     () => new Map(this.cells().map((cell) => [cell.appTableCell(), cell.template])),

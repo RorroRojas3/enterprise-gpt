@@ -11,6 +11,8 @@ import {
   withComponentInputBinding,
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { ShellChrome } from '@core/ui/shell-chrome';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { Dispatcher } from '@ngrx/signals/events';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
@@ -93,6 +95,8 @@ describe('Chat', () => {
     // Pending unless a test swaps it: these specs exercise the screen, and an
     // unresolved fetch keeps a sent turn in its thinking state.
     streamFetch = vi.fn(() => new Promise<Response>(() => {}));
+    // Or a width set by one test decides the branch every later one renders.
+    resetMediaQueries();
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -113,6 +117,10 @@ describe('Chat', () => {
           withComponentInputBinding(),
         ),
         provideLocationMocks(),
+        // The seam US-1403 added. `Chat` injects it `{ optional: true }`, so every
+        // other spec in this file runs without one; providing it here is what makes
+        // the navbar slot assertable at all.
+        ShellChrome,
       ],
     });
 
@@ -167,6 +175,67 @@ describe('Chat', () => {
     );
     // Only one h1 on the screen: the empty state steps down while a conversation is open.
     expect(element().querySelectorAll('h1')).toHaveLength(1);
+  });
+
+  describe('the mobile navbar slot (US-1403)', () => {
+    async function openConversation(): Promise<void> {
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation }));
+      await harness.fixture.whenStable();
+    }
+
+    it('renders the star and kebab in the header, and publishes them for the navbar', async () => {
+      await openConversation();
+
+      // `.chat__menu` and not a bare `app-menu`: the composer renders two of its own,
+      // for the model and tool pickers. Exactly one instantiation of *this* one — a
+      // `TemplateRef` rendered in both places would put two of this menu, and two
+      // project pickers each with its own open state, in the document at once.
+      expect(element().querySelectorAll('.chat__menu')).toHaveLength(1);
+      expect(element().querySelector('.chat__header .chat__menu')).not.toBeNull();
+      expect(TestBed.inject(ShellChrome).state().actions).not.toBeNull();
+    });
+
+    it('gives the header up below 768px and renders the controls only in the navbar', async () => {
+      setMediaQuery(NARROW_VIEWPORT, true);
+      await openConversation();
+
+      // The bar is gone from the header, so nothing here renders the template — the
+      // shell's navbar does, through the reference published above.
+      expect(element().querySelector('.chat__header .chat__menu')).toBeNull();
+      expect(element().querySelectorAll('.chat__menu')).toHaveLength(0);
+      // The star is the other half of the same template; asserting only the kebab would
+      // pass for a template that had lost one of them.
+      expect(element().querySelectorAll('.chat__star')).toHaveLength(0);
+      expect(TestBed.inject(ShellChrome).state().actions).not.toBeNull();
+    });
+
+    it('keeps the level-one heading at every width', async () => {
+      setMediaQuery(NARROW_VIEWPORT, true);
+      await openConversation();
+
+      // Frame 1d shows the brand rather than the conversation name, and the stylesheet
+      // clips this rather than hiding it: `display: none` would take the document's only
+      // <h1> out of the accessibility tree with it. jsdom applies no stylesheet, so what
+      // is assertable here is that the element and its text are still in the DOM.
+      const heading = element().querySelector('h1.chat__title');
+      expect(heading).not.toBeNull();
+      expect(heading?.textContent).toContain('Helios 2.4 release status');
+      expect(element().querySelectorAll('h1')).toHaveLength(1);
+    });
+
+    it('clears the slot on destroy, so the kebab does not outlive the route', async () => {
+      await openConversation();
+      const chrome = TestBed.inject(ShellChrome);
+      expect(chrome.state().actions).not.toBeNull();
+
+      harness.fixture.destroy();
+
+      expect(chrome.state().actions).toBeNull();
+      expect(chrome.state().title).toBeNull();
+    });
   });
 
   it('borrows the name from the sidebar list while the detail is in flight', async () => {

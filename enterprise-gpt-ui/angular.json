@@ -53,13 +53,13 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "670kB",
+                  "maximumWarning": "675kB",
                   "maximumError": "720kB"
                 },
                 {
                   "type": "bundle",
                   "name": "styles",
-                  "maximumWarning": "65kB",
+                  "maximumWarning": "66kB",
                   "maximumError": "80kB"
                 },
                 {
@@ -115,7 +115,22 @@
             "runner": "vitest",
             "watch": false,
             "providersFile": "src/testing/test-providers.ts",
-            "setupFiles": ["src/testing/setup-dom.ts"]
+            "setupFiles": ["src/testing/setup-dom.ts"],
+            "exclude": ["src/**/*.a11y.spec.ts"]
+          }
+        },
+        "test-a11y": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "buildTarget": "enterprise-gpt-ui:build:development",
+            "tsConfig": "tsconfig.spec.json",
+            "runner": "vitest",
+            "browsers": ["chromiumHeadless"],
+            "browserViewport": "1280x900",
+            "watch": false,
+            "include": ["src/**/*.a11y.spec.ts"],
+            "providersFile": "src/testing/test-providers.ts",
+            "setupFiles": []
           }
         }
       }

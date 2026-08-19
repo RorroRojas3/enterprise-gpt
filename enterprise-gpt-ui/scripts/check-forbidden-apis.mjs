@@ -131,6 +131,46 @@ const FORBIDDEN = [
       'every surface it can land on; --ring is measured against nothing.',
     exempt: ['styles/_motion.scss'],
   },
+  {
+    // The three application modes are one decision, and it was spread across twelve
+    // stylesheets and two components in six spellings — which is how `767px` and
+    // `767.98px` came to sit in the same codebase meaning the same edge. They do not:
+    // paired with a whole-number `min-width: 768px`, the whole-number maximum leaves a
+    // viewport reported as 767.5px matching neither mode, and this application ships on
+    // Windows, where display scaling produces exactly that.
+    //
+    // Component-local reflow points are untouched — 480px in the two admin form
+    // dialogs, 575px in the project files row, 575.98px in the auth interstitial. This
+    // rule names only the two numbers that mean "the application changed mode".
+    pattern: /\((?:max|min)-width\s*:\s*(?:767(?:\.98)?|768|1023(?:\.98)?|1024)px/,
+    label: 'a hardcoded application breakpoint',
+    why:
+      'US-1403: the three viewport modes are stated once, in styles/_breakpoints.scss ' +
+      'and app/shared/layout/breakpoints.ts, and check-tokens.mjs keeps the two in ' +
+      'step. Use the `bp.mobile` / `bp.tablet` / `bp.desktop` mixins in a stylesheet, ' +
+      'or MOBILE_VIEWPORT / TABLET_VIEWPORT in TypeScript.',
+    exempt: ['styles/_breakpoints.scss', 'app/shared/layout/breakpoints.ts'],
+  },
+  {
+    // The application defines exactly four keyframes, all of them transcribed from
+    // `docs/design/project/theme.css`. That rule is asserted in prose by `_motion.scss`,
+    // by the design-system page, by the rebuild PRD and by two sibling PRDs, and until
+    // US-1404 it was enforced by nothing.
+    //
+    // It is why Bootstrap's `_spinners.scss` and `_placeholders.scss` are excluded from
+    // the stylesheet — each would add a fifth — and why `_motion.scss` is not exempt
+    // here: a fifth keyframe is no more welcome in that file than anywhere else.
+    //
+    // A word boundary after each name, or `@keyframes spinner` would pass as `spin`.
+    pattern: /@keyframes\s+(?!(?:blink|spin|ringpulse|ridgedash)\b)/,
+    label: 'a fifth keyframe',
+    why:
+      'US-1404 / PRD §5: the app defines exactly four keyframes — blink, spin, ' +
+      'ringpulse and ridgedash — and check-tokens.mjs holds all four to what ' +
+      'theme.css defines. Anything else that has to move uses a transition on the ' +
+      '--t-fast / --t-slow scale, which the reduced-motion block already suppresses.',
+    exempt: [],
+  },
 ];
 
 const findings = [];

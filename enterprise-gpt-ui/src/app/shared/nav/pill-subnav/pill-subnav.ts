@@ -5,6 +5,14 @@ export interface PillItem {
   readonly id: string;
   readonly label: string;
   readonly link: readonly unknown[] | string;
+
+  /**
+   * A smaller run beside the label, as the project detail tab strip draws it (frame
+   * `4e`). Withheld while `null` rather than shown as zero: "Files 0" on a project that
+   * has four is worse than no count at all, which is the rule the wide strip already
+   * follows.
+   */
+  readonly count?: number | null;
 }
 
 /**

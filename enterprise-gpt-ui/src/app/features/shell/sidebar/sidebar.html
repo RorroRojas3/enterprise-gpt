@@ -4,6 +4,7 @@
     <app-brand-logo class="strip__mark" variant="mark" alt="Andes" />
 
     <button
+      #collapseControl
       class="strip__button"
       type="button"
       aria-expanded="false"
@@ -61,15 +62,24 @@
           a chevron pointing the way the panel will move, and one already in the
           74-glyph sprite.
         -->
-        <button
-          class="sidebar__collapse"
-          type="button"
-          aria-expanded="true"
-          appTooltip="Collapse sidebar"
-          (click)="toggle()"
-        >
-          <app-icon name="bi-chevron-left" />
-        </button>
+        <!--
+          Absent in `overlay` mode rather than disabled: inside frame `3e`'s drawer
+          there is no collapsed width to go to, and the shell's close button already
+          occupies this corner. Two dismissals that mean different things is worse
+          than one.
+        -->
+        @if (showCollapse()) {
+          <button
+            #collapseControl
+            class="sidebar__collapse"
+            type="button"
+            aria-expanded="true"
+            appTooltip="Collapse sidebar"
+            (click)="toggle()"
+          >
+            <app-icon name="bi-chevron-left" />
+          </button>
+        }
       </div>
 
       <app-ridgeline class="sidebar__ridge" variant="divider" />
