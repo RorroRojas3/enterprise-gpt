@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { ProjectConversationsStore } from './conversations/project-conversations-store';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
 import { ProjectDocumentsStore } from './files/project-documents-store';
 import { ProjectStore } from './project-store';
 import { unsavedInstructionsGuard } from './instructions/unsaved-instructions.guard';

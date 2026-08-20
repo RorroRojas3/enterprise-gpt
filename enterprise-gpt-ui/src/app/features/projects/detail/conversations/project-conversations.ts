@@ -27,7 +27,7 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
-import { ProjectConversationsStore } from './project-conversations-store';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
 
 /**
  * A project's conversations (US-908, frame `4g`).

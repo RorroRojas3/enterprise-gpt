@@ -301,6 +301,18 @@ export const ProjectListStore = signalStore(
         patchState(store, removeEntity(id), shiftCounters(-1));
       }),
     ),
+
+    // Touches `isFavorite` and nothing else. Unlike `updated` above, a star can never
+    // evict a card: this grid filters on `name=`, which a favourite does not change, and
+    // the server does not bump `dateModified` for it either — so there is no ordering to
+    // restore and nothing else to adopt.
+    events.on(projectEvents.favorited).pipe(
+      tap(({ payload: { id, isFavorite } }) => {
+        if (store.entityMap()[id] !== undefined) {
+          patchState(store, updateEntity({ id, changes: { isFavorite } }));
+        }
+      }),
+    ),
   ]),
   withHooks({
     onDestroy(store) {

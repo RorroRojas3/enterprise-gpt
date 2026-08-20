@@ -30,7 +30,11 @@ public static class ProjectEndpoints
             // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        group.MapGet("", SearchProjectsAsync);
+        // ProducesProblem(400) because ?isFavorite= is a typed query parameter that can fail to
+        // bind. It is not ProducesValidationProblem(): a binding failure carries no errors
+        // dictionary, and OpenAPI allows one schema per status, so the two cannot both be declared.
+        group.MapGet("", SearchProjectsAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
         group.MapGet("{id:guid}", GetProjectAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", CreateProjectAsync)
@@ -41,6 +45,12 @@ public static class ProjectEndpoints
         group.MapDelete("{id:guid}", DeactivateProjectAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // Same reasoning as the listing above: the body has no validator, so its only 400 is a
+        // binding failure on a bool.
+        group.MapPut("{id:guid}/favorite", SetProjectFavoriteAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         group.MapGet("{id:guid}/documents", GetProjectDocumentsAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapDelete("{projectId:guid}/documents/{documentId:guid}", DeactivateProjectDocumentAsync)
@@ -49,11 +59,13 @@ public static class ProjectEndpoints
         return app;
     }
 
+    // Query parameters follow the service rather than leading, as elsewhere in the API: they need
+    // defaults so the paging arguments stay optional, and C# requires optional parameters last.
     internal static async Task<Ok<PaginatedResponseDto<ProjectSummaryDto>>> SearchProjectsAsync(
         IProjectService projectService, string? name = null, int skip = 0, int take = 20,
-        CancellationToken cancellationToken = default)
+        bool? isFavorite = null, CancellationToken cancellationToken = default)
     {
-        var response = await projectService.SearchProjectsAsync(name, skip, take, cancellationToken);
+        var response = await projectService.SearchProjectsAsync(name, skip, take, isFavorite, cancellationToken);
         return TypedResults.Ok(response);
     }
 
@@ -79,6 +91,16 @@ public static class ProjectEndpoints
     {
         var response = await projectService.UpdateProjectAsync(id, request, cancellationToken);
         return TypedResults.Ok(response);
+    }
+
+    // Its own route rather than a field on the PUT above: that PUT is a full representation, so a
+    // rename that forgot to echo the flag back would silently un-favourite the project.
+    internal static async Task<NoContent> SetProjectFavoriteAsync(
+        Guid id, SetProjectFavoriteActionDto request, IProjectService projectService,
+        CancellationToken cancellationToken)
+    {
+        await projectService.SetProjectFavoriteAsync(id, request, cancellationToken);
+        return TypedResults.NoContent();
     }
 
     internal static async Task<NoContent> DeactivateProjectAsync(

@@ -46,6 +46,26 @@
       }
     </ul>
 
+    <!--
+      Frame `Sidebar` lines 115-116: a second rule, then the star that stands in for the
+      whole project tree. Absent when nothing is starred, because expanding to a section
+      that is not there is an affordance with nothing behind it — the same rule the
+      section itself follows.
+    -->
+    @if (projects.hasFavorites()) {
+      <hr class="strip__rule" />
+
+      <button
+        class="strip__button"
+        type="button"
+        appTooltip="Favorite projects"
+        appTooltipPlacement="right"
+        (click)="expandToFavorites()"
+      >
+        <app-icon name="bi-star" />
+      </button>
+    }
+
     <span class="strip__spacer"></span>
 
     <app-user-footer class="sidebar__footer" [compact]="true" />
@@ -122,6 +142,8 @@
         }
       </ul>
     </div>
+
+    <app-sidebar-favorites (lastFavoriteRemoved)="focusSearch()" />
 
     <section class="sidebar__conversations" aria-labelledby="sidebar-conversations-heading">
       <h2 class="sidebar__heading" id="sidebar-conversations-heading">Conversations</h2>

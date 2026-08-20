@@ -59,7 +59,7 @@
     color: var(--accent);
   }
 
-  &:hover:not(:disabled) {
+  &:hover:not([aria-disabled='true']) {
     background: var(--surface-2);
   }
 

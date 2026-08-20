@@ -11,6 +11,15 @@ export interface ProjectSummaryDto {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  /**
+   * Whether the owner has starred the project (US-909).
+   *
+   * Set through `PUT api/projects/{id}/favorite`, never through {@link ProjectWriteBody}
+   * — that PUT is a full representation, so a rename carrying the flag would be one
+   * field away from clearing it. The server deliberately does **not** bump
+   * `dateModified` for it, which is what lets a client hold the row across a toggle.
+   */
+  readonly isFavorite: boolean;
   /** ISO 8601 with offset. */
   readonly dateCreated: string;
   /** ISO 8601 with offset. */
@@ -47,6 +56,7 @@ export function toProjectSummary(project: ProjectDto): ProjectSummaryDto {
     id: project.id,
     name: project.name,
     description: project.description,
+    isFavorite: project.isFavorite,
     dateCreated: project.dateCreated,
     dateModified: project.dateModified,
   };

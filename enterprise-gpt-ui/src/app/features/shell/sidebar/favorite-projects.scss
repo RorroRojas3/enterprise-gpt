@@ -1,0 +1,67 @@
+:host {
+  display: block;
+}
+
+// A bounded region with its own scroll, and the max-height is the load-bearing part: the
+// conversation list below is the sidebar's `flex: 1` child, so an unbounded section with
+// several nodes open would squeeze it to nothing and leave the reader with a scroll
+// container they cannot see into. A viewport fraction rather than a row count, because a
+// node's own list is paged and its length is not known here.
+.favorites {
+  display: flex;
+  max-height: 40vh;
+  flex-direction: column;
+  padding: 6px 12px 4px;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.favorites__heading {
+  margin: 0;
+}
+
+// The sidebar's own section headings, restated here because view encapsulation puts
+// `.sidebar__heading` out of reach: 11px uppercase in the muted tone, on a control that
+// carries the padding so the hover wash and the focus ring cover the whole row.
+// No `:focus-visible` rule — the global floor in `_focus.scss` reaches a bare button.
+.favorites__toggle {
+  display: flex;
+  width: 100%;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-align: left;
+  text-transform: uppercase;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+.favorites__chevron {
+  font-size: 9px;
+}
+
+.favorites__list {
+  display: flex;
+  overflow-y: auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overscroll-behavior: contain;
+
+  // `[hidden]` alone would not hide it: the UA rule and the `display: flex` above have
+  // equal specificity and an author stylesheet always wins, so the collapse is stated.
+  &[hidden] {
+    display: none;
+  }
+}

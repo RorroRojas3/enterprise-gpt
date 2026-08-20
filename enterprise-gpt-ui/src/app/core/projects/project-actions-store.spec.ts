@@ -8,7 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { Events } from '@ngrx/signals/events';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ProjectDto } from '@domain/api/project';
-import { projectEvents } from '@core/events/project-events';
+import { ProjectFavoriteChange, projectEvents } from '@core/events/project-events';
 import { ToastStore } from '@core/notifications/toast-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
@@ -246,6 +246,89 @@ describe('ProjectActionsStore (US-903)', () => {
 
       store.beginDelete(target);
       expect(store.deleteTarget()).toBeNull();
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+    });
+  });
+
+  describe('favourite (US-909/US-910)', () => {
+    function expectFavoritePut(id: string): TestRequest {
+      return backend.expectOne(
+        (request) => request.url === `${PROJECTS_URL}/${id}/favorite` && request.method === 'PUT',
+      );
+    }
+
+    it('sends the state being asked for and announces only what the server accepted', () => {
+      const target = projectFixture({ name: 'Helios', isFavorite: false });
+      let announced: ProjectFavoriteChange | null = null;
+      TestBed.inject(Events)
+        .on(projectEvents.favorited)
+        .subscribe(({ payload }) => (announced = payload));
+
+      store.toggleFavorite(target);
+      TestBed.tick();
+
+      const request = expectFavoritePut(target.id);
+      // A set, not a toggle: the flag is computed once, at the click, so a retried or
+      // duplicated request cannot land on the opposite value.
+      expect(request.request.body).toEqual({ isFavorite: true });
+      // Not optimistic: nothing is announced until the 204.
+      expect(announced).toBeNull();
+      expect(store.isRowPending(target.id)).toBe(true);
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      TestBed.tick();
+
+      expect(announced).toEqual({ id: target.id, isFavorite: true });
+      expect(store.isRowPending(target.id)).toBe(false);
+    });
+
+    it('asks to clear the flag on a project that already carries it', () => {
+      const target = projectFixture({ isFavorite: true });
+
+      store.toggleFavorite(target);
+      TestBed.tick();
+
+      const request = expectFavoritePut(target.id);
+      expect(request.request.body).toEqual({ isFavorite: false });
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+    });
+
+    it('toasts a failure and announces nothing', () => {
+      const target = projectFixture({ isFavorite: false });
+      let announced: ProjectFavoriteChange | null = null;
+      TestBed.inject(Events)
+        .on(projectEvents.favorited)
+        .subscribe(({ payload }) => (announced = payload));
+
+      store.toggleFavorite(target);
+      TestBed.tick();
+
+      expectFavoritePut(target.id).flush(PROBLEM_FIXTURES.resourceNotFound, {
+        status: 404,
+        statusText: 'Not Found',
+      });
+      TestBed.tick();
+
+      expect(announced).toBeNull();
+      expect(toasts.toasts().length).toBe(1);
+      expect(store.isRowPending(target.id)).toBe(false);
+    });
+
+    it('refuses a second toggle while the first is in flight', () => {
+      // The pending-id guard is the whole re-entry story here: nothing opens in front of
+      // this action, so a double-click would otherwise send an opposite SET racing the
+      // first to decide the final state.
+      const target = projectFixture({ isFavorite: false });
+
+      store.toggleFavorite(target);
+      TestBed.tick();
+      const request = expectFavoritePut(target.id);
+
+      store.toggleFavorite(target);
+      TestBed.tick();
+      backend.expectNone(`${PROJECTS_URL}/${target.id}/favorite`);
 
       request.flush(null, { status: 204, statusText: 'No Content' });
     });

@@ -156,6 +156,13 @@ describe('ProjectCard', () => {
     const { host } = await render({ pending: true });
 
     expect(host.querySelector('article')?.getAttribute('aria-busy')).toBe('true');
-    expect(host.querySelector<HTMLButtonElement>('.project-card__favorite')?.disabled).toBe(true);
+    // `aria-disabled`, never the native attribute: the store sets the pending id
+    // synchronously with the click, so a native `disabled` would blur the very button
+    // the reader just pressed and drop focus to <body> for the whole round trip.
+    // `ProjectActionsStore.toggleFavorite` guards on the pending id, so the press that
+    // still reaches the handler is a real no-op.
+    const star = host.querySelector<HTMLButtonElement>('.project-card__favorite');
+    expect(star?.getAttribute('aria-disabled')).toBe('true');
+    expect(star?.disabled).toBe(false);
   });
 });

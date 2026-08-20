@@ -73,9 +73,14 @@ function shiftCountersDown(count: number): PartialStateUpdater<OffsetPaginationS
  * request because `withResetOnSignOut` clears state and does not cancel work, and that
  * feature composed last.
  *
- * **Route-scoped, and provided on the detail route rather than on the panel**, so the
- * tab strip's count is readable from the Instructions tab — the same reason
- * `ProjectDocumentsStore` is.
+ * **Never root-provided.** The detail route provides one instance for the whole screen —
+ * rather than the panel providing it — so the tab strip's count is readable from the
+ * Instructions tab, the same reason `ProjectDocumentsStore` is. US-910's sidebar provides
+ * one *per expanded project node*, so a node's rows arrive when it opens and go when it
+ * closes; several instances coexisting is the intended shape, not an accident of it.
+ *
+ * It lives in `core/` for that second consumer: `features/shell` may not import
+ * `features/projects`, and this store injects nothing above `core/`.
  */
 export const ProjectConversationsStore = signalStore(
   withState<ProjectConversationsState>({ projectId: null, loadingMore: false }),

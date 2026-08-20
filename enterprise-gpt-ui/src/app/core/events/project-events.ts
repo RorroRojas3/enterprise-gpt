@@ -2,6 +2,12 @@ import { type } from '@ngrx/signals';
 import { eventGroup } from '@ngrx/signals/events';
 import { ProjectDto } from '@domain/api/project';
 
+/** The payload of {@link projectEvents.favorited}: what one idempotent SET decided. */
+export interface ProjectFavoriteChange {
+  readonly id: string;
+  readonly isFavorite: boolean;
+}
+
 /**
  * Events describing server-confirmed changes to a project.
  *
@@ -43,5 +49,21 @@ export const projectEvents = eventGroup({
      * the next rename. `ConversationListStore` and `ConversationStore` both clear it.
      */
     deleted: type<string>(),
+
+    /**
+     * `PUT api/projects/{id}/favorite` returned 204 (US-909). The payload is the id and
+     * the flag the server just accepted.
+     *
+     * Its own event rather than an {@link projectEvents.updated} carrying a synthesized
+     * `ProjectDto`, and the distinction is load-bearing twice over. The 204 has no body
+     * to adopt, and a fabricated DTO would have to invent `instructions` — which
+     * `ProjectStore` adopts wholesale, so the detail screen would blank the standing
+     * instructions US-904 exists to keep. Narrowing the payload to the two fields the
+     * request actually decided means no observer can mistake it for a full row.
+     *
+     * Still server-confirmed, like the other three: the request is an idempotent SET of
+     * one field, so this claims nothing the server did not accept.
+     */
+    favorited: type<ProjectFavoriteChange>(),
   },
 });

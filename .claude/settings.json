@@ -1,6 +1,9 @@
 {
   "permissions": {
-    "allow": []
+    "allow": [
+      "Bash(gh issue *)",
+      "Read(//c/Users/Rorro/source/repos/Andes.Extensions.AI/**)"
+    ]
   },
   "model": "opus",
   "enableAllProjectMcpServers": true,

@@ -1,0 +1,77 @@
+<!--
+  Frame `Sidebar` lines 48-52: a 32px row — folder glyph tinted brand, ellipsised name,
+  trailing chevron. The kebab is this story's addition, since criterion 4 asks for a menu
+  the board does not draw; it sits last, where the conversation row puts its own.
+-->
+<div class="project" routerLinkActive="project--selected">
+  <a class="project__link" [routerLink]="link()" routerLinkActive ariaCurrentWhenActive="page">
+    <app-icon class="project__glyph" name="bi-folder-fill" />
+    <span class="project__title">{{ project().name }}</span>
+  </a>
+
+  <button
+    class="project__disclosure"
+    type="button"
+    [attr.aria-expanded]="expanded()"
+    [attr.aria-controls]="expanded() ? panelId() : null"
+    [attr.aria-label]="disclosureLabel()"
+    (click)="toggle()"
+  >
+    <app-icon [name]="expanded() ? 'bi-chevron-down' : 'bi-chevron-right'" />
+  </button>
+
+  <!--
+    Three items, not the conversation row's five. Move and remove have no meaning on a
+    project, and Favourite is spelled Unfavourite here because every row in this section
+    is starred by construction — the same reasoning that makes "Remove from project"
+    unconditional on frame `4g`.
+  -->
+  <app-menu class="project__menu" [label]="'Actions for ' + project().name">
+    <!--
+      `aria-disabled`, never the native attribute: native `disabled` breaks the panel's
+      roving focus. The store's own guards make the click a no-op while the row is
+      pending.
+    -->
+    <button
+      appMenuItem
+      type="button"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="unfavorited.emit()"
+    >
+      <app-icon name="bi-star" />
+      Unfavourite
+    </button>
+    <button
+      appMenuItem
+      type="button"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="actions.beginEdit(project())"
+    >
+      <app-icon name="bi-pencil" />
+      Rename
+    </button>
+    <hr appMenuSeparator />
+    <button
+      appMenuItem
+      type="button"
+      class="menu__item--danger"
+      [attr.aria-disabled]="pending() ? 'true' : null"
+      (click)="deleted.emit()"
+    >
+      <app-icon name="bi-trash3" />
+      Delete
+    </button>
+  </app-menu>
+</div>
+
+@if (expanded()) {
+  <!--
+    `panelId` is bound to the host's own `id` property — the component declares no `id`
+    input — because it is what the disclosure's `aria-controls` above points at.
+  -->
+  <app-sidebar-project-conversations
+    [id]="panelId()"
+    [projectId]="project().id"
+    [projectName]="project().name"
+  />
+}

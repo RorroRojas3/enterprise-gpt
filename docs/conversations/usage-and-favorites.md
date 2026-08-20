@@ -411,9 +411,11 @@ Two deliberate omissions:
 
 The request has no FluentValidation validator — `isFavorite` is a `bool`, so the only 400 it can produce is a binding failure, which carries no `errors` dictionary.
 
+Projects grew the identical route in US-909 — `PUT /api/projects/{id}/favorite`, the same two omissions and the same reasoning for both — once a second entity needed to be starrable. See [Projects §3.5](../projects/project-management.md#35-favourites--put-apiprojectsidfavorite-and-isfavorite).
+
 ### 5.3 Filtering the search — `?isFavorite=`
 
-`GET /api/conversations/search` takes an optional `isFavorite`: `true` returns only favourites, `false` only non-favourites, and **omitting it applies no filter at all** (it is a `bool?`, not a defaulted `bool`). The name filter, paging and newest-first ordering are unchanged.
+`GET /api/conversations/search` takes an optional `isFavorite`: `true` returns only favourites, `false` only non-favourites, and **omitting it applies no filter at all** (it is a `bool?`, not a defaulted `bool`). The name filter, paging and newest-first ordering are unchanged. `GET /api/projects` grew the same parameter with US-909, on the same `bool?` terms — applied before its own `CountAsync` so `totalCount` describes the filtered set, exactly as here.
 
 ### 5.4 Filtering the search — `?projectId=` (US-907)
 

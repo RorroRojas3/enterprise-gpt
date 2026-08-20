@@ -8,6 +8,7 @@ import {
   untracked,
 } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { ProjectDto } from '@domain/api/project';
 import { PROJECTS_ROUTE } from '@core/auth/auth-routes';
 import { provideComposerHost } from '@core/chat/composer-host';
 import { UploadStore } from '@core/documents/upload-store';
@@ -22,7 +23,7 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ProjectComposerHost } from './project-composer-host';
-import { ProjectConversationsStore } from './conversations/project-conversations-store';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
 import { ProjectDocumentsStore } from './files/project-documents-store';
 import { ProjectStore } from './project-store';
 
@@ -159,6 +160,14 @@ export class ProjectDetail {
         untracked(() => void this._router.navigate([PROJECTS_ROUTE]));
       }
     });
+  }
+
+  /**
+   * The star's name, which is its whole accessible name: the glyph has none of its own
+   * and `aria-pressed` is deliberately absent, so the label has to carry the direction.
+   */
+  protected favoriteLabel(project: ProjectDto): string {
+    return project.isFavorite ? `Unfavourite ${project.name}` : `Favourite ${project.name}`;
   }
 
   protected beginEdit(): void {

@@ -9,7 +9,7 @@
           type="button"
           [class.project-card__favorite--on]="favorite()"
           [attr.aria-label]="favoriteLabel()"
-          [disabled]="pending()"
+          [attr.aria-disabled]="pending() ? 'true' : null"
           (click)="favoriteToggled.emit()"
         >
           <app-icon [name]="favorite() ? 'bi-star-fill' : 'bi-star'" />

@@ -73,10 +73,11 @@ Every route lives in the `api/projects` group with `RequireAuthorization()`, so 
 
 | Verb | Route | Success | Failure modes |
 |---|---|---|---|
-| GET | `/api/projects?name=&skip=&take=` | `200 PaginatedResponseDto<ProjectSummaryDto>` — the caller's active projects, newest first | — (paging is clamped, not rejected — §3.2) |
+| GET | `/api/projects?name=&skip=&take=&isFavorite=` | `200 PaginatedResponseDto<ProjectSummaryDto>` — the caller's active projects, newest first | 400 a query parameter that will not bind (paging is clamped, not rejected — §3.2) |
 | GET | `/api/projects/{id:guid}` | `200 ProjectDto` | 404 unknown, deactivated, or owned by someone else |
 | POST | `/api/projects` | `201 ProjectDto` + `Location: /api/projects/{id}` | 400 validation **or duplicate name** |
 | PUT | `/api/projects/{id:guid}` | `200 ProjectDto` | 400 validation or duplicate name, 404 unknown/foreign |
+| PUT | `/api/projects/{id:guid}/favorite` | `204` | 400 malformed body, 404 unknown/foreign (§3.5) |
 | DELETE | `/api/projects/{id:guid}` | `204` — soft delete plus cascade (§7) | 404 unknown/foreign/already deleted |
 | GET | `/api/projects/{id:guid}/documents` | `200 ProjectDocumentDto[]` — active documents, newest first, **unpaginated** | 404 unknown/foreign project |
 | DELETE | `/api/projects/{projectId:guid}/documents/{documentId:guid}` | `204` — soft-deletes the document and its chunks | 404 unknown/foreign project or document |
@@ -95,6 +96,7 @@ Error bodies are **RFC 9457 Problem Details** (`application/problem+json`), with
 | 400 | `/problems/upload-too-large` | `MaxUploadSizeEndpointFilter` on the upload route — carries `maxBytes` |
 | 403 | `/problems/permission-required` | `PermissionEndpointFilter` on the upload route — carries `permissions: ["Upload File"]` |
 | 404 | `/problems/resource-not-found` | `NotFoundException` — unknown, deactivated, or foreign project or document |
+| 400 | the RFC 9110 status-section link | a binding failure on `?isFavorite=` or the favourite route's body — neither has a validator, so neither carries an `errors` dictionary (§3.5) |
 | 401 | the RFC 9110 status-section link | the authentication challenge, given a body by `app.UseStatusCodePages()` |
 
 Every problem also carries `traceId` and `instance`.
@@ -109,12 +111,15 @@ Every problem also carries `traceId` and `instance`.
   "name": "Q3 Pricing",
   "description": "Pricing review",
   "instructions": "Answer in British English. Prefer tables over prose.",
+  "isFavorite": false,
   "dateCreated": "2026-08-01T09:14:23.117+00:00",
   "dateModified": "2026-08-01T09:14:23.117+00:00"
 }
 ```
 
 `ProjectSummaryDto` is the same shape **minus `instructions`**, and is what the listing returns. That omission is deliberate and enforced in the projection ([`ProjectMapper.MapToProjectSummaryDtoExpression`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Mappers/ProjectMapper.cs)): instructions are the largest field on the type, no listing renders them, and a full page would otherwise ship up to a hundred instruction bodies. It is a server-side projection, so the column is never even read.
+
+`isFavorite` sits on `ProjectSummaryDto`, not on `ProjectDto` — and `ProjectDto : ProjectSummaryDto`, so every project route carries it regardless of which shape it returns (§3.5).
 
 The listing is wrapped in the existing `PaginatedResponseDto<T>` (`items`, `totalCount`, `pageSize`, `currentPage`, computed `totalPages`).
 
@@ -135,7 +140,7 @@ The listing is wrapped in the existing `PaginatedResponseDto<T>` (`items`, `tota
 
 `documentId` is a computed alias of `id`, present so a client can key this listing the same way it keys the `documentId` the upload-status response returns on success.
 
-Request DTOs — [`ProjectActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Project/ProjectActions.cs). `CreateProjectActionDto` and `UpdateProjectActionDto` are `record`s with the same three fields (`name`, `description`, `instructions`); the update DTO carries **no id** — it comes from the route.
+Request DTOs — [`ProjectActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Project/ProjectActions.cs). `CreateProjectActionDto` and `UpdateProjectActionDto` are `record`s with the same three fields (`name`, `description`, `instructions`); the update DTO carries **no id** — it comes from the route. `SetProjectFavoriteActionDto` is a fourth, single-field record (`isFavorite`) that neither of them carries — see §3.5 for why it is its own DTO rather than a fourth field on the update one.
 
 | Field | Rule | Why the cap |
 |---|---|---|
@@ -180,6 +185,27 @@ That catch is narrowed to the duplicate-key numbers on purpose: a timeout, a dea
 ```
 
 The `errors` key is the **property name**, identical on the create and update DTOs, so one client-side binding serves both paths. Because the index is filtered on `DateDeactivated IS NULL`, deleting a project frees its name immediately (`DeleteProject_ThenRecreateWithTheSameName_Succeeds` pins this), and names are per-user: two users may both own a "Research" project.
+
+### 3.5 Favourites — `PUT /api/projects/{id}/favorite` and `?isFavorite=`
+
+```http
+PUT /api/projects/{id}/favorite
+{ "isFavorite": true }
+→ 204 No Content
+```
+
+It mirrors the conversation favourite route ([Conversation Usage and Favourites §5.2](../conversations/usage-and-favorites.md#52-favourites--put-apiconversationsidfavorite)) down to the reasoning: it is its own route rather than a field on `PUT /api/projects/{id}`, which is a **full-representation replace** (§3.1's callout). A client renaming a project without echoing the flag back would otherwise silently un-favourite it — the same trap, and the same fix.
+
+Two deliberate omissions, again matching the conversation route:
+
+- **`DateModified` is not bumped.** `SetProjectFavoriteAsync` runs a set-based `ExecuteUpdateAsync` with one `SetProperty`, not the tracked load-and-save `UpdateProjectAsync` uses, because starring a project does not modify it — bumping the timestamp would put every client's cached copy out of step at the next fetch over a write that changes nothing a listing renders.
+- **No FluentValidation validator.** `IsFavorite` is a `bool`, so the only 400 it can produce is a binding failure, which carries no `errors` dictionary — the route is `.ProducesProblem(400)`, not `.ProducesValidationProblem()`.
+
+It is a **set, not a toggle**: the body carries the state being asked for, so a retried or duplicated request cannot land on the opposite value from the one the caller intended.
+
+`GET /api/projects` takes an optional `isFavorite`: `true` returns only favourites, `false` only non-favourites, and **omitting it applies no filter at all** — it is a `bool?`, not a defaulted `bool`. The filter is applied **before** `CountAsync`, so `totalCount` describes the filtered set rather than the whole listing, the same ordering `SearchConversationsAsync` uses for its own filters.
+
+**No index was added for `IsFavorite`, deliberately** — see [`ProjectConfiguration`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProjectConfiguration.cs)'s comment. `Core.Conversation` carries a favourites-aware index only because its *unfiltered* listing already seeks an ordered `(UserId, DateDeactivated, DateCreated DESC)` sibling that the favourites variant has to stay in parity with. `IX_Project_UserId_DateDeactivated` (§8.1) carries no `DateCreated`, so the unfiltered project listing already sorts *after* its seek — a favourites index would buy the *filtered* listing an ordered path the unfiltered one lacks, paid for on every project write. `IsFavorite` stays a residual predicate over one user's projects, which is a bounded set.
 
 ## 4. Putting a conversation in a project
 
@@ -341,11 +367,12 @@ Four schema changes, all in the `Core` schema. Every foreign key is `NoAction` (
 | `Name` | `nvarchar(256)` | no | unique among the owner's active projects |
 | `Description` | `nvarchar(1024)` | yes | never sent to the model |
 | `Instructions` | `nvarchar(max)` | yes | capped at 8000 characters by validation, not by the column (§3.1) |
+| `IsFavorite` | `bit` | no | `DEFAULT 0`; set only through `PUT /api/projects/{id}/favorite`, never through the full-representation project `PUT` (§3.5) |
 | `DateCreated` / `DateModified` | `datetimeoffset` | no | `BaseModifiedEntity` |
 | `DateDeactivated` | `datetimeoffset` | yes | soft delete |
 | `Version` | `rowversion` | no | optimistic concurrency |
 
-Indexes: `IX_Project_UserId_DateDeactivated` (`UserId`, `DateDeactivated`) — projects are always listed for one user, filtered to active; and `IX_Project_UserId_Name` (`UserId`, `Name`) `UNIQUE WHERE DateDeactivated IS NULL` (§3.4).
+Indexes: `IX_Project_UserId_DateDeactivated` (`UserId`, `DateDeactivated`) — projects are always listed for one user, filtered to active; and `IX_Project_UserId_Name` (`UserId`, `Name`) `UNIQUE WHERE DateDeactivated IS NULL` (§3.4). No index carries `IsFavorite`, deliberately (§3.5) — the reasoning lives as a comment on [`ProjectConfiguration`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProjectConfiguration.cs) rather than in a second place here.
 
 **`Core.ProjectDocument`** — `ProjectId` (FK → `Core.Project`) plus the `BaseDocument` columns (`UserId`, `Name`, `Extension`, `MimeType`, `Size`, `Path`). Indexes: `IX_ProjectDocument_ProjectId_DateDeactivated`, and `IX_ProjectDocument_UserId` (EF's index for the user foreign key).
 
@@ -363,9 +390,11 @@ All four configurations are registered explicitly in `EnterpriseGptDbContext.OnM
 
 ### 8.3 Applying the schema
 
-> **The application does not create these tables, and nothing in this repository does either.** `Enterprise.Gpt.Repository/Migrations/` is empty, so `Database.Migrate()` at startup **applies nothing** — this feature included. There is deliberately no migration and no checked-in DDL script: the schema has always been managed outside the repository, and this feature follows that practice.
+> **This section is stale and describes the pre-migration world.** `Repository/Migrations/` now holds seven migrations, `Database.Migrate()` at startup applies them, and the Project tables have been part of that history since `20260811024339_InitialCreate` — the whole feature, not just this section's premise, predates the switch to migrations. `IsFavorite` itself reached the schema through `20260820050001_AddProjectIsFavorite`, an ordinary `AddColumn` migration, not through any of the manual steps below. The rest of this section — generating a DDL script, the `QUOTED_IDENTIFIER`/`ANSI_NULLS` caveat, the `HasData` seed note — applies only to a database that predates `InitialCreate` and has no `__EFMigrationsHistory` to baseline from; see [Model Management §9](../models/model-management.md) for what baselining one looks like.
+>
+> The paragraphs immediately below are kept as written for that narrower audience — a database that predates `InitialCreate`.
 
-Before Projects can be used against a real database, the four changes in §8.1 have to be applied by whatever process manages the schema in that environment. The EF model is the source of truth for exactly what to apply; the fastest way to read it out is:
+Before Projects can be used against such a database, the four changes in §8.1 have to be applied by whatever process manages the schema in that environment. The EF model is the source of truth for exactly what to apply; the fastest way to read it out is:
 
 ```csharp
 // against a SqlServer-provider DbContext, with UseCompatibilityLevel(170)
@@ -383,20 +412,20 @@ The `Upload File` permission's seeded description also changed — it now reads 
 
 ## 9. Testing
 
-`dotnet test --filter "Category!=Integration"` currently reports **1017 passing unit tests**; the integration project holds **250** and needs Docker.
+`dotnet test --filter "Category!=Integration"` currently reports **1290 passing unit tests**; the integration project holds **290** and needs Docker.
 
 Unit tests — xUnit v3 with NSubstitute; services taking a `DbContext` run on SQLite in-memory via `SqliteDbContextFixture`:
 
 | File | Covers |
 |---|---|
-| [`Services/ProjectServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ProjectServiceTests.cs) | Search (owner scoping, substring filter, paging + total, clamping as a theory, instructions omitted from listings); get/update/delete against unknown, deactivated and foreign projects; duplicate names across active, deleted and other users' projects; the delete cascade over documents, chunks and conversations, and that other projects are untouched; document listing and per-document deletion |
-| [`Endpoints/ProjectEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/ProjectEndpointsTests.cs) | Each handler's `TypedResults` shape — `Ok`, `Created` with the `Location`, `NoContent` — and the default page when no query string is supplied |
-| [`Mappers/ProjectMapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Mappers/ProjectMapperTests.cs), [`Mappers/ProjectDocumentMapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Mappers/ProjectDocumentMapperTests.cs) | Materialized and expression forms agreeing (the compiled expression is asserted against the hand-written map), and the summary projection carrying everything **but** instructions |
+| [`Services/ProjectServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ProjectServiceTests.cs) | Search (owner scoping, substring filter, paging + total, clamping as a theory, instructions omitted from listings); get/update/delete against unknown, deactivated and foreign projects; duplicate names across active, deleted and other users' projects; the delete cascade over documents, chunks and conversations, and that other projects are untouched; document listing and per-document deletion; `?isFavorite=` requested true, requested false, omitted (both returned) and combined with `?name=` (§3.5); `SetProjectFavoriteAsync` setting and clearing the flag, leaving `DateModified` where it was, and throwing `NotFound` for an unknown, deactivated or foreign project without touching the row; a rename leaving an already-favourited project's flag alone |
+| [`Endpoints/ProjectEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/ProjectEndpointsTests.cs) | Each handler's `TypedResults` shape — `Ok`, `Created` with the `Location`, `NoContent` — and the default page when no query string is supplied; `isFavorite` passed through to the service on the listing, and `SetProjectFavoriteAsync` returning `NoContent` |
+| [`Mappers/ProjectMapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Mappers/ProjectMapperTests.cs), [`Mappers/ProjectDocumentMapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Mappers/ProjectDocumentMapperTests.cs) | Materialized and expression forms agreeing (the compiled expression is asserted against the hand-written map), and the summary projection carrying everything **but** instructions; `isFavorite` carried through both mapper forms in either state, as a theory, so a mapper that hard-coded `true` could not pass by accident; the update mapper leaving a favourited project's flag untouched |
 | [`Services/DocumentServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/DocumentServiceTests.cs) | Project queue path (ownership, deactivated/unknown project, validation before the queue is touched, failed enqueue marking the job `Failed`) and ingestion (document + chunks persisted, project-scoped blob key, `projectId` blob metadata, every stage reported, blob removed when ingestion fails) — plus both directions of the isolation check, that a project upload never writes conversation documents and vice versa |
 | [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs) | Create/update with and without `projectId`, foreign and deactivated projects throwing `NotFound` and changing nothing, and the streaming path: instructions sent **after** the platform prompt, a deactivated project sending none, an edit taking effect on the next turn, a standalone conversation and an instruction-less project adding no message, and instructions never reaching the transcript. §4.2's filter adds six: only that project's conversations, its **deactivated** ones excluded, `projectId` and `name` applied together, a foreign project and a deactivated one each throwing `NotFound`, and an omitted filter returning standalone and project conversations alike |
 | [`Endpoints/DocumentEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/DocumentEndpointsTests.cs) | `202` pointing at the shared status route, and the buffered file reaching the service |
 
-Integration tests ([`ProjectEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/ProjectEndpointsIntegrationTests.cs) and the project half of [`DocumentEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/DocumentEndpointsIntegrationTests.cs)) run against `WebApplicationFactory<Program>` plus a Testcontainers **SQL Server 2025** instance, so the filtered unique indexes, the `vector` column and the transaction are exercised for real. They cover: 401 anonymous; cross-user isolation on read, update and delete; clamped paging; instructions absent from listings; duplicate names within a user and allowed across users; the full replace on `PUT`; moving a conversation into a project and the omitted-`projectId` removal; the delete cascade keeping conversations; recreating a project with a deleted project's name; and the project upload path end to end — 403 without the grant, 404 for unknown/foreign projects, 400 for unsupported and oversize files, the pipeline persisting chunks, the project-scoped blob key, the document appearing in the listing, both delete paths deactivating chunks, same-name uploads not colliding, and a text-free file failing the job with an explanation.
+Integration tests ([`ProjectEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/ProjectEndpointsIntegrationTests.cs) and the project half of [`DocumentEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/DocumentEndpointsIntegrationTests.cs)) run against `WebApplicationFactory<Program>` plus a Testcontainers **SQL Server 2025** instance, so the filtered unique indexes, the `vector` column and the transaction are exercised for real. They cover: 401 anonymous; cross-user isolation on read, update and delete; clamped paging; instructions absent from listings; duplicate names within a user and allowed across users; the full replace on `PUT`; moving a conversation into a project and the omitted-`projectId` removal; the delete cascade keeping conversations; recreating a project with a deleted project's name; and the project upload path end to end — 403 without the grant, 404 for unknown/foreign projects, 400 for unsupported and oversize files, the pipeline persisting chunks, the project-scoped blob key, the document appearing in the listing, both delete paths deactivating chunks, same-name uploads not colliding, and a text-free file failing the job with an explanation. A `#region Favorites` block (§3.5) adds a `PUT .../favorite` round trip through a real database — marking a project and reading it back through `?isFavorite=true`, clearing the flag and asserting `DateModified` did not move, renaming a favourited project and finding the star still set, 404 for an unknown project and for one owned by another user (leaving it unstarred either way), and the filter omitted returning both favourited and plain projects alike.
 
 Two pieces of harness were needed:
 
@@ -421,7 +450,7 @@ The old `enterprise-ui/` client is deleted, and its project scaffolding — a st
 
 **EP-9 has since shipped the whole area** in `enterprise-gpt-ui/` — the grid, the lifecycle dialogs, the detail screen with its standing instructions and files panel, a composer that creates conversations inside a project, US-307's move flow, and US-908's conversations panel on §4.2's filter. See [Projects (UI)](../ui/projects.md).
 
-Two API-side gaps the client works around rather than closes: `GET api/projects` accepts no sort parameter, so both the grid and the root lookup **drain** to a 500-project ceiling and say so when they hit it (US-902 waits on US-706); and `ProjectSummaryDto` carries no favourite flag, so no star is offered anywhere (US-909).
+One API-side gap the client works around rather than closes: `GET api/projects` accepts no sort parameter, so both the grid and the root lookup **drain** to a 500-project ceiling and say so when they hit it (US-902 waits on US-706). The other has since closed: `ProjectSummaryDto` now carries `isFavorite` (§3.5), and US-910 put a star on the grid card, on the detail header, and a **Favorite projects** section in the sidebar that reads it — [Projects (UI) §5.7](../ui/projects.md#57-favourites-us-909-and-why-the-flip-is-not-optimistic), [Shell and Navigation §5.7](../ui/shell-and-navigation.md#57-favourite-projects-in-the-sidebar-us-910).
 
 ### 10.4 Everything else
 

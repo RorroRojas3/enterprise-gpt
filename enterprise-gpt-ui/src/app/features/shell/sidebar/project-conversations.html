@@ -1,0 +1,71 @@
+<!--
+  Frame `Sidebar` lines 53-62: the nested list, indented under its project row, 30px
+  rows with the outline chat glyph. `aria-busy` rather than a spinner, matching the
+  conversations list below it.
+-->
+<div class="nested" [attr.aria-busy]="conversations.isPending() ? 'true' : null">
+  @if (conversations.isFirstLoad()) {
+    @for (row of skeletonRows; track $index) {
+      <app-skeleton class="nested__skeleton" variant="block" height="30px" />
+    }
+  } @else if (conversations.error(); as error) {
+    <!--
+      No heading: this panel sits inside a disclosure whose own row already names the
+      project, and a second heading here would put a level under the section's <h2>
+      for one failed sub-request.
+    -->
+    <app-error-panel
+      [error]="error"
+      [headingLevel]="null"
+      [canRetry]="canRetry(error)"
+      heading="Conversations couldn’t load"
+      (retried)="conversations.retry()"
+    />
+  } @else if (conversations.entities().length === 0) {
+    <!--
+      A line rather than an `app-empty-state`: the kit's empty state carries a heading
+      and an action slot, and this is one sentence inside a disclosure two levels deep.
+    -->
+    <p class="nested__empty">No conversations yet.</p>
+  } @else {
+    <ul class="nested__rows">
+      @for (conversation of conversations.entities(); track conversation.id) {
+        <li>
+          <a
+            class="nested__link"
+            [routerLink]="[chatRoute, conversation.id]"
+            routerLinkActive="nested__link--selected"
+            [routerLinkActiveOptions]="exact"
+            ariaCurrentWhenActive="page"
+          >
+            <app-icon class="nested__glyph" name="bi-chat-left" />
+            <span class="nested__title">{{ conversation.name }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+
+    <!--
+      Stated rather than silent, exactly as the conversations list below states its own
+      cut-off: the node shows the newest page of a project that may have more, and an
+      undisclosed stop reads as "this is all of them".
+    -->
+    @if (conversations.hasMore()) {
+      <button
+        class="btn btn-sm btn-link nested__more"
+        type="button"
+        [attr.aria-disabled]="
+          conversations.loadingMore() || conversations.isPending() ? 'true' : null
+        "
+        (click)="conversations.loadMore()"
+      >
+        @if (conversations.loadingMore()) {
+          <span class="kit-spinner" aria-hidden="true"></span>
+          <span>Loading…</span>
+        } @else {
+          <span>Load more in {{ projectName() }}</span>
+        }
+      </button>
+    }
+  }
+</div>

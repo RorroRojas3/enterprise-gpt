@@ -150,17 +150,46 @@ describe('Projects (US-901)', () => {
     expect(element().querySelector('app-project-card')).toBeNull();
   });
 
-  it('renders a card per project, with no favourite star until US-909', async () => {
+  it('renders a card per project, each with a favourite star and a kebab', async () => {
     await open();
     expectRequest().flush(projectPage([projectFixture({ name: 'Helios' }), projectFixture()]));
     await harness.fixture.whenStable();
 
     const cards = element().querySelectorAll('app-project-card');
     expect(cards.length).toBe(2);
-    // Absent, not disabled: nothing on the wire can persist a press.
-    expect(element().querySelector('.project-card__favorite')).toBeNull();
-    // The kebab is there, because both of its items work today.
+    // Live since US-909 put `isFavorite` on the listing shape; it was withheld before
+    // that rather than rendered inert.
+    expect(element().querySelectorAll('.project-card__favorite').length).toBe(2);
     expect(element().querySelector('app-project-card app-menu')).not.toBeNull();
+  });
+
+  it('stars a project through its own route and reflects the server-confirmed flag', async () => {
+    await open();
+    const project = projectFixture({ name: 'Helios' });
+    expectRequest().flush(projectPage([project]));
+    await harness.fixture.whenStable();
+
+    const star = element().querySelector<HTMLButtonElement>('.project-card__favorite');
+    expect(star?.getAttribute('aria-label')).toBe('Favourite Helios');
+    star?.click();
+    await harness.fixture.whenStable();
+
+    const request = backend.expectOne(`${PROJECTS_URL}/${project.id}/favorite`);
+    expect(request.request.method).toBe('PUT');
+    // A set, not a toggle: the body carries the state being asked for.
+    expect(request.request.body).toEqual({ isFavorite: true });
+
+    // Nothing moves until the 204 — every project write here is confirm-then-render.
+    expect(element().querySelector('.project-card__favorite')?.getAttribute('aria-label')).toBe(
+      'Favourite Helios',
+    );
+
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await harness.fixture.whenStable();
+
+    expect(element().querySelector('.project-card__favorite')?.getAttribute('aria-label')).toBe(
+      'Unfavourite Helios',
+    );
   });
 
   it('opens the create dialog from the toolbar', async () => {

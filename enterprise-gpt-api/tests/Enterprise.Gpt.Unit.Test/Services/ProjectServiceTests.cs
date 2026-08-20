@@ -35,7 +35,7 @@ public sealed class ProjectServiceTests : IDisposable
     #region Helpers
     private async Task<Project> AddProjectAsync(
         string name = "Research", Guid? userId = null, DateTimeOffset? deactivated = null,
-        string? instructions = null)
+        string? instructions = null, bool isFavorite = false)
     {
         var date = DateTimeOffset.UtcNow;
         var project = new Project
@@ -45,6 +45,7 @@ public sealed class ProjectServiceTests : IDisposable
             Name = name,
             Description = $"{name} description",
             Instructions = instructions,
+            IsFavorite = isFavorite,
             DateCreated = date,
             DateModified = date,
             DateDeactivated = deactivated
@@ -204,7 +205,8 @@ public sealed class ProjectServiceTests : IDisposable
         // CurrentPage, turning a trivially reachable request into a 500.
         await AddProjectAsync("Research");
 
-        var result = await _service.SearchProjectsAsync(null, skip, take, TestContext.Current.CancellationToken);
+        var result = await _service.SearchProjectsAsync(
+            null, skip, take, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.TotalCount);
         Assert.InRange(result.PageSize, 1, 100);
@@ -223,6 +225,58 @@ public sealed class ProjectServiceTests : IDisposable
         var summary = Assert.Single(result.Items);
         Assert.Equal("Research", summary.Name);
         Assert.IsNotType<ProjectDto>(summary);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_FavoritesRequested_ReturnsOnlyFavorites()
+    {
+        var starred = await AddProjectAsync("Starred", isFavorite: true);
+        await AddProjectAsync("Plain");
+
+        var result = await _service.SearchProjectsAsync(
+            null, isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
+
+        // The count travels with the filter: a total describing the unfiltered listing would send
+        // every client paging past the end of the result set.
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(starred.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_NonFavoritesRequested_ExcludesFavorites()
+    {
+        await AddProjectAsync("Starred", isFavorite: true);
+        var plain = await AddProjectAsync("Plain");
+
+        var result = await _service.SearchProjectsAsync(
+            null, isFavorite: false, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(plain.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_FavoriteFilterOmitted_ReturnsBoth()
+    {
+        // A bool?, not a defaulted bool: omitting it applies no filter at all.
+        await AddProjectAsync("Starred", isFavorite: true);
+        await AddProjectAsync("Plain");
+
+        var result = await _service.SearchProjectsAsync(null, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_NameAndFavoriteFilters_BothApply()
+    {
+        await AddProjectAsync("Quarterly Planning", isFavorite: true);
+        await AddProjectAsync("Hiring Planning");
+        await AddProjectAsync("Starred Research", isFavorite: true);
+
+        var result = await _service.SearchProjectsAsync(
+            "plan", isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Quarterly Planning", Assert.Single(result.Items).Name);
     }
     #endregion
 
@@ -389,6 +443,105 @@ public sealed class ProjectServiceTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => _service.UpdateProjectAsync(Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task UpdateProjectAsync_ProjectIsFavorited_LeavesTheFlagAlone()
+    {
+        // The update DTO carries no flag and this PUT is a full representation, so a rename that
+        // wrote IsFavorite would silently clear the star.
+        var project = await AddProjectAsync("Research", isFavorite: true);
+
+        await _service.UpdateProjectAsync(project.Id, UpdateRequest(), TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        Assert.True(stored.IsFavorite);
+    }
+    #endregion
+
+    #region SetProjectFavoriteAsync
+    [Fact]
+    public async Task SetProjectFavoriteAsync_WhenFavorited_PersistsTheFlag()
+    {
+        var project = await AddProjectAsync();
+
+        await _service.SetProjectFavoriteAsync(
+            project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        Assert.True(stored.IsFavorite);
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_WhenCleared_PersistsTheFlag()
+    {
+        // A set, not a toggle: a retried or duplicated request cannot land on the opposite value.
+        var project = await AddProjectAsync(isFavorite: true);
+
+        await _service.SetProjectFavoriteAsync(
+            project.Id, new SetProjectFavoriteActionDto { IsFavorite = false }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        Assert.False(stored.IsFavorite);
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_WhenSet_DoesNotBumpDateModified()
+    {
+        // Starring a project does not modify it, and every client keeps its own copy of the row on
+        // the strength of that: a bump here would desynchronise them at their next fetch.
+        var project = await AddProjectAsync();
+        var before = project.DateModified;
+
+        await _service.SetProjectFavoriteAsync(
+            project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        Assert.Equal(before, stored.DateModified);
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_ProjectOwnedByAnotherUser_ThrowsNotFoundAndChangesNothing()
+    {
+        var otherUser = await AddUserAsync();
+        var project = await AddProjectAsync(userId: otherUser.Id);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.SetProjectFavoriteAsync(
+                project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken));
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        Assert.False(stored.IsFavorite);
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_DeactivatedProject_ThrowsNotFound()
+    {
+        var project = await AddProjectAsync(deactivated: DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.SetProjectFavoriteAsync(
+                project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_UnknownProject_ThrowsNotFound()
+    {
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.SetProjectFavoriteAsync(
+                Guid.NewGuid(), new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_NullRequest_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => _service.SetProjectFavoriteAsync(Guid.NewGuid(), null!, TestContext.Current.CancellationToken));
     }
     #endregion
 

@@ -269,6 +269,61 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
 
     expect(TestBed.inject(Router).url).toBe(`/projects/${PROJECT.id}/files`);
   });
+
+  describe('favourite (US-909)', () => {
+    function star(): HTMLButtonElement | null {
+      return host().querySelector<HTMLButtonElement>('.detail__favorite');
+    }
+
+    it('names the direction it would take, and issues the set on press', async () => {
+      await open();
+
+      expect(star()?.getAttribute('aria-label')).toBe('Favourite Helios');
+      star()?.click();
+      await harness.fixture.whenStable();
+
+      const request = backend.expectOne(`${PROJECT_URL}/favorite`);
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({ isFavorite: true });
+      // Not optimistic, like every other project write: the label holds until the 204.
+      expect(star()?.getAttribute('aria-label')).toBe('Favourite Helios');
+      expect(star()?.getAttribute('aria-disabled')).toBe('true');
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await harness.fixture.whenStable();
+
+      expect(star()?.getAttribute('aria-label')).toBe('Unfavourite Helios');
+      expect(star()?.getAttribute('aria-disabled')).toBeNull();
+    });
+
+    it('keeps the standing instructions when the flag lands', async () => {
+      // The whole reason `favorited` is its own event carrying two fields: an `updated`
+      // with a synthesized DTO would overwrite `instructions` with a value nothing
+      // fetched, and this screen is where that would be visible.
+      await open();
+
+      TestBed.inject(Dispatcher).dispatch(
+        projectEvents.favorited({ id: PROJECT.id, isFavorite: true }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(star()?.getAttribute('aria-label')).toBe('Unfavourite Helios');
+      expect(host().querySelector<HTMLTextAreaElement>('#project-instructions')?.value).toBe(
+        'Cite Jira keys.',
+      );
+    });
+
+    it('ignores a favourite announced for a different project', async () => {
+      await open();
+
+      TestBed.inject(Dispatcher).dispatch(
+        projectEvents.favorited({ id: projectDetailFixture().id, isFavorite: true }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(star()?.getAttribute('aria-label')).toBe('Favourite Helios');
+    });
+  });
 });
 
 function jobStatus(state: string, documentId: string | null) {

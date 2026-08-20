@@ -9,6 +9,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideLocationMocks } from '@angular/common/testing';
 import { Router, provideRouter } from '@angular/router';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import { PREFERENCE_KEYS } from '@core/storage/local-preferences';
 import { UiStore } from '@core/ui/ui-store';
@@ -16,6 +17,7 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { conversationFixture, conversationPage } from '@testing/conversations';
+import { projectFixture, projectPage } from '@testing/projects';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
@@ -26,6 +28,7 @@ import { Shell } from './shell';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
+const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
 /** `SearchInput`'s default, which the sidebar does not override. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -100,6 +103,29 @@ describe('Shell', () => {
     await fixture.whenStable();
   }
 
+  /**
+   * Releases the root project lookup and answers it, as `SessionBootstrap` would.
+   *
+   * Every other test in this file leaves it unreleased, which is why the Favorite
+   * projects section is absent from all of them without any of them saying so.
+   */
+  async function loadProjects(
+    fixture: ComponentFixture<Shell>,
+    items = [projectFixture({ name: 'Data Platform Migration', isFavorite: true })],
+  ): Promise<void> {
+    TestBed.inject(ProjectLookupStore).ensureLoaded();
+    TestBed.tick();
+    backend.expectOne((request) => request.url === PROJECTS_URL).flush(projectPage(items));
+    await fixture.whenStable();
+  }
+
+  /** The one `projectId`-filtered request an expanded sidebar node issues. */
+  function expectNested(projectId: string): TestRequest {
+    return backend.expectOne(
+      (request) => request.url === SEARCH_URL && request.params.get('projectId') === projectId,
+    );
+  }
+
   function host(fixture: ComponentFixture<Shell>): HTMLElement {
     return fixture.nativeElement as HTMLElement;
   }
@@ -118,6 +144,267 @@ describe('Shell', () => {
     // would navigate to /chat#main-content and re-run the guards.
     expect(document.activeElement).toBe(element.querySelector('#main-content'));
     expect(TestBed.inject(Router).url).not.toContain('#');
+  });
+
+  describe('favorite projects (US-910)', () => {
+    it('does not render the section when nothing is starred', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [projectFixture(), projectFixture()]);
+
+      // Absent rather than an empty section with a heading over nothing — and the
+      // strip's stand-in goes with it, since expanding to a section that is not there
+      // is an affordance with nothing behind it.
+      expect(host(fixture).querySelector('app-sidebar-favorites .favorites')).toBeNull();
+    });
+
+    it('lists the starred projects under the heading, in the server order', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [
+        projectFixture({ name: 'Data Platform Migration', isFavorite: true }),
+        projectFixture({ name: 'Hiring' }),
+        projectFixture({ name: 'RFP Responses', isFavorite: true }),
+      ]);
+      const element = host(fixture);
+
+      expect(element.querySelector('#sidebar-favorites-heading')?.textContent).toContain(
+        'Favorite projects',
+      );
+      // No device-local notice: US-909 landed in the same batch, so the pins the story's
+      // first criterion describes were never built.
+      expect(element.querySelector('.favorites')?.textContent ?? '').not.toContain(
+        'Pinned on this device',
+      );
+      const names = [...element.querySelectorAll('.project__title')].map((n) => n.textContent);
+      expect(names).toEqual(['Data Platform Migration', 'RFP Responses']);
+    });
+
+    it('reads one project-filtered request when a node is expanded, and drops it when closed', async () => {
+      const project = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [project]);
+      const element = host(fixture);
+
+      const disclosure = element.querySelector<HTMLButtonElement>('.project__disclosure');
+      expect(disclosure?.getAttribute('aria-expanded')).toBe('false');
+      // No aria-controls while shut: the panel it would name is not in the DOM.
+      expect(disclosure?.getAttribute('aria-controls')).toBeNull();
+
+      disclosure?.click();
+      await fixture.whenStable();
+
+      // US-907's filter — one request, no drain over the whole conversation list.
+      const request = expectNested(project.id);
+      request.flush(conversationPage([conversationFixture({ name: 'Helios 2.4 release status' })]));
+      await fixture.whenStable();
+
+      expect(element.querySelector('.project__disclosure')?.getAttribute('aria-controls')).toBe(
+        `sidebar-project-${project.id}`,
+      );
+      expect(element.querySelector('.nested__title')?.textContent).toContain(
+        'Helios 2.4 release status',
+      );
+
+      element.querySelector<HTMLButtonElement>('.project__disclosure')?.click();
+      await fixture.whenStable();
+
+      // The node's store goes with the node, so nothing of the closed project remains.
+      expect(element.querySelector('.nested__title')).toBeNull();
+    });
+
+    it('offers unfavourite, rename and delete on a project row, and nothing else', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture);
+      const element = host(fixture);
+
+      element.querySelector<HTMLButtonElement>('.project__menu button')?.click();
+      await fixture.whenStable();
+
+      const items = [...element.querySelectorAll('.project__menu [role="menuitem"]')].map((item) =>
+        item.textContent?.trim(),
+      );
+      expect(items).toEqual(['Unfavourite', 'Rename', 'Delete']);
+    });
+
+    it('shows the nested panel’s own empty and failed states', async () => {
+      const project = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [project]);
+      const element = host(fixture);
+
+      element.querySelector<HTMLButtonElement>('.project__disclosure')?.click();
+      await fixture.whenStable();
+      expectNested(project.id).flush(conversationPage([]));
+      await fixture.whenStable();
+
+      // A line, not the kit's empty state: this is one sentence inside a disclosure two
+      // levels deep, and `app-empty-state` carries a heading and an action slot.
+      expect(element.querySelector('.nested__empty')?.textContent).toContain(
+        'No conversations yet.',
+      );
+      expect(element.querySelector('app-sidebar-project-conversations app-empty-state')).toBeNull();
+
+      // Close and reopen, so the node's store is rebuilt and asks again.
+      element.querySelector<HTMLButtonElement>('.project__disclosure')?.click();
+      await fixture.whenStable();
+      element.querySelector<HTMLButtonElement>('.project__disclosure')?.click();
+      await fixture.whenStable();
+
+      expectNested(project.id).flush(PROBLEM_FIXTURES.resourceNotFound, {
+        status: 404,
+        statusText: 'Not Found',
+      });
+      await fixture.whenStable();
+
+      expect(
+        element.querySelector('app-sidebar-project-conversations app-error-panel'),
+      ).not.toBeNull();
+      // Headingless: the row above already names the project, and a second heading here
+      // would put a level under the section's <h2> for one failed sub-request.
+      expect(
+        element.querySelector('app-sidebar-project-conversations app-error-panel h3'),
+      ).toBeNull();
+    });
+
+    it('keeps two open nodes on their own results', async () => {
+      // The reason the store is provided per node rather than once on the row: two
+      // sections open at the same time each need their own projectId-filtered query.
+      const first = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+      const second = projectFixture({ name: 'RFP Responses', isFavorite: true });
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [first, second]);
+      const element = host(fixture);
+
+      const disclosures = () => [
+        ...element.querySelectorAll<HTMLButtonElement>('.project__disclosure'),
+      ];
+
+      disclosures()[0]?.click();
+      await fixture.whenStable();
+      expectNested(first.id).flush(
+        conversationPage([conversationFixture({ name: 'Cutover plan' })]),
+      );
+      await fixture.whenStable();
+
+      disclosures()[1]?.click();
+      await fixture.whenStable();
+      expectNested(second.id).flush(
+        conversationPage([conversationFixture({ name: 'Vendor SSO reply' })]),
+      );
+      await fixture.whenStable();
+
+      const titles = [...element.querySelectorAll('.nested__title')].map((n) => n.textContent);
+      expect(titles).toEqual(['Cutover plan', 'Vendor SSO reply']);
+    });
+
+    /** Opens the first project kebab and presses one of its items. */
+    async function pressRowMenuItem(
+      fixture: ComponentFixture<Shell>,
+      label: string,
+      index = 0,
+    ): Promise<void> {
+      const element = host(fixture);
+      [...element.querySelectorAll<HTMLButtonElement>('.project__menu button')][index]?.click();
+      await fixture.whenStable();
+      [...element.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find((item) => item.textContent?.trim() === label)
+        ?.click();
+      await fixture.whenStable();
+    }
+
+    it('moves focus to the heading when unfavouriting evicts the row it was invoked from', async () => {
+      // The write is not optimistic, so the <li> holding the menu trigger focus was
+      // returned to is destroyed a round trip after the click. Without the rescue focus
+      // lands on <body>, and the next Tab restarts at the top of the page.
+      const first = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+      const second = projectFixture({ name: 'RFP Responses', isFavorite: true });
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [first, second]);
+      const element = host(fixture);
+
+      await pressRowMenuItem(fixture, 'Unfavourite');
+      backend
+        .expectOne(`${PROJECTS_URL}/${first.id}/favorite`)
+        .flush(null, { status: 204, statusText: 'No Content' });
+      await fixture.whenStable();
+
+      expect([...element.querySelectorAll('.project__title')].map((n) => n.textContent)).toEqual([
+        'RFP Responses',
+      ]);
+      expect(document.activeElement).toBe(element.querySelector('#sidebar-favorites-heading'));
+    });
+
+    it('falls back to the search field when the last favourite takes the section with it', async () => {
+      const only = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [only]);
+      const element = host(fixture);
+
+      await pressRowMenuItem(fixture, 'Unfavourite');
+      backend
+        .expectOne(`${PROJECTS_URL}/${only.id}/favorite`)
+        .flush(null, { status: 204, statusText: 'No Content' });
+      await fixture.whenStable();
+
+      // The section is gone, so the heading the previous test focuses is gone too. The
+      // nearest control above where it stood is the sidebar's own search field.
+      expect(element.querySelector('.favorites')).toBeNull();
+      expect(document.activeElement).toBe(element.querySelector('.search__field'));
+    });
+
+    it('leaves focus alone when the unfavourite fails and the row stays', async () => {
+      const project = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture, [project]);
+      const element = host(fixture);
+
+      await pressRowMenuItem(fixture, 'Unfavourite');
+      backend
+        .expectOne(`${PROJECTS_URL}/${project.id}/favorite`)
+        .flush(PROBLEM_FIXTURES.resourceNotFound, { status: 404, statusText: 'Not Found' });
+      await fixture.whenStable();
+
+      // The row survived, so the intent must be dropped rather than left armed to fire
+      // against some unrelated later removal.
+      expect(element.querySelector('.project__title')?.textContent).toContain(
+        'Data Platform Migration',
+      );
+      expect(document.activeElement).not.toBe(element.querySelector('#sidebar-favorites-heading'));
+    });
+
+    it('replaces the tree with a tooltipped star on the 60px strip', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      await loadProjects(fixture);
+      const element = host(fixture);
+
+      element.querySelector<HTMLButtonElement>('.sidebar__collapse')?.click();
+      await fixture.whenStable();
+
+      expect(element.querySelector('.favorites')).toBeNull();
+      const star = [...element.querySelectorAll<HTMLButtonElement>('.strip__button')].find(
+        (control) => control.getAttribute('aria-label') === 'Favorite projects',
+      );
+      expect(star).toBeDefined();
+
+      star?.click();
+      await fixture.whenStable();
+
+      // Expanding is the whole action: the tree is what the icon stands in for, so
+      // pressing it reveals the tree rather than navigating away. Focus follows through
+      // two nested render hooks — the sidebar's, which waits for the expanded branch,
+      // and the section's, which waits for its own heading.
+      expect(element.querySelector('.favorites')).not.toBeNull();
+      expect(document.activeElement).toBe(element.querySelector('#sidebar-favorites-heading'));
+    });
   });
 
   describe('conversation list', () => {

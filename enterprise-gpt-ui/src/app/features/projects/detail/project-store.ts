@@ -115,6 +115,18 @@ export const ProjectStore = signalStore(
       }),
     ),
 
+    // The star, from this screen's own header or from the sidebar's node for the same
+    // project. One field, because that is all the 204 confirmed — patching a whole DTO
+    // here would overwrite `instructions` with a value nothing fetched.
+    events.on(projectEvents.favorited).pipe(
+      tap(({ payload: { id, isFavorite } }) => {
+        const current = store.project();
+        if (current !== null && current.id === id) {
+          patchState(store, { project: { ...current, isFavorite } });
+        }
+      }),
+    ),
+
     // Deleted from this screen's own header, or from another tab's grid. The screen
     // navigates away rather than showing a project that is gone; the flag is what the
     // component watches, because a store may not navigate.
