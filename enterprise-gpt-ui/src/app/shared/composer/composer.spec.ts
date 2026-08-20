@@ -207,6 +207,89 @@ describe('Composer', () => {
     expect(composer.host.querySelector('.composer__project')).toBeNull();
   });
 
+  describe('download control (US-1502)', () => {
+    /**
+     * Puts a conversation on the route with a transcript behind it. The transcript is the
+     * point: an empty one leaves nothing to export, which is criterion 5.
+     */
+    async function openConversation(messages: { text: string; role: number }[]): Promise<void> {
+      TestBed.inject(ConversationListStore).prependNewest(
+        conversationFixture({ id: CONVERSATION_ID, name: 'Helios' }),
+      );
+      TestBed.inject(TurnStore).bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(`${CREATE_URL}/${CONVERSATION_ID}/messages`)
+        .flush({ id: CONVERSATION_ID, name: 'Helios', messages });
+    }
+
+    function control(host: HTMLElement): HTMLButtonElement | null {
+      return host.querySelector<HTMLButtonElement>('app-conversation-download-menu .menu__trigger');
+    }
+
+    /** Absent, not disabled: `/chat` before a conversation exists has nothing to offer. */
+    it('is absent on the empty chat route', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+
+      expect(control(composer.host)).toBeNull();
+    });
+
+    /** Criterion 5: an empty conversation renders no control at all. */
+    it('is absent for a conversation with no transcript', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation([]);
+      await composer.fixture.whenStable();
+
+      expect(control(composer.host)).toBeNull();
+    });
+
+    it('appears once the conversation has something to export', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation([
+        { text: 'What does retrieval do?', role: 3 },
+        { text: 'It runs a tool call.', role: 2 },
+      ]);
+      await composer.fixture.whenStable();
+
+      const trigger = control(composer.host);
+      expect(trigger).not.toBeNull();
+      expect(trigger?.textContent?.trim()).toBe('Download Helios');
+    });
+
+    /**
+     * US-407 dims `.composer__aux` while a turn runs. Carrying the class is what makes the
+     * download dim with the paperclip and the project pill rather than needing a rule.
+     */
+    it('carries composer__aux, so the in-flight dimming applies to it', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation([{ text: 'Hello', role: 3 }]);
+      await composer.fixture.whenStable();
+
+      expect(
+        composer.host
+          .querySelector('app-conversation-download-menu')
+          ?.classList.contains('composer__aux'),
+      ).toBe(true);
+    });
+
+    /** Frame `2g`: present but unavailable, with the reason on the control. */
+    it('is disabled with a reason while a turn streams', async () => {
+      const composer = await render();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await openConversation([{ text: 'Hello', role: 3 }]);
+      await composer.type('Another question');
+      composer.send()?.click();
+      await composer.fixture.whenStable();
+
+      const trigger = control(composer.host);
+      expect(trigger?.getAttribute('aria-disabled')).toBe('true');
+      expect(trigger?.textContent).toContain('Available when the response finishes');
+    });
+  });
+
   describe('project pill (US-307)', () => {
     /** Puts a conversation on the route and in the sidebar list, as the chat route does. */
     async function openConversation(projectId: string | null = null): Promise<void> {

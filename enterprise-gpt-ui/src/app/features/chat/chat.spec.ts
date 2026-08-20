@@ -847,6 +847,51 @@ describe('Chat', () => {
     });
   });
 
+  describe('the header download control (US-1502)', () => {
+    /** Opens a conversation with a transcript, which is what a download needs. */
+    async function openWithTranscript(
+      messages: { text: string; role: number }[] = [{ text: 'Hello', role: 3 }],
+    ): Promise<void> {
+      await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+      backend
+        .expectOne(detailUrl(conversation.id))
+        .flush(conversationDetailFixture({ ...conversation }));
+      backend
+        .expectOne(`${detailUrl(conversation.id)}/messages`)
+        .flush({ id: conversation.id, name: conversation.name, messages });
+      await harness.fixture.whenStable();
+    }
+
+    /**
+     * Two controls, and deliberately: frame `2f` offers the same menu "from the composer
+     * and the conversation header". They are one component and one store, which is what
+     * the criterion's "one shared menu" means — and why the store's outcome is a replaced
+     * record rather than a one-shot either instance could swallow from the other.
+     *
+     * The header's is declared once, inside `#navbarActions`, so it follows the star and
+     * the kebab into frame `1d`'s navbar below 768px rather than needing a second copy.
+     */
+    it('renders the control in the header and in the composer, from one declaration each', async () => {
+      await openWithTranscript();
+
+      expect(element().querySelectorAll('app-conversation-download-menu')).toHaveLength(2);
+      expect(
+        element().querySelectorAll('.chat__header app-conversation-download-menu'),
+      ).toHaveLength(1);
+      expect(
+        element().querySelectorAll('.chat__composer app-conversation-download-menu'),
+      ).toHaveLength(1);
+    });
+
+    it('is absent for a conversation with nothing in it', async () => {
+      await openWithTranscript([]);
+
+      expect(element().querySelector('app-conversation-download-menu')).toBeNull();
+      // The star and the kebab stay: they act on the row, which exists from creation.
+      expect(element().querySelector('.chat__star')).not.toBeNull();
+    });
+  });
+
   describe('resuming a conversation (US-410)', () => {
     async function openWith(detail: Partial<ConversationDetailDto>): Promise<void> {
       await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);

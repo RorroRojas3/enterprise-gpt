@@ -178,6 +178,26 @@
       </button>
     }
 
+    <!--
+      US-1502. Absent, not disabled, when there is nothing to download — empty `/chat`, a
+      conversation whose transcript is still empty, and every project screen — which is
+      this repo's pattern for an affordance with nothing behind it.
+
+      `composer__aux` is what US-407's in-flight dimming keys on, so this dims with the
+      paperclip and the project pill and needs no rule of its own. The control itself is
+      *disabled* rather than absent while a turn runs (frame `2g`), because there is
+      something to download, just not yet.
+    -->
+    @if (turn.exportTarget(); as target) {
+      <app-conversation-download-menu
+        class="composer__aux"
+        [conversationId]="target.id"
+        [conversationName]="target.name"
+        [disabled]="turn.inFlight()"
+        direction="up"
+      />
+    }
+
     <span class="composer__spacer"></span>
     <!-- One persistent button morphs between Send and Stop (frames 1b/2g):
          swapping elements with @if would destroy the control mid-press and

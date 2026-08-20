@@ -99,6 +99,15 @@ export const PROBLEM_FIXTURES = {
     instance: '/api/documents/6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b/download',
     traceId: TRACE_ID,
   },
+  exportRendererNotConfigured: {
+    type: PROBLEM_TYPE.exportRendererNotConfigured,
+    title: 'Export format not available',
+    status: 503,
+    detail: 'Conversation export to pdf is not available in this environment.',
+    instance: '/api/conversations/6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b/export',
+    traceId: TRACE_ID,
+    format: 'pdf',
+  },
   // `satisfies`, not an annotation: it catches a dropped `title` or a mistyped
   // `status` while keeping each fixture's extension members visible to callers.
 } as const satisfies Record<string, AnyProblemDetails>;

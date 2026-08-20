@@ -1,0 +1,53 @@
+// Tokens are read through `var(--…)` and never by `@use 'tokens'`, which emits `:root`
+// and would re-scope it to this component.
+
+// The host would otherwise be `display: inline` around an `inline-flex` child, which puts
+// the trigger on a line box and rides it down by the strut's descender — visible beside
+// the header star, which is not on one.
+:host {
+  display: inline-flex;
+}
+
+// Bound on every row so the two states have one selector to share; the layout is
+// `menu__item`'s.
+.download-menu__item--dimmed {
+  // Frame `2f`'s dimming for the two formats not being prepared. Opacity rather than a
+  // colour, so the glyph and the label fade together and neither has to know a token.
+  opacity: 0.45;
+}
+
+// Frame `2f` colours the three glyphs, which is the only thing distinguishing the rows at
+// a glance once the labels wrap.
+.download-menu__glyph--md {
+  color: var(--muted);
+}
+
+.download-menu__glyph--docx {
+  color: var(--accent);
+}
+
+.download-menu__glyph--pdf {
+  color: var(--fail);
+}
+
+.download-menu__spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  // `spin` is the shared keyframe from `_motion.scss`; declaring a fifth one here is what
+  // US-1404's build gate refuses, and reusing this one is what puts the reduced-motion
+  // block over this element without it opting in.
+  animation: spin 0.9s linear infinite;
+}
+
+.download-menu__note {
+  margin: 4px 0 0;
+  padding: 6px 10px 5px;
+  border-top: 1px solid var(--bs-border-color);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}

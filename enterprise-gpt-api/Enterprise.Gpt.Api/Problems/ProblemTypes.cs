@@ -72,4 +72,13 @@ internal static class ProblemTypes
     /// </summary>
     public static readonly ProblemType StorageNotConfigured =
         new($"{BaseUri}storage-not-configured", "Storage not configured");
+
+    /// <summary>
+    /// A conversation export was asked for in a format this deployment has no renderer for — the
+    /// format is withdrawn by configuration, or PDF rendering found no usable font. Accompanied by a
+    /// <c>format</c> extension carrying the wire token, so a client offering several formats can
+    /// disable the one rather than the control.
+    /// </summary>
+    public static readonly ProblemType ExportRendererNotConfigured =
+        new($"{BaseUri}export-renderer-not-configured", "Export format not available");
 }

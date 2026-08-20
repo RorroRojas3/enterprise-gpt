@@ -8,6 +8,12 @@ import { ConversationDto } from '@domain/api/conversation';
  * project is a property of the open conversation and the reader may change it, while on
  * a project's detail screen the project *is* the route and there is nothing to pick.
  */
+/** What the composer's download control acts on (US-1502). */
+export interface ComposerExportTarget {
+  readonly id: string;
+  readonly name: string;
+}
+
 export type ComposerProjectTarget =
   | { readonly kind: 'conversation'; readonly conversation: ConversationDto }
   | { readonly kind: 'project'; readonly projectId: string };
@@ -55,6 +61,16 @@ export interface ComposerHost {
    * is this repo's pattern for an affordance with nothing behind it.
    */
   readonly projectTarget: Signal<ComposerProjectTarget | null>;
+
+  /**
+   * The conversation the download control offers, or null when there is nothing to
+   * download — no conversation bound, or one whose transcript is still empty.
+   *
+   * Null renders the control **absent** rather than disabled, this repository's pattern
+   * for an affordance with nothing behind it and US-1502's fifth criterion for an empty
+   * conversation. A host that does not own a transcript reports null always.
+   */
+  readonly exportTarget: Signal<ComposerExportTarget | null>;
 
   consumeComposerSeed(): void;
   send(prompt: string): void;

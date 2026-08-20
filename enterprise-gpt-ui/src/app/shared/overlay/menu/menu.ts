@@ -18,6 +18,7 @@ import {
 import { onDismiss } from '@shared/a11y/dismiss';
 import { Icon } from '@shared/icon/icon';
 import { IconName } from '@shared/icon/icon-names';
+import { Tooltip } from '../tooltip/tooltip';
 import { AnchoredPosition, anchoredPosition } from '../anchored-panel';
 import { MenuTriggerContent } from './menu-trigger-content';
 
@@ -44,7 +45,7 @@ let nextId = 0;
 @Component({
   selector: 'app-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, Tooltip],
   templateUrl: './menu.html',
   styleUrl: './menu.scss',
 })
@@ -77,6 +78,18 @@ export class Menu {
    * element to read the disabled state from.
    */
   readonly disabled = input<boolean>(false);
+  /**
+   * A tooltip on the trigger, for when a disabled menu owes the reader a reason
+   * (US-1502: "Available when the response finishes").
+   *
+   * On the trigger and not on the host: the directive names an unnamed host with
+   * `aria-label`, and `<app-menu>` carries no role, which axe reports as
+   * `aria-prohibited-attr` — a serious violation, so the accessibility gate would
+   * fail the build on it. The trigger is a `<button>` that already has a name from
+   * {@link label}, so the tooltip stays purely visual and the reason belongs in
+   * `label` for assistive technology.
+   */
+  readonly hint = input<string | null>(null);
   readonly panelWidth = input<number>(204);
   /**
    * `up` opens above the trigger — the composer sits at the bottom of the
@@ -100,6 +113,16 @@ export class Menu {
 
   /** Set when opening by keyboard, so focus lands on the right end of the list. */
   private focusLastOnOpen = false;
+  /** Whether the panel was rendered on the previous pass; effects have no memory of their own. */
+  private wasOpen = false;
+  /**
+   * Set by {@link close}, which has already decided where focus goes.
+   *
+   * Without it the fall-through rescue below would override `close(false)`'s deliberate
+   * "do not steal focus" — an outside press on non-focusable space leaves focus on
+   * `<body>`, which is indistinguishable from a fall-through by inspection alone.
+   */
+  private closeOwnsFocus = false;
 
   constructor() {
     // Dismissal is driven by the state, not by whichever method set it. `open` is a
@@ -189,14 +212,31 @@ export class Menu {
     // focus belongs inside it, so a fall-through is corrected rather than a
     // user choice overridden: any deliberate way out (Tab, Escape, outside
     // press, activation) closes the menu first.
+    //
+    // The same rule applies on the way out, for one path only: a consumer clearing the
+    // two-way `open` model never reaches `close()` — US-1502's download menu closes
+    // itself when the browser takes the file — and the panel it destroys is holding the
+    // focused item, so focus lands on <body> with nothing to catch it. Every close that
+    // goes through `close()` has already decided about focus, including the deliberate
+    // no-steal on an outside press, and is left alone.
     afterEveryRender({
       mixedReadWrite: () => {
+        const active = this.document.activeElement;
+        const fellThrough = active === null || active === this.document.body || !active.isConnected;
+
         if (!this.open()) {
+          if (this.wasOpen && fellThrough && !this.closeOwnsFocus) {
+            this.triggerRef().nativeElement.focus();
+          }
+          this.wasOpen = false;
+          this.closeOwnsFocus = false;
+
           return;
         }
+
+        this.wasOpen = true;
         const panel = this.panelRef()?.nativeElement;
-        const active = this.document.activeElement;
-        if (!panel || (active !== null && active !== this.document.body && active.isConnected)) {
+        if (!panel || !fellThrough) {
           return;
         }
         (this.items()[0] ?? panel).focus();
@@ -304,6 +344,7 @@ export class Menu {
     if (!this.open()) {
       return;
     }
+    this.closeOwnsFocus = true;
     this.open.set(false);
     if (returnFocus) {
       this.triggerRef().nativeElement.focus();

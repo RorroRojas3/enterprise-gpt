@@ -1,11 +1,13 @@
 using Andes.Extensions.AI;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Export;
 using System.Text.Json;
 using Xunit;
 
@@ -14,6 +16,7 @@ namespace Enterprise.Gpt.Unit.Test.Endpoints;
 public class ConversationEndpointsTests
 {
     private readonly IConversationService _conversationService = Substitute.For<IConversationService>();
+    private readonly IConversationExportService _exportService = Substitute.For<IConversationExportService>();
 
     private static ConversationDto CreateDto(string name = "Planning")
     {
@@ -416,4 +419,76 @@ public class ConversationEndpointsTests
         Assert.False(context.Response.Headers.ContainsKey("Cache-Control"));
         Assert.Empty(ReadBody(context));
     }
+
+    #region Export
+    /// <summary>
+    /// The response is a rendered transcript, which is the most sensitive thing this API serves as a
+    /// file. Without this header a shared browser keeps it on disk long after the reader signs out.
+    /// </summary>
+    [Fact]
+    public async Task ExportConversationAsync_Always_SetsCacheControlNoStore()
+    {
+        var id = Guid.NewGuid();
+        _exportService.ExportConversationAsync(id, "md", Arg.Any<CancellationToken>())
+            .Returns(new ConversationExport("# Notes"u8.ToArray(), "text/markdown; charset=utf-8", "Notes.md"));
+        var context = CreateContext();
+
+        await ConversationEndpoints.ExportConversationAsync(
+            id, _exportService, context.Response, "md", TestContext.Current.CancellationToken);
+
+        Assert.Equal("no-store", context.Response.Headers.CacheControl);
+    }
+
+    /// <summary>
+    /// Results.File writes the attachment disposition; this pins that the renderer's own file name is
+    /// what reaches it, since that name is what the browser saves and the client never supplies one.
+    /// </summary>
+    [Fact]
+    public async Task ExportConversationAsync_Always_ReturnsAFileNamedByTheRenderer()
+    {
+        var id = Guid.NewGuid();
+        var content = "%PDF-1.7"u8.ToArray();
+        _exportService.ExportConversationAsync(id, "pdf", Arg.Any<CancellationToken>())
+            .Returns(new ConversationExport(content, "application/pdf", "Planning-notes.pdf"));
+
+        var result = await ConversationEndpoints.ExportConversationAsync(
+            id, _exportService, CreateContext().Response, "pdf", TestContext.Current.CancellationToken);
+
+        var file = Assert.IsAssignableFrom<IFileHttpResult>(result);
+        Assert.Equal("application/pdf", file.ContentType);
+        Assert.Equal("Planning-notes.pdf", file.FileDownloadName);
+    }
+
+    /// <summary>
+    /// The header is set after the service call, so a failure leaves the problem response to the
+    /// exception handler chain rather than stamping a file header on it.
+    /// </summary>
+    [Fact]
+    public async Task ExportConversationAsync_ServiceThrows_SetsNoHeaders()
+    {
+        var id = Guid.NewGuid();
+        _exportService.ExportConversationAsync(id, "pdf", Arg.Any<CancellationToken>())
+            .Returns<ConversationExport>(_ => throw new ExportRendererNotConfiguredException(ConversationExportFormats.Pdf));
+        var context = CreateContext();
+
+        await Assert.ThrowsAsync<ExportRendererNotConfiguredException>(
+            () => ConversationEndpoints.ExportConversationAsync(
+                id, _exportService, context.Response, "pdf", TestContext.Current.CancellationToken));
+
+        Assert.False(context.Response.Headers.ContainsKey("Cache-Control"));
+    }
+
+    [Fact]
+    public async Task ExportConversationAsync_NoFormat_PassesNullThrough()
+    {
+        var id = Guid.NewGuid();
+        _exportService.ExportConversationAsync(id, null, Arg.Any<CancellationToken>())
+            .Returns(new ConversationExport("<html></html>"u8.ToArray(), "text/html; charset=utf-8", "Notes.html"));
+
+        await ConversationEndpoints.ExportConversationAsync(
+            id, _exportService, CreateContext().Response, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _exportService.Received(1).ExportConversationAsync(id, null, Arg.Any<CancellationToken>());
+    }
+    #endregion
 }

@@ -1054,4 +1054,49 @@ describe('TurnStore', () => {
       expect(second).not.toBe(first);
     });
   });
+
+  describe('the download target (US-1502)', () => {
+    it('is null before a conversation is bound', () => {
+      setup();
+
+      expect(store.exportTarget()).toBeNull();
+    });
+
+    /**
+     * Criterion 5: an empty conversation offers no download. `hasContent` would be the
+     * wrong test — it is deliberately true while history is merely pending and while a
+     * pre-stream notice is up, and neither is anything to export.
+     */
+    it('is null for a conversation whose transcript is empty', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+
+      expect(store.hasContent()).toBe(false);
+      expect(store.exportTarget()).toBeNull();
+    });
+
+    it('names the conversation once its transcript has been replayed', () => {
+      setup();
+      TestBed.inject(ConversationListStore).prependNewest(
+        conversationFixture({ id: CONVERSATION_ID, name: 'Helios release' }),
+      );
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        { text: 'What does retrieval do?', role: CHAT_ROLE.user },
+        { text: 'It runs a tool call.', role: CHAT_ROLE.assistant },
+      ]);
+
+      expect(store.exportTarget()).toEqual({ id: CONVERSATION_ID, name: 'Helios release' });
+    });
+
+    /** A conversation the 50-row sidebar never held still has to name itself. */
+    it('is null while neither the list nor the detail copy has landed', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [{ text: 'Hello', role: CHAT_ROLE.user }]);
+
+      expect(store.exportTarget()).toBeNull();
+    });
+  });
 });

@@ -29,6 +29,7 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
+import { ConversationDownloadMenu } from '@shared/conversations/conversation-download-menu/conversation-download-menu';
 import { ChatEmptyState } from './chat-empty-state';
 import { Composer } from '@shared/composer/composer';
 import { ConversationStore } from './conversation-store';
@@ -54,6 +55,7 @@ import { UploadStore } from '@core/documents/upload-store';
   imports: [
     ChatEmptyState,
     Composer,
+    ConversationDownloadMenu,
     ErrorPanel,
     Icon,
     Menu,

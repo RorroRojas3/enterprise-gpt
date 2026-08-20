@@ -54,6 +54,15 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     /// <summary>
     /// Polls the status endpoint until the job reaches a terminal state, mirroring what the client does.
     /// </summary>
+    /// <remarks>
+    /// <strong>Every test that receives a 202 must await this before it returns</strong>, whether or
+    /// not it asserts on the outcome. Ingestion runs on the host's background pipeline and outlives
+    /// the request, and the per-test reset deletes <c>ConversationDocument</c> before
+    /// <c>Conversation</c> — so a job still running when the next test starts inserts its row between
+    /// those two deletes and fails that test on a foreign key, a long way from the test that leaked
+    /// it. A terminal state is a sound barrier because <c>DocumentService</c> reports completion only
+    /// after <c>SaveChangesAsync</c> has committed.
+    /// </remarks>
     private static async Task<JobStatusDto> WaitForTerminalStateAsync(HttpClient client, string jobId)
     {
         var deadline = DateTimeOffset.UtcNow + _jobTimeout;
@@ -895,6 +904,13 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         // The owner still sees it, so the 404 is authorization rather than the job having gone missing.
         var ownerResponse = await owner.GetAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
+
+        // Not an assertion — a barrier, and the only test in this file that needs one stated rather
+        // than implied. Everything above is answered while the job is still ingesting, so without
+        // this the test returns with background work outstanding and the insert lands inside the
+        // *next* test's ResetConversationsAndDocumentsAsync: after it has emptied ConversationDocument
+        // and before it deletes Conversation, which fails that unrelated test on a foreign key.
+        await WaitForTerminalStateAsync(owner, job.Id);
     }
 
     [Fact]

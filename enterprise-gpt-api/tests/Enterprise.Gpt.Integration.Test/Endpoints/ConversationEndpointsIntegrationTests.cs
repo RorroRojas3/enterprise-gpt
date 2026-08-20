@@ -272,6 +272,99 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
     #endregion
 
+    #region Export
+    [Fact]
+    public async Task ExportConversation_Anonymous_ReturnsUnauthorized()
+    {
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/{Guid.NewGuid()}/export", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>
+    /// The rejection has to name the parameter and the whole supported set, because the client has no
+    /// other way to learn which formats this API accepts.
+    /// </summary>
+    [Fact]
+    public async Task ExportConversation_UnsupportedFormat_ReturnsValidationProblemNamingTheParameter()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/{conversationId}/export?format=rtf", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        var messages = Assert.Contains("format", problem.Errors);
+        var message = Assert.Single(messages);
+
+        foreach (var supported in new[] { "html", "json", "md", "docx", "pdf" })
+        {
+            Assert.Contains(supported, message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// The format check runs before ownership, so an unsupported format on someone else's
+    /// conversation must still answer 400 rather than confirming the row by 404-ing.
+    /// </summary>
+    [Fact]
+    public async Task ExportConversation_UnsupportedFormatOnAnotherUsersConversation_StillReturnsBadRequest()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            userId: TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/{conversationId}/export?format=rtf", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ExportConversation_AnotherUsersConversation_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            userId: TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/{conversationId}/export?format=md", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("/problems/resource-not-found", problem.Type);
+    }
+
+    [Fact]
+    public async Task ExportConversation_DeactivatedConversation_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/{conversationId}/export?format=md", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ExportConversation_UnknownConversation_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            $"api/conversations/{Guid.NewGuid()}/export?format=md", TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+    #endregion
+
     #region Document listing
     [Fact]
     public async Task GetConversationDocuments_OwnedConversationWithDocuments_ReturnsThem()

@@ -18,6 +18,7 @@ using Microsoft.Identity.Web;
 using OpenAI;
 using Enterprise.Gpt.Api.Chat;
 using Enterprise.Gpt.Api.Endpoints;
+using Enterprise.Gpt.Api.Export;
 using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Api.Observability;
@@ -87,7 +88,6 @@ builder.Services.AddCors(builder => builder.AddPolicy("AllowSpecificOrigins", po
             .AllowCredentials()
             .WithExposedHeaders("Content-Disposition");
 }));
-
 
 // Registered before the chat clients because UseToolTracking() collects every IChatProgressObserver
 // in the container when the client is built. This one is how a completed request's usage report
@@ -429,6 +429,18 @@ builder.Services.AddOptions<DocumentRetrievalOptions>()
         "Documents:Retrieval:LexicalCandidateCount must be at least Documents:Retrieval:MaxResults.")
     .ValidateOnStart();
 
+// Conversation export. DisabledFormats is validated against the tokens the route actually accepts,
+// so a typo withdraws nothing silently and instead fails the app at start, the same bargain
+// PermissionEndpointFilter.Require makes with a bad permission id.
+builder.Services.AddOptions<ExportOptions>()
+    .Bind(builder.Configuration.GetSection(ExportOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(
+        options => options.DisabledFormats.All(
+            format => ConversationExportFormatNames.TryParse(format, out _) && !string.IsNullOrWhiteSpace(format)),
+        $"Export:DisabledFormats may only name {ConversationExportFormatNames.SupportedList}.")
+    .ValidateOnStart();
+
 // Background job pipeline (replaces Hangfire). BackgroundJobProcessor consumes IBackgroundJobQueue,
 // caps concurrent jobs via SemaphoreSlim, and updates IJobStatusStore for client polling.
 builder.Services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
@@ -569,6 +581,27 @@ builder.Services.AddSingleton<ITokenEstimatorResolver, TokenEstimatorResolver>()
 // Server-side markdown rendering, stored beside each message so an export is a read rather than a
 // re-render. A singleton because building the pipeline is per-process configuration.
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+
+// Conversation export renderers, one per format, resolved by ConversationExportService from this
+// collection. A format with nothing registered answers 503 with its own problem type rather than
+// falling through to a 500, which is what lets a client distinguish "not available here" from "try
+// again" — see Export/IConversationExportRenderer.cs.
+builder.Services.AddSingleton<IMarkdownBlockMapper, MarkdownBlockMapper>();
+ExportRendererRegistration.AddExportRenderers(
+    builder.Services,
+    builder.Configuration.GetSection(ExportOptions.SectionName).Get<ExportOptions>() ?? new ExportOptions());
+// Which formats survived that, reported once through the real logging pipeline rather than from a
+// LoggerFactory this file would have to own and dispose.
+builder.Services.AddHostedService<ExportAvailabilityLogger>();
+
+// A static local function rather than an extension method, matching how this file already shares
+// ConfigureFunctionInvocation and ConfigureToolTracking, and kept beside its only caller.
+//
+// Two of the five formats can be absent, and for different reasons. Any of them can be withdrawn by
+// Export:DisabledFormats. PDF additionally needs a font: PDFsharp's cross-platform build reads none
+// from the operating system on its own and throws on the first glyph without a resolver, so a
+// deployment with no usable face registers no PDF renderer and the route answers 503 up front rather
+// than faulting halfway into a response body.
 
 // Exception handlers (chained — first to return true wins; GlobalExceptionHandler is the fallback)
 builder.Services.AddExceptionHandler<ValidationExceptionHandler>();

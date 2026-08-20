@@ -15,7 +15,11 @@ import { tapResponse } from '@ngrx/operators';
 import { Subject, exhaustMap, merge, takeUntil } from 'rxjs';
 import { ConversationDto } from '@domain/api/conversation';
 import { CHAT_ROUTE, PROJECTS_ROUTE } from '@core/auth/auth-routes';
-import { ComposerHost, ComposerProjectTarget } from '@core/chat/composer-host';
+import {
+  ComposerExportTarget,
+  ComposerHost,
+  ComposerProjectTarget,
+} from '@core/chat/composer-host';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { toAppError } from '@core/errors/to-app-error';
@@ -76,6 +80,12 @@ export const ProjectComposerHost = signalStore(
      * stays null so the composer's focus fixups behave exactly as they do there.
      */
     turnError: computed<object | null>(() => null),
+    /**
+     * Never a download. This screen has no conversation — a prompt sent here creates one
+     * and navigates — so there is no transcript for the control to act on, and frame `2f`
+     * draws none here (US-1502).
+     */
+    exportTarget: computed<ComposerExportTarget | null>(() => null),
     /**
      * The route's own project (US-307). The `project` arm makes the composer render a
      * static chip rather than a picker: a conversation created here is created *inside*

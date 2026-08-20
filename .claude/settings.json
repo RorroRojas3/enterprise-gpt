@@ -1,29 +1,8 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(sed -i \"s#import { UploadStore } from '../upload-store';#import { UploadStore } from '@core/documents/upload-store';#\" features/chat/transcript/transcript.spec.ts shared/composer/composer.spec.ts)",
-      "Bash(sed -i \"s#import { UploadStore } from './upload-store';#import { UploadStore } from '@core/documents/upload-store';#\" features/chat/turn-store.spec.ts features/chat/turn-store.ts features/chat/chat.ts)",
-      "Bash(sed -i \"s#import { Composer } from './composer/composer';#import { Composer } from '@shared/composer/composer';#\" features/chat/chat.ts)",
-      "Bash(cd c:/Users/Rorro/source/repos/enterprise-gpt/enterprise-gpt-ui && grep -n \"renameRow\\\\|favoriteRow\\\\|refreshRow\\\\|listFields\\\\|updateEntity\\\\|withEventHandlers\\\\|withHooks\" src/app/core/conversations/conversation-list-store.ts | head -20 && echo \"=== listFields ===\" && sed -n '/function listFields/,/^}/p' src/app/core/conversations/conversation-list-store.ts)",
-      "Bash(sed -i \"s/import { afterEach, beforeEach, describe, expect, it } from 'vitest';/import { afterEach, describe, expect, it } from 'vitest';/\" src/app/features/projects/detail/files/project-files.spec.ts)",
-      "Bash(npm test *)",
-      "Bash(sed -i \"/^import { ProjectDetail } from '.\\\\/project-detail';$/d\" src/app/features/projects/detail/project-detail.spec.ts)",
-      "Read(//c/Users/Rorro/.nuget/packages/andes.extensions.ai.agent/0.5.0/**)",
-      "Bash(sed -n '1,200p' lib/*/Andes.Extensions.AI.Agent.xml)",
-      "Bash(grep -n \"^#\\\\{2,3\\\\} \")",
-      "Bash(ls ~/.nuget/packages/ 2>/dev/null | grep -i andes)",
-      "Read(//c/Users/Rorro/.nuget/packages/**)",
-      "Bash(find ~/.nuget/packages/andes.extensions.ai/ ~/.nuget/packages/andes.extensions.ai.mcp/ -name \"*.xml\" | head -20)",
-      "Read(//c/Users/Rorro/.nuget/packages/andes.extensions.ai/**)",
-      "Bash(python -)",
-      "Read(//c/Users/Rorro/.nuget/packages/modelcontextprotocol.core/**)"
-    ],
-    "additionalDirectories": [
-      "C:\\Users\\Rorro\\source\\repos\\enterprise-gpt\\enterprise-gpt-ui\\src\\app\\core\\conversations"
-    ]
+    "allow": []
   },
   "model": "opus",
-  "availableModels": ["opus"],
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "microsoft-learn",

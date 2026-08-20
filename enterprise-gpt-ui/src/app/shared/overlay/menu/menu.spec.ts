@@ -11,7 +11,7 @@ import { MenuTriggerContent } from './menu-trigger-content';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Menu, MenuItem, MenuSeparator],
   template: `
-    <app-menu label="Actions for Helios release" [(open)]="menuOpen">
+    <app-menu label="Actions for Helios release" [hint]="hint()" [(open)]="menuOpen">
       <button id="rename" appMenuItem type="button">Rename</button>
       <button id="favourite" appMenuItem type="button">Favourite</button>
       <hr appMenuSeparator />
@@ -22,6 +22,7 @@ import { MenuTriggerContent } from './menu-trigger-content';
 })
 class MenuHost {
   readonly menuOpen = signal(false);
+  readonly hint = signal<string | null>(null);
 }
 
 describe('Menu', () => {
@@ -195,6 +196,67 @@ describe('Menu', () => {
     await menu.fixture.whenStable();
 
     expect(menu.panel()).toBeNull();
+  });
+
+  describe('the trigger hint (US-1502)', () => {
+    /**
+     * The tooltip is on the trigger and not on `<app-menu>`, which carries no role: the
+     * directive names an unnamed host with `aria-label`, and axe reports that on a
+     * role-less element as a serious `aria-prohibited-attr`.
+     */
+    it('renders a tooltip on the trigger when a hint is set', async () => {
+      const menu = await render();
+      menu.fixture.componentInstance.hint.set('Available when the response finishes');
+      await menu.fixture.whenStable();
+
+      menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
+      await menu.fixture.whenStable();
+
+      const flyout = menu.trigger.querySelector('.app-tooltip');
+      expect(flyout?.textContent).toBe('Available when the response finishes');
+    });
+
+    /**
+     * Every menu in the application binds this input, and almost none passes a hint. A
+     * tooltip that rendered for an empty one would put an empty box under every kebab —
+     * and, before the guard, do a signal write and register a document listener per hover.
+     */
+    it('renders nothing, and does no work at all, without one', async () => {
+      const menu = await render();
+      // The cost is the point: `Menu` binds this directive on every trigger in the app and
+      // passes a hint on almost none, so a hover that still wrote a signal and registered a
+      // document listener would do that on every kebab in a fifty-row sidebar. Asserting the
+      // absent flyout alone would pass with or without the guard, because the render-phase
+      // check removes it either way.
+      const addEventListener = vi.spyOn(document, 'addEventListener');
+
+      menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
+      await menu.fixture.whenStable();
+
+      expect(menu.trigger.querySelector('.app-tooltip')).toBeNull();
+      expect(addEventListener.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(0);
+
+      addEventListener.mockRestore();
+    });
+  });
+
+  /**
+   * The one close path that does not go through `close()`: a consumer clearing the
+   * two-way model. It destroys the panel holding the focused item, so without a rescue
+   * focus lands on `<body>` and every key the trigger handles goes dead (WCAG 2.4.3).
+   */
+  it('returns focus to the trigger when a consumer closes it through the model', async () => {
+    const menu = await render();
+    await menu.open();
+
+    expect(menu.panel()).not.toBeNull();
+    expect(menu.host.contains(document.activeElement)).toBe(true);
+
+    menu.fixture.componentInstance.menuOpen.set(false);
+    await menu.fixture.whenStable();
+
+    expect(menu.panel()).toBeNull();
+    expect(document.activeElement).toBe(menu.trigger);
   });
 });
 

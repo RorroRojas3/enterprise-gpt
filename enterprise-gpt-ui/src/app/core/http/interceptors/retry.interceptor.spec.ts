@@ -10,7 +10,7 @@ import { Observable, defer, firstValueFrom, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { DEFAULT_RETRY_POLICY, RETRY_POLICY } from '../../errors/retry-policy';
-import { retryInterceptor } from './retry.interceptor';
+import { retryInterceptor, skipRetry } from './retry.interceptor';
 
 const URL = 'https://localhost:7045/api/conversations';
 
@@ -62,6 +62,11 @@ function post(): HttpRequest<unknown> {
   return new HttpRequest('POST', URL, {});
 }
 
+/** A GET that has opted out — what the conversation export issues. */
+function getWithoutRetry(): HttpRequest<unknown> {
+  return new HttpRequest('GET', URL, { context: skipRetry() });
+}
+
 function failure(body: unknown, status: number): HttpErrorResponse {
   return new HttpErrorResponse({ error: body, status, url: URL });
 }
@@ -78,6 +83,35 @@ afterEach(() => {
 });
 
 describe('retryInterceptor', () => {
+  /**
+   * The opt-out exists for one reason: a `responseType: 'blob'` request's error body is a
+   * `Blob` that `parseProblemDetails` rejects, so an application-typed 503 — which must
+   * never be replayed — is indistinguishable from a gateway 503, which should be. Three
+   * blind round trips delay an actionable message by seconds and cannot succeed.
+   */
+  it('does not retry a GET that opted out, even on a retriable status', async () => {
+    const { attempts, caught } = await run(
+      getWithoutRetry(),
+      failure({ type: 'about:blank', status: 503 }, 503),
+    );
+
+    expect(attempts).toBe(1);
+    expect(caught).toBeInstanceOf(HttpErrorResponse);
+  });
+
+  it('still retries an ordinary GET beside it', async () => {
+    const { attempts } = await run(get(), failure({ type: 'about:blank', status: 503 }, 503));
+
+    expect(attempts).toBeGreaterThan(1);
+  });
+
+  it('passes an opted-out success straight through', async () => {
+    const { attempts, caught } = await run(getWithoutRetry(), null);
+
+    expect(attempts).toBe(1);
+    expect(caught).toBeNull();
+  });
+
   it('retries an untyped 502 on a GET up to the configured count', async () => {
     const { attempts } = await run(get(), failure({ type: 'about:blank', status: 502 }, 502));
 

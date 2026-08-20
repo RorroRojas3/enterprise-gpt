@@ -1,40 +1,15 @@
-using System.Globalization;
-using System.Net;
-using System.Text;
-using System.Text.Json;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Serialization;
 using Enterprise.Gpt.Service.Transcripts;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Repository;
 
 namespace Enterprise.Gpt.Service.Export;
-
-/// <summary>
-/// The formats a conversation can be exported as.
-/// </summary>
-public enum ConversationExportFormats
-{
-    /// <summary>A self-contained HTML document.</summary>
-    Html = 1,
-
-    /// <summary>The stored documents' own shape, as JSON.</summary>
-    Json = 2
-}
-
-/// <summary>
-/// A rendered export, ready to be written to a response.
-/// </summary>
-/// <param name="Content">The document body.</param>
-/// <param name="ContentType">The media type to serve it as.</param>
-/// <param name="FileName">A suggested download file name.</param>
-public sealed record ConversationExport(string Content, string ContentType, string FileName);
 
 /// <summary>
 /// Renders a conversation out of the platform.
@@ -48,51 +23,67 @@ public interface IConversationExportService
     /// <param name="format">The format to render, defaulting to HTML when not supplied.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>The rendered export.</returns>
-    /// <exception cref="ValidationException">The requested format is not supported.</exception>
+    /// <exception cref="ValidationException">The requested format is not a supported one.</exception>
     /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
+    /// <exception cref="ExportRendererNotConfiguredException">
+    /// The format is supported but this deployment has no renderer for it.
+    /// </exception>
     Task<ConversationExport> ExportConversationAsync(
         Guid id, string? format, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Assembles a conversation export from the HTML already stored beside each message.
+/// Reads a conversation's transcript and hands it to the renderer for the requested format.
 /// </summary>
 /// <remarks>
-/// Reads rather than re-renders: the whole point of storing <c>htmlContent</c> at persist time is
-/// that an export does not depend on a client, or on this service, rendering markdown again.
+/// <para>
+/// The service owns three things and no more: who may export (SQL ownership plus a live transcript
+/// header), what an export may contain (the persisted prompts and answers, and nothing else),
+/// and which renderer answers. Everything about a particular format lives in its
+/// <see cref="IConversationExportRenderer"/>, so adding one is a registration rather than a branch
+/// here.
+/// </para>
+/// <para>
+/// A format with no registered renderer raises <see cref="ExportRendererNotConfiguredException"/>
+/// rather than falling through to a 500. That is not a defensive nicety: PDF rendering depends on a
+/// font this deployment may not have, and <c>Export:DisabledFormats</c> can withdraw any of them, so
+/// "supported by this API but not available here" is a state a client has to be able to tell apart
+/// from a transient failure.
+/// </para>
 /// </remarks>
 /// <param name="logger">The logger.</param>
 /// <param name="transcriptStore">The transcript store.</param>
 /// <param name="tokenService">Supplies the calling user's object identifier.</param>
 /// <param name="ctx">The relational context, read for ownership.</param>
+/// <param name="renderers">Every export renderer this deployment registered.</param>
+/// <param name="timeProvider">Supplies the export timestamp.</param>
 public sealed class ConversationExportService(
     ILogger<ConversationExportService> logger,
     ITranscriptStore transcriptStore,
     ITokenService tokenService,
-    EnterpriseGptDbContext ctx) : IConversationExportService
+    EnterpriseGptDbContext ctx,
+    IEnumerable<IConversationExportRenderer> renderers,
+    TimeProvider timeProvider) : IConversationExportService
 {
-    private const string MessagesPlaceholder = "{{MESSAGES}}";
-    private const string DatePlaceholder = "{{DATE}}";
-
-    /// <summary>
-    /// The export template, loaded once at type initialization.
-    /// </summary>
-    /// <remarks>
-    /// Shipped as content beside the assembly rather than embedded, matching how the prompt
-    /// templates in this project are loaded.
-    /// </remarks>
-    private static readonly string HtmlTemplate = LoadTemplate();
-
     private readonly ILogger<ConversationExportService> _logger = logger;
     private readonly ITranscriptStore _transcriptStore = transcriptStore;
     private readonly ITokenService _tokenService = tokenService;
     private readonly EnterpriseGptDbContext _ctx = ctx;
+    private readonly TimeProvider _timeProvider = timeProvider;
+
+    // Indexer assignment, not ToDictionary: the latter throws on a duplicate key, and the throw would
+    // land in this scoped service's constructor on every export request — surfacing as a 400 with a
+    // LINQ message in the body, because ArgumentException is the handler's bad-request arm. Last
+    // registration wins instead, matching how the container resolves a single service, so a
+    // deployment overriding one format's renderer does not have to remove the original first.
+    private readonly Dictionary<ConversationExportFormats, IConversationExportRenderer> _renderers =
+        BuildRegistry(renderers);
 
     /// <inheritdoc />
     public async Task<ConversationExport> ExportConversationAsync(
         Guid id, string? format, CancellationToken cancellationToken = default)
     {
-        var requested = ParseFormat(format);
+        var renderer = ResolveRenderer(format);
         var userId = _tokenService.GetOid();
 
         // Owner-scoped in SQL as well as through the partition key. The key alone would answer
@@ -120,9 +111,52 @@ public sealed class ConversationExportService(
 
         var messages = await ReadMessagesAsync(id, partition, cancellationToken);
 
-        return requested is ConversationExportFormats.Json
-            ? RenderJson(header, messages)
-            : RenderHtml(header, messages);
+        // Rendering is synchronous and can be the most expensive part of the request — a PDF lays out
+        // every page on this thread. A caller who navigated away has already stopped waiting, and
+        // OperationCanceledException is a 499 with no body rather than wasted work.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return renderer.Render(
+            new ConversationExportDocument(header, messages, _timeProvider.GetUtcNow()));
+    }
+
+    private static Dictionary<ConversationExportFormats, IConversationExportRenderer> BuildRegistry(
+        IEnumerable<IConversationExportRenderer> renderers)
+    {
+        Dictionary<ConversationExportFormats, IConversationExportRenderer> registry = [];
+
+        foreach (var renderer in renderers)
+        {
+            registry[renderer.Format] = renderer;
+        }
+
+        return registry;
+    }
+
+    private IConversationExportRenderer ResolveRenderer(string? format)
+    {
+        if (!ConversationExportFormatNames.TryParse(format, out var requested))
+        {
+            throw new ValidationException(
+            [
+                new ValidationFailure(
+                    "format",
+                    $"'{format}' is not a supported export format. Supported formats are {ConversationExportFormatNames.SupportedList}.")
+            ]);
+        }
+
+        if (_renderers.TryGetValue(requested, out var renderer))
+        {
+            return renderer;
+        }
+
+        // Info rather than Error: the deployment is configured this way on purpose more often than
+        // not, and a request for a format an operator withdrew is not a fault to page anyone about.
+        _logger.LogInformation(
+            "Conversation export to {Format} was requested, but no renderer for it is registered.",
+            requested.ToWireFormat());
+
+        throw new ExportRendererNotConfiguredException(requested);
     }
 
     private async Task<List<TranscriptMessageDocument>> ReadMessagesAsync(
@@ -146,110 +180,13 @@ public sealed class ConversationExportService(
         }
         while (continuationToken is not null);
 
-        // System messages are the assistant's standing instructions, not part of the conversation a
-        // user had, and they are excluded from the read endpoint for the same reason.
+        // An allowlist rather than "everything except System": the export's contract is the prompts
+        // and the completed answers, and the label a message gets downstream is a two-way choice
+        // between You and Assistant. A Tool document — the enum has the member, nothing writes one
+        // today — would otherwise be exported as an assistant answer it never was.
         return [.. messages
-            .Where(x => x.Role is not ChatRoles.System)
+            .Where(x => x.Role is ChatRoles.User or ChatRoles.Assistant)
             .OrderBy(x => x.DateCreated)
             .ThenBy(x => x.Id, StringComparer.Ordinal)];
-    }
-
-    private static ConversationExport RenderHtml(
-        TranscriptHeaderDocument header, IReadOnlyList<TranscriptMessageDocument> messages)
-    {
-        var body = new StringBuilder();
-
-        foreach (var message in messages)
-        {
-            var role = message.Role is ChatRoles.User ? "user" : "assistant";
-            var label = message.Role is ChatRoles.User ? "You" : "Assistant";
-
-            // Stored HTML when there is any, and escaped plain text when there is not — a message
-            // written before server-side rendering existed still belongs in the export.
-            var content = string.IsNullOrEmpty(message.HtmlContent)
-                ? $"<p>{WebUtility.HtmlEncode(message.Content)}</p>"
-                : message.HtmlContent;
-
-            body.Append(CultureInfo.InvariantCulture,
-                $"""
-                <div class="message {role}">
-                    <div class="message-header">{label}</div>
-                    <div class="message-content">{content}</div>
-                </div>
-
-                """);
-        }
-
-        var html = HtmlTemplate
-            .Replace(MessagesPlaceholder, body.ToString(), StringComparison.Ordinal)
-            .Replace(DatePlaceholder, header.DateModified.ToString("u", CultureInfo.InvariantCulture), StringComparison.Ordinal)
-            // The conversation's own name, escaped: it is user-supplied and the template's title is
-            // the one place it would otherwise reach markup.
-            .Replace("Conversation History", WebUtility.HtmlEncode(header.Name), StringComparison.Ordinal);
-
-        return new ConversationExport(html, "text/html; charset=utf-8", $"{FileStem(header.Name)}.html");
-    }
-
-    private static ConversationExport RenderJson(
-        TranscriptHeaderDocument header, IReadOnlyList<TranscriptMessageDocument> messages)
-    {
-        // Serialized with the Cosmos options, so the exported property names are the stored ones and
-        // the export is the storage shape rather than a third representation of it.
-        var options = CosmosSerialization.CreateOptions();
-        options.WriteIndented = true;
-
-        var payload = new
-        {
-            header.ConversationId,
-            header.Name,
-            header.DateCreated,
-            header.DateModified,
-            header.ContextTokens,
-            header.MessageCount,
-            Messages = messages
-        };
-
-        return new ConversationExport(
-            JsonSerializer.Serialize(payload, options),
-            "application/json; charset=utf-8",
-            $"{FileStem(header.Name)}.json");
-    }
-
-    private static ConversationExportFormats ParseFormat(string? format)
-    {
-        if (string.IsNullOrWhiteSpace(format) || format.Equals("html", StringComparison.OrdinalIgnoreCase))
-        {
-            return ConversationExportFormats.Html;
-        }
-
-        if (format.Equals("json", StringComparison.OrdinalIgnoreCase))
-        {
-            return ConversationExportFormats.Json;
-        }
-
-        throw new ValidationException(
-        [
-            new ValidationFailure("format", $"'{format}' is not a supported export format. Supported formats are 'html' and 'json'.")
-        ]);
-    }
-
-    /// <summary>
-    /// Reduces a conversation name to something safe to put in a file name.
-    /// </summary>
-    private static string FileStem(string name)
-    {
-        var stem = new string([.. name.Select(character =>
-            char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-')]).Trim('-');
-
-        return string.IsNullOrEmpty(stem) ? "conversation" : stem[..Math.Min(stem.Length, 60)];
-    }
-
-    private static string LoadTemplate()
-    {
-        var path = Path.Combine(AppContext.BaseDirectory, "Files", "conversation-history.html");
-
-        return File.Exists(path)
-            ? File.ReadAllText(path)
-            : throw new FileNotFoundException($"The conversation export template was not found at '{path}'.", path);
     }
 }

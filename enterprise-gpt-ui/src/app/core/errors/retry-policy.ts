@@ -38,7 +38,8 @@ const RETRIABLE_STATUSES: readonly number[] = [502, 503, 504];
  * - **409 `conversation-busy`** is never retried at any interval. A turn is
  *   already running; retrying races the user's other tab.
  * - **A 503 carrying an application problem type** — `provider-not-configured`,
- *   `storage-not-configured` — is a deterministic deployment state, not transient
+ *   `storage-not-configured`, `export-renderer-not-configured` — is a deterministic
+ *   deployment state, not transient
  *   load. Retrying buys three round trips of nothing and delays an actionable
  *   message by seconds.
  *
@@ -119,6 +120,7 @@ export const AUTH_DECISIONS = {
   'mcp-server-unavailable': 'passthrough',
   'provider-not-configured': 'passthrough',
   'storage-not-configured': 'passthrough',
+  'export-renderer-not-configured': 'passthrough',
   // The only arm a 401 can land on, since a 401 carries no application type.
   http: 'refresh',
   network: 'passthrough',

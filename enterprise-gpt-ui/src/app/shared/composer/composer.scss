@@ -171,6 +171,18 @@
   opacity: 0.4;
 }
 
+// …except while the download control is being pointed at or focused, which is exactly
+// when its tooltip is on screen. The tooltip cannot be exempted on its own: `opacity`
+// composites the whole subtree into one group, so no descendant can raise itself back to
+// 1 — and the flyout is created through `Renderer2`, so it carries no encapsulation
+// attribute for a component-scoped selector to match in the first place (see `_kit.scss`).
+// Un-dimming the control itself is the only thing that works, and the sentence explaining
+// why the control is unavailable is the one thing worth reading at 100%.
+.composer--streaming app-conversation-download-menu.composer__aux:hover,
+.composer--streaming app-conversation-download-menu.composer__aux:focus-within {
+  opacity: 1;
+}
+
 // Composer.dc.html's project pill: 30px, fully rounded, between the paperclip and the
 // model pill. The same box serves the static chip the project screen renders, which is
 // a <span> because there is nothing to open there.

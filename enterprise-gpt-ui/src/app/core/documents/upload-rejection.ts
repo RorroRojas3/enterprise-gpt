@@ -37,6 +37,7 @@ const RETRYABLE_REJECTIONS = {
   'mcp-server-unavailable': false,
   'provider-not-configured': false,
   'storage-not-configured': false,
+  'export-renderer-not-configured': false,
   http: true,
   network: true,
   aborted: false,

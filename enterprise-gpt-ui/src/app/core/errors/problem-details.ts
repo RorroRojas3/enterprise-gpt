@@ -75,6 +75,17 @@ export interface ProviderNotConfiguredProblemDetails extends ProblemDetails {
 }
 
 /**
+ * A 503 raised when this deployment has no renderer for a conversation export format.
+ *
+ * `format` is the wire token — `md`, `docx`, `pdf` — so a download menu can disable
+ * the one item rather than the whole control.
+ */
+export interface ExportRendererNotConfiguredProblemDetails extends ProblemDetails {
+  readonly type: typeof PROBLEM_TYPE.exportRendererNotConfigured;
+  readonly format: string;
+}
+
+/**
  * Every problem body shape.
  *
  * The trailing {@link ProblemDetails} covers framework problems, whose `type` is
@@ -95,6 +106,7 @@ export type AnyProblemDetails =
   | McpAuthorizationRequiredProblemDetails
   | McpServerUnavailableProblemDetails
   | ProviderNotConfiguredProblemDetails
+  | ExportRendererNotConfiguredProblemDetails
   | ProblemDetails;
 
 /**

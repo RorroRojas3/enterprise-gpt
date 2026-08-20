@@ -5,6 +5,7 @@ import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
 import { mergeMap, takeUntil } from 'rxjs';
 import { DocumentDownloadDto, UploadTarget, documentTargetPath } from '@domain/api/document';
+import { saveWithAnchor } from '@core/downloads/anchor-download';
 import { AppError } from '@core/errors/app-error';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
@@ -50,11 +51,9 @@ export const DocumentDownloadStore = signalStore(
     /**
      * Hands the file to the browser and lets go of the credential immediately.
      *
-     * A detached anchor rather than `location.href`: a navigation to a
-     * `Content-Disposition: attachment` URL works, but it also puts the signed URL in
-     * the address bar for the instant before the browser cancels it, and in session
-     * history afterwards — which is exactly what "never placed in a router URL" is
-     * there to prevent.
+     * The handoff itself is `saveWithAnchor`, shared with the conversation export
+     * (US-1502); the scheme check below stays here, because it is about a URL the
+     * server chose and a `blob:` URL the client made needs nothing of the kind.
      */
     function save(download: DocumentDownloadDto): boolean {
       // A direct `href` assignment bypasses Angular's `DomSanitizer` entirely, so a
@@ -73,13 +72,7 @@ export const DocumentDownloadStore = signalStore(
         return false;
       }
 
-      const anchor = store._document.createElement('a');
-      anchor.href = parsed.href;
-      anchor.download = download.fileName;
-      anchor.rel = 'noopener';
-      store._document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
+      saveWithAnchor(store._document, parsed.href, download.fileName);
 
       return true;
     }

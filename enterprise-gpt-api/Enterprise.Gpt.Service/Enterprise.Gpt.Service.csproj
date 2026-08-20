@@ -44,6 +44,11 @@
     <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
     <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- PDF conversation export — see Export/Renderers/PdfExportRenderer.cs. The cross-platform (Core)
+         build, so it carries no Windows dependency and resolves no font of its own; Export/Fonts/
+         ExportFontResolver.cs is what supplies faces. MIT, which is why this and not QuestPDF, whose
+         Community tier is source-available rather than MIT and is gated on company revenue. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.11" />
   </ItemGroup>
 
@@ -59,6 +64,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ExportFontResolver probes {BaseDirectory}/Fonts, so faces committed under Export/Fonts have to
+         land there. Link flattens the folder, and the glob deliberately matches nothing today: the
+         repository ships no font binaries, and this is what makes dropping one in take effect. -->
+    <None Include="Export\Fonts\*.ttf;Export\Fonts\*.otf;Export\Fonts\*.ttc"
+          Link="Fonts\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Update="Files\conversation-history.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
