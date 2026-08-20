@@ -14,7 +14,8 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <see cref="McpAuthorizationRequiredException"/>,
     /// <see cref="McpServerUnavailableException"/>,
     /// <see cref="ProviderNotConfiguredException"/>,
-    /// <see cref="StorageNotConfiguredException"/>) and any
+    /// <see cref="StorageNotConfiguredException"/>,
+    /// <see cref="ExportRendererNotConfiguredException"/>) and any
     /// otherwise unhandled exception to an RFC 9457 <see cref="ProblemDetails"/> response.
     /// Always returns <see langword="true"/> so any exception receives a consistent payload.
     /// </summary>
@@ -122,6 +123,12 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 // names no account, container or credential, so it is safe to pass through.
                 StorageNotConfiguredException => Create(
                     StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.StorageNotConfigured),
+                // Same reasoning again, for a conversation export format this deployment cannot
+                // render. The format extension is what lets a client offering three formats disable
+                // the one that is unavailable rather than the whole download control.
+                ExportRendererNotConfiguredException exportRendererNotConfigured => WithExtension(
+                    Create(StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ExportRendererNotConfigured),
+                    "format", exportRendererNotConfigured.Format),
                 // The real message is suppressed: an unmapped exception may carry connection
                 // strings, file paths, or query text.
                 _ => Create(StatusCodes.Status500InternalServerError, "An unexpected internal server error occurred.")

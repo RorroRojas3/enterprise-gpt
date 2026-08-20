@@ -120,5 +120,41 @@ describe('chat accessibility (US-1405)', () => {
 
       await expectNoSeriousViolations(element, `/chat/:id (${theme})`);
     });
+
+    /**
+     * The download menu open (US-1502, frame `2f`).
+     *
+     * Audited open rather than closed because the panel is where its semantics live: a
+     * `role="menu"` whose children must all be `menuitem`, one of which the note beside
+     * them is deliberately not. The trigger is `<app-menu>`'s, which carries a tooltip
+     * only while disabled — the case that would otherwise put an `aria-label` on a
+     * role-less element, which axe reports as serious.
+     */
+    it(`finds nothing serious with the download menu open in the ${theme} theme`, async () => {
+      const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
+      const element = await open(`/chat/${conversation.id}`, theme);
+
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
+        .flush(conversationDetailFixture({ ...conversation }));
+      // A transcript, because the control is absent without one.
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
+        .flush({
+          id: conversation.id,
+          name: conversation.name,
+          messages: [{ text: 'What shipped?', role: 3 }],
+        });
+      await loadCatalogues();
+
+      element
+        .querySelector<HTMLButtonElement>(
+          '.chat__header app-conversation-download-menu .menu__trigger',
+        )
+        ?.click();
+      await harness.fixture.whenStable();
+
+      await expectNoSeriousViolations(element, `/chat/:id download menu (${theme})`);
+    });
   }
 });

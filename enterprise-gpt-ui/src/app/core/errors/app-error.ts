@@ -91,6 +91,18 @@ export interface StorageNotConfiguredAppError extends AppErrorBase {
 }
 
 /**
+ * A 503: this deployment has no renderer for the requested export format.
+ *
+ * Distinct from a transient 503 on purpose — no retry can change it, and the
+ * client can say which format is unavailable rather than which control is.
+ */
+export interface ExportRendererNotConfiguredAppError extends AppErrorBase {
+  readonly kind: 'export-renderer-not-configured';
+  /** The wire token: `md`, `docx` or `pdf`. Empty when the server sent none. */
+  readonly format: string;
+}
+
+/**
  * Any HTTP failure with no application-specific problem type.
  *
  * Covers 401, a routing 404 (which carries the RFC 9110 link and means "no such
@@ -138,6 +150,7 @@ export type AppError =
   | McpServerUnavailableAppError
   | ProviderNotConfiguredAppError
   | StorageNotConfiguredAppError
+  | ExportRendererNotConfiguredAppError
   | HttpAppError
   | NetworkAppError
   | AbortedAppError
@@ -165,6 +178,7 @@ const PROBLEM_KINDS = {
   'mcp-server-unavailable': true,
   'provider-not-configured': true,
   'storage-not-configured': true,
+  'export-renderer-not-configured': true,
   http: false,
   network: false,
   aborted: false,

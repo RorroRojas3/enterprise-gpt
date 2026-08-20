@@ -109,6 +109,13 @@ describe('toAppError — application problem types', () => {
     expect(error.status).toBe(503);
   });
 
+  it('maps export-renderer-not-configured from a 503, keeping the format', () => {
+    const error = toAppError(httpError(PROBLEM_FIXTURES.exportRendererNotConfigured, 503));
+
+    expect(error.kind).toBe('export-renderer-not-configured');
+    expect(error.kind === 'export-renderer-not-configured' && error.format).toBe('pdf');
+  });
+
   it('maps storage-not-configured from a 503', () => {
     expect(toAppError(httpError(PROBLEM_FIXTURES.storageNotConfigured, 503)).kind).toBe(
       'storage-not-configured',

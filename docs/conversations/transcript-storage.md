@@ -1,8 +1,8 @@
 # Transcript Storage and Tokenization
 
-End-to-end reference for how a conversation's messages are stored, read, counted, budgeted, rendered and exported. Covers the two Cosmos DB document shapes and the synthetic partition key they share, the transactional write path, the paged read path, the per-message token estimator and its calibration, the context-window budget that decides what is replayed to the model, the accuracy telemetry that measures the estimate, and the HTML rendering that makes an export a read rather than a re-render. Audience: engineers maintaining conversations, and anyone deciding what a "token" means in a report.
+End-to-end reference for how a conversation's messages are stored, read, counted, budgeted, rendered and exported. Covers the two Cosmos DB document shapes and the synthetic partition key they share, the transactional write path, the paged read path, the per-message token estimator and its calibration, the context-window budget that decides what is replayed to the model, the accuracy telemetry that measures the estimate, and the HTML rendering that lets three of the five export formats read rather than re-render (§12.1). Audience: engineers maintaining conversations, and anyone deciding what a "token" means in a report.
 
-Implements [PRD: Conversation Storage and Tokenization](../prd/conversation/conversation-storage-and-tokenization.md). Companions: [Transcript Cutover](transcript-cutover.md) for deploying it, [Conversation Usage and Favourites](usage-and-favorites.md) for the SQL audit trail beside it, and [Conversation Streaming Contract](streaming-contract.md) for the events the same turn writes while it runs.
+Implements [PRD: Conversation Storage and Tokenization](../prd/conversation/conversation-storage-and-tokenization.md). Companions: [Transcript Cutover](transcript-cutover.md) for deploying it, [Conversation Usage and Favourites](usage-and-favorites.md) for the SQL audit trail beside it, [Conversation Streaming Contract](streaming-contract.md) for the events the same turn writes while it runs, and [Conversation Export](conversation-export.md) for the Word/PDF renderer stack §12 only summarizes.
 
 ## 1. Overview
 
@@ -13,7 +13,7 @@ The transcript is now **one document per message**, in a new container, under a 
 1. **A context cost on every message**, estimated locally with a provider-resolved tokenizer and rolled up into both the header document and the SQL audit trail (§2, §8).
 2. **A context-window budget**, so a turn's replayed history is trimmed to fit the model that will answer it and an impossible prompt fails with a 400 instead of being sent (§9).
 3. **Server-rendered HTML per message**, produced once at persist time by Markdig with raw HTML disabled (§11).
-4. **Export** — `GET api/conversations/{id}/export?format=html|json` (§12).
+4. **Export** — `GET api/conversations/{id}/export?format=html|json|md|docx|pdf` (§12), the last three added by US-1501.
 
 **The cutover destroys every existing transcript.** That is not a side effect of the deployment; it is the deployment. Read [Transcript Cutover](transcript-cutover.md) before shipping this.
 
@@ -77,9 +77,12 @@ GET /api/conversations/{id}/messages?take=50&before=2026-08-15T20:27:57.0000000%
 Take a conversation out of the platform:
 
 ```http
-GET /api/conversations/{id}/export?format=html   → 200 text/html   (attachment)
+GET /api/conversations/{id}/export?format=html   → 200 text/html                     (attachment)
 GET /api/conversations/{id}/export?format=json   → 200 application/json
-GET /api/conversations/{id}/export?format=pdf    → 400 validation-error naming the supported formats
+GET /api/conversations/{id}/export?format=md     → 200 text/markdown
+GET /api/conversations/{id}/export?format=docx   → 200 application/vnd.openxmlformats-officedocument.wordprocessingml.document
+GET /api/conversations/{id}/export?format=pdf    → 200 application/pdf, or 503 export-renderer-not-configured if this deployment has no usable font
+GET /api/conversations/{id}/export?format=rtf    → 400 validation-error naming the supported formats
 ```
 
 ## 4. Document shapes
@@ -326,17 +329,24 @@ Rendering **never throws**: a failure degrades to the HTML-escaped plain text of
 
 ## 12. Export
 
-`GET api/conversations/{id}/export?format=html|json`, served by [`ConversationExportService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Export/ConversationExportService.cs). It **reads rather than re-renders** — that is the whole point of storing `htmlContent` at persist time.
+`GET api/conversations/{id}/export?format=html|json|md|docx|pdf`, served by [`ConversationExportService`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Export/ConversationExportService.cs). US-1501 grew the route from two formats to five by turning a format into a **registered renderer** — one `IConversationExportRenderer` per `ConversationExportFormats` member — rather than a branch inside the service. The service itself now owns exactly three things: who may export, what an export may contain, and which renderer answers; everything specific to a format lives in that format's renderer. See [Conversation Export](conversation-export.md) for the renderer registry, the block model the binary formats share, and the font dependency that makes PDF the one format a deployment can genuinely not have — this section covers only what carried over and what changed about the route itself.
 
 | Aspect | Behaviour |
 | --- | --- |
 | Default format | `html` when `?format=` is absent or empty |
-| Unsupported format | 400 `validation-error`, keyed `format`, naming the supported ones |
+| Unsupported format | 400 `validation-error`, keyed `format`, naming the supported five |
+| Supported format, unavailable here | 503 `export-renderer-not-configured`, carrying a `format` extension — a deployment withdrew the format (`Export:DisabledFormats`) or PDF found no usable font. See [Conversation Export §3](conversation-export.md#3-the-renderer-registry) |
 | Ownership | Checked twice: the partition key answers for the caller's own conversations, and a SQL `AnyAsync` additionally rejects a **deactivated** conversation, which still has a transcript. Another user's conversation is a 404 |
-| Content | Non-system messages in `dateCreated` order. A message with no `htmlContent` is HTML-escaped into the output rather than omitted |
-| HTML output | The `Files/conversation-history.html` template with the conversation name escaped into its title; served as a `text/html` attachment |
-| JSON output | The conversation's header fields plus the message documents, serialized with the **Cosmos** options — so the exported property names are the stored ones and the export is the storage shape rather than a third representation |
+| Content | Non-system messages in `dateCreated` order. Activity cards, reasoning text and an unsaved partial answer are never included — that is the whole of what the transcript persists, so it is the whole of what an export can honestly contain |
 | File name | Derived from the conversation name, non-alphanumerics replaced, clipped to 60 characters, falling back to `conversation` |
+| Response | `Cache-Control: no-store` on every format — a transcript is the most sensitive thing this API serves, and the response is a file a shared browser would otherwise keep on disk after the reader signs out |
+
+### 12.1 Three formats read, two re-render
+
+Whether a format **reads** what persist time already computed or **re-renders** the message text now depends on which one it is, and it is worth being precise about which because the distinction used to be simple — every export read `htmlContent` — and is not anymore:
+
+- **`html`, `json` and `md` all read.** `html` assembles the `Files/conversation-history.html` template from each message's stored `htmlContent`, exactly as before (§11) — a message with none is HTML-escaped into the output rather than omitted. `json` serializes the header fields and the message documents with the **Cosmos** serializer options, so the exported property names are the stored ones and the export is the storage shape rather than a third representation. `md` emits each message's own markdown text unmodified: a round trip through Markdig would renumber lists, rewrite fences and normalize whitespace, which is a worse export of what the model actually wrote than the text itself.
+- **`docx` and `pdf` re-render.** Neither format has anywhere to put HTML markup — a word processor and a PDF layout engine both need *structure*, not markup — so both walk each message's markdown once, through the same hardened pipeline that produces `htmlContent` (§11's `DisableHtml` and link-scheme allowlist apply to an export exactly as they apply to the transcript), into a renderer-neutral block model that the Word and PDF renderers each turn into their own document. This is why a `javascript:` link written in a prompt is exactly as dead in an exported Word document as it is in the rendered transcript, and why the two binary formats cannot disagree with each other about what a message's markdown meant.
 
 ## 13. The HTTP surface, and the two role contracts
 
@@ -383,7 +393,7 @@ Integration tests need Docker. [`CosmosEmulatorFixture`](../../enterprise-gpt-ap
 | Tokenization | [`Service/Tokenization/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Tokenization/), [`Service/Settings/TokenEstimationOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/TokenEstimationOptions.cs), [`Common/Enums/TokenAccuracies.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/TokenAccuracies.cs) |
 | Rendering | [`Service/Rendering/MarkdownRenderer.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Rendering/MarkdownRenderer.cs) |
 | Metrics | [`Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs), [`Common/Observability/TelemetryNames.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Observability/TelemetryNames.cs) |
-| Export | [`Service/Export/ConversationExportService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Export/ConversationExportService.cs), [`Service/Files/conversation-history.html`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Files/conversation-history.html) |
+| Export routing and ownership | [`Service/Export/ConversationExportService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Export/ConversationExportService.cs) — the renderers themselves, the block model and the font resolver are catalogued in [Conversation Export §11](conversation-export.md#11-key-files) |
 | Write, read and budget wiring | [`Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) |
 | HTTP surface | [`Api/Endpoints/ConversationEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs), [`Dto/ConversationMessageDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationMessageDto.cs), [`Dto/ConversationDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationDto.cs) |
-| Related reference | [Transcript Cutover](transcript-cutover.md), [Usage and Favourites](usage-and-favorites.md), [Streaming Contract](streaming-contract.md), [Turn Lifecycle](turn-lifecycle.md) |
+| Related reference | [Transcript Cutover](transcript-cutover.md), [Usage and Favourites](usage-and-favorites.md), [Streaming Contract](streaming-contract.md), [Turn Lifecycle](turn-lifecycle.md), [Conversation Export](conversation-export.md) |

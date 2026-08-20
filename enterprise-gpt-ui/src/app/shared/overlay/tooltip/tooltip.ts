@@ -57,6 +57,16 @@ export class Tooltip {
         const element = this.host.nativeElement;
         const text = this.appTooltip();
 
+        // An empty tip is no tip. A consumer binding one conditionally — `Menu`'s
+        // `hint`, which is null on every menu that has no reason to give — would
+        // otherwise flash an empty box on hover and, on an unnamed host, name it
+        // with the empty string.
+        if (text === '') {
+          this.remove();
+
+          return;
+        }
+
         if (!this.hasOwnName(element)) {
           this.renderer.setAttribute(element, 'aria-label', text);
         }
@@ -76,7 +86,12 @@ export class Tooltip {
   }
 
   protected show(): void {
-    if (this.visible()) {
+    // The empty check is here as well as in the write phase, and this is the one that
+    // matters for cost: `Menu` binds this directive on every trigger in the application
+    // and passes a hint on almost none of them, so without it every kebab hover would
+    // write a signal — a change-detection pass, in a zoneless app — and register a
+    // document-level listener for a flyout that can never render.
+    if (this.visible() || this.appTooltip() === '') {
       return;
     }
     this.visible.set(true);

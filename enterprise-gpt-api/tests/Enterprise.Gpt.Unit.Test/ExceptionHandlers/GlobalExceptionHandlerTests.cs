@@ -4,6 +4,7 @@ using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Problems;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Export;
 using Xunit;
 using static Enterprise.Gpt.Unit.Test.TestInfrastructure.ProblemDetailsTestHelpers;
 
@@ -99,6 +100,28 @@ public class GlobalExceptionHandlerTests
         // Passed through rather than suppressed: the message names no account, container or credential.
         Assert.Equal(exception.Message, problem.Detail);
         Assert.Equal(ProblemTypes.StorageNotConfigured.Type, problem.Type);
+    }
+
+    /// <summary>
+    /// The format is one this API supports and the deployment cannot render — a PDF with no font, or
+    /// a format withdrawn by configuration. It shares the 503 with the two arms above and for the
+    /// same reason, but carries its own type so a client offering three download formats can disable
+    /// the one rather than the control.
+    /// </summary>
+    [Fact]
+    public async Task TryHandleAsync_ExportRendererNotConfiguredException_Returns503WithTheFormat()
+    {
+        var httpContext = CreateHttpContext();
+        var exception = new ExportRendererNotConfiguredException(ConversationExportFormats.Pdf);
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(exception.Message, problem.Detail);
+        Assert.Equal(ProblemTypes.ExportRendererNotConfigured.Type, problem.Type);
+        Assert.Equal("pdf", ReadExtension(problem, "format"));
     }
 
     [Fact]

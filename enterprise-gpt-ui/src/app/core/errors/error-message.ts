@@ -1,3 +1,4 @@
+import { EXPORT_FORMAT_LABELS } from '@domain/api/conversation-export';
 import { formatBytes } from '@domain/format/bytes';
 import { AppError, AppErrorKind } from './app-error';
 
@@ -22,6 +23,7 @@ const NOTIFIABLE_KINDS = {
   'mcp-server-unavailable': true,
   'provider-not-configured': true,
   'storage-not-configured': true,
+  'export-renderer-not-configured': true,
   http: true,
   network: true,
   aborted: false,
@@ -62,6 +64,8 @@ const RETRYABLE_KINDS = {
   'mcp-server-unavailable': true,
   'provider-not-configured': false,
   'storage-not-configured': false,
+  // A deployment either has the renderer or does not; a second press cannot install one.
+  'export-renderer-not-configured': false,
   http: true,
   network: true,
   aborted: true,
@@ -123,6 +127,12 @@ export function userMessage(error: AppError): string {
       return 'The selected model is not available in this environment.';
     case 'storage-not-configured':
       return 'File storage is not available in this environment.';
+    // Names the format, because the download menu offers three and only one of them
+    // is unavailable — "downloads are unavailable" would be wrong about the other two.
+    case 'export-renderer-not-configured':
+      return error.format
+        ? `${EXPORT_FORMAT_LABELS[error.format] ?? error.format.toUpperCase()} download isn’t available in this environment.`
+        : 'That download format isn’t available in this environment.';
     case 'http':
       return httpMessage(error.status);
     case 'network':

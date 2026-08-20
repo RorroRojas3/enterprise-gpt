@@ -37,6 +37,23 @@
     </button>
 
     <!--
+      US-1502, in the header as well as the composer and out of the same component —
+      "one shared menu offered from either place". Below 768px this whole template moves
+      into frame `1d`'s navbar through `ShellChrome`, so the control follows for free.
+
+      Gated on `turn.exportTarget()` rather than on `current`: the star and the kebab act
+      on the conversation row, which exists from the moment it is created, while a
+      download needs a transcript with something in it.
+    -->
+    @if (turn.exportTarget(); as target) {
+      <app-conversation-download-menu
+        [conversationId]="target.id"
+        [conversationName]="target.name"
+        [disabled]="turn.inFlight()"
+      />
+    }
+
+    <!--
       aria-disabled, never the native attribute: a natively disabled item cannot
       take focus, which strands the menu's roving focus and its Escape handling.
       The store's begin* methods already refuse a pending row, so the click is a

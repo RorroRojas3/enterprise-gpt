@@ -8,6 +8,8 @@
   [attr.aria-controls]="open() ? panelId : null"
   [attr.aria-disabled]="disabled() ? 'true' : null"
   [attr.aria-label]="hasTriggerContent() ? label() : null"
+  [appTooltip]="hint() ?? ''"
+  appTooltipPlacement="top"
   (click)="toggle()"
   (keydown)="onTriggerKeydown($event)"
 >

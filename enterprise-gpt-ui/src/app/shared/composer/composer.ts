@@ -18,6 +18,7 @@ import { UploadStore } from '@core/documents/upload-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
+import { ConversationDownloadMenu } from '@shared/conversations/conversation-download-menu/conversation-download-menu';
 import { Icon } from '@shared/icon/icon';
 import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 import { DropOverlay } from '@shared/upload/drop-overlay';
@@ -38,15 +39,25 @@ import { ToolsMenu } from './tools-menu';
  * `shared/` rather than beside the chat feature: `features/projects` may not import
  * `features/chat`, and frame `4e` draws this exact control on the project screen.
  *
- * The download control is **absent, not disabled**, until US-1502 lands — the repo's
- * pattern for unshipped affordances. When it does, it takes the `composer__aux` class so
- * US-407's in-flight dimming applies unchanged, as the attach control, the microphone
- * and US-307's project pill now do.
+ * The download control (US-1502) takes the `composer__aux` class, so US-407's in-flight
+ * dimming applies to it unchanged, as it does to the attach control, the microphone and
+ * US-307's project pill. It is absent rather than disabled when the host has nothing to
+ * export — which on a project screen is always, since `ProjectComposerHost` owns no
+ * transcript.
  */
 @Component({
   selector: 'app-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AttachmentChip, DropOverlay, FileDropTarget, Icon, ModelMenu, ProjectPicker, ToolsMenu],
+  imports: [
+    AttachmentChip,
+    ConversationDownloadMenu,
+    DropOverlay,
+    FileDropTarget,
+    Icon,
+    ModelMenu,
+    ProjectPicker,
+    ToolsMenu,
+  ],
   providers: [DictationStore],
   templateUrl: './composer.html',
   styleUrl: './composer.scss',

@@ -93,6 +93,13 @@ export function buildAppError(parts: AppErrorParts): AppError {
         };
       case PROBLEM_TYPE.storageNotConfigured:
         return { ...base, kind: 'storage-not-configured', message: messageOf(base) };
+      case PROBLEM_TYPE.exportRendererNotConfigured:
+        return {
+          ...base,
+          kind: 'export-renderer-not-configured',
+          message: messageOf(base),
+          format: stringExtension(problem, 'format') ?? '',
+        };
       default:
         break;
     }

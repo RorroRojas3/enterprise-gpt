@@ -35,6 +35,7 @@ describe('isTransientRetriable', () => {
   it.each([
     ['provider-not-configured', PROBLEM_FIXTURES.providerNotConfigured],
     ['storage-not-configured', PROBLEM_FIXTURES.storageNotConfigured],
+    ['export-renderer-not-configured', PROBLEM_FIXTURES.exportRendererNotConfigured],
   ])('does not retry the 503 %s, a deterministic deployment state', (_label, body) => {
     expect(isTransientRetriable(errorFrom(body, 503))).toBe(false);
   });
@@ -142,6 +143,7 @@ describe('authErrorDecision', () => {
       'mcp-server-unavailable',
       'provider-not-configured',
       'storage-not-configured',
+      'export-renderer-not-configured',
       'http',
       'network',
       'aborted',

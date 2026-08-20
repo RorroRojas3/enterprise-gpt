@@ -51,7 +51,7 @@ import {
   modelReasoningText,
   reasoningSeconds,
 } from '@domain/stream/reasoning-timing';
-import { ComposerProjectTarget } from '@core/chat/composer-host';
+import { ComposerExportTarget, ComposerProjectTarget } from '@core/chat/composer-host';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -575,6 +575,30 @@ export const TurnStore = signalStore(
         return conversation === undefined || conversation === null
           ? null
           : { kind: 'conversation', conversation };
+      }),
+      /**
+       * What the download control acts on (US-1502).
+       *
+       * Non-null only once the transcript holds something the server has persisted, which
+       * is what makes the control absent on an empty conversation rather than offering a
+       * file with one heading in it. `entries` is the right test and `hasContent` is not:
+       * that computed is deliberately true while history is merely *pending*, and while a
+       * pre-stream notice is on screen, neither of which is anything to export.
+       *
+       * The name follows the same list-then-detail precedence as `projectTarget`, so a
+       * conversation the sidebar never held still names itself.
+       */
+      exportTarget: computed<ComposerExportTarget | null>(() => {
+        const id = store.boundConversationId();
+        if (id === null || store.entries().length === 0) {
+          return null;
+        }
+
+        const conversation = store._list.entityMap()[id] ?? store._detail.conversation();
+
+        return conversation === undefined || conversation === null
+          ? null
+          : { id, name: conversation.name };
       }),
       /** Frame `1e`: the ridgeline between request-accepted and something to read. */
       showThinking: computed(

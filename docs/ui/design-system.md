@@ -301,8 +301,8 @@ Bootstrap's modal, offcanvas, dropdown and tooltip together are **86 kB** (26.7 
 | --- | --- | --- | --- |
 | `<app-modal>` | `open` (model), `heading` **required**, `size` `sm`&#124;`md`&#124;`lg` (420/460/520 px), `dismissible`, `busy` | `closed` | The kit owns the heading so `aria-labelledby` cannot be forgotten. Body is the default slot; actions project into `[modalFooter]` |
 | `<app-offcanvas>` | `open` (model), `heading` **required**, `side` `start`&#124;`end`, `width` (`'420px'`), `dismissible`, `busy` | `closed` | Mechanically identical to the modal, pinned to an edge by `margin`. Footer slot `[offcanvasFooter]` |
-| `<app-menu>` | `label` **required**, `icon` (`IconName`), `align` `start`&#124;`end`, `open` (model) | — | Items project as `<button appMenuItem>`; `<hr appMenuSeparator />` divides them |
-| `[appTooltip]` | `appTooltip` **required** (text), `appTooltipPlacement` `right`&#124;`top` | — | Directive. Sets `aria-label` — see §8.3 |
+| `<app-menu>` | `label` **required**, `icon` (`IconName`), `align` `start`&#124;`end`, `hint` (tooltip text for a disabled trigger, US-1502), `open` (model) | — | Items project as `<button appMenuItem>`; `<hr appMenuSeparator />` divides them. Returns focus to the trigger if a consumer clears `open` without calling `close()` |
+| `[appTooltip]` | `appTooltip` **required** (text), `appTooltipPlacement` `right`&#124;`top` | — | Directive. Sets `aria-label` — see §8.3. An empty `appTooltip` is a no-op: no attribute, no listener, no flyout (US-1502, since `Menu` binds `hint ?? ''` on every trigger) |
 
 `dismissible` and `busy` combine: a dismissible dialog with a save in flight refuses Escape and backdrop clicks until it lands.
 

@@ -5,7 +5,6 @@ using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Chat;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Export;
-using System.Text;
 using System.Text.Json;
 
 namespace Enterprise.Gpt.Api.Endpoints;
@@ -52,12 +51,24 @@ public static class ConversationEndpoints
         group.MapGet("{id:guid}/documents", GetConversationDocumentsAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
         // Content-negotiated by query parameter rather than by Accept header, so a plain browser
-        // link can request either format. The 400 carries an errors dictionary, because an
-        // unsupported ?format= is rejected by a validator rather than by binding.
+        // link can request any format. The 400 carries an errors dictionary, because an unsupported
+        // ?format= is rejected by a validator rather than by binding. The 503 is the format this
+        // deployment cannot render — a PDF with no font, or a format configuration withdrew — and
+        // carries its own problem type so a client can tell it from transient unavailability.
         group.MapGet("{id:guid}/export", ExportConversationAsync)
-            .Produces(StatusCodes.Status200OK, contentType: "text/html")
+            .Produces(
+                StatusCodes.Status200OK,
+                contentType: "text/html",
+                additionalContentTypes:
+                [
+                    "text/markdown",
+                    "application/json",
+                    "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ])
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         group.MapPost("", CreateConversationAsync)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -113,16 +124,23 @@ public static class ConversationEndpoints
     }
 
     // Returns a file rather than a typed body, so it writes the response directly instead of going
-    // through TypedResults: the payload is a whole HTML document or a JSON rendering of the stored
-    // documents, neither of which is a DTO this API otherwise serializes.
+    // through TypedResults: the payload is a rendered document, which is not a DTO this API
+    // otherwise serializes, and two of the five formats are not text at all.
+    //
+    // Results.File writes Content-Disposition: attachment with both a plain filename and an RFC 5987
+    // filename*, so a conversation named in any script downloads under its own name; the CORS policy
+    // already exposes that header to the browser client.
     internal static async Task<IResult> ExportConversationAsync(
-        Guid id, IConversationExportService exportService, string? format = null,
-        CancellationToken cancellationToken = default)
+        Guid id, IConversationExportService exportService, HttpResponse httpResponse,
+        string? format = null, CancellationToken cancellationToken = default)
     {
         var export = await exportService.ExportConversationAsync(id, format, cancellationToken);
 
-        return Results.File(
-            Encoding.UTF8.GetBytes(export.Content), export.ContentType, export.FileName);
+        // A transcript is the most sensitive thing this API serves, and the response is a file a
+        // shared browser would otherwise keep on disk long after the reader signed out.
+        httpResponse.Headers.CacheControl = "no-store";
+
+        return Results.File(export.Content, export.ContentType, export.FileName);
     }
 
     // Paging is opt-in: with neither parameter the whole transcript is returned, as it always was.

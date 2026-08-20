@@ -8,7 +8,7 @@
 export const PROBLEM_BASE = '/problems/';
 
 /**
- * The ten application-specific problem types, mirroring
+ * The eleven application-specific problem types, mirroring
  * `Enterprise.Gpt.Api/Problems/ProblemTypes.cs`.
  *
  * A response carrying any other `type` — typically an RFC 9110 status-section
@@ -25,15 +25,16 @@ export const PROBLEM_TYPE = {
   mcpServerUnavailable: '/problems/mcp-server-unavailable',
   providerNotConfigured: '/problems/provider-not-configured',
   storageNotConfigured: '/problems/storage-not-configured',
+  exportRendererNotConfigured: '/problems/export-renderer-not-configured',
 } as const;
 
-/** One of the ten application-specific problem type URIs. */
+/** One of the eleven application-specific problem type URIs. */
 export type ProblemTypeUri = (typeof PROBLEM_TYPE)[keyof typeof PROBLEM_TYPE];
 
 const PROBLEM_TYPE_URIS: readonly string[] = Object.values(PROBLEM_TYPE);
 
 /**
- * Whether a `type` is one of the ten application-specific problem types.
+ * Whether a `type` is one of the eleven application-specific problem types.
  *
  * @param type The raw `type` member of a problem body.
  */
