@@ -280,6 +280,36 @@ export const ProjectActionsStore = signalStore(
       }),
     );
 
+    const _favorite = rxMethod<{ target: ProjectSummaryDto; isFavorite: boolean }>(
+      // mergeMap: favourites of different projects are independent and may overlap.
+      // Same-id overlap is closed by the pending-id guard in `toggleFavorite`, which is
+      // the whole re-entry story here because nothing opens in front of this one.
+      mergeMap(({ target, isFavorite }) => {
+        setPending(target.id, true);
+        const url = store._api.build(`projects/${ApiUrl.segment(target.id)}/favorite`);
+
+        // A SET, not a toggle: the body carries the state being asked for, so a retried
+        // or duplicated request cannot land on the opposite value.
+        return store._http.put<void>(url, { isFavorite }).pipe(
+          takeUntil(store._signedOut$),
+          tapResponse({
+            // Not optimistic, unlike the conversation star. Entity writes leave this
+            // store as events — it has no method channel into `ProjectListStore`, which
+            // lives in `features/` — and the only pre-flight event available would be an
+            // `updated` carrying a fabricated `ProjectDto`, which `ProjectStore` adopts
+            // whole and would blank the standing instructions with. The round trip is
+            // covered by the pending flag instead, as every other project write is.
+            next: () =>
+              store._dispatcher.dispatch(projectEvents.favorited({ id: target.id, isFavorite })),
+            // No validation arm: the endpoint has no validator, so a 400 here is a
+            // binding failure with no field to render under.
+            error: (cause: unknown) => store._toasts.fromError(toAppError(cause, { url })),
+            finalize: () => setPending(target.id, false),
+          }),
+        );
+      }),
+    );
+
     return {
       /** Whether one of this store's requests is in flight for a given project. */
       isRowPending(id: string): boolean {
@@ -454,6 +484,25 @@ export const ProjectActionsStore = signalStore(
 
         patchState(store, { deleteTarget: null });
         _delete(target);
+      },
+
+      /**
+       * Stars a project, or clears the star (US-909).
+       *
+       * Opens nothing, so the pending-id guard *is* the concurrency control: a
+       * double-click's second call finds the id the first one set and no-ops, rather
+       * than sending an opposite SET that would race the first to decide the final
+       * state. It works because `setPending` happens inside the `rxMethod` projection,
+       * which runs synchronously with the call.
+       *
+       * @param target The project as the surface invoking this last saw it.
+       */
+      toggleFavorite(target: ProjectSummaryDto): void {
+        if (store.pendingIds().has(target.id)) {
+          return;
+        }
+
+        _favorite({ target, isFavorite: !target.isFavorite });
       },
     };
   }),

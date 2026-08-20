@@ -32,5 +32,13 @@ public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.HasIndex(x => new { x.UserId, x.Name })
             .HasFilter("[DateDeactivated] IS NULL")
             .IsUnique();
+
+        // No index for the ?isFavorite= filter, deliberately. ConversationConfiguration carries one
+        // only because its unfiltered listing already seeks an ordered
+        // (UserId, DateDeactivated, DateCreated DESC) index that the favourites variant has to stay
+        // in parity with. The index above carries no DateCreated, so the unfiltered listing already
+        // sorts after its seek — and a favourites index would buy the filtered listing an ordered
+        // path the unfiltered one does not have, paid for on every project write. IsFavorite stays
+        // a residual predicate over one user's projects, which is a bounded set.
     }
 }

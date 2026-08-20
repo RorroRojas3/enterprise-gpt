@@ -13,6 +13,7 @@ export function projectFixture(overrides: Partial<ProjectSummaryDto> = {}): Proj
     id: `${String(index).padStart(8, '0')}-5555-4666-8777-888888888888`,
     name: `Project ${index}`,
     description: `Description ${index}`,
+    isFavorite: false,
     dateCreated: '2026-08-11T09:00:00+00:00',
     dateModified: '2026-08-11T09:00:00+00:00',
     ...overrides,

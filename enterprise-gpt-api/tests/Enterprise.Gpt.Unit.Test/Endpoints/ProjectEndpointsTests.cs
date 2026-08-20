@@ -34,10 +34,14 @@ public class ProjectEndpointsTests
             PageSize = 20,
             CurrentPage = 1
         };
-        _projectService.SearchProjectsAsync("res", 0, 20, Arg.Any<CancellationToken>()).Returns(expected);
+        _projectService.SearchProjectsAsync(
+            name: "res", skip: 0, take: 20, isFavorite: null,
+            cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(expected);
 
         var result = await ProjectEndpoints.SearchProjectsAsync(
-            _projectService, "res", 0, 20, TestContext.Current.CancellationToken);
+            _projectService, name: "res", skip: 0, take: 20,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
     }
@@ -45,12 +49,16 @@ public class ProjectEndpointsTests
     [Fact]
     public async Task SearchProjectsAsync_NoQueryString_UsesTheDefaultPage()
     {
-        _projectService.SearchProjectsAsync(null, 0, 20, Arg.Any<CancellationToken>())
+        _projectService.SearchProjectsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null,
+            cancellationToken: Arg.Any<CancellationToken>())
             .Returns(new PaginatedResponseDto<ProjectSummaryDto>());
 
         await ProjectEndpoints.SearchProjectsAsync(_projectService, cancellationToken: TestContext.Current.CancellationToken);
 
-        await _projectService.Received(1).SearchProjectsAsync(null, 0, 20, Arg.Any<CancellationToken>());
+        await _projectService.Received(1).SearchProjectsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null,
+            cancellationToken: Arg.Any<CancellationToken>());
     }
 
     // Not-found paths throw NotFoundException in the service and surface as 404 through the
@@ -90,6 +98,35 @@ public class ProjectEndpointsTests
         var result = await ProjectEndpoints.UpdateProjectAsync(id, request, _projectService, TestContext.Current.CancellationToken);
 
         Assert.Same(updated, result.Value);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_FavoritesRequested_PassesTheFilterThrough()
+    {
+        _projectService.SearchProjectsAsync(
+            name: null, skip: 0, take: 20, isFavorite: true,
+            cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<ProjectSummaryDto>());
+
+        await ProjectEndpoints.SearchProjectsAsync(
+            _projectService, isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _projectService.Received(1).SearchProjectsAsync(
+            name: null, skip: 0, take: 20, isFavorite: true,
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetProjectFavoriteAsync_ServiceSucceeds_ReturnsNoContent()
+    {
+        var id = Guid.NewGuid();
+        var request = new SetProjectFavoriteActionDto { IsFavorite = true };
+
+        var result = await ProjectEndpoints.SetProjectFavoriteAsync(
+            id, request, _projectService, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        await _projectService.Received(1).SetProjectFavoriteAsync(id, request, Arg.Any<CancellationToken>());
     }
 
     [Fact]

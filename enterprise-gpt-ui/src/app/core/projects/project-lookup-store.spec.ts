@@ -225,6 +225,57 @@ describe('ProjectLookupStore (US-307)', () => {
     });
   });
 
+  it('exposes the starred projects in the server order, and only those', () => {
+    // Derived rather than fetched: a second `?isFavorite=true` store would be a second
+    // copy of rows already held here, to be kept in step on every write.
+    const starred = projectFixture({ name: 'Helios', isFavorite: true });
+    const plain = projectFixture({ name: 'Hiring' });
+    const alsoStarred = projectFixture({ name: 'RFP', isFavorite: true });
+    load([starred, plain, alsoStarred]);
+
+    expect(store.hasFavorites()).toBe(true);
+    expect(store.favorites().map((project) => project.name)).toEqual(['Helios', 'RFP']);
+  });
+
+  it('reports no favourites when nothing is starred, so the sidebar section stays absent', () => {
+    load([projectFixture(), projectFixture()]);
+
+    expect(store.hasFavorites()).toBe(false);
+    expect(store.favorites()).toHaveLength(0);
+  });
+
+  it('moves a row into and out of the favourites on a server-confirmed toggle', () => {
+    const project = projectFixture({ name: 'Helios' });
+    load([project, projectFixture()]);
+
+    TestBed.inject(Dispatcher).dispatch(
+      projectEvents.favorited({ id: project.id, isFavorite: true }),
+    );
+    flush();
+
+    expect(store.favorites().map((favorite) => favorite.id)).toEqual([project.id]);
+
+    TestBed.inject(Dispatcher).dispatch(
+      projectEvents.favorited({ id: project.id, isFavorite: false }),
+    );
+    flush();
+
+    expect(store.favorites()).toHaveLength(0);
+  });
+
+  it('ignores a favourite for a project it does not hold', () => {
+    // An id past the drain ceiling, or one belonging to a list this store never read.
+    load([projectFixture()]);
+
+    TestBed.inject(Dispatcher).dispatch(
+      projectEvents.favorited({ id: 'not-a-loaded-project', isFavorite: true }),
+    );
+    flush();
+
+    expect(store.projects()).toHaveLength(1);
+    expect(store.favorites()).toHaveLength(0);
+  });
+
   it('empties for the next user on sign-out', () => {
     load([projectFixture()]);
 

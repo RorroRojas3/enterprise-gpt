@@ -29,9 +29,13 @@ public interface IProjectService
     /// <param name="name">An optional case-insensitive substring to filter on.</param>
     /// <param name="skip">The number of projects to skip.</param>
     /// <param name="take">The maximum number of projects to return.</param>
+    /// <param name="isFavorite">
+    /// Optionally narrows the page to the caller's favourites, or to everything but them. Omitting
+    /// it applies no filter at all — it is a <see cref="bool"/>?, not a defaulted <see cref="bool"/>.
+    /// </param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>A page of the caller's projects.</returns>
-    Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default);
+    Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets one of the caller's active projects by id.
@@ -63,6 +67,21 @@ public interface IProjectService
     /// <exception cref="ValidationException">The request fails validation, or the caller already has another active project of that name.</exception>
     /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
     Task<ProjectDto> UpdateProjectAsync(Guid id, UpdateProjectActionDto request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks one of the caller's projects as a favourite, or clears the mark.
+    /// </summary>
+    /// <remarks>
+    /// Its own operation rather than a field on <see cref="UpdateProjectAsync"/>, which replaces the
+    /// whole representation: a rename that forgot to echo the flag back would silently clear it.
+    /// <c>DateModified</c> is deliberately left alone — starring a project does not modify it.
+    /// </remarks>
+    /// <param name="id">The id of the project to mark.</param>
+    /// <param name="request">The state being asked for.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
+    Task SetProjectFavoriteAsync(Guid id, SetProjectFavoriteActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Soft-deletes a project together with its documents and their chunks, and releases its
@@ -125,7 +144,7 @@ public class ProjectService(ILogger<ProjectService> logger,
     private readonly IValidator<UpdateProjectActionDto> _updateValidator = updateValidator;
 
     /// <inheritdoc />
-    public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+    public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default)
     {
         // Clamped rather than validated: the paging arguments come straight off the query
         // string, and take = 0 would divide by zero when computing CurrentPage below.
@@ -141,6 +160,12 @@ public class ProjectService(ILogger<ProjectService> logger,
         if (!string.IsNullOrWhiteSpace(name))
         {
             query = query.Where(x => EF.Functions.Like(x.Name, $"%{name}%"));
+        }
+
+        // Before the count, so TotalCount describes the filtered set rather than the whole listing.
+        if (isFavorite.HasValue)
+        {
+            query = query.Where(x => x.IsFavorite == isFavorite.Value);
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -224,6 +249,29 @@ public class ProjectService(ILogger<ProjectService> logger,
         _logger.LogInformation("Project {ProjectId} updated by user {UserId}", id, userId);
 
         return project.MapToProjectDto();
+    }
+
+    /// <inheritdoc />
+    public async Task SetProjectFavoriteAsync(Guid id, SetProjectFavoriteActionDto request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var userId = _tokenService.GetOid();
+
+        // A set-based update rather than the tracked load-and-save UpdateProjectAsync uses, because
+        // DateModified must not move: starring a project does not modify it, and bumping the
+        // timestamp would put every client's copy out of step at the next fetch over a write that
+        // changes nothing a listing renders.
+        var rows = await _ctx.Projects
+            .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.IsFavorite, request.IsFavorite),
+                cancellationToken);
+
+        if (rows == 0)
+        {
+            throw LogAndCreateNotFound(id, userId);
+        }
     }
 
     /// <inheritdoc />

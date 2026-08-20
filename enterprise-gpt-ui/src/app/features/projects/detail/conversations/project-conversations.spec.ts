@@ -11,7 +11,7 @@ import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   PROJECT_CONVERSATIONS_PAGE_SIZE,
   ProjectConversationsStore,
-} from './project-conversations-store';
+} from '@core/projects/project-conversations-store';
 import { ProjectConversations } from './project-conversations';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;

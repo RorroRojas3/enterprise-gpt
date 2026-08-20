@@ -24,6 +24,7 @@ public static class ProjectMapper
             Name = project.Name,
             Description = project.Description,
             Instructions = project.Instructions,
+            IsFavorite = project.IsFavorite,
             DateCreated = project.DateCreated,
             DateModified = project.DateModified
         };
@@ -40,6 +41,7 @@ public static class ProjectMapper
             Name = project.Name,
             Description = project.Description,
             Instructions = project.Instructions,
+            IsFavorite = project.IsFavorite,
             DateCreated = project.DateCreated,
             DateModified = project.DateModified
         };
@@ -57,6 +59,7 @@ public static class ProjectMapper
             Id = project.Id,
             Name = project.Name,
             Description = project.Description,
+            IsFavorite = project.IsFavorite,
             DateCreated = project.DateCreated,
             DateModified = project.DateModified
         };
@@ -85,6 +88,11 @@ public static class ProjectMapper
     /// </summary>
     /// <param name="dto">The action DTO carrying the new values.</param>
     /// <param name="project">The tracked entity to mutate.</param>
+    /// <remarks>
+    /// <c>IsFavorite</c> is deliberately not assigned here. This PUT is a full representation and the
+    /// update DTO does not carry the flag, so writing it would clear the star on every rename — the
+    /// trap <see cref="SetProjectFavoriteActionDto"/> exists as a separate route to avoid.
+    /// </remarks>
     public static void FromUpdateProjectActionDtoToProject(this UpdateProjectActionDto dto, Project project)
     {
         project.Name = dto.Name;

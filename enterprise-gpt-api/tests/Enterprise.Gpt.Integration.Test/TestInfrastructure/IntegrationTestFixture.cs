@@ -802,11 +802,12 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="userId">The owner. Defaults to the regular test user.</param>
     /// <param name="instructions">The project's standing instructions, if any.</param>
     /// <param name="deactivated">Whether the project is soft-deleted.</param>
+    /// <param name="isFavorite">Whether the owner has starred the project.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted project.</returns>
     public async Task<Guid> AddProjectAsync(
         string name = "Integration Project", Guid? userId = null, string? instructions = null,
-        bool deactivated = false, CancellationToken cancellationToken = default)
+        bool deactivated = false, bool isFavorite = false, CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -819,6 +820,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             Name = name,
             Description = $"{name} description",
             Instructions = instructions,
+            IsFavorite = isFavorite,
             DateCreated = date,
             DateModified = date,
             DateDeactivated = deactivated ? date : null

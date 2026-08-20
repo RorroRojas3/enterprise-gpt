@@ -31,10 +31,10 @@ export class ProjectCard {
   /**
    * Whether to render the star at all.
    *
-   * False until US-909 puts a favourite flag on `ProjectSummaryDto`: the board draws
-   * the star, but nothing on the wire can persist a press, and a control that silently
-   * forgets is worse than one that is not there — the same call US-308 made about this
-   * star's conversation counterpart.
+   * It was false everywhere until US-909 put the flag on `ProjectSummaryDto` — a
+   * control that can be pressed and never persisted is worse than one that is not
+   * there. The input survives that story because it is the honest switch for any future
+   * caller that renders a card it cannot star.
    */
   readonly showFavorite = input<boolean>(true);
 

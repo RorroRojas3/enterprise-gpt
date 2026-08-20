@@ -15,6 +15,22 @@
         <button class="detail__name font-display" type="button" (click)="beginEdit()">
           {{ current.name }}
         </button>
+        <!--
+          Frame `4e`'s star, live since US-909. A real button rather than the board's
+          glyph, and no `aria-pressed`: the label already carries the direction, and a
+          control that both names its action and reports a pressed state is announced
+          twice over.
+        -->
+        <button
+          class="detail__favorite"
+          type="button"
+          [class.detail__favorite--on]="current.isFavorite"
+          [attr.aria-label]="favoriteLabel(current)"
+          [attr.aria-disabled]="actions.isRowPending(current.id) ? 'true' : null"
+          (click)="actions.toggleFavorite(current)"
+        >
+          <app-icon [name]="current.isFavorite ? 'bi-star-fill' : 'bi-star'" />
+        </button>
       </p>
       @if (current.description) {
         <p class="detail__description">{{ current.description }}</p>
@@ -23,7 +39,7 @@
 
     <!--
       The same two items the grid's card kebab offers, routed through the same store and
-      the same dialogs. Frame `4e` also draws a star; it waits on US-909.
+      the same dialogs. Frame `4e`'s star sits beside the name above, not in here.
     -->
     <app-menu [label]="'Actions for ' + current.name">
       <button

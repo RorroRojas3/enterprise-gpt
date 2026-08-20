@@ -103,10 +103,10 @@
   <div class="projects__grid">
     @for (project of projects.entities(); track trackId(project)) {
       <!--
-          The star is withheld rather than left inert. `ProjectCard` offers the one
-          frame `4c` draws, but no project favourite exists on the wire until US-909 —
-          a control that can be pressed and never persisted is worse than one that is
-          not there.
+          Frame `4c`'s star, live since US-909 put `isFavorite` on the listing shape.
+          Confirm-then-render rather than optimistic, like every other project write:
+          `pending` covers the round trip, and `ProjectActionsStore` has no channel into
+          this route-scoped store to roll a guess back through.
 
           An absolute link, not a relative one: a relative `[project.id]` would resolve
           against whichever route happens to host the card, and this component's own
@@ -117,8 +117,9 @@
         [description]="project.description ?? ''"
         [updatedLabel]="updatedLabel(project)"
         [link]="linkFor(project)"
-        [showFavorite]="false"
+        [favorite]="project.isFavorite"
         [pending]="actions.isRowPending(project.id)"
+        (favoriteToggled)="actions.toggleFavorite(project)"
       >
         <!-- Frame `4c`'s caption: Rename, Delete. Both route through
                `ProjectActionsStore` and its shared dialogs rather than being

@@ -33,6 +33,16 @@ public class Project : BaseModifiedEntity
     public string? Description { get; set; }
 
     /// <summary>
+    /// Whether the owner has marked this project as a favourite.
+    /// </summary>
+    /// <remarks>
+    /// A plain column rather than a join table, because a project has exactly one owner: the
+    /// per-user favourite and the per-row flag are the same fact. Set through its own route so a
+    /// full-representation <c>PUT</c> that omits it cannot clear it.
+    /// </remarks>
+    public bool IsFavorite { get; set; }
+
+    /// <summary>
     /// Standing instructions prepended to the system prompt of every conversation in this project.
     /// </summary>
     /// <remarks>

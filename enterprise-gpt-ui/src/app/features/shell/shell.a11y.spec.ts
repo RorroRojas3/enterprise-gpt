@@ -5,6 +5,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import {
   THEMES,
@@ -19,6 +20,7 @@ import {
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { conversationFixture, conversationPage } from '@testing/conversations';
+import { projectFixture, projectPage } from '@testing/projects';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { administratorFixture } from '@testing/session';
@@ -42,6 +44,10 @@ import { Shell } from './shell';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
+const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
+
+/** The one starred project every render in this file puts in the sidebar (US-910). */
+const FAVORITE = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
 
 @Component({
   selector: 'app-blank',
@@ -106,7 +112,28 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
       );
     await fixture.whenStable();
 
+    // US-910's section, with a node **expanded**: a collapsed one hides the disclosure's
+    // panel, its nested links and the `aria-controls` reference, so an audit that never
+    // opened one would report on markup no reader ever reaches.
+    TestBed.inject(ProjectLookupStore).ensureLoaded();
+    TestBed.tick();
+    backend
+      .expectOne((request) => request.url === PROJECTS_URL)
+      .flush(projectPage([FAVORITE, projectFixture({ name: 'Hiring' })]));
+    await fixture.whenStable();
+
     const element = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('.project__disclosure')?.click();
+    await fixture.whenStable();
+
+    const nested = backend.match(
+      (request) => request.url === SEARCH_URL && request.params.get('projectId') === FAVORITE.id,
+    );
+    for (const request of nested) {
+      request.flush(conversationPage([conversationFixture({ name: 'Warehouse sync triage' })]));
+    }
+    await fixture.whenStable();
+
     document.body.append(element);
     attached = element;
     return element;
@@ -131,6 +158,19 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
       });
     }
   }
+
+  it('names the favourites disclosure and points it at a panel that exists', async () => {
+    const element = await renderShell('light');
+
+    const disclosure = element.querySelector('.project__disclosure');
+    // The tree is a disclosure, so both halves have to hold: a name that does not repeat
+    // the state `aria-expanded` already carries, and a reference axe can resolve.
+    expect(disclosure?.getAttribute('aria-label')).toBe(`Conversations in ${FAVORITE.name}`);
+    expect(disclosure?.getAttribute('aria-expanded')).toBe('true');
+    const panelId = disclosure?.getAttribute('aria-controls');
+    expect(panelId).toBe(`sidebar-project-${FAVORITE.id}`);
+    expect(element.querySelector(`#${panelId}`)).not.toBeNull();
+  });
 
   it('renders one navigation landmark, whatever the width', async () => {
     // The structural invariant `shell-responsive.spec.ts` asserts in jsdom, re-checked

@@ -20,6 +20,7 @@ import {
 } from '@core/auth/auth-routes';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { canRetry } from '@core/errors/error-message';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { EmptyState } from '@shared/feedback/empty-state/empty-state';
@@ -32,6 +33,7 @@ import { UserFooter } from '@shared/nav/user-footer/user-footer';
 import { Tooltip } from '@shared/overlay/tooltip/tooltip';
 import { Ridgeline } from '@shared/ridgeline/ridgeline';
 import { ConversationRow } from './conversation-row';
+import { SidebarFavorites } from './favorite-projects';
 
 /**
  * How the sidebar is being rendered.
@@ -64,9 +66,18 @@ const SKELETON_ROWS = 6;
  * shown-and-disabled for a non-administrator; Projects arrived with US-901 and
  * Documents with US-1002.
  *
- * The **Favorite projects** section between the nav and the list is US-910 and is
- * deliberately not built: its pins are device-local until the backend enabler (US-909)
- * lands, and a section that has to say so has to exist before it can.
+ * The **Favorite projects** section between the nav and the list is US-910, and it
+ * reads the *server* flag. Its own first criterion describes device-local pins in
+ * `localStorage` under a "Pinned on this device" notice, for the case where US-909 had
+ * not landed; that enabler shipped in the same batch, so the section never had a
+ * device-local state to be in and the notice was never built. Pins were also the wrong
+ * thing to keep there: `local-preferences.ts` holds facts about the browser, and a list
+ * of project ids is a fact about the user.
+ *
+ * Its rows come from {@link ProjectLookupStore} rather than a request of their own —
+ * that store already holds every project the user owns and already tracks every
+ * server-confirmed change to one, so a second copy would be a second thing to keep in
+ * step. It inherits that store's load ceiling with it.
  *
  * The two widths are separate template branches rather than one branch with things
  * hidden, which is how `Sidebar.dc.html` itself is written: a 44px square target with
@@ -86,6 +97,7 @@ const SKELETON_ROWS = 6;
     RouterLink,
     RouterLinkActive,
     SearchInput,
+    SidebarFavorites,
     Skeleton,
     Tooltip,
     UserFooter,
@@ -105,6 +117,9 @@ export class Sidebar {
    */
   private readonly _collapseControl = viewChild<ElementRef<HTMLButtonElement>>('collapseControl');
 
+  /** The expanded branch's Favorite projects section; absent on the strip. */
+  private readonly _favorites = viewChild(SidebarFavorites);
+
   /**
    * **Controlled, not self-driving.** The sidebar used to read `UiStore` and write the
    * persisted preference itself. It cannot any more: at tablet width the same chevron
@@ -118,10 +133,16 @@ export class Sidebar {
   /** Either chevron. What it means is the shell's to decide. */
   readonly toggled = output<void>();
 
-  /** The strip's search button: expand, whatever expanding means at this width. */
+  /**
+   * A strip control asking to be expanded, whatever expanding means at this width.
+   *
+   * Named for its first caller and shared since: the search button and US-910's star
+   * both want the panel open, and what each does *after* that is its own business.
+   */
   readonly searchRequested = output<void>();
 
   protected readonly conversations = inject(ConversationListStore);
+  protected readonly projects = inject(ProjectLookupStore);
   protected readonly collapsed = computed(() => this.mode() === 'strip');
 
   /** Frame `3e` draws the shell's close button where this would sit. */
@@ -192,7 +213,26 @@ export class Sidebar {
     this._collapseControl()?.nativeElement.focus();
   }
 
+  /**
+   * Where focus goes when the favourites section removes itself under the reader — the
+   * nearest control above where it was. See `SidebarFavorites.lastFavoriteRemoved`.
+   */
+  protected focusSearch(): void {
+    this._search()?.focusField();
+  }
+
   protected clearSearch(): void {
     this.conversations.search('');
+  }
+
+  /**
+   * The strip's star. Expanding is the whole action — the tree is what the icon stands
+   * in for, so pressing it reveals the tree rather than navigating away from wherever
+   * the reader is. The section takes focus itself once it exists, for the reason
+   * {@link expandAndSearch} defers to the field it just revealed.
+   */
+  protected expandToFavorites(): void {
+    this.searchRequested.emit();
+    afterNextRender(() => this._favorites()?.reveal(), { injector: this._injector });
   }
 }

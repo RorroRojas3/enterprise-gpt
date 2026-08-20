@@ -85,6 +85,11 @@ function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState
  *   server round trip per keystroke would be the wrong shape for a 320px popover, and
  *   `GET api/projects` accepts no sort parameter, so a page in hand is not a stable
  *   window to filter either.
+ * - **The sidebar's favourite projects** (US-910), which is a filter over the same set
+ *   rather than a second request: a dedicated `?isFavorite=true` store would be a second
+ *   copy of rows already held here, to be kept in step on every rename, delete and
+ *   toggle. It inherits this store's ceiling — a favourite past
+ *   {@link PROJECT_LOAD_CEILING} is not held and so is not listed.
  * - **`projectId` → name**, which is the only way a project chip can be rendered:
  *   `ConversationDto` carries the id and no name. This mirrors exactly how the
  *   conversations library resolves a `modelId` against `ModelCatalogStore`, down to
@@ -126,6 +131,13 @@ export const ProjectLookupStore = signalStore(
   withComputed(({ entities, entityMap, isFulfilled, isPending, totalCount }) => ({
     /** Every loaded project, in the server's order — `dateCreated` descending. */
     projects: entities,
+    /**
+     * The starred projects, in the same order (US-910).
+     *
+     * Derived rather than fetched, so a toggle anywhere in the app reaches the sidebar
+     * through the one `favorited` handler below and nothing has to be refetched.
+     */
+    favorites: computed(() => entities().filter((project) => project.isFavorite)),
     /** Loaded, and this user owns no projects at all. */
     isEmpty: computed(() => isFulfilled() && entities().length === 0),
     /** Nothing loaded yet, so a panel shows skeletons rather than an empty list. */
@@ -139,6 +151,11 @@ export const ProjectLookupStore = signalStore(
     ceilingNotice: computed(
       () => `Showing the ${entities().length} most recent of ${totalCount()} projects.`,
     ),
+    /**
+     * Whether anything is starred. The sidebar's whole section is absent when nothing is
+     * — the repo's rule for an affordance with nothing to act on.
+     */
+    hasFavorites: computed(() => entities().some((project) => project.isFavorite)),
     /**
      * A project's name by id, or null when it is not held — an unknown id, or one past
      * the ceiling. Callers render nothing for a null rather than an id nobody can read.
@@ -260,6 +277,17 @@ export const ProjectLookupStore = signalStore(
         }
 
         patchState(store, removeEntity(id), shiftCounters(-1));
+      }),
+    ),
+
+    // Touches `isFavorite` and nothing else: the 204 confirms one field, and the
+    // server does not bump `dateModified` for it, so there is no other value to adopt.
+    // A row past the ceiling is not held and is ignored, exactly as `updated` does.
+    events.on(projectEvents.favorited).pipe(
+      tap(({ payload: { id, isFavorite } }) => {
+        if (store.entityMap()[id] !== undefined) {
+          patchState(store, updateEntity({ id, changes: { isFavorite } }));
+        }
       }),
     ),
   ]),
