@@ -23,7 +23,7 @@ import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectFixture, projectPage } from '@testing/projects';
 import { LIBRARY_PAGE_SIZE } from './conversation-library-store';
 import { Conversations } from './conversations';
-import { ORDER_EXPLANATION, shouldReplaceHistory } from './conversations-route';
+import { shouldReplaceHistory } from './conversations-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 
@@ -341,41 +341,140 @@ describe('Conversations (US-701)', () => {
     });
   });
 
-  describe('being honest about the order (US-705)', () => {
-    it('offers no sort control anywhere, because the server cannot order this list', async () => {
+  describe('choosing the order (US-706)', () => {
+    function sortSelect(): HTMLSelectElement {
+      const control = element().querySelector<HTMLSelectElement>('.conversations__sort select');
+
+      if (control === null) {
+        throw new Error('The sort select is not rendered.');
+      }
+
+      return control;
+    }
+
+    async function choose(value: string): Promise<void> {
+      const control = sortSelect();
+      control.value = value;
+      control.dispatchEvent(new Event('change'));
+      await harness.fixture.whenStable();
+    }
+
+    it('offers a real control where US-705 stated the order, and states nothing', async () => {
       await open();
 
-      // Regime B. A control that reordered only the loaded rows would put a second
-      // sorted run under the first on the next Load more — and no endpoint in this
-      // API accepts a sort parameter to honour instead.
-      expect(element().querySelector('select')).toBeNull();
-      expect(element().querySelector('th button')).toBeNull();
-      expect(element().querySelector('[aria-sort]')).toBeNull();
-      expect(element().querySelector('.conversations__toolbar select')).toBeNull();
+      // The statement and its flyout are gone: the endpoint accepts an order now, so
+      // explaining why the list cannot be reordered would be false.
+      expect(element().querySelector('.conversations__order')).toBeNull();
+      expect(element().querySelector('.conversations__order-info')).toBeNull();
+
+      const options = [...sortSelect().querySelectorAll('option')];
+      expect(options.map((option) => option.value)).toEqual(['newest', 'oldest', 'name']);
+      expect(sortSelect().value).toBe('newest');
+      expect(
+        element().querySelector('.conversations__sort .visually-hidden')?.textContent?.trim(),
+      ).toBe('Sort conversations');
     });
 
-    it('states the order it is in, with the reason a keystroke away', async () => {
+    it('sends the API pair the chosen order maps to, and records it in the URL', async () => {
       await open();
 
-      const order = element().querySelector('.conversations__order');
-      expect(order?.firstChild?.textContent?.trim()).toBe('Newest first');
-      // Not aria-hidden, and the reason rides along rather than depending on a hover:
-      // nothing else on the screen carries either fact.
-      expect(order?.getAttribute('aria-hidden')).toBeNull();
-      expect(order?.querySelector('.visually-hidden')?.textContent).toContain(ORDER_EXPLANATION);
+      await choose('oldest');
 
-      // A short name of its own, so `Tooltip` does not make the whole sentence the
-      // button's label — the explanation is already on the line beside it.
-      const info = element().querySelector<HTMLButtonElement>('.conversations__order-info');
-      expect(info?.getAttribute('aria-label')).toBe('Why this order');
-
-      info!.focus();
-      info!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      // `?sort=oldest` is what the reader chose; `sort=created&dir=asc` is what the
+      // request needs. The URL is a contract with the reader, not a proxy for the wire.
+      expect(TestBed.inject(Router).url).toBe('/conversations?sort=oldest');
+      const reordered = expectSearch();
+      expect(reordered.request.params.get('sort')).toBe('created');
+      expect(reordered.request.params.get('dir')).toBe('asc');
+      reordered.flush(conversationPage([conversationFixture()]));
       await harness.fixture.whenStable();
 
-      // Shown on focus, not hover alone — the reason has to be reachable from the
-      // keyboard.
-      expect(element().querySelector('.app-tooltip')?.textContent).toBe(ORDER_EXPLANATION);
+      // `[selected]` on the options is uncontrolled — the browser moves the value and
+      // Angular writes it back only when the bound expression changes — so the control
+      // agreeing with the query it just issued is worth pinning rather than assuming.
+      expect(sortSelect().value).toBe('oldest');
+    });
+
+    it('replaces between two orders, so arrowing through the select does not stack history', async () => {
+      // A closed `<select>` fires `change` on every arrow key. Pushing each one would bury
+      // the unsorted list behind orders nobody chose.
+      await open('/conversations?sort=oldest');
+
+      await choose('name');
+      expectSearch().flush(conversationPage([conversationFixture()]));
+      await harness.fixture.whenStable();
+      expect(TestBed.inject(Router).url).toBe('/conversations?sort=name');
+
+      await goBack();
+
+      expect(TestBed.inject(Router).url).not.toBe('/conversations?sort=oldest');
+    });
+
+    it('removes the key rather than spelling out the default it returns to', async () => {
+      await open('/conversations?sort=name');
+
+      await choose('newest');
+
+      expect(TestBed.inject(Router).url).toBe('/conversations');
+      expectSearch().flush(conversationPage([conversationFixture()]));
+      await harness.fixture.whenStable();
+    });
+
+    it('falls back to the default when the URL names an order that does not exist', async () => {
+      // The control can never display a value the URL contradicts, and the server never
+      // sees a `sort=` it would answer with a 400 the reader never asked for.
+      await harness.navigateByUrl('/conversations?sort=zzz', Conversations);
+
+      const request = expectSearch();
+      expect(request.request.params.get('sort')).toBe('created');
+      expect(request.request.params.get('dir')).toBe('desc');
+      request.flush(conversationPage([conversationFixture()]));
+      await harness.fixture.whenStable();
+
+      expect(sortSelect().value).toBe('newest');
+    });
+
+    it('carries the order onto the next page, so Load more continues the same run', async () => {
+      await harness.navigateByUrl('/conversations?sort=name', Conversations);
+      expectSearch().flush(
+        conversationPage([conversationFixture(), conversationFixture()], {
+          totalCount: 4,
+          pageSize: LIBRARY_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      element().querySelector<HTMLButtonElement>('.conversations__more button')!.click();
+      await harness.fixture.whenStable();
+
+      const next = expectSearch();
+      expect(next.request.params.get('sort')).toBe('name');
+      expect(next.request.params.get('dir')).toBe('asc');
+      next.flush(
+        conversationPage([conversationFixture()], {
+          totalCount: 4,
+          pageSize: LIBRARY_PAGE_SIZE,
+          skip: 2,
+        }),
+      );
+      await harness.fixture.whenStable();
+    });
+
+    it('replaces the rows when the order changes rather than appending to them', async () => {
+      await open('/conversations', [
+        conversationFixture({ name: 'Zulu' }),
+        conversationFixture({ name: 'Alpha' }),
+      ]);
+
+      await choose('name');
+      expectSearch().flush(conversationPage([conversationFixture({ name: 'Alpha' })]));
+      await harness.fixture.whenStable();
+
+      expect(
+        [...element().querySelectorAll('.conversations__name')].map((row) =>
+          row.textContent?.trim(),
+        ),
+      ).toEqual(['Alpha']);
     });
 
     it('applies no client-side reordering to a partially loaded list', async () => {

@@ -35,11 +35,12 @@ public static class ConversationEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         // 404 rather than an empty page when ?projectId= names a project the caller does not own.
-        // The 400 is a binding failure on one of the four typed query parameters, so it carries no
-        // errors dictionary — ProducesProblem(400), not ProducesValidationProblem(), for the reason
-        // spelled out on the favorite route below.
+        // ProducesValidationProblem() since US-706: ?sort= and ?dir= are rejected by the service with
+        // an errors dictionary naming the parameter. A binding failure on one of the typed query
+        // parameters still returns a 400 without one, and OpenAPI allows a single schema per status,
+        // so the richer of the two is declared — a client reading `errors` defensively handles both.
         group.MapGet("search", SearchConversationsAsync)
-            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("{id:guid}", GetConversationAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -107,9 +108,10 @@ public static class ConversationEndpoints
     // parameters last. Without defaults an absent ?skip= would fail binding with a 400.
     internal static async Task<Ok<PaginatedResponseDto<ConversationDto>>> SearchConversationsAsync(
         IConversationService conversationService, string? name = null, int skip = 0, int take = 20,
-        bool? isFavorite = null, Guid? projectId = null, CancellationToken cancellationToken = default)
+        bool? isFavorite = null, Guid? projectId = null, string? sort = null, string? dir = null,
+        CancellationToken cancellationToken = default)
     {
-        var response = await conversationService.SearchConversationsAsync(name, skip, take, isFavorite, projectId, cancellationToken);
+        var response = await conversationService.SearchConversationsAsync(name, skip, take, isFavorite, projectId, sort, dir, cancellationToken);
         return TypedResults.Ok(response);
     }
 

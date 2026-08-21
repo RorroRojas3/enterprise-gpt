@@ -139,7 +139,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     private async Task<Conversation> AddConversationAsync(
-        Guid? projectId = null, string? name = null, bool deactivated = false)
+        Guid? projectId = null, string? name = null, bool deactivated = false,
+        DateTimeOffset? created = null)
     {
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
@@ -148,8 +149,8 @@ public sealed class ConversationServiceTests : IDisposable
             UserId = KnownIds.SeedUserId,
             ProjectId = projectId,
             Name = name ?? "Test Conversation",
-            DateCreated = date,
-            DateModified = date,
+            DateCreated = created ?? date,
+            DateModified = created ?? date,
             DateDeactivated = deactivated ? date : null
         };
 
@@ -2628,6 +2629,167 @@ public sealed class ConversationServiceTests : IDisposable
             name: null, skip: 0, take: 20, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_NoOrderRequested_KeepsTheListingsOriginalOrder()
+    {
+        // The order this route had before it accepted one, pinned so a later change to the sorted
+        // path cannot quietly move it: clients written against it are promised it unchanged.
+        var older = await AddConversationAsync(name: "Older", created: DateTimeOffset.UtcNow.AddDays(-2));
+        var newer = await AddConversationAsync(name: "Newer", created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([newer.Id, older.Id], result.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_SortByNameAscending_OrdersAlphabetically()
+    {
+        await AddConversationAsync(name: "Zulu");
+        await AddConversationAsync(name: "Alpha");
+        await AddConversationAsync(name: "Mike");
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, sort: "name", dir: "asc",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Alpha", "Mike", "Zulu"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_SortByNameDescending_ReversesTheOrder()
+    {
+        await AddConversationAsync(name: "Zulu");
+        await AddConversationAsync(name: "Alpha");
+        await AddConversationAsync(name: "Mike");
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, sort: "name", dir: "desc",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Zulu", "Mike", "Alpha"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_SortByCreatedAscending_PutsTheOldestFirst()
+    {
+        var older = await AddConversationAsync(name: "Older", created: DateTimeOffset.UtcNow.AddDays(-2));
+        var newer = await AddConversationAsync(name: "Newer", created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var result = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, sort: "created", dir: "asc",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([older.Id, newer.Id], result.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_RequestedOrderIsTotal_SoPagesCannotDuplicateOrSkipARow()
+    {
+        // Every untitled conversation shares one name, so a name sort with no tie-break leaves the
+        // row at a page boundary up to the engine and a Load more can append a row already shown.
+        for (var i = 0; i < 4; i++)
+        {
+            await AddConversationAsync();
+        }
+
+        var first = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 2, sort: "name",
+            cancellationToken: TestContext.Current.CancellationToken);
+        var second = await _service.SearchConversationsAsync(
+            name: null, skip: 2, take: 2, sort: "name",
+            cancellationToken: TestContext.Current.CancellationToken);
+        var whole = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 4, sort: "name",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Against the unpaged list, not merely distinct: any deterministic order returns four
+        // distinct rows, including the one a table scan happens to produce, so a distinctness
+        // assertion would pass with the tie-break deleted and pin nothing.
+        Assert.Equal(
+            whole.Items.Select(x => x.Id),
+            first.Items.Select(x => x.Id).Concat(second.Items.Select(x => x.Id)));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_SortByName_ReversesEvenWhenEveryNameIsTheSame()
+    {
+        // Every untitled conversation carries the same name, so the tie-break decides the whole
+        // list. A tie-break fixed in one direction would return the same rows for both, and the
+        // A-Z/Z-A control on the library screen would look inert.
+        for (var i = 0; i < 3; i++)
+        {
+            await AddConversationAsync();
+        }
+
+        var ascending = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, sort: "name", dir: "asc",
+            cancellationToken: TestContext.Current.CancellationToken);
+        var descending = await _service.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, sort: "name", dir: "desc",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(ascending.Items.Select(x => x.Id).Reverse(), descending.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_SortCombinedWithFilters_AppliesBoth()
+    {
+        var project = await AddProjectAsync();
+        await AddConversationAsync(project.Id, "Planning Zulu");
+        await AddConversationAsync(project.Id, "Planning Alpha");
+        await AddConversationAsync(name: "Planning Mike");
+
+        var result = await _service.SearchConversationsAsync(
+            name: "planning", skip: 0, take: 20, projectId: project.Id, sort: "name",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(["Planning Alpha", "Planning Zulu"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_UnrecognisedSortField_ThrowsNamingTheParameter()
+    {
+        // Rejected rather than ignored: a page in the wrong order looks exactly like a page in the
+        // right one, so a misspelled field would silently mislead.
+        var failure = await Assert.ThrowsAsync<ValidationException>(
+            () => _service.SearchConversationsAsync(
+                name: null, skip: 0, take: 20, sort: "updated",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("sort", error.PropertyName);
+        Assert.Contains("'created'", error.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_UnrecognisedDirection_ThrowsNamingTheParameter()
+    {
+        var failure = await Assert.ThrowsAsync<ValidationException>(
+            () => _service.SearchConversationsAsync(
+                name: null, skip: 0, take: 20, sort: "created", dir: "sideways",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("dir", error.PropertyName);
+    }
+
+    [Fact]
+    public async Task SearchConversationsAsync_UnrecognisedSortField_IsRefusedBeforeTheProjectIsResolved()
+    {
+        // The order is resolved before any database work, so a request that is wrong twice over
+        // reports the parameter the caller can fix rather than a 404 about a project id.
+        var otherUser = await AddUserAsync();
+        var project = await AddProjectAsync(userId: otherUser.Id);
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.SearchConversationsAsync(
+                name: null, skip: 0, take: 20, projectId: project.Id, sort: "updated",
+                cancellationToken: TestContext.Current.CancellationToken));
     }
     #endregion
 

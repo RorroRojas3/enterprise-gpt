@@ -2,7 +2,7 @@
 
 The `/conversations` screen: a searchable, paged, filterable table of everything a user has asked, the app's **second** conversation list store, and the URL contract that makes a filtered list shareable, the back button meaningful, and a deep link one request rather than two.
 
-Audience: a developer adding the one control this screen still owes (US-706's sort), adding a second route-scoped list anywhere in the app, or debugging a search that will not stick, a page that leaves a hole, or a bulk delete that half-happens. Read [Shell and Navigation](shell-and-navigation.md) first for `ConversationListStore` — the reference store this one copies — [Conversation Actions](conversation-actions.md) for the shared favourite, move and delete flows it invokes, and [Frontend Foundation](frontend-foundation.md) for the composable features all of them compose. Bare `§` references below are to sections of _this_ page.
+Audience: a developer adding a second route-scoped list anywhere in the app, or debugging a search that will not stick, an order that reorders the wrong run, a page that leaves a hole, or a bulk delete that half-happens. Read [Shell and Navigation](shell-and-navigation.md) first for `ConversationListStore` — the reference store this one copies — [Conversation Actions](conversation-actions.md) for the shared favourite, move and delete flows it invokes, and [Frontend Foundation](frontend-foundation.md) for the composable features all of them compose. Bare `§` references below are to sections of _this_ page.
 
 Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority for every `US-xxx` reference.
 
@@ -16,8 +16,9 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority f
 | **US-702** | Paging: the toolbar's "Showing N of M" counter, a **Load more** control in the table's footer slot, and the two guards that stop a page landing in a result set it does not belong to |
 | **US-703** | The favourites filter, as a second URL parameter (`?favorites=1`), a toolbar toggle and a per-row star — plus the eviction rule that takes an unstarred row out of a favourites-only list |
 | **US-704** | Row selection, toolbar select-all, the floating bulk bar and `DELETE api/conversations/bulk` behind a confirmation, with an optimistic removal that restores on failure |
-| **US-705** | The order **stated** rather than inferred: a muted "Newest first" carrying its explanation, and tests that lock the absence of any sort control |
+| **US-705** | The order **stated** rather than inferred: a muted "Newest first" carrying its explanation, and tests that locked the absence of any sort control — **retired by US-706, 2026-08-20** (below) |
 | **US-307** | Not an EP-7 story, and the one that finished frame `4a`: the project chip on a row and the per-row kebab, both waiting on a project surface that did not exist until EP-9 (§5.2) |
+| **US-706** | Not an EP-7 story either, and the one that un-retired frame `4a`'s missing sixth control: a real sort select — Newest first, Oldest first, Alphabetical — issuing `sort=`/`dir=` to the newly-order-aware `GET api/conversations/search`, replacing US-705's caption rather than joining it (§5.1) |
 
 Six decisions shape everything here, and each looks removable until you know what it prevents:
 
@@ -26,7 +27,7 @@ Six decisions shape everything here, and each looks removable until you know wha
 3. **Refining a term replaces the history entry; adding or removing one pushes.** Both extremes fail in their own way, and this is the only rule that fails neither. The favourites toggle reuses it, and both of its transitions push (§3.1).
 4. **A row leaving the list is one operation, not two.** It shifts `skip` _and_ `totalCount`, and it cancels any page already on the wire — `_dropRow` is the single place that does both, and every departure route goes through it (§4.4).
 5. **The bulk delete request lives in the root `ConversationActionsStore`**, not in this store. `rxMethod` binds its subscription to the declaring injector, and this one dies with its route (§4.6).
-6. **The order is stated, not inferred.** No endpoint here accepts a sort parameter, so the toolbar says "Newest first" and explains why, rather than leaving the reader to deduce it from a missing control (§5.1). US-706 replaces the statement with a control.
+6. **The order is a third URL parameter, not a caption (US-706).** `?sort=` names one of Newest first, Oldest first or Alphabetical, and the store turns it into the server's `sort=`/`dir=` pair; a value outside that set falls back to Newest first. History follows the search term's own rule — turning an order on or off pushes, moving between two non-default orders replaces (§5.1).
 
 ### 1.1 Where each piece lives
 
@@ -78,22 +79,23 @@ protected readonly actions = inject(ConversationActionsStore);
 
 There is no `search(term)` and no `setFavorites(on)`, and that absence is the design: **the only way to change the query is to navigate** (§3).
 
-### 2.2 The two URL parameters
+### 2.2 The three URL parameters
 
 | Parameter | Written as | History | On the wire |
 | --- | --- | --- | --- |
 | `?name=` | The trimmed term, or the key **removed** when it is empty | Replaces while a term is refined; pushes when one is added or removed | `name=` when non-empty, omitted otherwise — never `filter=` |
 | `?favorites=` | Exactly `1`, or the key **removed** | Always pushes: both of its transitions are an add or a remove | `isFavorite=true`, and **never** `isFavorite=false` |
+| `?sort=` | One of `newest` / `oldest` / `name`, or the key **removed** for `newest` (US-706) | Turning an order on or off pushes; moving between two non-default orders replaces — the search term's own rule | `sort=`/`dir=` pair, e.g. `sort=name&dir=asc` |
 
-Three things about that table are decisions rather than incidentals.
+Four things about that table are decisions rather than incidentals.
 
-**Both parameters go out on one request.** `bindQuery` takes a single `ConversationLibraryQuery { name, favorites }` computation, so a deep link carrying both issues one query rather than an unfiltered request followed by a filtered one. Binding them as two `rxMethod`s would fire a second query for every change to either.
+**All three parameters go out on one request.** `bindQuery` takes a single `ConversationLibraryQuery { name, favorites, sort }` computation, so a deep link carrying all three issues one query rather than an unfiltered request followed by a filtered one. Binding them as three `rxMethod`s would fire a second query for every change to any of them.
 
-**`favorites=1`, not the API's own `isFavorite=true`.** The URL is a contract with the reader, not a proxy for the request underneath it. `isFavorite=false` is a meaningful value on the wire — "only the ones I have _not_ starred" — that this screen has no control for and no way back out of, so a URL that could spell it would invite a link the client cannot honour. `searchUrl` is the one place the translation happens, and it only ever sets `true`.
+**`favorites=1`, not the API's own `isFavorite=true`.** The URL is a contract with the reader, not a proxy for the request underneath it. `isFavorite=false` is a meaningful value on the wire — "only the ones I have _not_ starred" — that this screen has no control for and no way back out of, so a URL that could spell it would invite a link the client cannot honour. `searchUrl` is the one place the translation happens, and it only ever sets `true`. `?sort=` is the same reasoning a step further: it names one *order* rather than the API's two-parameter `sort=`/`dir=` pair, because the control is a single select and each option already carries its own direction — `sort=oldest` is what the reader chose, `sort=created&dir=asc` is what the request needs, and `toConversationSort` is where the one becomes the other.
 
-**Both inputs are defensively transformed.** The router writes `undefined` when a key leaves the URL, so `name` trims and falls back to `''`, and a hand-edited `?name=%20%20` means unfiltered. `favorites` reads `value === FAVORITES_ON`, so `?favorites=yes` is off rather than putting the toolbar and the request out of step.
+**All three inputs are defensively transformed.** The router writes `undefined` when a key leaves the URL, so `name` trims and falls back to `''`, and a hand-edited `?name=%20%20` means unfiltered. `favorites` reads `value === FAVORITES_ON`, so `?favorites=yes` is off rather than putting the toolbar and the request out of step. `toConversationSort` restricts `?sort=` to the three offered values, falling back to `newest` for anything else — a hand-edited `?sort=zzz` displays and requests Newest first rather than taking a 400 the reader never asked for.
 
-Adding a third parameter is additive, and the seams are already in place: `queryParamsHandling: 'merge'` on `_applyQuery` means it survives the other two and they survive it; `shouldReplaceHistory` takes a before and an after rather than reading the screen, so a discrete toggle reuses it by passing its own two values; and `searchUrl` is the one place a request parameter is added. Bind the new input the same way — one `input()` fed by `withComponentInputBinding()`, folded into the query object handed to `bindQuery` as a **computation** — and never navigate from an effect over it (§3).
+**`?sort=` is the third parameter the seams were already built for.** `queryParamsHandling: 'merge'` on `_applyQuery` means it survives the other two and they survive it; `shouldReplaceHistory` takes a before and an after rather than reading the screen, so it is reused by passing `sortKey`'s two values on either side of a change; and `searchUrl` is the one place a request parameter is added — `sort`'s pair joined it there rather than opening a second seam. A **fourth** parameter would bind the same way: one `input()` fed by `withComponentInputBinding()`, folded into the query object handed to `bindQuery` as a **computation** — and never navigate from an effect over it (§3).
 
 ## 3. The URL is the source of truth
 
@@ -237,14 +239,14 @@ Frame `4a`: a title, a toolbar, the card-surfaced `DataTable`, and a floating bu
 
 ### 5.1 The toolbar
 
-Five controls, left to right: the search field, the **Favourites** toggle, **Select all**, then the order statement and the counter pushed to the far end.
+Six controls, left to right: the search field, the **Favourites** toggle, **Select all**, the sort select, then the counter pushed to the far end.
 
 - **The search field's accessible name is "Search conversations by name"**, deliberately _not_ the sidebar's "Search conversations". Both fields are on screen together at this width, and a rotor listing two identically-named controls says nothing about which is which.
 - **The Favourites toggle carries `aria-pressed`.** Its text never changes, so the state has to be carried somewhere a screen reader reads. It is spelt the British way, matching the sidebar kebab and the chat header star rather than the board's US "Favorites" — a reader hearing "Favorites" from this button and "Unfavourite Helios" from the row star beside it is the worse of the two inconsistencies.
 - **Select-all is here, not in the table header.** `DataTable` is told `[headerSelectAll]="false"` for it: two controls bound to one state is a defect, and below 768 px there is no header row to hold one at all.
 - **The counter is `aria-hidden`, and the same string is handed to `DataTable`'s `summary` input.** The table already owns a polite live region; duplicating the string here would have a screen reader read the count twice on every search, and two independently-derived counts would eventually disagree. It is withheld before the first response — "Showing 0 of 0" is not information — and beside an error panel, where it would keep describing a result set the panel exists to stop showing. A _narrowing_ search keeps it, alongside the rows it still describes.
-- **The order is stated (US-705).** A muted "Newest first" carries the explanation as visually-hidden text, and an info button repeats it as a `Tooltip` flyout for the reader who is looking rather than listening (shown on focus as well as hover, dismissed by Escape — WCAG SC 1.4.13). The button has its own short `aria-label`, "Why this order", so a screen reader does not announce the whole sentence as a button name. `ORDER_EXPLANATION` in `conversations-route.ts` is the anchor US-706 replaces with a real control.
-- **The toolbar wraps.** The board draws one row at 1440 px, but five controls have a combined intrinsic width well past a 360 px viewport and only the search field can shrink (WCAG SC 1.4.10 Reflow). Below 768 px the flyout and the counter are dropped, and the order statement is **clipped rather than `display: none`d** — hiding it would take the explanation out of the accessibility tree with it, leaving US-705's criterion unmet on every phone rather than merely unseen.
+- **The order is a control now, not a caption (US-706).** A hidden-label `<select>` offers Newest first, Oldest first and Alphabetical, bound on its options rather than as `[value]` on the element itself — that binding runs before `@for` inserts the options and would set `selectedIndex = -1` on an empty list, which the browser's own reset then resolves to the first option regardless of what the URL asked for. Choosing one writes `?sort=` and re-runs the query with `sort=`/`dir=` riding both the first page and every Load more, so an appended page is a continuation of the same run rather than a second sorted run underneath the first — the exact failure that kept a sort control off this toolbar while the endpoint accepted no order. `ORDER_EXPLANATION` and the two toolbar elements that carried it (the muted "Newest first" caption, the info-button flyout) are **gone**; this replaced them rather than sitting beside them.
+- **The toolbar wraps.** The board draws one row at 1440 px, but six controls have a combined intrinsic width well past a 360 px viewport and only the search field can shrink (WCAG SC 1.4.10 Reflow). Below 768 px the counter is dropped, and the **sort select stays** — unlike US-705's caption, which was clipped rather than hidden because hiding it would have taken its visually-hidden explanation out of the accessibility tree with it, a control is not in that position: dropping it would remove the only way to reorder the list on a phone, a capability rather than a caption.
 
 ### 5.2 The table
 
@@ -333,7 +335,7 @@ EP-7's four remaining stories added nothing to the initial graph — every line 
 | The URL | `conversations` (4) | The term reflected so the list is shareable; **exactly one request for a link opened cold**; the back button restoring the prior list; and no history entry stacked per keystroke |
 | The empty states | `conversations` (3) | Frame `4b` naming the term; clearing from that state and **focus landing back in the field**; and a different state with a different action for a reader who has none at all |
 | The rest of the screen | `conversations` (4) | Each row linking to its conversation; the model named, and the em dash when it cannot be; the skeleton on a first load and **never on a refinement**; and a failure offering a retry instead of the table |
-| Order honesty (US-705) | `conversations` (3) | **No sort control anywhere**; the order _stated_ with its explanation reachable; and **no client-side reordering of a partially loaded list** across a Load more |
+| Ordering (US-706, replacing US-705's "Order honesty") | `conversations` (7) | A real select where US-705's suite once asserted none existed; `sort=`/`dir=` mapped from the chosen option and recorded in the URL; history pushing when an order turns on or off and replacing between two non-default ones; the key removed rather than spelling out the default; falling back to the default for a URL naming an order that does not exist; the order riding onto the next Load more page so an appended page continues the same run rather than starting a second one; and the rows **replaced**, not appended, when the order itself changes |
 | Favourites (US-703) | `conversations` (7) | The filter in the URL and `isFavorite=true` on the wire; back restoring the unfiltered list; a search and the filter surviving each other; a value the screen never writes ignored; the row star routed through the shared action and marked busy; **a row dropped when its star is cleared**; and the favourites-only empty state with its own way out |
 | Bulk delete (US-704) | `conversations` (9) | The pill bar's count and reach; select-all in the toolbar, not the header; the indeterminate middle state; confirm-then-one-request; cancelling leaving everything alone; **every row restored behind one toast**; **the sidebar's rows going too**; **the sidebar's rows coming back in the order they were in**; and clearing from the bar |
 | Paging (US-702) | `conversations` (10) | The counter against the envelope total; **one count, handed to the table's live region rather than announced twice**; the next page appended in server order; the control removed rather than disabled; busy while a page is on the wire **and during a narrowing search**; **focus to the last row when the control removes itself**; focus left on the control while more remains; focus left where the reader put it; and the counter withheld on first load and beside an error |
@@ -360,7 +362,7 @@ Recorded in the [build order](../prd/enterprise-ui-rebuild-build-order.md)'s int
 | Missing from frame `4a` | Owner | Notes |
 | --- | --- | --- |
 | ~~The **project chip** on a row, and the **per-row kebab**~~ | US-307 | Shipped (§5.2). It waited on the project surface the chip names — `ConversationDto` carries a `projectId` and no name, so there was nothing to render until a root project list existed |
-| **Any sort control** | US-706 | Not an omission but the subject of a shipped story: US-705 _states_ the order instead, because no endpoint in this API accepts a sort parameter and a control that reordered one loaded page would put a second sorted run under the first at the next Load more. US-706 replaces `ORDER_EXPLANATION` and its two toolbar elements with the control |
+| ~~**Any sort control**~~ | US-706 | Shipped, 2026-08-20. `GET api/conversations/search` now accepts `sort=`/`dir=`; the toolbar's select issues both, riding every page of a Load more so an appended page continues the same run rather than starting a second sorted one underneath it (§5.1) |
 
 The screen's **row selection and the project moves deliberately do not meet.** There is no "move the selected rows into a project" bulk action, because `PUT api/conversations` is per-conversation and the only bulk route the API has is the delete; offering one would be N requests behind a control that looks like one.
 

@@ -122,9 +122,10 @@ function listFields(conversation: ConversationDto): ConversationDto {
  *    state and nothing else — a response already on the wire would otherwise write
  *    the previous user's rows back over an emptied store.
  *
- * Rows keep the server's order (`dateCreated` descending) and no sort control is
- * offered, which is the PRD's regime **B**: the API accepts no sort parameter, and
- * sorting a page in hand would put a second sorted run under the first.
+ * Rows keep the server's order (`dateCreated` descending) and this store sends no
+ * `sort=`, even though US-706 put one on the route: the sidebar is a fixed recency list
+ * with no control to offer, and the reader who wants another order has `/conversations`,
+ * where the select lives.
  *
  * `withPendingIds` arrived with US-304, the first per-row action. The mutation surface
  * around it — {@link renameRow}, {@link favoriteRow}, {@link setRowPending} — exists

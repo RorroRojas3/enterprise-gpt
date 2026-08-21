@@ -1,10 +1,12 @@
 /**
  * A conversation as `GET api/conversations/search` returns it.
  *
- * Mirrors `Enterprise.Gpt.Dto.ConversationDto`. The search route orders by
- * **`dateCreated` descending**, not `dateModified` — a rename or a new turn does not
- * move a row to the top — so "newest first" here means newest *created*, and the
- * client renders the server's order rather than re-sorting it.
+ * Mirrors `Enterprise.Gpt.Dto.ConversationDto`. Asked for no order the search route
+ * returns **`dateCreated` descending**, not `dateModified` — a rename or a new turn does
+ * not move a row to the top — so "newest first" there means newest *created*. Since US-706
+ * it also accepts `sort=` and `dir=`: the library screen sends the reader's choice, the
+ * sidebar sends none. Either way the client renders the server's order and never re-sorts
+ * a page.
  *
  * `modelId` and `projectId` are nullable on a conversation that has never had a turn
  * or belongs to no project. `name` is server-generated after the first turn.

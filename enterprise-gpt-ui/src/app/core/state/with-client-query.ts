@@ -39,8 +39,11 @@ export interface ClientQueryConfig<T, K extends string> {
 /**
  * Client-side search and sort over a collection the store already holds.
  *
- * No list endpoint in this API accepts a sort parameter, so sorting is only ever
- * correct over a set the client holds in full. This feature makes that condition
+ * The three paginated list endpoints accept `sort=` and `dir=` since US-706, and the
+ * screens over them order server-side rather than composing this. What is left for it is
+ * every endpoint that accepts no order at all — the `/all` catalogue routes, and the
+ * documents listing — where sorting is only ever correct over a set the client holds in
+ * full. This feature makes that condition
  * explicit rather than implicit: when `isAuthoritative` is false the sort keys are
  * ignored and results stay in server order. Sorting only the page in hand is never
  * an option — "Load more" would then append a second sorted run beneath the first.

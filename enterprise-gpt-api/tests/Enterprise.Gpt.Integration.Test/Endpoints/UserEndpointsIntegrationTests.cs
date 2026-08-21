@@ -320,6 +320,124 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
     }
 
     [Fact]
+    public async Task GetUsers_SortedByEmailDescending_ReversesTheOrder()
+    {
+        await _fixture.AddUserAsync("Ada", "Sorted", "ada@it-sorted.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserAsync("Zoe", "Sorted", "zoe@it-sorted.example", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDto>>(
+            "api/users?name=it-sorted&sort=email&dir=desc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(["zoe@it-sorted.example", "ada@it-sorted.example"], page.Items.Select(x => x.Email));
+    }
+
+    [Fact]
+    public async Task GetUsers_SortedByEmailAscending_OrdersAlphabetically()
+    {
+        await _fixture.AddUserAsync("Ada", "Asc", "ada@it-asc.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserAsync("Zoe", "Asc", "zoe@it-asc.example", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDto>>(
+            "api/users?name=it-asc&sort=email&dir=asc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(["ada@it-asc.example", "zoe@it-asc.example"], page.Items.Select(x => x.Email));
+    }
+
+    [Fact]
+    public async Task GetUsers_SortedByName_UsesTheDatabaseCollationRatherThanAnOrdinalCompare()
+    {
+        // Only this tier can pin it. The unit tests run on SQLite, whose default BINARY collation is
+        // case-sensitive ordinal and would put every capitalised surname ahead of every lowercase
+        // one; SQL Server's default is case-insensitive, so "de Vries" interleaves with "De Vries".
+        // A client that re-sorted a page with `localeCompare` would disagree with either.
+        await _fixture.AddUserAsync("Ada", "de Vries", "ada@it-collate.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserAsync("Bea", "Dawson", "bea@it-collate.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserAsync("Cal", "De Wilde", "cal@it-collate.example", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDto>>(
+            "api/users?name=it-collate&sort=name&dir=asc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(["Dawson", "de Vries", "De Wilde"], page.Items.Select(x => x.LastName));
+    }
+
+    [Fact]
+    public async Task GetUsers_UnrecognisedSortField_ReturnsAValidationProblemNamingTheParameter()
+    {
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.GetAsync("api/users?sort=lastName", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Single(Assert.Contains("sort", problem.Errors));
+    }
+
+    [Fact]
+    public async Task GetUsers_PermissionFilter_ReturnsOnlyItsActiveHoldersAndAFilteredTotal()
+    {
+        var permissionId = await _fixture.AddPermissionAsync(
+            "it-filter-permission", cancellationToken: TestContext.Current.CancellationToken);
+        var holder = await _fixture.AddUserAsync(
+            "Grace", "Holder", "grace@it-filter.example", cancellationToken: TestContext.Current.CancellationToken);
+        var revoked = await _fixture.AddUserAsync(
+            "Alan", "Revoked", "alan@it-filter.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserAsync(
+            "Ada", "Bystander", "ada@it-filter.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserPermissionAsync(holder, permissionId, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserPermissionAsync(
+            revoked, permissionId, deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDto>>(
+            $"api/users?permissionId={permissionId}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        // The count travels with the filter, or the numbered pager above it walks past the end.
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(holder, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUsers_PermissionAndNameFilters_ApplyTogether()
+    {
+        var permissionId = await _fixture.AddPermissionAsync(
+            "it-both-permission", cancellationToken: TestContext.Current.CancellationToken);
+        var match = await _fixture.AddUserAsync(
+            "Grace", "Hopper", "grace@it-both.example", cancellationToken: TestContext.Current.CancellationToken);
+        var other = await _fixture.AddUserAsync(
+            "Ada", "Lovelace", "ada@it-both.example", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserPermissionAsync(match, permissionId, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddUserPermissionAsync(other, permissionId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDto>>(
+            $"api/users?name=Hopper&permissionId={permissionId}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(match, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUsers_UnknownPermissionId_ReturnsAValidationProblemRatherThanAnEmptyPage()
+    {
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.GetAsync(
+            $"api/users?permissionId={Guid.NewGuid()}", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Single(Assert.Contains("permissionId", problem.Errors));
+    }
+
+    [Fact]
     public async Task GetUsers_AdminUser_ReturnsPagedActiveUsers()
     {
         await _fixture.AddUserAsync("Ada", "Lovelace", "ada.lovelace@example.com",

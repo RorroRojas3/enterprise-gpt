@@ -32,25 +32,14 @@
   gap: 12px;
 }
 
-// Below the card breakpoint the toolbar gives up the two things a reader can do
-// without: the flyout, and the counter — which is `aria-hidden` anyway, with the
-// table's own live region carrying the string.
+// Below the card breakpoint the toolbar gives up the counter, which is `aria-hidden`
+// anyway with the table's own live region carrying the string.
 //
-// The order statement is *clipped*, not hidden. `display: none` takes descendants out
-// of the accessibility tree with it, and the explanation lives inside this element —
-// so hiding it would leave US-705's criterion unmet on every phone rather than just
-// unseen.
+// The sort select stays. US-705's statement was clipped here rather than hidden because
+// hiding it would have taken its explanation out of the accessibility tree; a control is
+// not in that position — dropping it would take away the only way to reorder the list on
+// a phone, which is a capability rather than a caption.
 @include bp.mobile {
-  .conversations__order {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .conversations__order-info,
   .conversations__count {
     display: none;
   }
@@ -104,34 +93,19 @@
   }
 }
 
-// The order statement and the counter share the far end of the toolbar, as frame 4a
-// draws the counter. `auto` on the first of them pushes the whole group.
-.conversations__order {
-  margin: 0 0 0 auto;
-  color: var(--muted);
-  font-size: 12.5px;
-  white-space: nowrap;
-}
+// The sort select and the counter share the far end of the toolbar, as frame 4a draws
+// the counter. `auto` on the first of them pushes the whole group. The select does not
+// shrink because this label is the flex item and its `min-width: auto` resolves to the
+// select's width — its longest option is "Alphabetical", and a narrower track would
+// ellipsise the value the control exists to display.
+.conversations__sort {
+  margin-inline-start: auto;
 
-.conversations__order-info {
-  display: inline-flex;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1;
-  cursor: help;
-
-  &:hover,
-  &:focus-visible {
-    color: var(--accent);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-    border-radius: 2px;
+  .form-select {
+    width: 170px;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 13px;
   }
 }
 

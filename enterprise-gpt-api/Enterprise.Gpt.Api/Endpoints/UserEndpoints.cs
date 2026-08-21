@@ -33,8 +33,12 @@ namespace Enterprise.Gpt.Api.Endpoints
             group.MapPost("me", GetOrCreateCurrentUserAsync)
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);
+            // The route's first declared 400, added with ?permissionId=, ?sort= and ?dir=: paging
+            // arguments are clamped rather than rejected, but a filter or an order nobody recognises
+            // has to be refused — a page in the wrong order looks exactly like a page in the right one.
             group.MapGet("", SearchUsersAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapGet("{id:guid}", GetUserAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
@@ -75,9 +79,11 @@ namespace Enterprise.Gpt.Api.Endpoints
         // they need defaults so the paging arguments stay optional, and C# requires optional
         // parameters last. Without defaults an absent ?skip= would fail binding with a 400.
         internal static async Task<Ok<PaginatedResponseDto<UserDto>>> SearchUsersAsync(
-            IUserService userService, string? name = null, int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+            IUserService userService, string? name = null, int skip = 0, int take = 20,
+            Guid? permissionId = null, string? sort = null, string? dir = null,
+            CancellationToken cancellationToken = default)
         {
-            var response = await userService.SearchUsersAsync(name, skip, take, cancellationToken);
+            var response = await userService.SearchUsersAsync(name, skip, take, permissionId, sort, dir, cancellationToken);
             return TypedResults.Ok(response);
         }
 

@@ -246,8 +246,8 @@ describe('AdminUsers (US-1201)', () => {
   it('offers no sort control, no selection column and no permission filter', async () => {
     await open('/admin/users', [directoryUserFixture()], { totalCount: 312 });
 
-    // Regime D, US-1206 and the absent bulk endpoint respectively. Pinned so a later
-    // story has to decide to add one rather than adding it back from the board.
+    // A follow-up on this tab, US-1206 and the absent bulk endpoint respectively. Pinned
+    // so a later story has to decide to add one rather than adding it back from the board.
     const headers = [...element().querySelectorAll('th')].map((cell) => cell.textContent?.trim());
     expect(headers).toEqual(['User', 'Email', 'Permissions', 'Actions']);
     expect(element().querySelectorAll('input[type="checkbox"]')).toHaveLength(0);

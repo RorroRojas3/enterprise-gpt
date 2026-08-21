@@ -20,17 +20,22 @@ export const USER_PAGE_SIZES = [25, 50, 100] as const;
 export const DEFAULT_USER_PAGE_SIZE = USER_PAGE_SIZES[0];
 
 /**
- * Why the directory offers no sort control (US-1201).
+ * Why the directory states its order (US-1201).
  *
- * `GET api/users` orders by last name then first name and accepts no sort parameter,
- * so the PRD's regime **D** applies: server order over a *paged* set, stated rather
- * than left to be inferred from an absence. A control that reordered one page would
- * sort twenty-five rows out of three hundred and read as if it had sorted all of them.
+ * The order is named rather than left to be inferred from the absence of a control, and
+ * the sentence carries the other thing frame `5a` gives the reader no way to discover:
+ * that one field searches names and email addresses alike.
  *
- * US-706 is the enabler that would replace this with a real control.
+ * **It no longer says the list cannot be reordered.** US-706 put `sort=` and `dir=` on
+ * `GET api/users`, so the endpoint would honour a control — the directory simply has not
+ * built one yet, and a caption claiming an incapacity the API does not have is worse than
+ * one that only states the order. Adding the control is a follow-up on this tab, and it
+ * retires this constant the way US-706 retired the conversations library's.
+ *
+ * It reads as the second half of a sentence the `<p>` beside it begins ("By last name."),
+ * so it carries only what that statement leaves out.
  */
-export const ORDER_EXPLANATION =
-  "Users are listed by last name. This list can't be reordered, and search covers names and email addresses.";
+export const ORDER_EXPLANATION = 'Search covers names and email addresses.';
 
 /**
  * Reads a `?page=` into a 1-based page number.

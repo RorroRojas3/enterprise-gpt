@@ -252,6 +252,79 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
     }
     #endregion
 
+    #region Ordering
+    [Fact]
+    public async Task GetProjects_SortedByNameAscending_OrdersAlphabetically()
+    {
+        await _fixture.AddProjectAsync("it-order-zulu", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddProjectAsync("it-order-alpha", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddProjectAsync("it-order-mike", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ProjectSummaryDto>>(
+            "api/projects?name=it-order-&sort=name&dir=asc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(
+            ["it-order-alpha", "it-order-mike", "it-order-zulu"],
+            page.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task GetProjects_SortedByNameDescending_ReversesTheOrder()
+    {
+        await _fixture.AddProjectAsync("it-rorder-zulu", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddProjectAsync("it-rorder-alpha", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddProjectAsync("it-rorder-mike", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ProjectSummaryDto>>(
+            "api/projects?name=it-rorder-&sort=name&dir=desc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(
+            ["it-rorder-zulu", "it-rorder-mike", "it-rorder-alpha"],
+            page.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task GetProjects_SortedByFavorite_PutsStarredFirst()
+    {
+        await _fixture.AddProjectAsync("it-pin-yankee", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddProjectAsync("it-pin-alpha", isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ProjectSummaryDto>>(
+            "api/projects?name=it-pin-&sort=favorite", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(["it-pin-alpha", "it-pin-yankee"], page.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task GetProjects_UnrecognisedSortField_ReturnsAValidationProblemNamingTheParameter()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync("api/projects?sort=recency", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Single(Assert.Contains("sort", problem.Errors));
+    }
+
+    [Fact]
+    public async Task GetProjects_UnrecognisedDirection_ReturnsAValidationProblemNamingTheParameter()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync("api/projects?sort=name&dir=sideways", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Single(Assert.Contains("dir", problem.Errors));
+    }
+    #endregion
+
     #region Favorites
     [Fact]
     public async Task SetProjectFavorite_OwnProject_MarksItAndNarrowsTheListing()

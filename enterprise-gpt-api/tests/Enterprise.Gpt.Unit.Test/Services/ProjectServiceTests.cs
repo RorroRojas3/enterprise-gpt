@@ -35,7 +35,8 @@ public sealed class ProjectServiceTests : IDisposable
     #region Helpers
     private async Task<Project> AddProjectAsync(
         string name = "Research", Guid? userId = null, DateTimeOffset? deactivated = null,
-        string? instructions = null, bool isFavorite = false)
+        string? instructions = null, bool isFavorite = false,
+        DateTimeOffset? created = null, DateTimeOffset? modified = null)
     {
         var date = DateTimeOffset.UtcNow;
         var project = new Project
@@ -46,8 +47,8 @@ public sealed class ProjectServiceTests : IDisposable
             Description = $"{name} description",
             Instructions = instructions,
             IsFavorite = isFavorite,
-            DateCreated = date,
-            DateModified = date,
+            DateCreated = created ?? date,
+            DateModified = modified ?? created ?? date,
             DateDeactivated = deactivated
         };
 
@@ -278,6 +279,204 @@ public sealed class ProjectServiceTests : IDisposable
 
         Assert.Equal("Quarterly Planning", Assert.Single(result.Items).Name);
     }
+
+    [Fact]
+    public async Task SearchProjectsAsync_NoOrderRequested_KeepsTheListingsOriginalOrder()
+    {
+        // The order this route had before it accepted one, pinned so a later change to the sorted
+        // path cannot quietly move it: clients written against it are promised it unchanged.
+        var older = await AddProjectAsync("Older", created: DateTimeOffset.UtcNow.AddDays(-2));
+        var newer = await AddProjectAsync("Newer", created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var result = await _service.SearchProjectsAsync(null, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([newer.Id, older.Id], result.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortByNameAscending_OrdersAlphabetically()
+    {
+        await AddProjectAsync("Zulu");
+        await AddProjectAsync("Alpha");
+        await AddProjectAsync("Mike");
+
+        var result = await _service.SearchProjectsAsync(
+            null, sort: "name", dir: "asc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Alpha", "Mike", "Zulu"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortByNameDescending_ReversesTheOrder()
+    {
+        await AddProjectAsync("Zulu");
+        await AddProjectAsync("Alpha");
+        await AddProjectAsync("Mike");
+
+        var result = await _service.SearchProjectsAsync(
+            null, sort: "name", dir: "desc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Zulu", "Mike", "Alpha"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortByUpdated_OrdersOnDateModifiedRatherThanDateCreated()
+    {
+        // The two orders are genuinely different, which is the whole reason this key exists: the
+        // older project is the one edited most recently.
+        var edited = await AddProjectAsync(
+            "Edited",
+            created: DateTimeOffset.UtcNow.AddDays(-5),
+            modified: DateTimeOffset.UtcNow.AddMinutes(-1));
+        var untouched = await AddProjectAsync(
+            "Untouched",
+            created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var result = await _service.SearchProjectsAsync(
+            null, sort: "updated", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([edited.Id, untouched.Id], result.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortByFavorite_PutsStarredFirstAndOrdersEachGroupByName()
+    {
+        // A two-value flag leaves almost every row tied, so the name has to carry the order inside
+        // each group or the engine decides it.
+        await AddProjectAsync("Beta", isFavorite: true);
+        await AddProjectAsync("Yankee");
+        await AddProjectAsync("Alpha", isFavorite: true);
+        await AddProjectAsync("Xray");
+
+        var result = await _service.SearchProjectsAsync(
+            null, sort: "favorite", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Alpha", "Beta", "Xray", "Yankee"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortWithoutDirection_UsesTheFieldsNaturalDirection()
+    {
+        // A name reads A-Z and a date reads newest first, so the same omitted direction resolves
+        // differently per field rather than defaulting to one of them everywhere.
+        await AddProjectAsync("Zulu", created: DateTimeOffset.UtcNow.AddDays(-2));
+        await AddProjectAsync("Alpha", created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var byName = await _service.SearchProjectsAsync(
+            null, sort: "name", cancellationToken: TestContext.Current.CancellationToken);
+        var byCreated = await _service.SearchProjectsAsync(
+            null, sort: "created", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Alpha", byName.Items[0].Name);
+        Assert.Equal("Alpha", byCreated.Items[0].Name);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_RequestedOrderIsTotal_SoPagesCannotDuplicateOrSkipARow()
+    {
+        // Four projects sharing a creation tick: without the Id tie-break the row at the page
+        // boundary is whatever the engine happens to return, and a drain can see it twice.
+        var created = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 4; i++)
+        {
+            await AddProjectAsync($"Same {i}", created: created);
+        }
+
+        var first = await _service.SearchProjectsAsync(
+            null, skip: 0, take: 2, sort: "created", cancellationToken: TestContext.Current.CancellationToken);
+        var second = await _service.SearchProjectsAsync(
+            null, skip: 2, take: 2, sort: "created", cancellationToken: TestContext.Current.CancellationToken);
+        var whole = await _service.SearchProjectsAsync(
+            null, skip: 0, take: 4, sort: "created", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Against the unpaged list, not merely distinct: any deterministic order returns four
+        // distinct rows, so a distinctness assertion would pass with the tie-break deleted.
+        Assert.Equal(
+            whole.Items.Select(x => x.Id),
+            first.Items.Select(x => x.Id).Concat(second.Items.Select(x => x.Id)));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_TieBreak_FollowsTheRequestedDirection()
+    {
+        // Four projects created in one tick: the tie-break decides the whole list, so a tie-break
+        // fixed in one direction would return the same page for both and the control would look inert.
+        var created = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 4; i++)
+        {
+            await AddProjectAsync($"Tied {i}", created: created);
+        }
+
+        var ascending = await _service.SearchProjectsAsync(
+            null, sort: "created", dir: "asc", cancellationToken: TestContext.Current.CancellationToken);
+        var descending = await _service.SearchProjectsAsync(
+            null, sort: "created", dir: "desc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(ascending.Items.Select(x => x.Id).Reverse(), descending.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortCombinedWithFilters_AppliesBoth()
+    {
+        await AddProjectAsync("Planning Zulu", isFavorite: true);
+        await AddProjectAsync("Planning Alpha", isFavorite: true);
+        await AddProjectAsync("Planning Mike");
+        await AddProjectAsync("Hiring");
+
+        var result = await _service.SearchProjectsAsync(
+            "planning", isFavorite: true, sort: "name", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(["Planning Alpha", "Planning Zulu"], result.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_UnrecognisedSortField_ThrowsNamingTheParameter()
+    {
+        // Rejected rather than ignored: a page in the wrong order looks exactly like a page in the
+        // right one, so a misspelled field would silently mislead.
+        var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchProjectsAsync(
+            null, sort: "recency", cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("sort", error.PropertyName);
+        Assert.Contains("'created'", error.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_UnrecognisedDirection_ThrowsNamingTheParameter()
+    {
+        var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchProjectsAsync(
+            null, sort: "name", dir: "sideways", cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("dir", error.PropertyName);
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_DirectionWithoutField_AppliesToTheDefaultField()
+    {
+        var older = await AddProjectAsync("Older", created: DateTimeOffset.UtcNow.AddDays(-2));
+        var newer = await AddProjectAsync("Newer", created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var result = await _service.SearchProjectsAsync(
+            null, dir: "asc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal([older.Id, newer.Id], result.Items.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task SearchProjectsAsync_SortFieldCasing_IsIgnored()
+    {
+        await AddProjectAsync("Zulu");
+        await AddProjectAsync("Alpha");
+
+        var result = await _service.SearchProjectsAsync(
+            null, sort: "NAME", dir: "ASC", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Alpha", result.Items[0].Name);
+    }
+
     #endregion
 
     #region GetProjectAsync

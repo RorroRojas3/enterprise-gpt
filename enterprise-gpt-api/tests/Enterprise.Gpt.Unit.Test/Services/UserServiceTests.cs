@@ -80,18 +80,22 @@ public sealed class UserServiceTests : IDisposable
         return permission;
     }
 
-    private async Task<User> AddUserAsync(Guid? id = null, DateTimeOffset? dateDeactivated = null, params Guid[] permissionIds)
+    private async Task<User> AddUserAsync(
+        Guid? id = null, DateTimeOffset? dateDeactivated = null, string firstName = "Existing",
+        string lastName = "User", string email = "existing.user@example.com",
+        DateTimeOffset? created = null, Guid? revokedPermissionId = null,
+        params Guid[] permissionIds)
     {
         var date = DateTimeOffset.UtcNow;
         var user = new User
         {
             Id = id ?? Guid.NewGuid(),
-            FirstName = "Existing",
-            LastName = "User",
-            Email = "existing.user@example.com",
+            FirstName = firstName,
+            LastName = lastName,
+            Email = email,
             DateDeactivated = dateDeactivated,
-            DateCreated = date,
-            DateModified = date
+            DateCreated = created ?? date,
+            DateModified = created ?? date
         };
 
         foreach (var permissionId in permissionIds)
@@ -105,6 +109,21 @@ public sealed class UserServiceTests : IDisposable
                 CreatedById = KnownIds.SeedUserId,
                 DateModified = date,
                 ModifiedById = KnownIds.SeedUserId
+            });
+        }
+
+        if (revokedPermissionId.HasValue)
+        {
+            user.UserPermissions.Add(new UserPermission
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                PermissionId = revokedPermissionId.Value,
+                DateCreated = date,
+                CreatedById = KnownIds.SeedUserId,
+                DateModified = date,
+                ModifiedById = KnownIds.SeedUserId,
+                DateDeactivated = date
             });
         }
 
@@ -1018,5 +1037,197 @@ public sealed class UserServiceTests : IDisposable
         Assert.Equal(1, response.PageSize);
         Assert.Equal(1, response.CurrentPage);
         Assert.Single(response.Items);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_NoOrderRequested_KeepsTheListingsOriginalOrder()
+    {
+        // The order this route had before it accepted one, pinned so a later change to the sorted
+        // path cannot quietly move it: clients written against it are promised it unchanged. The
+        // term is only here to hold the seeded row out of the assertion.
+        await AddUserAsync(lastName: "Zulu", firstName: "Ada", email: "ada@ordercheck.example");
+        await AddUserAsync(lastName: "Alpha", firstName: "Grace", email: "grace@ordercheck.example");
+
+        var response = await _service.SearchUsersAsync("ordercheck", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Alpha", "Zulu"], response.Items.Select(x => x.LastName));
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_SortByEmailDescending_ReversesTheOrder()
+    {
+        await AddUserAsync(email: "ada@mailcheck.example");
+        await AddUserAsync(email: "zoe@mailcheck.example");
+
+        var response = await _service.SearchUsersAsync(
+            "mailcheck", sort: "email", dir: "desc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("zoe@mailcheck.example", response.Items[0].Email);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_SortByCreatedAscending_PutsTheOldestRowFirst()
+    {
+        // The term holds the seeded row out: it is fixed at 2026-01-01, so an unfiltered
+        // assertion would start failing on its own once `AddYears(-5)` passes that date.
+        var oldest = await AddUserAsync(
+            lastName: "Oldest", email: "oldest@agecheck.example",
+            created: DateTimeOffset.UtcNow.AddYears(-5));
+        await AddUserAsync(
+            lastName: "Newest", email: "newest@agecheck.example",
+            created: DateTimeOffset.UtcNow.AddDays(-1));
+
+        var response = await _service.SearchUsersAsync(
+            "agecheck", sort: "created", dir: "asc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(oldest.Id, response.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_SortByNameDescending_ReversesBothKeys()
+    {
+        // The default is last name then first name, so reversing it has to reverse the second key
+        // too or two namesakes come back in ascending first-name order inside a descending list.
+        await AddUserAsync(lastName: "Hopper", firstName: "Ada");
+        await AddUserAsync(lastName: "Hopper", firstName: "Grace");
+
+        var response = await _service.SearchUsersAsync(
+            "Hopper", sort: "name", dir: "desc", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["Grace", "Ada"], response.Items.Select(x => x.FirstName));
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_UnrecognisedSortField_ThrowsNamingTheParameter()
+    {
+        var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchUsersAsync(
+            null, sort: "lastName", cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("sort", error.PropertyName);
+        Assert.Contains("'name'", error.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_UnrecognisedDirection_ThrowsNamingTheParameter()
+    {
+        var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchUsersAsync(
+            null, sort: "name", dir: "sideways", cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("dir", error.PropertyName);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_PermissionFilter_ReturnsOnlyItsHolders()
+    {
+        var permission = await AddPermissionAsync("Reports");
+        var holder = await AddUserAsync(lastName: "Holder", permissionIds: permission.Id);
+        await AddUserAsync(lastName: "Bystander");
+
+        var response = await _service.SearchUsersAsync(
+            null, permissionId: permission.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        // The count travels with the filter: a total describing the whole directory would send the
+        // numbered pager above it paging past the end of the result set.
+        Assert.Equal(1, response.TotalCount);
+        Assert.Equal(holder.Id, Assert.Single(response.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_PermissionFilter_ExcludesARevokedGrant()
+    {
+        // The grant carries its own DateDeactivated, so a revoked one still sits in the join table
+        // and would match a filter that only looked at the permission id.
+        var permission = await AddPermissionAsync("Reports");
+        await AddUserAsync(lastName: "Revoked", revokedPermissionId: permission.Id);
+
+        var response = await _service.SearchUsersAsync(
+            null, permissionId: permission.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, response.TotalCount);
+        Assert.Empty(response.Items);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_PermissionFilter_ExcludesDeactivatedUsers()
+    {
+        var permission = await AddPermissionAsync("Reports");
+        await AddUserAsync(
+            dateDeactivated: DateTimeOffset.UtcNow, lastName: "Departed", permissionIds: permission.Id);
+
+        var response = await _service.SearchUsersAsync(
+            null, permissionId: permission.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, response.TotalCount);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_PermissionAndNameFilters_ApplyTogether()
+    {
+        var permission = await AddPermissionAsync("Reports");
+        var match = await AddUserAsync(lastName: "Hopper", permissionIds: permission.Id);
+        await AddUserAsync(lastName: "Hopper");
+        await AddUserAsync(lastName: "Lovelace", permissionIds: permission.Id);
+
+        var response = await _service.SearchUsersAsync(
+            "Hopper", permissionId: permission.Id, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, response.TotalCount);
+        Assert.Equal(match.Id, Assert.Single(response.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_PermissionFilterOmitted_LeavesTheDirectoryUnfiltered()
+    {
+        var permission = await AddPermissionAsync("Reports");
+        await AddUserAsync(lastName: "Holder", permissionIds: permission.Id);
+        await AddUserAsync(lastName: "Bystander");
+
+        var response = await _service.SearchUsersAsync(null, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, response.TotalCount);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_UnknownPermissionId_ThrowsNamingTheParameter()
+    {
+        // A validation problem rather than the 404 every other permission-existence check raises: a
+        // 404 on a list route says the directory is gone, while a filter control can render a 400.
+        var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchUsersAsync(
+            null, permissionId: Guid.NewGuid(), cancellationToken: TestContext.Current.CancellationToken));
+
+        var error = Assert.Single(failure.Errors);
+        Assert.Equal("permissionId", error.PropertyName);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_DeactivatedPermissionId_IsRefusedWithTheAbsentOnes()
+    {
+        // The filter is offered from GET api/permissions, which returns neither absent nor
+        // deactivated permissions, so accepting one would answer an empty page for a control that
+        // could never have shown it.
+        var retired = await AddPermissionAsync("Retired", dateDeactivated: DateTimeOffset.UtcNow);
+
+        var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchUsersAsync(
+            null, permissionId: retired.Id, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("permissionId", Assert.Single(failure.Errors).PropertyName);
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_PermissionFilterWithSort_AppliesBoth()
+    {
+        var permission = await AddPermissionAsync("Reports");
+        await AddUserAsync(lastName: "Zulu", permissionIds: permission.Id);
+        await AddUserAsync(lastName: "Alpha", permissionIds: permission.Id);
+        await AddUserAsync(lastName: "Mike");
+
+        var response = await _service.SearchUsersAsync(
+            null, permissionId: permission.Id, sort: "name",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, response.TotalCount);
+        Assert.Equal(["Alpha", "Zulu"], response.Items.Select(x => x.LastName));
     }
 }

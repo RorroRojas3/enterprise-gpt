@@ -31,8 +31,11 @@ public sealed class RequestLoggingOptions
 
     private static readonly string[] _defaultExcludedPaths = ["/health", "/openapi", "/scalar"];
 
+    // "dir" and "permissionId" join the paging keys because neither identifies a person: one is
+    // 'asc' or 'desc', the other a permission's id. Redacting them would leave the access log unable
+    // to explain the two rejections the list routes can now raise.
     private static readonly string[] _defaultSafeQueryKeys =
-        ["skip", "take", "page", "pageSize", "sort", "order"];
+        ["skip", "take", "page", "pageSize", "sort", "order", "dir", "permissionId"];
 
     /// <summary>
     /// Whether request logging is active. Default: <see langword="true"/>.
@@ -83,7 +86,7 @@ public sealed class RequestLoggingOptions
 
     /// <summary>
     /// Query string keys whose values survive redaction, compared case-insensitively. Defaults to the
-    /// pagination and sorting keys when left unset.
+    /// pagination and ordering keys plus <c>permissionId</c> when left unset.
     /// </summary>
     public IList<string> SafeQueryKeys { get; set; } = [];
 

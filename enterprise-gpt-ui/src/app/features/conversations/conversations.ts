@@ -31,16 +31,19 @@ import { Icon } from '@shared/icon/icon';
 import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
-import { Tooltip } from '@shared/overlay/tooltip/tooltip';
 import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 import { ConversationLibraryStore } from './conversation-library-store';
 import { DeleteConversationsDialog } from './delete-conversations-dialog';
 import {
+  CONVERSATION_SORTS,
+  DEFAULT_CONVERSATION_SORT,
   FAVORITES_ON,
   FAVORITES_PARAM,
   NAME_PARAM,
-  ORDER_EXPLANATION,
+  SORT_PARAM,
   shouldReplaceHistory,
+  sortKey,
+  toConversationSort,
 } from './conversations-route';
 
 /**
@@ -59,9 +62,19 @@ import {
  * true: bind `[value]` one-way, never `[(value)]`, and never navigate from an effect
  * over `name()` — only from the user's own gesture.
  *
- * Frame `4a`'s project chip and per-row kebab arrived with US-307. What the frame
- * deliberately does *not* draw is a sort control, and that stays absent until US-706
- * gives the server one to honour — US-705's whole subject.
+ * Frame `4a`'s project chip and per-row kebab arrived with US-307.
+ *
+ * **The order is a third URL parameter on the same contract (US-706).** `?sort=` names one
+ * of {@link CONVERSATION_SORTS} and the store turns it into the API's `sort=`/`dir=` pair,
+ * so the URL spells what the reader chose while the request spells what the server needs.
+ * A value outside the offered set falls back to the default, which is what stops the
+ * select displaying an order the query is not running.
+ *
+ * It replaces US-705's stated order rather than joining it: the endpoint accepts an order
+ * now, so a caption explaining why the list cannot be reordered would be false. History
+ * follows the same rule the search term does — turning an order **on** or **off** pushes,
+ * moving between two non-default orders replaces, so arrowing through the select does not
+ * bury the unsorted list under three entries nobody chose.
  */
 @Component({
   selector: 'app-conversations',
@@ -80,7 +93,6 @@ import {
     RouterLink,
     SearchInput,
     TableCell,
-    Tooltip,
   ],
   providers: [ConversationLibraryStore],
   templateUrl: './conversations.html',
@@ -107,6 +119,15 @@ export class Conversations {
     transform: (value: string | undefined) => value === FAVORITES_ON,
   });
 
+  /**
+   * Bound from `?sort=` by `withComponentInputBinding()` (US-706).
+   *
+   * Resolved to an option rather than kept as a string, so the select and the request
+   * cannot disagree about what a hand-edited value means, and the server never sees a
+   * `sort=` it would answer with a 400 the reader never asked for.
+   */
+  readonly sort = input(DEFAULT_CONVERSATION_SORT, { transform: toConversationSort });
+
   protected readonly library = inject(ConversationLibraryStore);
   protected readonly actions = inject(ConversationActionsStore);
 
@@ -131,7 +152,8 @@ export class Conversations {
   /** A 403 answers the same however often it is asked; a 502 does not. */
   protected readonly canRetry = canRetry;
 
-  protected readonly ORDER_EXPLANATION = ORDER_EXPLANATION;
+  /** The orders the select offers (US-706), replacing US-705's stated order. */
+  protected readonly sortOptions = CONVERSATION_SORTS;
 
   protected readonly chatRoute = CHAT_ROUTE;
 
@@ -240,7 +262,11 @@ export class Conversations {
     // that outlives it. Handing over a computation — not the values — is what makes a
     // deep link issue one request carrying both parameters, rather than an unfiltered
     // request followed by a filtered one.
-    this.library.bindQuery(() => ({ name: this.name(), favorites: this.favorites() }));
+    this.library.bindQuery(() => ({
+      name: this.name(),
+      favorites: this.favorites(),
+      sort: this.sort(),
+    }));
 
     // Focus, not state — the one thing a signal cannot express declaratively. Load
     // more removes itself when the last page lands, so the reader who pressed it is
@@ -320,6 +346,34 @@ export class Conversations {
       // `null` removes the key rather than leaving `?name=` behind.
       { [NAME_PARAM]: next === '' ? null : next },
       shouldReplaceHistory(this.name(), next),
+    );
+  }
+
+  /**
+   * Records the chosen order in the URL, which is what re-runs the query.
+   *
+   * The value is checked against the offered set rather than trusted: a `change` event
+   * carrying anything else can only come from a tampered DOM. `Paginator` guards its
+   * page-size select the same way.
+   */
+  protected onSorted(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    const next = this.sortOptions.find((option) => option.value === value);
+
+    if (next === undefined || next.value === this.sort().value) {
+      return;
+    }
+
+    const previousKey = sortKey(this.sort());
+    const nextKey = sortKey(next);
+
+    this._applyQuery(
+      { [SORT_PARAM]: nextKey === '' ? null : nextKey },
+      // The search term's rule, for the same reason: a closed `<select>` fires `change`
+      // on every arrow key, so pushing unconditionally would bury the unsorted list under
+      // entries nobody chose. Turning an order **on** or **off** pushes — Back returns to
+      // the list as it was — while moving between two orders replaces.
+      shouldReplaceHistory(previousKey, nextKey),
     );
   }
 

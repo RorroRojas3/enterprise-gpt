@@ -23,8 +23,8 @@
 }
 
 // Wraps rather than overflowing: the board draws one row at 1440px, but only the
-// search field can shrink, and US-902's sort select joins this row later (WCAG SC
-// 1.4.10 Reflow).
+// search field can shrink, and US-902's sort select shares the row (WCAG SC 1.4.10
+// Reflow).
 .projects__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -38,6 +38,16 @@
   min-width: 180px;
 }
 
+// The board's 190px select. It does not shrink because the label around it is the flex
+// item and its `min-width: auto` resolves to this width — its longest option is
+// "Favourites first", and a narrower track ellipsises the value the control displays.
+.projects__sort .form-select {
+  width: 190px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
 // `margin-left: auto` in the board; `margin-inline-start` so a wrapped row still puts
 // it at the end rather than stranded mid-line.
 .projects__new {
@@ -48,7 +58,8 @@
   white-space: nowrap;
 }
 
-// Frame 4d's info line, minus its sorting sentence — see the template.
+// Frame 4d's info line, carrying a truncation rather than its sorting sentence — see
+// the template.
 .projects__ceiling {
   display: flex;
   align-items: center;

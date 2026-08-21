@@ -29,7 +29,15 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ProjectListStore } from './project-list-store';
-import { NAME_PARAM, shouldReplaceHistory } from './projects-route';
+import {
+  DEFAULT_PROJECT_SORT,
+  NAME_PARAM,
+  PROJECT_SORTS,
+  SORT_PARAM,
+  shouldReplaceHistory,
+  sortKey,
+  toProjectSort,
+} from './projects-route';
 
 /** How many skeleton cards stand in for the grid while the first drain runs. */
 const SKELETON_CARDS = 6;
@@ -45,10 +53,18 @@ const SKELETON_CARDS = 6;
  * rules keep that true: bind `[value]` one-way, never `[(value)]`, and never navigate
  * from an effect over `name()` — only from the user's own gesture.
  *
- * Frame `4c` also draws a sort select and a favourite star on each card. Neither ships
- * here: the sort is US-902, which is the story that can honour it over the drained set,
- * and the star needs a server flag that does not exist until US-909. Both are **absent
- * rather than disabled**, the repo's pattern for an unshipped affordance.
+ * **The sort is a second URL parameter on the same contract (US-902).** `?sort=` names
+ * one of {@link PROJECT_SORTS} and the store turns it into the API's `sort=`/`dir=` pair.
+ * History follows the search term's rule rather than pushing unconditionally: turning an
+ * order **on** or **off** pushes, so Back returns the reader to the grid as it was, while
+ * moving between two orders replaces — which matters because a closed `<select>` fires
+ * `change` on every arrow key, and three pushes for one gesture would bury the unsorted
+ * grid under entries nobody chose.
+ *
+ * Two departures from frame `4c` and `4d` are deliberate, and both are the board being
+ * older than the API: the select is **never disabled** past the load ceiling, since
+ * US-706 made the order the server's rather than a comparator over a partial set; and the
+ * fourth option reads "Favourites first" where the board says "Pinned".
  */
 @Component({
   selector: 'app-projects',
@@ -79,6 +95,14 @@ export class Projects {
     transform: (value: string | undefined) => value?.trim() ?? '',
   });
 
+  /**
+   * Bound from `?sort=` by `withComponentInputBinding()`.
+   *
+   * Resolved to an option rather than kept as a string, so the select and the request
+   * cannot disagree about what a hand-edited value means.
+   */
+  readonly sort = input(DEFAULT_PROJECT_SORT, { transform: toProjectSort });
+
   protected readonly projects = inject(ProjectListStore);
   protected readonly actions = inject(ProjectActionsStore);
 
@@ -93,6 +117,9 @@ export class Projects {
   protected readonly canRetry = canRetry;
 
   protected readonly skeletonCards = Array.from({ length: SKELETON_CARDS });
+
+  /** Frame `4c`'s four options, rendered in the order the board lists them. */
+  protected readonly sortOptions = PROJECT_SORTS;
 
   /**
    * Frame `4b`'s heading, naming the term.
@@ -155,7 +182,7 @@ export class Projects {
     // requires: it binds the subscription to this screen rather than to the injector
     // that outlives it. Handing over a computation — not the value — is what makes a
     // deep link one drain rather than an unfiltered one followed by a filtered one.
-    this.projects.bindQuery(() => ({ name: this.name() }));
+    this.projects.bindQuery(() => ({ name: this.name(), sort: this.sort() }));
 
     // Focus, not state — the one thing a signal cannot express declaratively. A card
     // removed by a delete can be the node the reader was standing on, and an emptied
@@ -210,6 +237,37 @@ export class Projects {
       // `null` removes the key rather than leaving `?name=` behind.
       { [NAME_PARAM]: next === '' ? null : next },
       shouldReplaceHistory(this.name(), next),
+    );
+  }
+
+  /**
+   * Records the chosen order in the URL, which is what re-runs the query.
+   *
+   * The value is checked against the offered set rather than trusted: a `change` event
+   * carrying anything else can only come from a tampered DOM, and sending it would take
+   * a 400 the reader could not explain. `Paginator` guards its page-size select the same
+   * way.
+   */
+  protected onSorted(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    const next = this.sortOptions.find((option) => option.value === value);
+
+    if (next === undefined || next.value === this.sort().value) {
+      return;
+    }
+
+    // `null` removes the key rather than spelling out the default the reader gets from a
+    // bare `/projects`, so the rule below reads the two values the URL will actually hold.
+    const previousKey = sortKey(this.sort());
+    const nextKey = sortKey(next);
+
+    this._applyQuery(
+      { [SORT_PARAM]: nextKey === '' ? null : nextKey },
+      // The search term's rule, for the same reason: a closed `<select>` fires `change`
+      // on every arrow key, so pushing unconditionally would bury the unsorted grid under
+      // three entries nobody chose. Turning an order **on** or **off** pushes — Back
+      // returns to the list as it was — while moving between two orders replaces.
+      shouldReplaceHistory(previousKey, nextKey),
     );
   }
 

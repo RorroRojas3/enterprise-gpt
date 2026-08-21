@@ -30,11 +30,12 @@ public static class ProjectEndpoints
             // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        // ProducesProblem(400) because ?isFavorite= is a typed query parameter that can fail to
-        // bind. It is not ProducesValidationProblem(): a binding failure carries no errors
-        // dictionary, and OpenAPI allows one schema per status, so the two cannot both be declared.
+        // ProducesValidationProblem() since US-706: ?sort= and ?dir= are rejected by the service with
+        // an errors dictionary naming the parameter. A binding failure on ?isFavorite= still returns
+        // a 400 without one, and OpenAPI allows a single schema per status, so the richer of the two
+        // is declared — a client reading `errors` defensively handles both.
         group.MapGet("", SearchProjectsAsync)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesValidationProblem();
         group.MapGet("{id:guid}", GetProjectAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", CreateProjectAsync)
@@ -63,9 +64,10 @@ public static class ProjectEndpoints
     // defaults so the paging arguments stay optional, and C# requires optional parameters last.
     internal static async Task<Ok<PaginatedResponseDto<ProjectSummaryDto>>> SearchProjectsAsync(
         IProjectService projectService, string? name = null, int skip = 0, int take = 20,
-        bool? isFavorite = null, CancellationToken cancellationToken = default)
+        bool? isFavorite = null, string? sort = null, string? dir = null,
+        CancellationToken cancellationToken = default)
     {
-        var response = await projectService.SearchProjectsAsync(name, skip, take, isFavorite, cancellationToken);
+        var response = await projectService.SearchProjectsAsync(name, skip, take, isFavorite, sort, dir, cancellationToken);
         return TypedResults.Ok(response);
     }
 

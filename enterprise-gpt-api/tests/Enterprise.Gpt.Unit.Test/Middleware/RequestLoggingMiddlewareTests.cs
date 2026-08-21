@@ -229,6 +229,22 @@ public sealed class RequestLoggingMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_OrderingAndPermissionFilterKeys_AreLoggedVerbatim()
+    {
+        // Neither identifies a person: one is 'asc' or 'desc', the other a permission's id. Redacted
+        // they would leave the access log unable to explain the 400 the route raised.
+        var context = RequestLoggingTestHarness.CreateContext(
+            "/api/users",
+            queryString: "?sort=email&dir=desc&permissionId=8e1b2c3d-0000-0000-0000-000000000001");
+
+        await _harness.Run(context);
+
+        Assert.Equal(
+            "/api/users?sort=email&dir=desc&permissionId=8e1b2c3d-0000-0000-0000-000000000001",
+            RequestLoggingTestHarness.Field(_harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
+    }
+
+    [Fact]
     public async Task InvokeAsync_QueryRedactionDisabled_LogsTheQueryStringVerbatim()
     {
         _harness.Options.RedactQueryValues = false;

@@ -46,6 +46,7 @@ import {
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { selectRows } from '@shared/data/row-selection';
+import { ConversationSortOption, DEFAULT_CONVERSATION_SORT } from './conversations-route';
 
 /**
  * How many rows the library asks for at a time, matching frame `4a`'s own count.
@@ -65,6 +66,7 @@ export const LIBRARY_PAGE_SIZE = 25;
 export interface ConversationLibraryQuery {
   readonly name: string;
   readonly favorites: boolean;
+  readonly sort: ConversationSortOption;
 }
 
 /**
@@ -118,6 +120,8 @@ interface ConversationLibraryState {
   readonly name: string;
   /** The favourites filter the rows on screen belong to, on the same terms. */
   readonly favorites: boolean;
+  /** The order the rows on screen are in, on the same terms. */
+  readonly sort: ConversationSortOption;
   /**
    * A *next page* is in flight (US-702), which is not the same as `isPending()`.
    *
@@ -157,13 +161,17 @@ interface ConversationLibraryState {
  * released by `SessionBootstrap` because it exists before any screen asks for it;
  * this one is created by the route that shows it and always has a term to run.
  *
- * Rows keep the server's order (`dateCreated` descending) and no sort control is
- * offered — the PRD's regime **B**, and US-705's whole subject.
+ * **The order is the server's, and the screen chooses it (US-706).** `sort=` and `dir=`
+ * ride the first page and every Load more alike, which is what makes an appended page a
+ * continuation of the same run rather than a second sorted run underneath the first — the
+ * failure that made a control dishonest here while the endpoint accepted no order, and
+ * US-705's whole subject until it did.
  */
 export const ConversationLibraryStore = signalStore(
   withState<ConversationLibraryState>({
     name: '',
     favorites: false,
+    sort: DEFAULT_CONVERSATION_SORT,
     loadingMore: false,
     _queryGeneration: 0,
   }),
@@ -289,7 +297,14 @@ export const ConversationLibraryStore = signalStore(
       // `take` comes from `withOffsetPagination`, which clamps it to 1–100 — the
       // server's own range, so US-702's fourth criterion cannot be violated by
       // changing `LIBRARY_PAGE_SIZE`.
-      let params = new HttpParams().set('skip', String(skip)).set('take', String(store.take()));
+      // The order rides every request, the first page and each Load more alike. That is
+      // what makes an appended page a continuation of the same run rather than a second
+      // sorted run underneath the first — the failure US-705 refused a control over.
+      let params = new HttpParams()
+        .set('skip', String(skip))
+        .set('take', String(store.take()))
+        .set('sort', query.sort.wire.sort)
+        .set('dir', query.sort.wire.dir);
 
       // Omitted rather than sent empty, and never `filter=`: US-701's first
       // criterion, and a blank `name=` would still take the server down its LIKE
@@ -310,7 +325,7 @@ export const ConversationLibraryStore = signalStore(
 
     /** The query the rows on screen belong to, for a retry or a next page. */
     function currentQuery(): ConversationLibraryQuery {
-      return { name: store.name(), favorites: store.favorites() };
+      return { name: store.name(), favorites: store.favorites(), sort: store.sort() };
     }
 
     /**
@@ -364,13 +379,14 @@ export const ConversationLibraryStore = signalStore(
     // `retry()` pushes the same query again on purpose.
     const _runQuery = rxMethod<ConversationLibraryQuery>(
       pipe(
-        tap(({ name, favorites }) => {
+        tap(({ name, favorites, sort }) => {
           store._querySuperseded$.next();
           patchState(
             store,
             (state) => ({
               name,
               favorites,
+              sort,
               loadingMore: false,
               _queryGeneration: state._queryGeneration + 1,
             }),

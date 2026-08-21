@@ -16,6 +16,11 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ConversationLibraryStore, LIBRARY_PAGE_SIZE } from './conversation-library-store';
+import {
+  CONVERSATION_SORTS,
+  ConversationSortOption,
+  DEFAULT_CONVERSATION_SORT,
+} from './conversations-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const BULK_URL = `${TEST_API_BASE_URL}/api/conversations/bulk`;
@@ -25,6 +30,7 @@ describe('ConversationLibraryStore (US-701)', () => {
   let store: InstanceType<typeof ConversationLibraryStore>;
   let term: ReturnType<typeof signal<string>>;
   let favorites: ReturnType<typeof signal<boolean>>;
+  let sort: ReturnType<typeof signal<ConversationSortOption>>;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -40,18 +46,30 @@ describe('ConversationLibraryStore (US-701)', () => {
     store = TestBed.inject(ConversationLibraryStore);
     term = signal('');
     favorites = signal(false);
+    sort = signal(DEFAULT_CONVERSATION_SORT);
   });
 
   afterEach(() => {
     backend.verify();
   });
 
-  /** Wires the query the way the screen's constructor does — one computation, both inputs. */
+  /** Wires the query the way the screen's constructor does — one computation, every input. */
   function bind(): void {
     TestBed.runInInjectionContext(() =>
-      store.bindQuery(() => ({ name: term(), favorites: favorites() })),
+      store.bindQuery(() => ({ name: term(), favorites: favorites(), sort: sort() })),
     );
     TestBed.tick();
+  }
+
+  /** The option a test names, by its `?sort=` value. */
+  function option(value: string): ConversationSortOption {
+    const found = CONVERSATION_SORTS.find((candidate) => candidate.value === value);
+
+    if (found === undefined) {
+      throw new Error(`No sort option named ${value}.`);
+    }
+
+    return found;
   }
 
   function expectSearch(): TestRequest {
@@ -62,6 +80,57 @@ describe('ConversationLibraryStore (US-701)', () => {
     TestBed.tick();
     await Promise.resolve();
   }
+
+  describe('the order (US-706)', () => {
+    it('sends the default order rather than relying on the server having one', async () => {
+      bind();
+
+      const request = expectSearch();
+      expect(request.request.params.get('sort')).toBe('created');
+      expect(request.request.params.get('dir')).toBe('desc');
+
+      request.flush(conversationPage([conversationFixture()], { pageSize: LIBRARY_PAGE_SIZE }));
+      await settle();
+    });
+
+    it('maps an option onto the API pair rather than sending its own vocabulary', async () => {
+      // `?sort=oldest` is what the reader chose; `sort=created&dir=asc` is what the
+      // request needs. The URL is a contract with the reader, not a proxy for the wire.
+      sort.set(option('oldest'));
+      bind();
+
+      const request = expectSearch();
+      expect(request.request.params.get('sort')).toBe('created');
+      expect(request.request.params.get('dir')).toBe('asc');
+
+      request.flush(conversationPage([conversationFixture()], { pageSize: LIBRARY_PAGE_SIZE }));
+      await settle();
+    });
+
+    it('replaces the rows when the order changes rather than appending a second run', async () => {
+      bind();
+      expectSearch().flush(
+        conversationPage([conversationFixture(), conversationFixture()], {
+          totalCount: 2,
+          pageSize: LIBRARY_PAGE_SIZE,
+        }),
+      );
+      await settle();
+
+      sort.set(option('name'));
+      await settle();
+
+      const reordered = expectSearch();
+      expect(reordered.request.params.get('skip')).toBe('0');
+      expect(reordered.request.params.get('sort')).toBe('name');
+      reordered.flush(
+        conversationPage([conversationFixture()], { totalCount: 1, pageSize: LIBRARY_PAGE_SIZE }),
+      );
+      await settle();
+
+      expect(store.entities()).toHaveLength(1);
+    });
+  });
 
   it('asks for the first page, and never sends filter=', async () => {
     bind();

@@ -11,6 +11,7 @@ using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Service.Sorting;
 
 namespace Enterprise.Gpt.Service
 {
@@ -30,14 +31,25 @@ namespace Enterprise.Gpt.Service
         Task<(UserDto User, bool Created)> GetOrCreateCurrentUserAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Searches active users by name or email, ordered by last name then first name.
+        /// Searches active users by name or email, ordered by last name then first name unless an
+        /// order is requested.
         /// </summary>
         /// <param name="name">An optional fragment matched against first name, last name, and email.</param>
         /// <param name="skip">The number of users to skip.</param>
         /// <param name="take">The page size.</param>
+        /// <param name="permissionId">
+        /// Optionally narrows the page to users holding an active grant of that permission. Applied
+        /// before the count, so the total describes the filtered directory rather than the whole one.
+        /// </param>
+        /// <param name="sort">An optional field to order by — one of <see cref="Sorting.UserSortKeys.Supported"/>.</param>
+        /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>A page of matching users.</returns>
-        Task<PaginatedResponseDto<UserDto>> SearchUsersAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default);
+        /// <exception cref="ValidationException">
+        /// <paramref name="permissionId"/> names no active permission, or <paramref name="sort"/> or
+        /// <paramref name="dir"/> names something this listing does not accept.
+        /// </exception>
+        Task<PaginatedResponseDto<UserDto>> SearchUsersAsync(string? name, int skip = 0, int take = 20, Guid? permissionId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Gets a single active user by id.
@@ -98,6 +110,12 @@ namespace Enterprise.Gpt.Service
         IValidator<UpdateUserActionDto> updateValidator,
         IUserPermissionCache permissionCache) : IUserService
     {
+        /// <summary>
+        /// The wire-visible key a rejected <c>?permissionId=</c> is reported under: the query-parameter
+        /// name the caller sent, not a <c>nameof</c>, because that is the token a filter control owns.
+        /// </summary>
+        private const string PermissionIdProperty = "permissionId";
+
         private readonly ILogger<UserService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly IGraphService _graphService = graphService;
@@ -192,12 +210,23 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public async Task<PaginatedResponseDto<UserDto>> SearchUsersAsync(string? name, int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+        public async Task<PaginatedResponseDto<UserDto>> SearchUsersAsync(string? name, int skip = 0, int take = 20, Guid? permissionId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
         {
+            // Resolved before any database work, so a misspelled sort field costs a round trip to
+            // nothing rather than a page the caller then has to distrust.
+            SortSelection<UserSortKey>? order = SortParameters.IsDefaultOrder(sort, dir)
+                ? null
+                : UserSortKeys.Resolve(sort, dir);
+
             // Clamped rather than validated: the paging arguments come straight off the query
             // string, and take = 0 would divide by zero when computing CurrentPage below.
             skip = Math.Max(skip, 0);
             take = Math.Clamp(take, 1, 100);
+
+            if (permissionId.HasValue)
+            {
+                await EnsurePermissionIsFilterableAsync(permissionId.Value, cancellationToken);
+            }
 
             var query = _ctx.Users
                 .AsNoTracking()
@@ -210,11 +239,18 @@ namespace Enterprise.Gpt.Service
                     || EF.Functions.Like(x.Email, $"%{name}%"));
             }
 
+            // Before the count, so TotalCount describes the filtered directory and the numbered pager
+            // above it stays honest. The grant carries its own DateDeactivated, so a revoked grant
+            // has to be excluded here as well as in the projection that renders the badges.
+            if (permissionId.HasValue)
+            {
+                query = query.Where(x => x.UserPermissions
+                    .Any(grant => grant.PermissionId == permissionId.Value && !grant.DateDeactivated.HasValue));
+            }
+
             var totalCount = await query.CountAsync(cancellationToken);
 
-            var items = await query
-                .OrderBy(x => x.LastName)
-                .ThenBy(x => x.FirstName)
+            var items = await OrderUsers(query, order)
                 .Skip(skip)
                 .Take(take)
                 .Select(UserMapper.MapToUserDtoExpression)
@@ -227,6 +263,75 @@ namespace Enterprise.Gpt.Service
                 PageSize = take,
                 CurrentPage = (skip / take) + 1
             };
+        }
+
+        /// <summary>
+        /// Refuses a <c>?permissionId=</c> naming no active permission.
+        /// </summary>
+        /// <remarks>
+        /// A <see cref="ValidationException"/> rather than the <see cref="NotFoundException"/> every
+        /// other permission-existence check in this service raises, and deliberately: a 404 on a list
+        /// route says the directory itself is gone, while a filter control can render a 400 that names
+        /// the parameter it owns. Deactivated permissions are refused with absent ones, because the
+        /// filter is offered from <c>GET api/permissions</c>, which returns neither.
+        /// </remarks>
+        private async Task EnsurePermissionIsFilterableAsync(Guid permissionId, CancellationToken cancellationToken)
+        {
+            var exists = await _ctx.Permissions
+                .AnyAsync(x => x.Id == permissionId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!exists)
+            {
+                throw new ValidationException(
+                [
+                    new ValidationFailure(
+                        PermissionIdProperty,
+                        $"'{permissionId}' is not an active permission.")
+                ]);
+            }
+        }
+
+        /// <remarks>
+        /// The string comparison is the database collation's, not the CLR's — case-insensitive on a
+        /// SQL Server default and ordinal on the SQLite the unit tests run against, so "de Vries" and
+        /// "De Vries" interleave in production and do not under test. A client must not re-sort a page
+        /// with <c>localeCompare</c> and expect to agree with it.
+        /// </remarks>
+        private static IOrderedQueryable<User> OrderUsers(
+            IQueryable<User> query,
+            SortSelection<UserSortKey>? order)
+        {
+            if (order is not { } requested)
+            {
+                // Left exactly as it was before this listing accepted an order, tie-break and all —
+                // which is to say without one. Adding Id here would reorder namesakes, and clients
+                // written against this route are promised it unchanged.
+                return query
+                    .OrderBy(x => x.LastName)
+                    .ThenBy(x => x.FirstName);
+            }
+
+            var ordered = requested.Key switch
+            {
+                UserSortKey.Email => requested.IsAscending
+                    ? query.OrderBy(x => x.Email)
+                    : query.OrderByDescending(x => x.Email),
+                UserSortKey.Created => requested.IsAscending
+                    ? query.OrderBy(x => x.DateCreated)
+                    : query.OrderByDescending(x => x.DateCreated),
+                _ => requested.IsAscending
+                    ? query.OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
+                    : query.OrderByDescending(x => x.LastName).ThenByDescending(x => x.FirstName)
+            };
+
+            // Every requested order gets a tie-break the default cannot be given: two people can
+            // share a surname, an inbox alias or a provisioning tick, and a client paging through the
+            // directory needs the row at a page boundary to be the same row every time. It follows
+            // the requested direction, or a listing whose rows are all tied on the primary key would
+            // return the same page for both directions and the control would look inert.
+            return requested.IsAscending
+                ? ordered.ThenBy(x => x.Id)
+                : ordered.ThenByDescending(x => x.Id);
         }
 
         /// <inheritdoc />

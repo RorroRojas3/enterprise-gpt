@@ -51,6 +51,28 @@
   </label>
 
   <!--
+    The sort select (US-706), which retires US-705's stated order: `GET
+    api/conversations/search` now accepts `sort=` and `dir=`, so an appended page is a
+    continuation of the same run rather than a second sorted run underneath the first —
+    the failure that made a control dishonest here.
+
+    The label is hidden rather than absent: "Newest first" reads as a value, not as what
+    the control does. The selection is bound on the options, never as `[value]` on the
+    select, or a deep link to `?sort=name` would request Alphabetical and display
+    "Newest first".
+  -->
+  <label class="conversations__sort">
+    <span class="visually-hidden">Sort conversations</span>
+    <select class="form-select" (change)="onSorted($event)">
+      @for (option of sortOptions; track option.value) {
+        <option [value]="option.value" [selected]="option.value === sort().value">
+          {{ option.label }}
+        </option>
+      }
+    </select>
+  </label>
+
+  <!--
     aria-hidden because the same string is handed to the table's own live region
     below, which announces it once when it changes. Duplicating it here would have a
     screen reader read the count twice on every search.
@@ -60,37 +82,6 @@
     *narrowing* search keeps it, alongside the rows it still describes.
   -->
   @if (!library.isFirstLoad() && !library.error()) {
-    <!--
-      US-705. The list is the server's own `dateCreated` order and no endpoint here
-      accepts a sort parameter, so rather than leaving that to be inferred from an
-      absence, the order is named and the reason is one keystroke away.
-
-      This is the anchor US-706 replaces with a real sort control; until then a
-      control that reordered one loaded page — with a second sorted run appearing
-      under it on the next Load more — would be the dishonest alternative.
-
-      The statement is not aria-hidden — unlike the counter, nothing else carries it,
-      and the criterion is that the order is *stated*. The explanation rides along as
-      visually-hidden text so it does not depend on hovering, and the info control
-      repeats it as a flyout for the reader who is looking rather than listening:
-      `Tooltip` shows on focus as well as hover and Escape dismisses it (WCAG SC
-      1.4.13). Its own short name stops a screen reader announcing the whole sentence
-      as a button label.
-    -->
-    <p class="conversations__order">
-      Newest first
-      <span class="visually-hidden">. {{ ORDER_EXPLANATION }}</span>
-    </p>
-    <button
-      class="conversations__order-info"
-      type="button"
-      aria-label="Why this order"
-      [appTooltip]="ORDER_EXPLANATION"
-      appTooltipPlacement="top"
-    >
-      <app-icon name="bi-info-circle" />
-    </button>
-
     <p class="conversations__count" aria-hidden="true">{{ library.countSummary() }}</p>
   }
 </div>

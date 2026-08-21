@@ -82,8 +82,9 @@ export interface RemovedUserRow {
  * committed values; and `takeUntil(signedOut$)` on the inner request, because
  * `withResetOnSignOut` clears state and does not cancel work.
  *
- * Rows keep the server's order — last name, then first name — and no sort control is
- * offered: the endpoint accepts no sort parameter, which is the PRD's regime **D**.
+ * Rows keep the server's order — last name, then first name. No sort control is offered
+ * here, but that is now the screen's own gap rather than the API's: US-706 put `sort=` and
+ * `dir=` on `GET api/users`, so wiring one is a route-and-template change on this tab.
  */
 export const AdminUsersStore = signalStore(
   withState<AdminUsersState>({

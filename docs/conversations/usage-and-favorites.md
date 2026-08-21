@@ -366,7 +366,7 @@ All routes are in the authenticated `api/conversations` group and are scoped to 
 |---|---|---|---|
 | GET | `/api/conversations/{id:guid}` | `200 ConversationDetailDto` | 404 unknown, deactivated, or another user's |
 | PUT | `/api/conversations/{id:guid}/favorite` | `204` | 400 malformed body, 404 unknown, deactivated, or another user's |
-| GET | `/api/conversations/search?name=&skip=&take=&isFavorite=&projectId=` | `200 PaginatedResponseDto<ConversationDto>` | 400 a query parameter that will not bind, 404 `projectId` is not an active project of the caller (§5.4) — paging itself is clamped, not rejected |
+| GET | `/api/conversations/search?name=&skip=&take=&isFavorite=&projectId=&sort=&dir=` | `200 PaginatedResponseDto<ConversationDto>` | 400 a query parameter that will not bind, 400 validation-error an unrecognised `sort` or `dir` (§5.6), 404 `projectId` is not an active project of the caller (§5.4) — paging itself is clamped, not rejected |
 
 ### 5.1 The resume shape — `ConversationDetailDto`
 
@@ -430,13 +430,34 @@ GET /api/conversations/search?projectId=9c1f1c8e-6a1e-4c1a-9f7a-2b3c4d5e6f70&nam
 
 **Omitting the parameter leaves behaviour byte-for-byte unchanged**, and that is a property of the code rather than a claim about it: the filter and the ownership check both sit behind one `projectId.HasValue` guard, so an absent value executes nothing new.
 
-The route declares `.ProducesProblem(400)` alongside the 404. The 400 is a **binding** failure on one of the four typed query parameters — `skip`, `take`, `isFavorite`, `projectId`; a `string? name` always binds — so `?projectId=banana` carries no `errors` dictionary and is not a validation problem. There is no validator on this route, exactly as there is none on the favourite route (§5.2), which is why it is `.ProducesProblem(400)` and not `.ProducesValidationProblem()`.
+The route declares `.ProducesValidationProblem()` alongside the 404, since US-706 — before that it declared `.ProducesProblem(400)`. `?projectId=banana` is still a **binding** failure carrying no `errors` dictionary, exactly as it always was: `skip`, `take`, `isFavorite` and `projectId` are typed query parameters that can fail to bind (a `string? name` always binds), and there is still no validator on *this* route for any of them, matching the favourite route (§5.2). What changed is that `?sort=` and `?dir=` (§5.6) **are** validated, by the service rather than by binding, and reported with an `errors` dictionary — and OpenAPI allows only one declared schema per status, so the richer of the two shapes is the one now declared. A client reading `errors` defensively — checking whether it is present before reading from it — handles both cases without knowing which one occurred.
 
 No index was added for it, and that is deliberate. `(ProjectId, DateDeactivated)` already exists on `Core.Conversation` for the delete cascade, but the filtered listing is **owner-scoped too**, so the engine seeks `(UserId, DateDeactivated, DateCreated DESC)` and gets the ordering off it for free, leaving `ProjectId` a residual predicate over one user's conversations — a bounded set. Folding `DateCreated` into the project index would buy a second ordered path for a query that already has one, and cost every conversation write for it.
 
 ### 5.5 `ConversationDto` gains two fields
 
 `modelId` (nullable) and `isFavorite` are now on `ConversationDto`, so they appear on the search listing, on `POST`, and on `PUT` as well as on the detail read. Both the materialized mapper and the `MapToChatDtoExpression` projection carry them; a new conversation returns `"modelId": null` until its first turn runs.
+
+### 5.6 Ordering — `?sort=` and `?dir=` (US-706)
+
+`GET /api/conversations/search` accepts `?sort=` (`created` | `name`) and `?dir=` (`asc` | `desc`, case-insensitive), resolved by [`ConversationSortKeys`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Sorting/ConversationSortKeys.cs) against the shared parser in `Enterprise.Gpt.Service.Sorting` — the same folder and pattern projects and users search use (§3.6 of [Projects](../projects/project-management.md#36-ordering--sort-and-dir-us-706), §2 of [User Management](../users/user-management.md#2-api-surface)).
+
+**`dateModified` is deliberately absent from the accepted set.** It moves on a rename, a favourite, a model change and a move between projects as readily as on a turn, so a "recently active" sort built on it would promise something the column cannot answer — the transcript, which is where activity actually lands, lives in Cosmos and is not queryable from here (§1.2's data-model summary).
+
+An unrecognised `sort` or `dir` is refused as a `400 /problems/validation-error`, keyed by the lowercase query-parameter name it came from rather than a C# property name:
+
+```json
+{
+  "type": "/problems/validation-error",
+  "errors": { "sort": ["'updated' is not a supported sort field. Supported fields are 'created', 'name'."] }
+}
+```
+
+`dir` alone is a real request: it applies to the listing's default field (`created`), which defaults to descending — `name` defaults to ascending, since a name reads A–Z and a date reads most usefully newest first.
+
+**Omitting both parameters is byte-for-byte the pre-existing `DateCreated DESC` order**, with no `Id` tiebreak — this listing never had one, unlike the project listing's `Id DESC` (§3.2 of [Projects](../projects/project-management.md#32-paging-is-clamped-not-validated)), and adding one to the default path would be a behaviour change existing clients are promised against. Supplying either parameter switches to the requested field and *adds* an `Id` tiebreak that **follows the requested direction** — a review round caught this as a real defect when the tiebreak was first fixed rather than direction-following: with a fixed tiebreak, ascending and descending both collapse onto the tiebreak's own order on a screen where many rows share one name, which every untitled conversation does.
+
+No migration and no new index: the filtered listing already seeks `(UserId, DateDeactivated, DateCreated DESC)` for its default order, and a requested `name` or reversed `created` order is a residual sort over that same seeked set rather than a second index-backed path.
 
 ## 6. Database schema
 
