@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { MessageFeedbackRating } from '@domain/api/conversation';
 import {
   AssistantActivity,
   AssistantStatusSnapshot,
@@ -14,6 +15,7 @@ import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { MarkdownExtras } from '../markdown/markdown-extras';
 import { ActivityCard } from './activity-card';
 import { MessageCopy } from './message-copy';
+import { MessageFeedback } from './message-feedback';
 import { ReasoningRegion } from './reasoning-region';
 import { formatTurnUsage } from './turn-usage';
 
@@ -46,6 +48,7 @@ type RenderedNode =
     MarkdownComponent,
     MarkdownExtras,
     MessageCopy,
+    MessageFeedback,
     ReasoningRegion,
   ],
   templateUrl: './assistant-turn.html',
@@ -64,6 +67,19 @@ export class AssistantTurn {
   readonly reasoningText = input('');
   /** The measured reasoning window for frame `1f`'s pill (US-503). */
   readonly reasoningSeconds = input<number | null>(null);
+  /**
+   * The persisted message this turn became (US-1101), or null when it never became one —
+   * a live turn, a cut-off, or a completed turn whose transcript write failed. Null is
+   * what withholds the feedback controls, and it withholds them by construction rather
+   * than by a flag anyone has to remember to set.
+   */
+  readonly messageId = input<string | null>(null);
+  /** The rating already recorded against this answer (US-1103). */
+  readonly rating = input<MessageFeedbackRating | null>(null);
+  /** Whether this answer's own rating request is in flight (US-1103). */
+  readonly ratingPending = input<boolean>(false);
+  /** The thumb the reader pressed. What it means is the store's decision, not this one's. */
+  readonly rated = output<MessageFeedbackRating>();
 
   /**
    * The join, derived once per flush rather than per node in the template.

@@ -33,11 +33,17 @@
       </div>
     }
     @case ('assistant') {
+      <!-- US-1103. Only this arm: a cut-off turn was never sent a `Finished`, so it holds
+           no message id and there is nothing to address a rating to. -->
       <app-assistant-turn
         [snapshot]="entry.snapshot"
         [timeline]="entry.timeline"
         [reasoningText]="entry.reasoningText"
         [reasoningSeconds]="entry.reasoningSeconds"
+        [messageId]="entry.messageId"
+        [rating]="entry.rating"
+        [ratingPending]="isRatingPending(entry.messageId)"
+        (rated)="rateMessage(entry.messageId, $event)"
       />
     }
     @case ('cutOff') {

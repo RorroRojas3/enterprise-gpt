@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { messageFixture } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   StreamingResponseHandle,
@@ -614,14 +615,101 @@ describe('Transcript', () => {
           id: CONVERSATION_ID,
           name: 'Conversation',
           messages: [
-            { text: 'What is the weather?', role: CHAT_ROLE.user },
-            { text: 'Sunny.', role: CHAT_ROLE.assistant },
+            messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+            messageFixture({ text: 'Sunny.', role: CHAT_ROLE.assistant }),
           ],
         });
       await settle();
 
       expect(host.querySelector('.assistant-turn__md')?.textContent).toContain('Sunny.');
       expect(host.querySelector('app-reasoning-region')).toBeNull();
+    });
+  });
+
+  describe('rating an answer (US-1103)', () => {
+    const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
+
+    function feedbackUrl(): string {
+      return `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages/${MESSAGE_ID}/feedback`;
+    }
+
+    /** Opens a conversation holding one rateable answer, optionally already rated. */
+    async function openWithStoredAnswer(rating: 'Up' | 'Down' | null = null): Promise<void> {
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
+        .flush({
+          id: CONVERSATION_ID,
+          name: 'Conversation',
+          messages: [
+            messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+            messageFixture({
+              id: MESSAGE_ID,
+              text: 'Sunny.',
+              role: CHAT_ROLE.assistant,
+              feedback:
+                rating === null ? null : { rating, dateModified: '2026-08-21T09:30:00+00:00' },
+            }),
+          ],
+        });
+      await settle();
+    }
+
+    function thumbs(): HTMLButtonElement[] {
+      return [...host.querySelectorAll<HTMLButtonElement>('app-message-feedback button')];
+    }
+
+    it('offers the thumbs on a replayed answer and shows the rating it came back with', async () => {
+      await openWithStoredAnswer('Down');
+
+      expect(thumbs().map((thumb) => thumb.getAttribute('aria-pressed'))).toEqual([
+        'false',
+        'true',
+      ]);
+    });
+
+    /**
+     * The wiring the two component specs cannot see: a press has to reach the store, and
+     * the store has to address the request to this message rather than to the conversation.
+     */
+    it('sends a press to the message it belongs to', async () => {
+      await openWithStoredAnswer();
+
+      thumbs()[0]?.click();
+      await settle();
+
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.body).toEqual({ rating: 'Up' });
+      request.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+
+      expect(thumbs()[0]?.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    /**
+     * A cut-off turn was never sent a `Finished`, so it claims no message id — there is
+     * nothing to address a rating to, and the cut-off arm binds none.
+     */
+    it('withholds them from a cut-off turn', async () => {
+      const handle = await startTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial answer' })));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(host.querySelector('app-turn-notice-card')).not.toBeNull();
+      expect(host.querySelector('app-message-copy')).not.toBeNull();
+      expect(host.querySelector('app-message-feedback')).toBeNull();
+    });
+
+    /**
+     * The canned `Finished` carries no metadata, which is the shape a completed turn whose
+     * transcript write failed is sent — so a fresh turn claims no id here either.
+     */
+    it('withholds them from a completed turn that claimed no message id', async () => {
+      await streamFullTurn();
+
+      expect(host.querySelector('.assistant-turn__footer')).not.toBeNull();
+      expect(host.querySelector('app-message-feedback')).toBeNull();
     });
   });
 

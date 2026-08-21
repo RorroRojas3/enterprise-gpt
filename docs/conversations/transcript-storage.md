@@ -86,6 +86,22 @@ GET /api/conversations/{id}/export?format=pdf    → 200 application/pdf, or 503
 GET /api/conversations/{id}/export?format=rtf    → 400 validation-error naming the supported formats
 ```
 
+Rate an assistant message, or withdraw a rating already recorded (US-1102):
+
+```http
+POST /api/conversations/9c1f1c8e-6a1e-4c1a-9f7a-2b3c4d5e6f70/messages/5b7e.../feedback
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "rating": "Up" }
+```
+
+```http
+204 No Content
+```
+
+`{"rating": null}` withdraws it. Either way the response carries nothing back — the caller already knows what it asked for, and the next `GET .../messages` reads the rating off the transcript (§6.5).
+
 ## 4. Document shapes
 
 Two `type`-discriminated document kinds share one container, both partitioned on `/pk`.
@@ -111,11 +127,14 @@ Two `type`-discriminated document kinds share one container, both partitioned on
   "htmlContent": "<p>…</p>",
   "tokens": 412, "tokenAccuracy": "Estimated",
   "model": "gpt-4o-2026-05", "usage": { "inputTokens": 18240, "outputTokens": 1109 },
+  "feedback": { "rating": "up", "dateModified": "2026-08-21T09:30:00.0000000Z" },  // null until rated (US-1102)
   "dateCreated": "2026-08-15T20:27:57.0000000Z"
 }
 ```
 
 Notes that are not obvious from the shape:
+
+- **`feedback` is the one property of a message document that is ever written after the document was created.** Everything else above is set once, at persist time; `feedback` alone is patched in by a later, separate request (§6.5), which is why it is the only field here with a `dateModified` of its own. It appears only on an assistant message — the write path rejects any other role — and it is this property, not the relational `Core.MessageFeedback` row beside it, that `GET .../messages` actually projects, so it is this property that a reload has to show.
 
 - **`userId` and `conversationId` stay on the document** even though the partition key concatenates them. A document readable only by parsing its partition key is a document no query and no export can project cleanly.
 - **`model` is the deployment name, not the catalog display label.** The transcript is append-only, so the recorded value has to keep its meaning after a model is renamed, and it is the deployment that identifies what actually served and billed the turn.
@@ -140,7 +159,9 @@ A hierarchical key on `/userId` then `/conversationId` is the obvious alternativ
 
 `type` is stamped on both kinds and **stays in every read predicate**. The container is heterogeneous by design, and the predicate is what stops a third document kind, added later, from silently entering queries written before it existed.
 
-The container is provisioned at startup by [`CosmosBootstrapper`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Startup/CosmosBootstrapper.cs) with an explicit indexing policy: everything indexed, minus `/content/*`, `/htmlContent/*`, `/usage/*` and `_etag`. Those first two are the bulk of a message document's bytes and are never filtered, ordered or aggregated on, so indexing them is pure write cost. The `_etag` exclusion restores behaviour the default policy has and a custom policy otherwise drops.
+The container is provisioned at startup by [`CosmosBootstrapper`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Startup/CosmosBootstrapper.cs) with an explicit indexing policy: everything indexed, minus `/content/*`, `/htmlContent/*`, `/usage/*`, `/feedback/*` and `_etag`. The first two are the bulk of a message document's bytes; `usage` is a per-turn token block and `feedback` a rating, and reporting reads the relational projection rather than this container for either (§6.5). None of the four is ever filtered, ordered or aggregated on, so indexing it is pure write cost. The `_etag` exclusion restores behaviour the default policy has and a custom policy otherwise drops.
+
+This list governs container **creation** only: `CreateContainerIfNotExistsAsync` leaves an existing container's policy alone, so an account provisioned before a path was added here keeps indexing it. That costs a little write throughput and nothing else, which is why no operator step exists to reconcile it.
 
 The bootstrap also reads the container's partition key path back and **fails startup** when it is not `/pk`, naming both paths. A key path is fixed at creation, so continuing would write documents no read path can address — which surfaces as an empty transcript rather than an error, the one failure mode this must not have. The policy itself is asserted by a unit test over `CreateTranscriptContainerProperties` rather than against the emulator, because the Linux emulator accepts a custom indexing policy and then ignores it.
 
@@ -226,6 +247,20 @@ Rename and soft delete patch the **header only** and touch no message document: 
 - `true` — one `DeleteAllItemsByPartitionKeyStreamAsync`. A refused call logs a warning and **falls through** to the batched path rather than throwing, so a deployment that turned the setting on optimistically still purges.
 
 The capability is Azure public preview, must be enabled per account with the Azure CLI (it cannot be set through ARM or Bicep), and is absent from the Linux emulator. See [cutover §6](transcript-cutover.md#6-enabling-delete-by-partition-key) before turning it on. No HTTP route reaches this member today — deleting a conversation is a soft delete — so it exists for the operator-side purge and is proved by the emulator tests.
+
+### 6.5 Rating a message, and why the write goes to two stores in one order (US-1102)
+
+`POST api/conversations/{id}/messages/{messageId}/feedback` records, replaces or withdraws a reader's verdict on one assistant message. `ConversationService.SetMessageFeedbackAsync` is a read, then a patch, then — separately — a best-effort write to a relational projection table, `Core.MessageFeedback`, and the order those three happen in is the whole design.
+
+**The transcript is the source of truth; the relational row is a report.** `feedback` on the message document (§4) is exactly what `GET .../messages` projects back (§13), so it is exactly what a reload has to show. `MessageFeedback` exists only because every read against the transcript is confined to one conversation's partition (§4.1) — "how many answers were marked unhelpful this week" is a question the container cannot answer, and the SQL row is what lets it be asked at all. That split decides what happens on failure: the transcript patch runs first and is what the `204` depends on; the projection write runs second, inside `ProjectFeedbackAsync`, which catches broadly, logs, and returns rather than throwing. Failing the whole request over the reporting row would revert a thumb over a rating that was in fact stored — the wrong trade, the same one `ConversationUsage.AssistantMessageId` already documents (§6.1). Rating the same message again repairs a stale projection row, because the upsert behind it is idempotent on `(ConversationId, MessageId)`.
+
+**Withdrawing an unrated message touches neither store.** `{"rating": null}` against a message with no `feedback` already is a no-op: the service recognises that before issuing a patch, and `ProjectFeedbackAsync` is never called. The alternative — filing a null-rating row for every message a client cared to post a withdrawal against — would let a client mint one `MessageFeedback` row per assistant message with no rating ever recorded, which is exactly the "messages considered" denominator a reporting story (US-1301/US-1302) would eventually read from this table.
+
+**The patch is `Set`, never `Remove`.** Withdrawing sounds like `Remove`, and it deliberately is not one: Cosmos rejects `Remove` against a path the document does not carry, so two withdrawals racing each other would both pass the read, both issue `Remove`, and the loser would take a `400` — a `500` surfacing from a caller who asked to clear a rating that was already clear. `Set` carries no precondition on the document's current state, so it is safe under that race, and a JSON `null` deserializes back into a `null` `feedback`, which the read path reports as no rating at all. [`TranscriptStoreIntegrationTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/TranscriptStoreIntegrationTests.cs) proves both the set and the null-set against the real Cosmos emulator, and proves `Remove` failing exactly the way this reasoning predicts.
+
+**The point read checks `type` as well as the id.** `messageId` comes straight off the route, and the header document shares the partition under the conversation's own id (§4.1) — so a caller who passes the conversation id as the message id would otherwise point-read the header. The read rejects anything that is not `TranscriptDocumentTypes.Message` before it looks at `Role`, which is what turns that call into the `404` it should be rather than a hit on the wrong document.
+
+**No reporting index exists on `MessageFeedback` yet.** The one index is `(ConversationId, MessageId)`, unique — the no-duplicate guarantee the upsert in `ProjectFeedbackAsync` depends on, since it reads before it writes and two concurrent ratings of the same message would otherwise both insert. US-1301/US-1302 add whatever index their query needs once its shape exists; an index for a query nobody has written yet is a guess charged on every write.
 
 ## 7. The read path
 
@@ -357,6 +392,14 @@ Whether a format **reads** what persist time already computed or **re-renders** 
 
 **`role` is an integer on the wire and a string in storage, and that is deliberate.** The API registers no global `JsonStringEnumConverter`, so `ChatRoles` serializes as `1` System, `2` Assistant, `3` User, `4` Tool — which the Angular client's `CHAT_ROLE` mirror depends on. The Cosmos documents serialize `role` as a camel-cased **string**, because that keeps an exported document readable and matches the SSE contract. Two contracts, two shapes, one enum. `tokenAccuracy` is the exception on the wire: it carries a **property-level** `[JsonConverter(typeof(JsonStringEnumConverter<TokenAccuracies>))]` so it serializes as `"Estimated"`, applied per property precisely because a global converter would change `role` and break every client reading it.
 
+US-1102 added a seventh field, nullable `feedback` (`ConversationMessageFeedbackDto`: `rating`, `dateModified`), read straight off the message document's own `feedback` (§4, §6.5) — `null` when the message has never been rated, the rating was withdrawn, or the message is not an assistant message. `rating` carries the same property-level converter pattern as `tokenAccuracy`: PascalCase on the wire (`"Up"`, `"Down"`), camelCase in Cosmos storage (`"up"`, `"down"`) — the same split `role` already carries, restated for a second enum.
+
+`POST api/conversations/{id}/messages/{messageId}/feedback` writes it: body `{"rating": "Up" | "Down" | null}`, answering `204 No Content` with nothing in the body, matching the favourite route beside it — the caller already knows the value it just asked for, and a reload reads the rating back off the transcript (§6.5) rather than off this response.
+
+**A validator closes a hole `JsonStringEnumConverter` leaves open on its own.** The converter accepts integer values by default and, per Microsoft's own documentation, does not check them against the enum's defined members — so `{"rating": 7}` would otherwise bind cleanly, pass every other check, and be written to both stores, then come back out of the transcript as a JSON *number*, breaking the string wire format for every reader of this field. `SetMessageFeedbackActionDtoValidator`'s single `IsInEnum()` rule is what closes it, proved end to end by `ConversationEndpointsIntegrationTests` (§14).
+
+Errors: `400` validation problem keyed `messageId` — not `Rating` — when the target is not an assistant message, because the rating itself is well-formed and the message it names is not one there is anything to rate; `400` validation problem keyed `Rating` for a value the enum does not define; `400` with no `errors` dictionary at all for a rating string the converter cannot parse, since that fails at binding before any validator runs; `404` for an unknown, another user's, or deactivated conversation, an unknown message, or the conversation's own id passed as the message id (§6.5); `401` at the group level, like every other conversation route.
+
 ## 14. Testing
 
 Unit tests (`dotnet test --filter "Category!=Integration"`, no Docker):
@@ -364,15 +407,16 @@ Unit tests (`dotnet test --filter "Category!=Integration"`, no Docker):
 | Area | Where |
 | --- | --- |
 | Fixed-width UTC dates, and that string sorting equals chronological sorting | [`Serialization/CosmosUtcDateTimeOffsetConverterTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Serialization/CosmosUtcDateTimeOffsetConverterTests.cs) |
-| Document shapes, string roles, the single partition-key construction site | [`Transcripts/TranscriptDocumentTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Transcripts/TranscriptDocumentTests.cs), [`TranscriptBatchTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Transcripts/TranscriptBatchTests.cs) |
-| The indexing policy and `/pk` path | [`Startup/CosmosBootstrapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Startup/CosmosBootstrapperTests.cs) |
+| Document shapes, string roles, the single partition-key construction site, `feedback`'s camel-cased round trip (US-1102) | [`Transcripts/TranscriptDocumentTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Transcripts/TranscriptDocumentTests.cs), [`TranscriptBatchTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Transcripts/TranscriptBatchTests.cs) |
+| The indexing policy (now four excluded paths, `/feedback/*` among them) and `/pk` path | [`Startup/CosmosBootstrapperTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Startup/CosmosBootstrapperTests.cs) |
+| `feedback`'s PascalCase wire form, and that an unrated message serializes it as `null` rather than a default verdict (US-1102) | [`Serialization/ConversationMessageDtoTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Serialization/ConversationMessageDtoTests.cs) |
 | Estimator resolution, fallback encoding, calibration, overhead | [`Tokenization/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tokenization/) |
 | Budget trimming, protections, unbounded models | [`Tokenization/ContextBudgetCalculatorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tokenization/ContextBudgetCalculatorTests.cs) |
 | Raw HTML, `javascript:` links, code fences, the escaping fallback | [`Rendering/MarkdownRendererTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Rendering/MarkdownRendererTests.cs) |
 | `EstimatedCost`, including the null-when-unpriced rule | [`Entities/ConversationUsageCostTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Entities/ConversationUsageCostTests.cs) |
-| Turn persistence, transcript reads, export | [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs), [`Services/ConversationExportServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationExportServiceTests.cs) |
+| Turn persistence, transcript reads, the feedback dual write — happy path, re-rating, withdrawal, the failing projection, the type-discriminator check, the message-not-found and wrong-role errors (US-1102) | [`Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs), [`Services/ConversationExportServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationExportServiceTests.cs) |
 
-Integration tests need Docker. [`CosmosEmulatorFixture`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/CosmosEmulatorFixture.cs) runs the **vNext Linux emulator** in Testcontainers — it starts in seconds rather than minutes and runs on any processor architecture — in its own collection, so it starts only when [`Persistence/TranscriptStoreIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/TranscriptStoreIntegrationTests.cs) actually runs. Transactional batches and ordered cross-document queries are precisely what a fake cannot prove: a fake that interpreted JSON-patch semantics would be asserting its own arrangement. The endpoint-level integration suite still substitutes [`FakeTranscriptStore`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/FakeTranscriptStore.cs), because every conversation write would otherwise block for ~25 seconds waiting on an emulator address that is not there.
+Integration tests need Docker. [`CosmosEmulatorFixture`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/CosmosEmulatorFixture.cs) runs the **vNext Linux emulator** in Testcontainers — it starts in seconds rather than minutes and runs on any processor architecture — in its own collection, so it starts only when [`Persistence/TranscriptStoreIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/TranscriptStoreIntegrationTests.cs) actually runs. Transactional batches and ordered cross-document queries are precisely what a fake cannot prove: a fake that interpreted JSON-patch semantics would be asserting its own arrangement — which is exactly why the feedback patch's `Set`/`Remove` behaviour (§6.5) is proved there rather than against [`FakeTranscriptStore`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/FakeTranscriptStore.cs), which records patch operations without applying them. The endpoint-level integration suite still substitutes that fake, because every conversation write would otherwise block for ~25 seconds waiting on an emulator address that is not there — which is also why [`ConversationEndpointsIntegrationTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/ConversationEndpointsIntegrationTests.cs)'s feedback tests prove every error shape and the relational projection's contents, but not a rating read back through `GET .../messages` — that half needs a query the fake refuses to implement, and belongs to the emulator-backed suite instead.
 
 ## 15. Known limits
 
@@ -384,6 +428,8 @@ Integration tests need Docker. [`CosmosEmulatorFixture`](../../enterprise-gpt-ap
 - **Cosmos still authenticates with an account-key connection string**, the one place this API departs from its `DefaultAzureCredential` preference. `CosmosOptions` is shaped so an endpoint-plus-credential pair can be added beside it.
 - **The default transcript read is still unpaged** (§7), so a very long conversation transfers in full until the client story that can absorb the change lands.
 - **Nothing exposes any of this as a report.** Context tokens and cost are queryable in SQL only — see [usage §7](usage-and-favorites.md#7-reporting) and its "no reporting API" gap.
+- **`Core.MessageFeedback` carries no reporting index yet** (§6.5) — only the uniqueness constraint the dual write depends on. US-1301/US-1302 add whatever index their query needs when its shape exists.
+- **A rating read back through `GET .../messages` has no endpoint-level integration test.** `FakeTranscriptStore.QueryAsync` throws by design (§14), so that half is proved only by the emulator-backed `TranscriptStoreIntegrationTests`, and only indirectly — by patching and re-reading the document, not by calling the route.
 
 ## 16. Key files
 
@@ -398,5 +444,6 @@ Integration tests need Docker. [`CosmosEmulatorFixture`](../../enterprise-gpt-ap
 | Metrics | [`Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs), [`Common/Observability/TelemetryNames.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Observability/TelemetryNames.cs) |
 | Export routing and ownership | [`Service/Export/ConversationExportService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Export/ConversationExportService.cs) — the renderers themselves, the block model and the font resolver are catalogued in [Conversation Export §11](conversation-export.md#11-key-files) |
 | Write, read and budget wiring | [`Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) |
-| HTTP surface | [`Api/Endpoints/ConversationEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs), [`Dto/ConversationMessageDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationMessageDto.cs), [`Dto/ConversationDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationDto.cs) |
+| HTTP surface | [`Api/Endpoints/ConversationEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs), [`Dto/ConversationMessageDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationMessageDto.cs), [`Dto/ConversationDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationDto.cs), [`Dto/Actions/Chat/ConversationActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Actions/Chat/ConversationActions.cs) (`SetMessageFeedbackActionDto` and its validator) |
+| The relational feedback projection (§6.5) | [`Common/Enums/MessageFeedbackRatings.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/MessageFeedbackRatings.cs), [`Entity/MessageFeedback.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/MessageFeedback.cs), [`Repository/Configurations/MessageFeedbackConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/MessageFeedbackConfiguration.cs) |
 | Related reference | [Transcript Cutover](transcript-cutover.md), [Usage and Favourites](usage-and-favorites.md), [Streaming Contract](streaming-contract.md), [Turn Lifecycle](turn-lifecycle.md), [Conversation Export](conversation-export.md) |

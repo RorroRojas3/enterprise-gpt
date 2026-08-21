@@ -88,7 +88,7 @@ public sealed class TranscriptDocumentTests
         foreach (var name in new[]
         {
             "id", "pk", "userId", "conversationId", "type", "role", "content", "htmlContent",
-            "tokens", "tokenAccuracy", "model", "usage", "dateCreated"
+            "tokens", "tokenAccuracy", "model", "usage", "feedback", "dateCreated"
         })
         {
             Assert.True(document.RootElement.TryGetProperty(name, out _), $"message is missing '{name}'");
@@ -140,6 +140,50 @@ public sealed class TranscriptDocumentTests
         // Camel-cased in storage. The HTTP DTO carries its own converter and serves "Estimated"
         // there, because the two contracts are separate and the API's is already established.
         Assert.Equal("estimated", document.RootElement.GetProperty("tokenAccuracy").GetString());
+    }
+
+    /// <summary>
+    /// The one property of a message that is written long after the document was created (US-1102),
+    /// and the only one a reader can change.
+    /// </summary>
+    [Fact]
+    public void Message_Feedback_RoundTripsWithACamelCasedRating()
+    {
+        var ratedAt = new DateTimeOffset(2026, 8, 21, 9, 30, 0, TimeSpan.Zero);
+        var message = TranscriptMessageDocument.Create(
+            UserId, ConversationId, Guid.NewGuid(), ChatRoles.Assistant, "Hi", DateTimeOffset.UtcNow) with
+        {
+            Feedback = new TranscriptMessageFeedback
+            {
+                Rating = MessageFeedbackRatings.Down,
+                DateModified = ratedAt
+            }
+        };
+
+        var json = JsonSerializer.Serialize(message, Options);
+        using var document = JsonDocument.Parse(json);
+
+        // Camel-cased in storage, like role and tokenAccuracy beside it. The HTTP DTO serves
+        // "Down" from its own converter, because the two contracts are separate.
+        Assert.Equal("down", document.RootElement.GetProperty("feedback").GetProperty("rating").GetString());
+
+        var restored = JsonSerializer.Deserialize<TranscriptMessageDocument>(json, Options);
+        Assert.Equal(MessageFeedbackRatings.Down, restored?.Feedback?.Rating);
+        Assert.Equal(ratedAt, restored?.Feedback?.DateModified);
+    }
+
+    /// <summary>
+    /// An unrated message reads back as no verdict rather than a default one, which is what the
+    /// transcript projection turns into an absent `feedback` on the wire. The withdrawal patch
+    /// leaves the document in the same state.
+    /// </summary>
+    [Fact]
+    public void Message_Created_HasNoVerdict()
+    {
+        var message = TranscriptMessageDocument.Create(
+            UserId, ConversationId, Guid.NewGuid(), ChatRoles.Assistant, "Hi", DateTimeOffset.UtcNow);
+
+        Assert.Null(message.Feedback);
     }
 
     [Fact]

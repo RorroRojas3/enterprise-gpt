@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Entity.Transcripts;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
@@ -507,8 +508,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <summary>
     /// Removes every project and conversation and, with them, every uploaded document and chunk. Called
     /// per test for isolation. Deletes run in FK order (project chunks → project documents →
-    /// conversation chunks → conversation documents → conversations → projects); conversations carry an
-    /// optional foreign key to a project, so they have to go before the projects do.
+    /// conversation chunks → conversation documents → message feedback → usage → conversations →
+    /// projects); conversations carry an optional foreign key to a project, so they have to go
+    /// before the projects do.
     /// </summary>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetConversationsAndDocumentsAsync(CancellationToken cancellationToken = default)
@@ -520,6 +522,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocuments.ExecuteDeleteAsync(cancellationToken);
+        // Ahead of the conversations it points at: the feedback projection carries a foreign key to
+        // Conversation with no cascade behind it, exactly as the usage rows below do.
+        await ctx.MessageFeedback.ExecuteDeleteAsync(cancellationToken);
         await ClearConversationUsageAsync(ctx, cancellationToken);
         await ctx.Conversations.ExecuteDeleteAsync(cancellationToken);
         await ctx.Projects.ExecuteDeleteAsync(cancellationToken);
@@ -792,6 +797,65 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
 
         return conversation.Id;
+    }
+
+    /// <summary>
+    /// Seeds one transcript message into the in-memory transcript store, so the feedback route has
+    /// something to read and patch without a Cosmos account.
+    /// </summary>
+    /// <param name="conversationId">The conversation the message belongs to.</param>
+    /// <param name="role">Who produced it. Only an assistant message is ratable.</param>
+    /// <param name="userId">The owner, whose id composes half the partition key.</param>
+    /// <param name="rating">
+    /// A rating to seed onto the document. Needed because <see cref="FakeTranscriptStore"/> records
+    /// patch operations rather than applying them, so a test that rates through the API and then
+    /// withdraws would find the document exactly as it was seeded — and the withdrawal would
+    /// correctly conclude there was nothing to withdraw.
+    /// </param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the seeded message.</returns>
+    public async Task<Guid> AddTranscriptMessageAsync(
+        Guid conversationId, ChatRoles role = ChatRoles.Assistant, Guid? userId = null,
+        MessageFeedbackRatings? rating = null, CancellationToken cancellationToken = default)
+    {
+        var owner = userId ?? TestUsers.RegularUserId;
+        var messageId = Guid.NewGuid();
+
+        var message = TranscriptMessageDocument.Create(
+            owner, conversationId, messageId, role, "Seeded message.", DateTimeOffset.UtcNow) with
+        {
+            Feedback = rating is { } verdict
+                ? new TranscriptMessageFeedback { Rating = verdict, DateModified = DateTimeOffset.UtcNow }
+                : null
+        };
+
+        // Through the batch surface rather than a back door on the fake: it is the only write path
+        // the production code has, so a seeded document is keyed exactly as a real one is.
+        await Factory.Transcripts.ExecuteBatchAsync(
+            new Microsoft.Azure.Cosmos.PartitionKey(PartitionKeys.For(owner, conversationId)),
+            batch => batch.Create(message.Id, message),
+            cancellationToken);
+
+        return messageId;
+    }
+
+    /// <summary>
+    /// Reads the relational feedback projection for one message.
+    /// </summary>
+    /// <param name="conversationId">The conversation the message belongs to.</param>
+    /// <param name="messageId">The message.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The row, or <see langword="null"/> when the message was never rated.</returns>
+    public async Task<MessageFeedback?> ReadMessageFeedbackAsync(
+        Guid conversationId, Guid messageId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.MessageFeedback
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                x => x.ConversationId == conversationId && x.MessageId == messageId, cancellationToken);
     }
 
     /// <summary>

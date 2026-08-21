@@ -29,6 +29,7 @@ import {
   conversationDetailFixture,
   conversationFixture,
   conversationPage,
+  messageFixture,
 } from '@testing/conversations';
 import { CHAT_ROLE, ConversationDetailDto } from '@domain/api/conversation';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
@@ -990,8 +991,8 @@ describe('Chat', () => {
         id: conversation.id,
         name: conversation.name,
         messages: [
-          { text: 'What is the weather?', role: CHAT_ROLE.user },
-          { text: 'It is sunny.', role: CHAT_ROLE.assistant },
+          messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+          messageFixture({ text: 'It is sunny.', role: CHAT_ROLE.assistant }),
         ],
       });
       await harness.fixture.whenStable();

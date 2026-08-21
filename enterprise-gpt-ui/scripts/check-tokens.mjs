@@ -283,6 +283,18 @@ const CONTRAST_PAIRS = [
   // below checks every painted background against `--focus-ring`, not against the text
   // drawn on it. This row is what makes the fix permanent.
   { background: 'active-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
+  // US-1103's selected thumb, and the several `color: var(--brand)` marks beside it — the
+  // starred conversation, the favourited project, the active document filter. All of them
+  // draw on a card or on the page, and none of them was measured until this row: the pair
+  // above went undetected for three stories for exactly that reason, and adding a third
+  // `--brand` site without adding its background here would repeat the omission.
+  //
+  // TEXT_MINIMUM even though the thumb is an icon, which SC 1.4.11 would meet at 3:1. The
+  // token serves running text at these two backgrounds as well, and both pairs clear the
+  // stricter figure with room to spare, so measuring the weaker one buys nothing but a
+  // guard that would not notice the value moving.
+  { background: 'surface', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
+  { background: 'bs-body-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
 ];
 
 /** WCAG 2.1 relative luminance of a `#rrggbb` value. */

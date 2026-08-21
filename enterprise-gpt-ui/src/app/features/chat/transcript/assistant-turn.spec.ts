@@ -8,6 +8,7 @@ import {
   foldAssistantEvents,
 } from '@domain/stream/andes/assistant-ui.contract';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
+import { MESSAGE_FEEDBACK_RATING } from '@domain/api/conversation';
 import { provideTestAppConfig } from '@testing/app-config';
 import { assistantEvent } from '@testing/stream-frames';
 import { provideChatMarkdown } from '../markdown/markdown-providers';
@@ -23,6 +24,8 @@ import { AssistantTurn } from './assistant-turn';
 class MarkdownReference {
   readonly source = signal('');
 }
+
+const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
 
 describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
   let fixture: ComponentFixture<AssistantTurn>;
@@ -309,6 +312,74 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       await fixture.whenStable();
 
       expect(writeText).toHaveBeenCalledExactlyOnceWith('Before. After.');
+    });
+  });
+
+  describe('the feedback controls (US-1103)', () => {
+    /**
+     * The whole of the first criterion, and it holds by construction rather than by a
+     * flag: no persisted message id means no anchor, and there is nowhere to send a
+     * rating. That covers a server that sends no id and a completed turn whose transcript
+     * write failed, which is sent a `Finished` carrying no metadata at all.
+     */
+    it('withholds the thumbs from an answer that never became a persisted message', async () => {
+      await show('All done.', false);
+
+      expect(host.querySelector('.assistant-turn__footer')).not.toBeNull();
+      expect(host.querySelector('app-message-feedback')).toBeNull();
+    });
+
+    it('offers the thumbs beside Copy once the answer has an id', async () => {
+      fixture.componentRef.setInput('messageId', MESSAGE_ID);
+      await show('All done.', false);
+
+      const footer = host.querySelector('.assistant-turn__footer');
+      expect(footer?.querySelector('app-message-feedback')).not.toBeNull();
+
+      // Copy, then the thumbs — the order frame 1g draws, and the order a screen reader
+      // walks the footer in. The counts would follow, and are absent here because this
+      // turn folded no `Finished` and claims none.
+      const controls = [...(footer?.children ?? [])].map((child) => child.tagName.toLowerCase());
+      expect(controls).toEqual(['app-message-copy', 'app-message-feedback']);
+    });
+
+    it('withholds them while the turn is still streaming, id or not', async () => {
+      fixture.componentRef.setInput('messageId', MESSAGE_ID);
+      await show('Half an ans', true);
+
+      expect(host.querySelector('app-message-feedback')).toBeNull();
+    });
+
+    it('hands the stored rating down, so a reloaded answer shows it', async () => {
+      fixture.componentRef.setInput('messageId', MESSAGE_ID);
+      fixture.componentRef.setInput('rating', MESSAGE_FEEDBACK_RATING.down);
+      await show('All done.', false);
+
+      const pressed = [...host.querySelectorAll('app-message-feedback button')].map((thumb) =>
+        thumb.getAttribute('aria-pressed'),
+      );
+      expect(pressed).toEqual(['false', 'true']);
+    });
+
+    it('reports the pressed thumb upward rather than acting on it', async () => {
+      const emitted: string[] = [];
+      fixture.componentInstance.rated.subscribe((rating) => emitted.push(rating));
+      fixture.componentRef.setInput('messageId', MESSAGE_ID);
+      await show('All done.', false);
+
+      host.querySelector<HTMLButtonElement>('app-message-feedback button')?.click();
+
+      expect(emitted).toEqual([MESSAGE_FEEDBACK_RATING.up]);
+    });
+
+    it('marks them refused while this answer has a rating in flight', async () => {
+      fixture.componentRef.setInput('messageId', MESSAGE_ID);
+      fixture.componentRef.setInput('ratingPending', true);
+      await show('All done.', false);
+
+      const thumbs = [...host.querySelectorAll<HTMLButtonElement>('app-message-feedback button')];
+      expect(thumbs).toHaveLength(2);
+      expect(thumbs.every((thumb) => thumb.getAttribute('aria-disabled') === 'true')).toBe(true);
     });
   });
 

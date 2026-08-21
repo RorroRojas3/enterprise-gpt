@@ -1,0 +1,71 @@
+// Frame 1g draws the pair as one group inside the footer row, with its own gap rather
+// than the row's 14px, and the glyphs at 13px against Copy's 12px.
+//
+// The gap the board draws is spent on the hit targets rather than on empty space. Each
+// thumb is a 24px box around a 13px glyph, which leaves 11px of clear space between the
+// two glyphs — one pixel off what frame 1g draws, and the difference between passing
+// SC 2.5.8 and failing it twice over. A bare glyph is a 13x13 target whose safe clickable
+// diameter is 22px; both are under the 24px minimum, and the spacing exception does not
+// rescue a target that is itself too small. It matters most where it is worst:
+// `(hover: none)` reveals this footer permanently, so on a phone these *are* the targets.
+//
+// The negative inline margin is what keeps that from stealing from the row around it.
+// 5.5px of each box is transparent padding, so without it the footer's drawn 14px gap
+// would read as ~19.5px on both sides of the pair. Pulling 5px back restores the rhythm
+// while leaving 9px of real separation between this group's box and its neighbours', so
+// no two clickable areas touch — `npm run test:a11y` measures that, and re-run it if this
+// number moves.
+:host {
+  display: inline-flex;
+  align-items: center;
+  margin-inline: -5px;
+  font-size: 13px;
+}
+
+// A bare button like the Copy control beside it: the footer is metadata, and the board
+// draws no button chrome around any of it. The box is sizing, not chrome — it paints
+// nothing until the control is hovered or focused.
+.message-feedback__thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover:not([aria-disabled='true']) {
+    color: var(--bs-body-color);
+  }
+
+  // The board draws no selected state at all, so this one is invented. Colour is the
+  // reinforcement and never the signal: the template swaps the glyph for its `-fill`
+  // variant, as every other toggle here does (the conversation star, the project star).
+  // Colour alone would fail SC 1.4.1 outright in dark theme, where `--muted` and
+  // `--brand` sit at a 1.06:1 luminance ratio — indistinguishable in greyscale, and to a
+  // reader with reduced colour discrimination. `aria-pressed` is the third channel, for
+  // anyone reading neither.
+  &[aria-pressed='true'] {
+    color: var(--brand);
+  }
+
+  // Only for the length of the request, and only `aria-disabled` — the native attribute
+  // would blur the button the reader just pressed. Not `cursor: not-allowed`, which reads
+  // as a refusal rather than as a wait.
+  &[aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  // The reveal is opacity-based, so the control is focusable before it is visible, and
+  // the ring hugs the 24px box rather than the glyph inside it.
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -1px;
+  }
+}

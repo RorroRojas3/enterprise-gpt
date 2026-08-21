@@ -397,6 +397,98 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
     }
 
     /// <summary>
+    /// The feedback patch against real Cosmos JSON-patch semantics (US-1102), which is the half the
+    /// in-memory store deliberately cannot prove: it records patch operations rather than applying
+    /// them. Set writes the block, Remove takes it away again, and neither disturbs the message.
+    /// </summary>
+    [Fact]
+    public async Task PatchItem_Feedback_SetsThenRemovesTheBlockWithoutTouchingTheMessage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (userId, conversationId, partition) = await SeedConversationAsync(0, cancellationToken);
+        var ratedAt = new DateTimeOffset(2026, 8, 21, 9, 30, 0, TimeSpan.Zero);
+
+        var written = TranscriptMessageDocument.Create(
+            userId, conversationId, Guid.NewGuid(), ChatRoles.Assistant, "The answer.",
+            new DateTimeOffset(2026, 8, 21, 9, 0, 0, TimeSpan.Zero));
+
+        await _fixture.Store.ExecuteBatchAsync(
+            partition, batch => batch.Create(written.Id, written), cancellationToken);
+
+        var applied = await _fixture.Store.PatchItemAsync(
+            written.Id, partition,
+            [
+                PatchOperation.Set(
+                    "/feedback",
+                    new TranscriptMessageFeedback { Rating = MessageFeedbackRatings.Up, DateModified = ratedAt })
+            ],
+            cancellationToken);
+
+        Assert.True(applied);
+
+        var rated = await _fixture.Store.ReadItemAsync<TranscriptMessageDocument>(
+            written.Id, partition, cancellationToken);
+
+        Assert.Equal(MessageFeedbackRatings.Up, rated?.Feedback?.Rating);
+        Assert.Equal(ratedAt.UtcTicks, rated?.Feedback?.DateModified.UtcTicks);
+        // The patch is surgical: the message it hangs off is untouched, which is the whole reason
+        // the write path patches rather than replacing the document.
+        Assert.Equal(written.Content, rated?.Content);
+        Assert.Equal(written.DateCreated.UtcTicks, rated?.DateCreated.UtcTicks);
+
+        // Set to null is how the service withdraws, and this is the assertion that says it works:
+        // a JSON null deserializes back into a null Feedback, which the transcript projection
+        // reports as no rating at all.
+        await _fixture.Store.PatchItemAsync(
+            written.Id, partition,
+            [PatchOperation.Set<TranscriptMessageFeedback?>("/feedback", null)],
+            cancellationToken);
+
+        var withdrawn = await _fixture.Store.ReadItemAsync<TranscriptMessageDocument>(
+            written.Id, partition, cancellationToken);
+
+        Assert.Null(withdrawn?.Feedback);
+        Assert.Equal(written.Content, withdrawn?.Content);
+
+        // And withdrawing again is a no-op rather than a failure, which is what makes two racing
+        // withdrawals safe. Set carries no precondition on the current value.
+        var again = await _fixture.Store.PatchItemAsync(
+            written.Id, partition,
+            [PatchOperation.Set<TranscriptMessageFeedback?>("/feedback", null)],
+            cancellationToken);
+
+        Assert.True(again);
+    }
+
+    /// <summary>
+    /// Why the service never issues <c>Remove</c>, even though "withdraw" sounds like one: Cosmos
+    /// rejects it outright against a path the document does not carry. Two withdrawals racing each
+    /// other would both read a rating, both issue Remove, and the loser would take this 400 — a 500
+    /// for a request whose work was already done.
+    /// </summary>
+    [Fact]
+    public async Task PatchItem_RemovingAFeedbackPathTheDocumentDoesNotCarry_IsRejected()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (userId, conversationId, partition) = await SeedConversationAsync(0, cancellationToken);
+
+        var written = TranscriptMessageDocument.Create(
+            userId, conversationId, Guid.NewGuid(), ChatRoles.Assistant, "Unrated.",
+            new DateTimeOffset(2026, 8, 21, 9, 0, 0, TimeSpan.Zero));
+
+        await _fixture.Store.ExecuteBatchAsync(
+            partition, batch => batch.Create(written.Id, written), cancellationToken);
+
+        // The first Remove succeeds — a created document carries the property as an explicit null,
+        // because the Cosmos serializer writes nulls — and the second has nothing left to remove.
+        await _fixture.Store.PatchItemAsync(
+            written.Id, partition, [PatchOperation.Remove("/feedback")], cancellationToken);
+
+        await Assert.ThrowsAsync<CosmosException>(() => _fixture.Store.PatchItemAsync(
+            written.Id, partition, [PatchOperation.Remove("/feedback")], cancellationToken));
+    }
+
+    /// <summary>
     /// The predicate that keeps a heterogeneous container honest: a header must never be returned
     /// by a query for messages.
     /// </summary>

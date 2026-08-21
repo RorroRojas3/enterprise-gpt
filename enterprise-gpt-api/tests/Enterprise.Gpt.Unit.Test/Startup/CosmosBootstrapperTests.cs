@@ -20,10 +20,14 @@ public sealed class CosmosBootstrapperTests
         Assert.Equal(PartitionKeys.Path, properties.PartitionKeyPath);
     }
 
+    // Every path here is written and read back beside its message and never filtered, ordered or
+    // aggregated on, so indexing it is charged on every write and bought nothing.
     [Theory]
     [InlineData("/content/*")]
     [InlineData("/htmlContent/*")]
-    public void CreateTranscriptContainerProperties_ExcludesTheTwoLargestPropertiesFromTheIndex(string path)
+    [InlineData("/usage/*")]
+    [InlineData("/feedback/*")]
+    public void CreateTranscriptContainerProperties_ExcludesThePropertiesNothingQueriesOn(string path)
     {
         var properties = CosmosBootstrapper.CreateTranscriptContainerProperties("transcript");
 

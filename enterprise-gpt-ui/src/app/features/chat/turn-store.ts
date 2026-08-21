@@ -21,6 +21,7 @@ import {
   finalize,
   map,
   merge,
+  mergeMap,
   of,
   pipe,
   switchMap,
@@ -33,6 +34,7 @@ import {
   ChatConversationDto,
   ConversationDto,
   ConversationMessageDto,
+  MessageFeedbackRating,
 } from '@domain/api/conversation';
 import {
   AssistantStatusSnapshot,
@@ -56,10 +58,17 @@ import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { AppError } from '@core/errors/app-error';
+import { ToastStore } from '@core/notifications/toast-store';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
 import { turnEvents } from '@core/events/turn-events';
 import { ApiUrl } from '@core/http/api-url';
+import {
+  addPendingId,
+  clearPendingIds,
+  removePendingId,
+  withPendingIds,
+} from '@core/state/with-pending-ids';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { ConversationStreamClient } from '@core/stream/conversation-stream-client';
 import { Router } from '@angular/router';
@@ -96,6 +105,16 @@ export type TranscriptEntry =
       readonly reasoningText: string;
       /** How long the model reasoned, measured while it streamed (US-503). */
       readonly reasoningSeconds: number | null;
+      /**
+       * The server's own id for this message, or null when the turn claimed none
+       * (US-1101). Null is the honest answer twice over: for a replayed message a server
+       * sent no id for, and for a completed turn whose transcript write failed — that
+       * turn is sent a `Finished` carrying no `metadata` at all. No id means no thumbs,
+       * because there is nowhere to address a rating.
+       */
+      readonly messageId: string | null;
+      /** The rating recorded against it (US-1103): server-confirmed, or optimistic. */
+      readonly rating: MessageFeedbackRating | null;
     }
   | {
       readonly kind: 'cutOff';
@@ -297,6 +316,13 @@ function settleFinished(): PartialStateUpdater<TurnState> {
         timeline: state.timeline,
         reasoningText: modelReasoningText(state.reasoning, state.snapshot.reasoningText ?? ''),
         reasoningSeconds: reasoningSeconds(state.reasoning),
+        // Bracket access because `metadata` is an index signature and
+        // `noPropertyAccessFromIndexSignature` is on. A completed turn whose transcript
+        // write failed is sent `Finished` with no metadata object at all, which lands
+        // here as null and leaves the answer unratable — the honest outcome, since there
+        // is no persisted message to rate.
+        messageId: state.snapshot.metadata?.['assistantMessageId'] ?? null,
+        rating: null,
       },
     ],
     nextEntryId: state.nextEntryId + 2,
@@ -345,6 +371,43 @@ function seedComposer(text: string): PartialStateUpdater<TurnState> {
 }
 
 /**
+ * Writes a rating onto one settled assistant entry (US-1103).
+ *
+ * The matched entry is replaced rather than mutated, and so is the array around it:
+ * `patchState` compares each key by reference before it writes, so an in-place edit would
+ * perform no signal write at all and the footer would simply never update. Every other
+ * entry keeps its identity, which is what stops the `@for` re-creating the transcript.
+ *
+ * Writing nothing when nothing changed is the other half of that. Three of this
+ * function's callers are no-ops by design — the 204 re-asserts a value already written,
+ * and both handlers of a request that outlived its conversation address an entry the
+ * transcript no longer holds — and each would otherwise install a new `entries` identity,
+ * invalidating `hasContent`, `exportTarget` and `announcement` for a state change that
+ * did not happen.
+ */
+function rateEntry(
+  messageId: string,
+  rating: MessageFeedbackRating | null,
+): PartialStateUpdater<TurnState> {
+  return (state) => {
+    const index = state.entries.findIndex(
+      (entry) => entry.kind === 'assistant' && entry.messageId === messageId,
+    );
+    const target = state.entries[index];
+
+    if (target === undefined || target.kind !== 'assistant' || target.rating === rating) {
+      return {};
+    }
+
+    return {
+      entries: state.entries.map((entry, position) =>
+        position === index ? { ...target, rating } : entry,
+      ),
+    };
+  };
+}
+
+/**
  * Maps the stored messages onto transcript entries (US-410).
  *
  * Only the two roles the user wrote or read are rendered: the server already
@@ -368,6 +431,15 @@ function toHistoryEntries(messages: readonly ConversationMessageDto[]): Transcri
         id,
         reasoningText: '',
         reasoningSeconds: null,
+        // `?? null` against a required field on purpose: `id` is what US-1101 guarantees,
+        // and typing it as optional would spread the doubt to every reader. But an older
+        // server that sends none would otherwise put `undefined` here, which passes the
+        // `!== null` gate and offers thumbs that post to `.../messages/undefined/feedback`.
+        // Unratable is the right answer for a message with no anchor.
+        messageId: message.id ?? null,
+        // The whole of how a rating survives a reload: replaceHistory rebuilds this block
+        // from the response, so what the server holds is what the footer draws.
+        rating: message.feedback?.rating ?? null,
         ...replayAssistantText(message.text),
       });
     }
@@ -469,6 +541,9 @@ function settleFromComplete(command: TurnRetry): PartialStateUpdater<TurnState> 
  */
 export const TurnStore = signalStore(
   withState(initialState),
+  // Keyed by the server's message id, so a rating in flight disables that answer's thumbs
+  // and no other's (US-1103).
+  withPendingIds(),
   withProps(() => ({
     _http: inject(HttpClient),
     _api: inject(ApiUrl),
@@ -495,6 +570,7 @@ export const TurnStore = signalStore(
      * on the route binding that opens it, and cleared by the read.
      */
     _pending: inject(PendingPromptStore),
+    _toasts: inject(ToastStore),
     _signedOut$: injectSignedOut(),
     /**
      * The in-flight turn's abort controller. A mutable prop rather than state:
@@ -505,6 +581,17 @@ export const TurnStore = signalStore(
     _turnAbort: { current: null as AbortController | null },
     /** Cancels the create `POST`, which accepts no `AbortSignal` of its own. */
     _stop$: new Subject<void>(),
+    /**
+     * Cancels in-flight rating requests when the conversation changes (US-1103).
+     *
+     * Its own subject rather than `_stop$`: that one is the user's Stop, and a rating is
+     * not part of the turn it would be cancelling. Without a cancel here, clearing the
+     * pending ids on a route change would leave an orphaned request whose id is no longer
+     * pending — so returning to the conversation and pressing again would open a second
+     * request racing the first, which is the exact overlap `rateMessage`'s guard exists
+     * to make impossible.
+     */
+    _rateCancel$: new Subject<void>(),
     /**
      * The turn is waiting on EP-8's upload gate: accepted, but with no stream open
      * yet. A second pre-stream window beside `creating`, and Stop has to settle it
@@ -843,6 +930,55 @@ export const TurnStore = signalStore(
       }),
     );
 
+    /**
+     * Records, replaces or withdraws a rating on one settled answer (US-1103).
+     *
+     * `mergeMap`: ratings on different answers are independent and may overlap. Same-id
+     * overlap cannot happen, because `rateMessage` refuses while that message's id is
+     * pending — the same guard the conversation favourite toggle uses, and the reason
+     * this can be a merge rather than a switch.
+     */
+    const rate = rxMethod<{
+      conversationId: string;
+      messageId: string;
+      rating: MessageFeedbackRating | null;
+      previous: MessageFeedbackRating | null;
+    }>(
+      mergeMap(({ conversationId, messageId, rating, previous }) => {
+        // Both writes sit in the projection, which rxMethod runs synchronously with the
+        // call: that is what lets rateMessage's guard see the pending id on a
+        // double-click's second call, and it keeps the optimistic patch inseparable from
+        // the request that resolves it.
+        patchState(store, addPendingId(messageId), rateEntry(messageId, rating));
+
+        // Carried in rather than read back off the store: the conversation this rating
+        // belongs to is the one that was open when it was pressed, and a route change
+        // landing mid-request must not redirect it at a conversation the reader moved to.
+        const url = store._api.build(
+          `conversations/${ApiUrl.segment(conversationId)}/messages/${ApiUrl.segment(messageId)}/feedback`,
+        );
+
+        // A set, not a toggle: the body carries the state being asked for, so a retried
+        // or duplicated request cannot land on the opposite value — which is also how the
+        // server keeps a second submission from creating a second rating.
+        return store._http.post<void>(url, { rating }).pipe(
+          takeUntil(merge(store._signedOut$, store._rateCancel$)),
+          tapResponse({
+            next: () =>
+              // Re-asserted rather than refreshed: the 204 carries no body to adopt, so
+              // this is the same value again — idempotent when nothing intervened, and
+              // the repair when a history reload landed in between.
+              patchState(store, rateEntry(messageId, rating)),
+            error: (cause: unknown) => {
+              patchState(store, rateEntry(messageId, previous));
+              store._toasts.fromError(toAppError(cause, { url }));
+            },
+            finalize: () => patchState(store, removePendingId(messageId)),
+          }),
+        );
+      }),
+    );
+
     return {
       /**
        * Sends a prompt against the bound conversation, creating one first when
@@ -862,6 +998,40 @@ export const TurnStore = signalStore(
       /** Re-sends a cut-off or failed turn with its own prompt and selection. */
       retryTurn(retry: TurnRetry): void {
         run(retry);
+      },
+
+      /**
+       * Rates one settled answer, or withdraws the rating already on it (US-1103).
+       *
+       * Pressing the thumb that is already selected is the withdrawal: the control
+       * reports which thumb was pressed and this decides what that means, because only
+       * the store knows what is currently stored.
+       *
+       * Refused while that message's own request is in flight, so a double-click cannot
+       * open a second request whose completion order would decide the stored value.
+       * Refused too when the message is not a rateable entry of this transcript — a
+       * conversation the screen has left, or an id with no anchor.
+       */
+      rateMessage(messageId: string, rating: MessageFeedbackRating): void {
+        const conversationId = store.boundConversationId();
+        if (conversationId === null || store.isRowPending(messageId)) {
+          return;
+        }
+
+        const target = store
+          .entries()
+          .find((entry) => entry.kind === 'assistant' && entry.messageId === messageId);
+
+        if (target === undefined || target.kind !== 'assistant') {
+          return;
+        }
+
+        rate({
+          conversationId,
+          messageId,
+          rating: target.rating === rating ? null : rating,
+          previous: target.rating,
+        });
       },
 
       /**
@@ -968,7 +1138,14 @@ export const TurnStore = signalStore(
         // while the orphaned wait held the slot.
         store._stop$.next();
         store._turnAbort.current = null;
-        patchState(store, () => ({ ...initialState, boundConversationId: id }));
+        // Ratings are cancelled rather than merely forgotten (US-1103): an orphaned
+        // request whose pending id has been cleared is one the re-entry guard can no
+        // longer see, so returning to this conversation would let a second request race
+        // it. `finalize` clears the id as the cancellation unsubscribes; the explicit
+        // clear below is what keeps the reset total whatever happened before it, since
+        // `initialState` is the TurnState literal and carries no pendingIds key.
+        store._rateCancel$.next();
+        patchState(store, () => ({ ...initialState, boundConversationId: id }), clearPendingIds());
         // Replay hangs off the reset rather than off the route input directly,
         // so US-401's own `replaceUrl` — which the guard above returns early
         // from — cannot trigger a read of a conversation whose first turn is

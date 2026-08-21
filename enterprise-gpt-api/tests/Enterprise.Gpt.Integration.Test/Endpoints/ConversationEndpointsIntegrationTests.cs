@@ -673,4 +673,288 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
     }
     #endregion
+
+    #region Message feedback
+    /// <summary>
+    /// The route's happy path end to end: the transcript document is patched and the reporting row
+    /// lands beside it. Reading the rating back through <c>GET .../messages</c> is not asserted
+    /// here on purpose — that read goes through a transcript query, which the in-memory store
+    /// refuses to implement; the emulator-backed persistence tests own that half.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_OwnAssistantMessage_RecordsTheRating()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var row = await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken);
+        Assert.NotNull(row);
+        Assert.Equal(MessageFeedbackRatings.Up, row.Rating);
+        Assert.Equal(TestUsers.RegularUserId, row.UserId);
+    }
+
+    /// <summary>
+    /// Re-rating replaces. The unique index on the projection is what makes a second row impossible,
+    /// so a regression here fails as a 500 rather than as a silent duplicate.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_RatedAgainWithTheOppositeValue_ReplacesRatherThanDuplicates()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var route = $"api/conversations/{conversationId}/messages/{messageId}/feedback";
+
+        await client.PostAsJsonAsync(
+            route, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+        var second = await client.PostAsJsonAsync(
+            route, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Down },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+        var row = await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken);
+        Assert.Equal(MessageFeedbackRatings.Down, row?.Rating);
+    }
+
+    /// <summary>
+    /// Withdrawing leaves the row and nulls the verdict: the row is the record that this message was
+    /// considered, which reporting wants to keep.
+    /// </summary>
+    /// <remarks>
+    /// The document is seeded already rated rather than rated through the API first, because the
+    /// in-memory transcript store records patch operations without applying them — so a rating made
+    /// here would not be on the document the withdrawal reads, and the withdrawal would correctly
+    /// conclude there was nothing to withdraw.
+    /// </remarks>
+    [Fact]
+    public async Task SetMessageFeedback_NullRatingOnARatedMessage_WithdrawsItAndKeepsTheRow()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, rating: MessageFeedbackRatings.Up,
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var route = $"api/conversations/{conversationId}/messages/{messageId}/feedback";
+
+        await client.PostAsJsonAsync(
+            route, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+        var withdrawal = await client.PostAsJsonAsync(
+            route, new SetMessageFeedbackActionDto { Rating = null },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, withdrawal.StatusCode);
+        var row = await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken);
+        Assert.NotNull(row);
+        Assert.Null(row.Rating);
+    }
+
+    [Fact]
+    public async Task SetMessageFeedback_UserMessage_ReturnsValidationProblemNamingTheRouteParameter()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, ChatRoles.User, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Contains("messageId", problem.Errors);
+    }
+
+    [Fact]
+    public async Task SetMessageFeedback_UnknownMessage_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{conversationId}/messages/{Guid.NewGuid()}/feedback",
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// Someone else's conversation is a 404 rather than a 403, consistently with the rest of the
+    /// group, so the route cannot be used to confirm that a conversation or message exists.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_AnotherUsersConversation_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            userId: TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, userId: TestUsers.AdminUserId,
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Null(await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SetMessageFeedback_Anonymous_ReturnsUnauthorized()
+    {
+        using var client = _fixture.Factory.CreateAnonymousClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{Guid.NewGuid()}/messages/{Guid.NewGuid()}/feedback",
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>
+    /// A raw body rather than the DTO, because serializing the DTO would only prove the client and
+    /// the server agree with themselves. This pins acceptance of the documented string form — not
+    /// its casing, which System.Text.Json reads case-insensitively whatever this sends. The casing
+    /// that is a contract is the one on the way <em>out</em>, and
+    /// <c>ConversationMessageDtoTests</c> pins that.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_RatingAsAString_IsAccepted()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new StringContent("""{"rating":"Down"}""", System.Text.Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var row = await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken);
+        Assert.Equal(MessageFeedbackRatings.Down, row?.Rating);
+    }
+
+    /// <summary>
+    /// A rating naming nothing the enum defines fails during binding, before any validator could
+    /// see it, so this 400 carries no errors dictionary.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_UnparseableRating_ReturnsABindingFailure()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new StringContent("""{"rating":"sideways"}""", System.Text.Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Null(await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// The hole the validator closes, end to end: the string-enum converter accepts integers and
+    /// does not check them against the enum, so an integer nobody defined binds cleanly and would
+    /// otherwise be stored — and would then come back out of the transcript as a number, breaking
+    /// the string wire format for every client reading that field.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_RatingAsAnUndefinedInteger_ReturnsValidationProblemAndStoresNothing()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new StringContent("""{"rating":7}""", System.Text.Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Contains(nameof(SetMessageFeedbackActionDto.Rating), problem.Errors);
+        Assert.Null(await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// The header document lives in the same partition under the conversation's own id, so the one
+    /// id a caller can supply that resolves to a real document without being a message has to be
+    /// answered as the 404 it is.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_ConversationIdPassedAsTheMessageId_ReturnsNotFound()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{conversationId}/messages/{conversationId}/feedback",
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// Withdrawing a rating nobody recorded touches neither store, so no client can file a row per
+    /// assistant message by posting null ratings across a transcript.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedback_NullRatingOnAnUnratedMessage_FilesNoProjectionRow()
+    {
+        var conversationId = await _fixture.AddConversationAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        var messageId = await _fixture.AddTranscriptMessageAsync(
+            conversationId, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
+            new SetMessageFeedbackActionDto { Rating = null },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Null(await _fixture.ReadMessageFeedbackAsync(
+            conversationId, messageId, TestContext.Current.CancellationToken));
+    }
+    #endregion
 }

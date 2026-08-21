@@ -82,6 +82,13 @@ public static class ConversationEndpoints
         group.MapPut("{id:guid}/favorite", SetConversationFavoriteAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
+        // Its own route below the transcript rather than a field on anything above it: a rating is
+        // per message, and no other route in this group addresses one. The 400 comes in two shapes —
+        // a validation problem naming `messageId` when the target is not an assistant message,
+        // and a plain binding failure when the body names a rating the enum does not define.
+        group.MapPost("{id:guid}/messages/{messageId:guid}/feedback", SetMessageFeedbackAsync)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapDelete("bulk", DeactivateConversationsBulkAsync)
             .ProducesValidationProblem();
         // No 404 declared on purpose: deactivating a conversation that is missing or already
@@ -190,6 +197,18 @@ public static class ConversationEndpoints
         CancellationToken cancellationToken)
     {
         await conversationService.SetConversationFavoriteAsync(id, request, cancellationToken);
+        return TypedResults.NoContent();
+    }
+
+    // Both identifiers are route parameters and neither is repeated in the body: the rating is the
+    // only thing the caller decides. 204 rather than the stored rating echoed back, matching the
+    // favourite route above — the client already knows what it asked for, and a reload reads the
+    // rating off the transcript.
+    internal static async Task<NoContent> SetMessageFeedbackAsync(
+        Guid id, Guid messageId, SetMessageFeedbackActionDto request,
+        IConversationService conversationService, CancellationToken cancellationToken)
+    {
+        await conversationService.SetMessageFeedbackAsync(id, messageId, request, cancellationToken);
         return TypedResults.NoContent();
     }
 

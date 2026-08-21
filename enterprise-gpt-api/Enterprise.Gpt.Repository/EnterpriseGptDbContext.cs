@@ -38,6 +38,8 @@ namespace Enterprise.Gpt.Repository
         public DbSet<Permission> Permissions { get; set; }
 
         public DbSet<McpServer> McpServers { get; set; }
+
+        public DbSet<MessageFeedback> MessageFeedback { get; set; }
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -58,6 +60,7 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new ProjectConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentChunkConfiguration());
+            modelBuilder.ApplyConfiguration(new MessageFeedbackConfiguration());
 
             // Configure global delete behavior
             foreach (var relationship in modelBuilder.Model.GetEntityTypes()

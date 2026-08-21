@@ -15,16 +15,24 @@ public static class CosmosBootstrapper
     /// </summary>
     /// <remarks>
     /// <c>content</c> and <c>htmlContent</c> hold the prompt and the answer and are the bulk of a
-    /// message document's bytes; <c>usage</c> is a per-turn token block. None is ever filtered,
-    /// ordered or aggregated on, so indexing them buys nothing and is charged on every write. The
-    /// <c>_etag</c> exclusion restores the behaviour the default policy has and a custom policy
-    /// otherwise drops.
+    /// message document's bytes; <c>usage</c> is a per-turn token block; <c>feedback</c> is a
+    /// rating, and reporting reads the relational projection rather than this container. None of
+    /// the four is ever filtered, ordered or aggregated on, so indexing them buys nothing and is
+    /// charged on every write. The <c>_etag</c> exclusion restores the behaviour the default policy
+    /// has and a custom policy otherwise drops.
+    /// <para>
+    /// This list governs container <em>creation</em> only: <c>CreateContainerIfNotExistsAsync</c>
+    /// leaves an existing container's policy alone, so an account provisioned before a path was
+    /// added here keeps indexing it. That costs a little write throughput and nothing else, which
+    /// is why no operator step exists to reconcile it.
+    /// </para>
     /// </remarks>
     private static readonly string[] ExcludedIndexPaths =
     [
         "/content/*",
         "/htmlContent/*",
         "/usage/*",
+        "/feedback/*",
         "/\"_etag\"/?"
     ];
 

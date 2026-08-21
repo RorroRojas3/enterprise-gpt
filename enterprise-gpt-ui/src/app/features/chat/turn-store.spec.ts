@@ -5,9 +5,14 @@ import { TestBed } from '@angular/core/testing';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { conversationFixture } from '@testing/conversations';
-import { CHAT_ROLE, ConversationMessageDto } from '@domain/api/conversation';
-import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { conversationFixture, messageFixture } from '@testing/conversations';
+import {
+  CHAT_ROLE,
+  ConversationMessageDto,
+  MESSAGE_FEEDBACK_RATING,
+  MessageFeedbackRating,
+} from '@domain/api/conversation';
+import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   StreamingResponseHandle,
   assistantEvent,
@@ -20,6 +25,7 @@ import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { sessionEvents } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
 import { TurnCompleted, turnEvents } from '@core/events/turn-events';
 import { TokenService } from '@core/auth/token-service';
 import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
@@ -707,8 +713,8 @@ describe('TurnStore', () => {
       setup();
       store.bindRoute(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
-        { text: 'What is the weather?', role: CHAT_ROLE.user },
-        { text: 'It was sunny.', role: CHAT_ROLE.assistant },
+        messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'It was sunny.', role: CHAT_ROLE.assistant }),
       ]);
       const seen = completions();
 
@@ -784,8 +790,8 @@ describe('TurnStore', () => {
 
   describe('replaying the stored transcript (US-410)', () => {
     const HISTORY: readonly ConversationMessageDto[] = [
-      { text: 'What is the weather?', role: CHAT_ROLE.user },
-      { text: 'It is sunny.', role: CHAT_ROLE.assistant },
+      messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+      messageFixture({ text: 'It is sunny.', role: CHAT_ROLE.assistant }),
     ];
 
     it('renders the stored messages as transcript entries when a conversation is opened', () => {
@@ -810,9 +816,9 @@ describe('TurnStore', () => {
       setup();
       store.bindRoute(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
-        { text: 'You are a helpful assistant.', role: CHAT_ROLE.system },
-        { text: 'Ask the weather tool.', role: CHAT_ROLE.tool },
-        { text: 'It is sunny.', role: CHAT_ROLE.assistant },
+        messageFixture({ text: 'You are a helpful assistant.', role: CHAT_ROLE.system }),
+        messageFixture({ text: 'Ask the weather tool.', role: CHAT_ROLE.tool }),
+        messageFixture({ text: 'It is sunny.', role: CHAT_ROLE.assistant }),
       ]);
 
       expect(store.entries()).toHaveLength(1);
@@ -920,8 +926,8 @@ describe('TurnStore', () => {
       store.retryHistory();
       flushHistory(CONVERSATION_ID, [
         ...HISTORY,
-        { text: 'And tomorrow?', role: CHAT_ROLE.user },
-        { text: 'Rain.', role: CHAT_ROLE.assistant },
+        messageFixture({ text: 'And tomorrow?', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'Rain.', role: CHAT_ROLE.assistant }),
       ]);
 
       expect(store.entries()).toHaveLength(4);
@@ -1055,6 +1061,283 @@ describe('TurnStore', () => {
     });
   });
 
+  describe('rating an answer (US-1103)', () => {
+    const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
+    const SECOND_MESSAGE_ID = 'bbbbbbbb-1111-4222-8333-444444444444';
+    const OTHER_CONVERSATION_ID = 'cccccccc-1111-4222-8333-444444444444';
+
+    function feedbackUrl(messageId = MESSAGE_ID): string {
+      return `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages/${messageId}/feedback`;
+    }
+
+    /** Opens a conversation holding one rateable answer, optionally already rated. */
+    function openRatedConversation(rating: MessageFeedbackRating | null = null): void {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+        messageFixture({
+          id: MESSAGE_ID,
+          text: 'It is sunny.',
+          role: CHAT_ROLE.assistant,
+          feedback: rating === null ? null : { rating, dateModified: '2026-08-21T09:30:00+00:00' },
+        }),
+      ]);
+    }
+
+    function assistantEntry(): { readonly rating: MessageFeedbackRating | null } {
+      const entry = store.entries().find((candidate) => candidate.kind === 'assistant');
+      if (entry?.kind !== 'assistant') {
+        throw new Error('the transcript holds no assistant entry');
+      }
+      return entry;
+    }
+
+    /** Settles a live turn, optionally claiming a persisted message id on its `Finished`. */
+    async function finishTurn(
+      handle: StreamingResponseHandle,
+      assistantMessageId?: string,
+    ): Promise<void> {
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Sunny.' })));
+      handle.enqueue(
+        frame(
+          assistantEvent(
+            'Finished',
+            assistantMessageId === undefined ? {} : { metadata: { assistantMessageId } },
+          ),
+        ),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+    }
+
+    /**
+     * The whole of how a rating survives a reload: the replayed block is rebuilt from the
+     * response, so what the server holds is what the footer draws. Nothing is remembered
+     * across the read.
+     */
+    it('hydrates a stored rating onto the replayed entry', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+
+    it('leaves an unrated answer unrated, and still rateable', () => {
+      openRatedConversation();
+
+      expect(assistantEntry().rating).toBeNull();
+    });
+
+    it('patches optimistically and sets the rating the caller asked for', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+
+      // Before the request is answered: the thumb fills on the click, not a round trip later.
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ rating: MESSAGE_FEEDBACK_RATING.up });
+      expect(store.isRowPending(MESSAGE_ID)).toBe(true);
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
+    });
+
+    /** A set, not a toggle, so a retried or duplicated request cannot land on the opposite value. */
+    it('sends the opposite verdict as a set when the other thumb is pressed', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.body).toEqual({ rating: MESSAGE_FEEDBACK_RATING.down });
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.down);
+    });
+
+    /**
+     * Pressing the thumb already selected is the withdrawal, and this is where that is
+     * decided — the control reports a press either way, because only the store knows what
+     * is currently stored.
+     */
+    it('withdraws the rating when the selected thumb is pressed again', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.down);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.body).toEqual({ rating: null });
+      expect(assistantEntry().rating).toBeNull();
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBeNull();
+    });
+
+    it('reverts to what was stored before and raises one toast when the request fails', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
+      const toasts = TestBed.inject(ToastStore);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.down);
+
+      backend
+        .expectOne(feedbackUrl())
+        .flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, { status: 500, statusText: 'Server Error' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+      expect(toasts.assertiveToasts()).toHaveLength(1);
+      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
+    });
+
+    /**
+     * A double-click would otherwise open a second request whose completion order, not the
+     * reader's second press, would decide the stored value.
+     */
+    it('refuses a second press while the first request is in flight', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      backend.expectOne(feedbackUrl()).flush(null, { status: 204, statusText: 'No Content' });
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+
+    it('ignores a message id the open transcript does not hold', () => {
+      openRatedConversation();
+
+      store.rateMessage('99999999-9999-4999-8999-999999999999', MESSAGE_FEEDBACK_RATING.up);
+
+      backend.expectNone(() => true);
+    });
+
+    /**
+     * `Finished` carries the id the transcript will return for the answer (US-1101), which
+     * is what makes a turn rateable the moment it settles rather than after a reload.
+     */
+    it('takes the message id off the Finished frame, so a fresh turn is rateable', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      await finishTurn(handle, MESSAGE_ID);
+
+      expect(assistantEntry().rating).toBeNull();
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      backend.expectOne(feedbackUrl()).flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+
+    /**
+     * A completed turn whose transcript write failed is sent `Finished` with no metadata
+     * at all. There is no persisted message to rate, and claiming otherwise would offer a
+     * control whose every press 404s.
+     */
+    it('claims no message id when Finished carries no metadata', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      await finishTurn(handle);
+
+      const entry = store.entries().find((candidate) => candidate.kind === 'assistant');
+      expect(entry?.kind === 'assistant' ? entry.messageId : 'unset').toBeNull();
+    });
+
+    /**
+     * Leaving a conversation cancels the rating rather than merely forgetting it. An
+     * orphaned request whose pending id has been cleared is one the re-entry guard can no
+     * longer see, so coming back and pressing again would open a second request racing
+     * the first — and the server would settle on whichever landed last.
+     */
+    it('cancels a rating in flight when the conversation changes', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+
+      store.bindRoute(OTHER_CONVERSATION_ID);
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${OTHER_CONVERSATION_ID}/messages`)
+        .flush({ id: OTHER_CONVERSATION_ID, name: 'Elsewhere', messages: [] });
+
+      expect(request.cancelled).toBe(true);
+      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
+    });
+
+    it('cancels a rating in flight when the user signs out', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+
+      TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
+
+      expect(request.cancelled).toBe(true);
+      expect(store.pendingIds().size).toBe(0);
+      expect(store.entries()).toEqual([]);
+    });
+
+    /**
+     * The whole justification for `mergeMap` over `switchMap`, and for `withPendingIds`
+     * being keyed per message rather than a single flag: rating one answer must not
+     * cancel, block or resolve another.
+     */
+    it('rates two answers concurrently, each resolving on its own request', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ id: MESSAGE_ID, text: 'First.', role: CHAT_ROLE.assistant }),
+        messageFixture({ id: SECOND_MESSAGE_ID, text: 'Second.', role: CHAT_ROLE.assistant }),
+      ]);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      store.rateMessage(SECOND_MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      const first = backend.expectOne(feedbackUrl());
+      const second = backend.expectOne(feedbackUrl(SECOND_MESSAGE_ID));
+      expect(store.isRowPending(MESSAGE_ID)).toBe(true);
+      expect(store.isRowPending(SECOND_MESSAGE_ID)).toBe(true);
+
+      // Answered out of order, which is what a merge has to survive.
+      second.flush(null, { status: 204, statusText: 'No Content' });
+      expect(store.isRowPending(MESSAGE_ID)).toBe(true);
+      expect(store.isRowPending(SECOND_MESSAGE_ID)).toBe(false);
+
+      first.flush(null, { status: 204, statusText: 'No Content' });
+
+      const ratings = store
+        .entries()
+        .filter((entry) => entry.kind === 'assistant')
+        .map((entry) => (entry.kind === 'assistant' ? entry.rating : null));
+      expect(ratings).toEqual([MESSAGE_FEEDBACK_RATING.up, MESSAGE_FEEDBACK_RATING.down]);
+    });
+
+    /**
+     * The repair the 204 handler exists for: a history reload landing mid-request rebuilds
+     * the replayed block from the server, which at that moment still reports the rating as
+     * it was before the press.
+     */
+    it('re-asserts the rating over a history reload that landed mid-request', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+        messageFixture({ id: MESSAGE_ID, text: 'It is sunny.', role: CHAT_ROLE.assistant }),
+      ]);
+      expect(assistantEntry().rating).toBeNull();
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+  });
+
   describe('the download target (US-1502)', () => {
     it('is null before a conversation is bound', () => {
       setup();
@@ -1083,8 +1366,8 @@ describe('TurnStore', () => {
       );
       store.bindRoute(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
-        { text: 'What does retrieval do?', role: CHAT_ROLE.user },
-        { text: 'It runs a tool call.', role: CHAT_ROLE.assistant },
+        messageFixture({ text: 'What does retrieval do?', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'It runs a tool call.', role: CHAT_ROLE.assistant }),
       ]);
 
       expect(store.exportTarget()).toEqual({ id: CONVERSATION_ID, name: 'Helios release' });
@@ -1094,7 +1377,7 @@ describe('TurnStore', () => {
     it('is null while neither the list nor the detail copy has landed', () => {
       setup();
       store.bindRoute(CONVERSATION_ID);
-      flushHistory(CONVERSATION_ID, [{ text: 'Hello', role: CHAT_ROLE.user }]);
+      flushHistory(CONVERSATION_ID, [messageFixture({ text: 'Hello', role: CHAT_ROLE.user })]);
 
       expect(store.exportTarget()).toBeNull();
     });
