@@ -61,7 +61,8 @@ Authorization: Bearer <token>
       "role": 3,                       // integer on the wire (§13)
       "htmlContent": "<p>Rewrite this paragraph…</p>",
       "tokens": 412,
-      "tokenAccuracy": "Estimated"     // string on the wire
+      "tokenAccuracy": "Estimated",    // string on the wire
+      "usage": null                    // the turn's billed total; null on a user message (§13)
     }
   ]
 }
@@ -194,6 +195,8 @@ await store.ExecuteBatchAsync(partition, batch => batch
 ```
 
 Because the batch is atomic within the partition, **`messageCount` cannot diverge from the documents backing it** — either all three operations land or none do. That is what makes the header's count exact rather than advisory, and it is why the paged read can take `totalCount` from the header instead of issuing a count query.
+
+**The caller learns the assistant message's id from this write, and nothing upstream of it can know it sooner.** `ConversationService.PersistTurnAsync` returns it — `Guid?`, `null` on every path that appends nothing (an abandoned turn, or a batch that failed after the SQL usage row already committed). Since US-1101 that id is also what the stream's closing `Finished` frame carries, under `metadata.assistantMessageId`: the service holds that frame back until this call returns, and stamps it only when the return value is non-null. See [Streaming Contract §4.1.1](streaming-contract.md#411-finished-carries-the-persisted-messages-identity-us-1101) for the framing this ordering exists to support — this section is the write it is ordered against, not a restatement of it.
 
 Three rules the write path preserves or adds:
 
@@ -350,7 +353,7 @@ Whether a format **reads** what persist time already computed or **re-renders** 
 
 ## 13. The HTTP surface, and the two role contracts
 
-`ConversationMessageDto` gained five fields — `id`, `dateCreated`, `htmlContent`, `tokens`, `tokenAccuracy` — beside the existing `text` and `role`, which are unchanged in name, type and meaning. `ChatConversationDto` gained `totalCount` and `hasMore`.
+`ConversationMessageDto` gained five fields at this release — `id`, `dateCreated`, `htmlContent`, `tokens`, `tokenAccuracy` — beside the existing `text` and `role`, which are unchanged in name, type and meaning. `ChatConversationDto` gained `totalCount` and `hasMore`. US-1101 added a sixth, nullable `usage` (`ConversationMessageUsageDto`: `inputTokens`, `outputTokens`), projected straight off the message document's own `usage` — the shape §4 already showed being written, now also read back over HTTP. It is the **turn's** total, tools included, which is why it deliberately does not equal the sibling `tokens` field (§2); it is `null` on every user and system message and on an assistant message written before the field existed, because there is nothing to project from a document that never carried it.
 
 **`role` is an integer on the wire and a string in storage, and that is deliberate.** The API registers no global `JsonStringEnumConverter`, so `ChatRoles` serializes as `1` System, `2` Assistant, `3` User, `4` Tool — which the Angular client's `CHAT_ROLE` mirror depends on. The Cosmos documents serialize `role` as a camel-cased **string**, because that keeps an exported document readable and matches the SSE contract. Two contracts, two shapes, one enum. `tokenAccuracy` is the exception on the wire: it carries a **property-level** `[JsonConverter(typeof(JsonStringEnumConverter<TokenAccuracies>))]` so it serializes as `"Estimated"`, applied per property precisely because a global converter would change `role` and break every client reading it.
 

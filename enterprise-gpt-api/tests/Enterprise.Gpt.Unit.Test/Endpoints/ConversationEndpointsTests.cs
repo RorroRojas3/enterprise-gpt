@@ -398,6 +398,58 @@ public class ConversationEndpointsTests
         Assert.Contains("\"text\":\"hi\"", json);
     }
 
+    // The slot US-1101 puts the assistant message id in. Worth pinning at the wire rather than only
+    // at the service: the payload is serialized through a source-generated context that writes
+    // exactly the properties it knows, so a property the generator has not been told about is
+    // silently dropped rather than failing to compile.
+    [Fact]
+    public async Task StreamConversationAsync_FinishedCarriesMetadata_WritesItAsAJsonObject()
+    {
+        var id = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var request = CreateStreamRequest();
+        var context = CreateContext();
+        _conversationService.StreamConversationAsync(id, request, Arg.Any<CancellationToken>())
+            .Returns(Events(new AssistantUiEvent
+            {
+                Kind = AssistantUiEventKind.Finished,
+                Metadata = new Dictionary<string, string>
+                {
+                    [IConversationService.AssistantMessageIdMetadataKey] = messageId.ToString()
+                }
+            }));
+
+        await ConversationEndpoints.StreamConversationAsync(
+            id, request, _conversationService, context.Response, TestContext.Current.CancellationToken);
+
+        var json = Assert.Single(ReadFrames(context));
+        Assert.Contains($"\"metadata\":{{\"assistantMessageId\":\"{messageId}\"}}", json);
+
+        var uiEvent = Deserialize(json);
+        Assert.Equal(
+            messageId.ToString(),
+            Assert.Contains(
+                IConversationService.AssistantMessageIdMetadataKey,
+                Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(uiEvent.Metadata)));
+    }
+
+    // A frame that sets nothing serializes exactly as it did before the slot existed, which is what
+    // makes the upgrade invisible to a client that ignores it.
+    [Fact]
+    public async Task StreamConversationAsync_EventCarriesNoMetadata_OmitsTheKeyEntirely()
+    {
+        var id = Guid.NewGuid();
+        var request = CreateStreamRequest();
+        var context = CreateContext();
+        _conversationService.StreamConversationAsync(id, request, Arg.Any<CancellationToken>())
+            .Returns(Events(new AssistantUiEvent { Kind = AssistantUiEventKind.Finished }));
+
+        await ConversationEndpoints.StreamConversationAsync(
+            id, request, _conversationService, context.Response, TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain("metadata", Assert.Single(ReadFrames(context)));
+    }
+
     // A turn that produced nothing still owes the client a well-formed empty stream rather than a
     // bare 200 the reader cannot interpret.
     [Fact]

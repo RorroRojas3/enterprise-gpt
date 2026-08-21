@@ -5,7 +5,7 @@
 // fails on any difference, including line endings.
 //
 // @andes-contract-package andes.extensions.ai.ui
-// @andes-contract-version 0.7.0
+// @andes-contract-version 0.8.0
 // @andes-contract-source  typescript/andes-assistant-ui.ts
 //
 // To upgrade: bump the PackageReference in enterprise-gpt-api, `dotnet restore`,
@@ -109,6 +109,11 @@ export interface AssistantStatusSnapshot {
   reasoningText?: string;
   /** The total token usage for the request, set once it finishes. */
   usage?: UsageSummary;
+  /**
+   * Application-supplied values attached by the API; the contract does not interpret them.
+   * Folding accumulates each event's bag, last write per key wins.
+   */
+  metadata?: Record<string, string>;
 }
 
 /**
@@ -147,6 +152,8 @@ export interface AssistantUiEvent {
   usage?: UsageSummary;
   /** The ISO 8601 time at which the underlying progress event was raised. */
   timestamp: string;
+  /** Application-supplied values attached by the API; the contract does not interpret them. */
+  metadata?: Record<string, string>;
 }
 
 /** Returns the empty starting snapshot to fold events into. */
@@ -169,9 +176,14 @@ export function foldAssistantEvents(
   snapshot: AssistantStatusSnapshot,
   event: AssistantUiEvent,
 ): AssistantStatusSnapshot {
+  // Metadata merges before the kind switch so every event — including kinds this fold does not
+  // yet recognize (the default arm) — contributes its application-supplied values. The C#
+  // AssistantStatusReducer.Apply applies the same rule, keeping the two folds in lockstep.
+  const base = mergeMetadata(snapshot, event);
+
   switch (event.kind) {
     case "Status":
-      return { ...snapshot, assistantStatus: event.message };
+      return { ...base, assistantStatus: event.message };
 
     case "ActivityStarted": {
       const activity: AssistantActivity = {
@@ -183,13 +195,13 @@ export function foldAssistantEvents(
         subStatuses: [],
         children: [],
       };
-      return { ...snapshot, activities: addActivity(snapshot.activities, event.parentScopeId, activity) };
+      return { ...base, activities: addActivity(base.activities, event.parentScopeId, activity) };
     }
 
     case "ActivityProgress":
       return {
-        ...snapshot,
-        activities: updateActivity(snapshot.activities, event.scopeId, (activity) => ({
+        ...base,
+        activities: updateActivity(base.activities, event.scopeId, (activity) => ({
           ...activity,
           subStatuses: [
             ...activity.subStatuses,
@@ -201,8 +213,8 @@ export function foldAssistantEvents(
     case "ActivityCompleted":
     case "ActivityFailed":
       return {
-        ...snapshot,
-        activities: updateActivity(snapshot.activities, event.scopeId, (activity) => ({
+        ...base,
+        activities: updateActivity(base.activities, event.scopeId, (activity) => ({
           ...activity,
           state: event.kind === "ActivityFailed" ? "Failed" : "Completed",
           durationSeconds: event.durationSeconds,
@@ -210,17 +222,28 @@ export function foldAssistantEvents(
       };
 
     case "TextDelta":
-      return { ...snapshot, text: (snapshot.text ?? "") + (event.text ?? "") };
+      return { ...base, text: (base.text ?? "") + (event.text ?? "") };
 
     case "ReasoningDelta":
-      return { ...snapshot, reasoningText: (snapshot.reasoningText ?? "") + (event.text ?? "") };
+      return { ...base, reasoningText: (base.reasoningText ?? "") + (event.text ?? "") };
 
     case "Finished":
-      return { ...snapshot, phase: "Completed", usage: event.usage };
+      return { ...base, phase: "Completed", usage: event.usage };
 
     default:
-      return snapshot;
+      return base;
   }
+}
+
+function mergeMetadata(
+  snapshot: AssistantStatusSnapshot,
+  event: AssistantUiEvent,
+): AssistantStatusSnapshot {
+  if (event.metadata == null || Object.keys(event.metadata).length === 0) {
+    return snapshot;
+  }
+  // Last write per key wins; a new object each time keeps earlier snapshots immutable.
+  return { ...snapshot, metadata: { ...snapshot.metadata, ...event.metadata } };
 }
 
 function addActivity(

@@ -1,6 +1,7 @@
+import { HttpTestingController } from '@angular/common/http/testing';
 import { PaginatedResponseDto } from '../app/domain/api/paginated-response';
 import { PermissionDto, UserDto } from '../app/domain/api/user';
-import { UPLOAD_FILE_GRANT } from './session';
+import { ADMINISTRATOR_GRANT, UPLOAD_FILE_GRANT } from './session';
 
 let sequence = 0;
 
@@ -37,6 +38,39 @@ export function permissionFixture(overrides: Partial<PermissionDto> = {}): Permi
     mcpServerId: null,
     ...overrides,
   };
+}
+
+/**
+ * The catalog the users tab's permission filter and its edit panel both read (US-1206).
+ *
+ * Answered with rows rather than an empty array on purpose: `ensurePermissions()` treats
+ * an empty catalog as "not loaded", so a spec that flushed `[]` and then opened a form
+ * would issue a second request and fail `verify()` on it.
+ */
+export function flushPermissions(
+  backend: HttpTestingController,
+  permissions: PermissionDto[] = [
+    permissionFixture(),
+    permissionFixture({ id: ADMINISTRATOR_GRANT.id, name: ADMINISTRATOR_GRANT.name }),
+  ],
+  { optional = false }: { optional?: boolean } = {},
+): number {
+  // `match`, not `expectOne`: the catalog is cached in the root store, so a spec that
+  // mounts the tab twice issues one request across both mounts, and the second mount has
+  // none to answer. Those callers pass `optional`; everyone else gets the assertion,
+  // because a helper that silently passes on zero requests would keep every spec green if
+  // the screen stopped asking for the catalog at all.
+  const requests = backend.match((request) => request.url.endsWith('/api/permissions'));
+
+  if (!optional && requests.length === 0) {
+    throw new Error('Expected a GET api/permissions request; none was made.');
+  }
+
+  for (const request of requests) {
+    request.flush(permissions);
+  }
+
+  return requests.length;
 }
 
 /**

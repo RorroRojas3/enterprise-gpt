@@ -14,6 +14,7 @@ using Enterprise.Gpt.Repository;
 using Microsoft.Azure.Cosmos;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
@@ -34,6 +35,22 @@ namespace Enterprise.Gpt.Service
 {
     public interface IConversationService
     {
+        /// <summary>
+        /// The <c>metadata</c> key the <see cref="AssistantUiEventKind.Finished"/> frame carries the
+        /// persisted assistant message's identifier under (US-1101).
+        /// </summary>
+        /// <remarks>
+        /// An opaque identifier clients match verbatim, like the problem-type URIs — renaming it is
+        /// a breaking API change.
+        /// <para>
+        /// Present only on a turn whose answer actually reached the transcript. A cancelled or
+        /// faulted turn is sent no <see cref="AssistantUiEventKind.Finished"/> frame at all, and a
+        /// completed turn whose transcript write failed is sent one carrying no <c>metadata</c>
+        /// object — the serializer omits nulls, so the key is absent rather than empty either way.
+        /// </para>
+        /// </remarks>
+        const string AssistantMessageIdMetadataKey = "assistantMessageId";
+
         /// <summary>
         /// Reads a single conversation, including the model and MCP servers its most recent turn ran
         /// with so a client can restore that selection.
@@ -829,6 +846,19 @@ namespace Enterprise.Gpt.Service
             StringBuilder sb = new();
             var completed = false;
 
+            // Held back rather than forwarded with the rest of the stream. The frame has to carry
+            // the identifier of the assistant message the turn produced, and that message does not
+            // exist until PersistTurnAsync has written the transcript — which runs in the finally
+            // below, after the loop that yields events has already exited. Re-emitted underneath
+            // this block once the write has answered.
+            AssistantUiEvent? finishedEvent = null;
+            Guid? assistantMessageId = null;
+
+            // Held for the same reason the frame is. A completed turn is owed its Finished event
+            // whatever the write then does, and throwing out of the finally below would skip the
+            // statement that delivers it — so the failure is captured there and rethrown after.
+            ExceptionDispatchInfo? persistFailure = null;
+
             // The lease set (null when no MCPs are selected) must stay alive for the whole
             // stream: the attached tools invoke through the leased clients. await using
             // releases the leases on completion, fault, or client disconnect alike.
@@ -916,6 +946,12 @@ namespace Enterprise.Gpt.Service
                             sb.Append(uiEvent.Text);
                         }
 
+                        if (uiEvent.Kind is AssistantUiEventKind.Finished)
+                        {
+                            finishedEvent = uiEvent;
+                            continue;
+                        }
+
                         yield return uiEvent;
                     }
 
@@ -967,19 +1003,66 @@ namespace Enterprise.Gpt.Service
                     // recording it, so finalization runs uncancellable.
                     try
                     {
-                        await PersistTurnAsync(turn, CancellationToken.None);
+                        assistantMessageId = await PersistTurnAsync(turn, CancellationToken.None);
                     }
                     catch (Exception ex) when (!completed)
                     {
                         // Filtered on !completed: throwing out of a finally while an exception is
                         // already in flight would replace it, so a cancelled turn would surface as a
                         // database error rather than the 499 it owes the client. Losing the usage row
-                        // is the lesser harm. A turn that completed has no exception to mask, so its
-                        // failures still propagate.
+                        // is the lesser harm.
                         _logger.LogError(ex, "Failed to record usage for the abandoned turn on conversation {ConversationId}.", id);
+                    }
+                    catch (Exception ex)
+                    {
+                        // The completed half. The failure still reaches the caller — captured rather
+                        // than swallowed — but only after the Finished frame it would otherwise have
+                        // cost. That frame used to be forwarded from inside the loop, so a write
+                        // that threw truncated the body *after* it; holding the frame back must not
+                        // quietly turn a completed turn into one the client reads as incomplete.
+                        //
+                        // It matters most for the failures after the SQL commit —
+                        // _markdownRenderer.Render is one — which leave the same billed-but-not-
+                        // transcribed state that a failed batch reports with a bare Finished.
+                        persistFailure = ExceptionDispatchInfo.Capture(ex);
                     }
                 }
             }
+
+            // Outside the lease scope, because the leases have no part in this frame and their
+            // lifetime belongs to the model call rather than to the write that followed it.
+            //
+            // Reached only on a turn that ran to completion: a cancelled turn and a faulted one are
+            // never sent a Finished event by the middleware, and a client that disconnected stops
+            // pulling — disposing a suspended iterator resumes it in dispose mode, which runs the
+            // finally above and terminates rather than continuing here. That is what makes "no
+            // assistantMessageId is claimed for an abandoned turn" structural rather than a
+            // condition to remember.
+            if (finishedEvent is not null)
+            {
+                // Null when the turn completed and the transcript write did not — the usage row is
+                // committed but its message was never written, whether the batch reported failure
+                // or the write threw. The frame still goes out, without the key: the identifier is
+                // a promise about what the transcript will return, and there is nothing to return.
+                //
+                // Assignment rather than a merge, and safe because it is: ToUiEventsAsync documents
+                // that it always leaves Metadata null, so there is nothing here to preserve. A
+                // package that starts attaching its own values would need this to merge.
+                yield return assistantMessageId is { } messageId
+                    ? finishedEvent with
+                    {
+                        Metadata = new Dictionary<string, string>
+                        {
+                            [IConversationService.AssistantMessageIdMetadataKey] = messageId.ToString()
+                        }
+                    }
+                    : finishedEvent;
+            }
+
+            // After the frame, never instead of it. Rethrown with its original stack, so the
+            // endpoint still sees the failure — on a stream that has already started it short-
+            // circuits on Response.HasStarted rather than corrupting the body.
+            persistFailure?.Throw();
         }
 
         /// <summary>
@@ -1037,13 +1120,24 @@ namespace Enterprise.Gpt.Service
         /// </summary>
         /// <param name="turn">The outcome to record.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>
+        /// The identifier of the assistant message this turn appended to the transcript, or
+        /// <see langword="null"/> when it appended none — an abandoned turn, or a completed one
+        /// whose transcript write failed after the usage row had already committed.
+        /// </returns>
         /// <remarks>
         /// An abandoned turn is billed but not transcribed: appending a truncated answer would
         /// corrupt the history every later turn replays to the model. It still moves the counters
         /// and writes its usage row, so reports account for tokens the user stopped paying attention
         /// to but was still charged for.
+        /// <para>
+        /// The return value is deliberately narrower than the identifier written to
+        /// <see cref="ConversationUsage.AssistantMessageId"/>, which is set before the transcript
+        /// append is attempted and is therefore best-effort. What the caller puts on the wire has to
+        /// be a message a client can actually read back.
+        /// </para>
         /// </remarks>
-        private async Task PersistTurnAsync(TurnOutcome turn, CancellationToken cancellationToken)
+        private async Task<Guid?> PersistTurnAsync(TurnOutcome turn, CancellationToken cancellationToken)
         {
             var date = DateTimeOffset.UtcNow;
             var completed = turn.Status == ConversationUsageStatuses.Completed;
@@ -1181,7 +1275,7 @@ namespace Enterprise.Gpt.Service
 
             if (!completed)
             {
-                return;
+                return null;
             }
 
             // Clamped to at least one tick after the prompt. A turn that completes inside a single
@@ -1270,7 +1364,11 @@ namespace Enterprise.Gpt.Service
                 _logger.LogError(
                     "Writing the transcript for conversation {Id} failed ({Failure}); the completed turn was not persisted. Usage row {UsageId} references assistant message {AssistantMessageId}, which was never written.",
                     conversationId, result.Describe(), usage.Id, assistantMessageId);
+
+                return null;
             }
+
+            return assistantMessageId;
         }
 
         /// <summary>
@@ -1719,7 +1817,18 @@ namespace Enterprise.Gpt.Service
                                 Role = x.Role,
                                 HtmlContent = x.HtmlContent,
                                 Tokens = x.Tokens,
-                                TokenAccuracy = x.TokenAccuracy
+                                TokenAccuracy = x.TokenAccuracy,
+                                // Read straight off the document rather than joined from the usage
+                                // row: the transcript recorded the turn's totals beside the message
+                                // when it was written, and the audit row is the wrong side to reach
+                                // from — it is keyed the other way and would cost a query per page.
+                                Usage = x.Usage is null
+                                    ? null
+                                    : new ConversationMessageUsageDto
+                                    {
+                                        InputTokens = x.Usage.InputTokens,
+                                        OutputTokens = x.Usage.OutputTokens
+                                    }
                             })
                             .ToList();
 

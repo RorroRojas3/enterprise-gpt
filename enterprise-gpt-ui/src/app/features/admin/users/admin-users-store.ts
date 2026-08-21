@@ -12,7 +12,7 @@ import { removeEntity, setAllEntities, updateEntity, withEntities } from '@ngrx/
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
-import { pipe, switchMap, takeUntil, tap } from 'rxjs';
+import { filter, pipe, switchMap, takeUntil, tap } from 'rxjs';
 import { PaginatedResponseDto } from '@domain/api/paginated-response';
 import { UserDto } from '@domain/api/user';
 import { toAppError } from '@core/errors/to-app-error';
@@ -33,6 +33,14 @@ export interface AdminUsersQuery {
   readonly name: string;
   readonly page: number;
   readonly pageSize: number;
+  /**
+   * The permission every returned user must hold, or `null` for the whole directory
+   * (US-1206).
+   *
+   * Already vouched for by the caller. The store sends what it is given; deciding that an
+   * id names a permission that exists needs the catalog, which is the screen's to hold.
+   */
+  readonly permissionId: string | null;
 }
 
 interface AdminUsersState {
@@ -46,6 +54,8 @@ interface AdminUsersState {
   /** The 1-based page those rows belong to, on the same terms. */
   readonly page: number;
   readonly pageSize: number;
+  /** The `permissionId=` filter those rows belong to, on the same terms. */
+  readonly permissionId: string | null;
   readonly totalCount: number;
   /**
    * Bumped by every query, so an optimistic removal knows which result set it came out
@@ -85,12 +95,15 @@ export interface RemovedUserRow {
  * Rows keep the server's order — last name, then first name. No sort control is offered
  * here, but that is now the screen's own gap rather than the API's: US-706 put `sort=` and
  * `dir=` on `GET api/users`, so wiring one is a route-and-template change on this tab.
+ * The permission filter frame `5a` also draws is no longer among those gaps — US-1205 put
+ * `permissionId=` on the endpoint and US-1206 wired the control to it.
  */
 export const AdminUsersStore = signalStore(
   withState<AdminUsersState>({
     name: '',
     page: 1,
     pageSize: DEFAULT_USER_PAGE_SIZE,
+    permissionId: null,
     totalCount: 0,
     _queryGeneration: 0,
   }),
@@ -101,67 +114,76 @@ export const AdminUsersStore = signalStore(
     _url: inject(ApiUrl).build('users'),
     _signedOut$: injectSignedOut(),
   })),
-  withComputed(({ entities, name, page, pageSize, totalCount, isFulfilled, isPending }) => {
-    const isEmpty = computed(() => isFulfilled() && entities().length === 0);
+  withComputed(
+    ({ entities, name, page, pageSize, permissionId, totalCount, isFulfilled, isPending }) => {
+      const isEmpty = computed(() => isFulfilled() && entities().length === 0);
 
-    return {
-      /** Loaded, and there is genuinely nothing — distinct from "not loaded yet". */
-      isEmpty,
-      /** Loaded, nothing matched, and a term is why — the empty state that can quote it. */
-      hasNoMatches: computed(() => isEmpty() && name().trim() !== ''),
-      /**
-       * Loaded, nothing on this page, but there are rows on an earlier one.
-       *
-       * A deep link to `?page=99`, or a page emptied by deactivations since the link was
-       * shared. It is its own state because the way out of it is a page change, not a
-       * cleared search — and it is tested **before** `hasNoMatches` in the template, so a
-       * filtered link past the end explains the page rather than blaming the term.
-       *
-       * `page() > 1` is what keeps the two apart: page 1 of a search with no results is a
-       * failed search, whatever the unfiltered directory holds.
-       */
-      isPastEnd: computed(() => isEmpty() && totalCount() > 0 && page() > 1),
-      /**
-       * Nothing on screen yet, so a skeleton is the honest thing to show. A search that
-       * narrows an existing list keeps its rows and marks the field busy instead.
-       */
-      isFirstLoad: computed(() => isPending() && entities().length === 0),
-      /**
-       * Derived rather than read from `PaginatedResponseDto.totalPages`.
-       *
-       * The server computes the same figure, but from the page size *it* used; deriving
-       * it from the size this store is about to request next keeps the pager and the
-       * request in step in the gap between a size change and its response.
-       */
-      totalPages: computed(() => Math.max(1, Math.ceil(totalCount() / pageSize()))),
-      /**
-       * Frame `5a`'s footer count, in the wording `Paginator` composes it in.
-       *
-       * Handed to `DataTable.summary` as well, which is why the paginator's own copy is
-       * told not to announce: two live regions carrying one sentence read it twice.
-       */
-      countSummary: computed(() => {
-        const total = totalCount();
-        const noun = total === 1 ? 'user' : 'users';
-        if (total === 0) {
-          return 'No users';
-        }
+      return {
+        /** Loaded, and there is genuinely nothing — distinct from "not loaded yet". */
+        isEmpty,
+        /**
+         * Loaded, nothing matched, and a filter is why — the empty state that can name it.
+         *
+         * Either filter counts. Reading the term alone would let a directory narrowed to a
+         * permission nobody holds render "No users match" over an empty search box.
+         */
+        hasNoMatches: computed(
+          () => isEmpty() && (name().trim() !== '' || permissionId() !== null),
+        ),
+        /**
+         * Loaded, nothing on this page, but there are rows on an earlier one.
+         *
+         * A deep link to `?page=99`, or a page emptied by deactivations since the link was
+         * shared. It is its own state because the way out of it is a page change, not a
+         * cleared search — and it is tested **before** `hasNoMatches` in the template, so a
+         * filtered link past the end explains the page rather than blaming the term.
+         *
+         * `page() > 1` is what keeps the two apart: page 1 of a search with no results is a
+         * failed search, whatever the unfiltered directory holds.
+         */
+        isPastEnd: computed(() => isEmpty() && totalCount() > 0 && page() > 1),
+        /**
+         * Nothing on screen yet, so a skeleton is the honest thing to show. A search that
+         * narrows an existing list keeps its rows and marks the field busy instead.
+         */
+        isFirstLoad: computed(() => isPending() && entities().length === 0),
+        /**
+         * Derived rather than read from `PaginatedResponseDto.totalPages`.
+         *
+         * The server computes the same figure, but from the page size *it* used; deriving
+         * it from the size this store is about to request next keeps the pager and the
+         * request in step in the gap between a size change and its response.
+         */
+        totalPages: computed(() => Math.max(1, Math.ceil(totalCount() / pageSize()))),
+        /**
+         * Frame `5a`'s footer count, in the wording `Paginator` composes it in.
+         *
+         * Handed to `DataTable.summary` as well, which is why the paginator's own copy is
+         * told not to announce: two live regions carrying one sentence read it twice.
+         */
+        countSummary: computed(() => {
+          const total = totalCount();
+          const noun = total === 1 ? 'user' : 'users';
+          if (total === 0) {
+            return 'No users';
+          }
 
-        const first = (page() - 1) * pageSize() + 1;
+          const first = (page() - 1) * pageSize() + 1;
 
-        // A page past the end has no range to state. Left unclamped this reads "Showing
-        // 2451–312 of 312 users" — visibly, and in the table's live region, right beside
-        // the empty state explaining that the page does not exist.
-        if (first > total) {
-          return `No users on this page — ${total} ${noun} in total`;
-        }
+          // A page past the end has no range to state. Left unclamped this reads "Showing
+          // 2451–312 of 312 users" — visibly, and in the table's live region, right beside
+          // the empty state explaining that the page does not exist.
+          if (first > total) {
+            return `No users on this page — ${total} ${noun} in total`;
+          }
 
-        return `Showing ${first}–${Math.min(page() * pageSize(), total)} of ${total} ${noun}`;
-      }),
-    };
-  }),
+          return `Showing ${first}–${Math.min(page() * pageSize(), total)} of ${total} ${noun}`;
+        }),
+      };
+    },
+  ),
   withMethods((store) => {
-    function searchUrl({ name, page, pageSize }: AdminUsersQuery): {
+    function searchUrl({ name, page, pageSize, permissionId }: AdminUsersQuery): {
       url: string;
       params: HttpParams;
     } {
@@ -176,18 +198,35 @@ export const AdminUsersStore = signalStore(
         params = params.set('name', trimmed);
       }
 
+      // `permissionId`, the API's own spelling — unlike `size`/`take`, which the URL
+      // renames for the reader. This is the wire, and the server keys its validation
+      // problem on this name.
+      if (permissionId !== null) {
+        params = params.set('permissionId', permissionId);
+      }
+
       return { url: store._url, params };
     }
 
     /** The query the rows on screen belong to, for a retry. */
     function currentQuery(): AdminUsersQuery {
-      return { name: store.name(), page: store.page(), pageSize: store.pageSize() };
+      return {
+        name: store.name(),
+        page: store.page(),
+        pageSize: store.pageSize(),
+        permissionId: store.permissionId(),
+      };
     }
 
     // No `distinctUntilChanged`: the signal source only emits on a real change, and
     // `retry()` pushes the same query again on purpose.
-    const _runQuery = rxMethod<AdminUsersQuery>(
+    const _runQuery = rxMethod<AdminUsersQuery | null>(
       pipe(
+        // `null` means the screen cannot yet say what to ask for — a link naming a
+        // permission whose existence only the catalog can confirm. Dropped rather than
+        // sent unfiltered and corrected afterwards, which would put the whole directory
+        // on screen for a moment before narrowing it to the page that was linked to.
+        filter((query): query is AdminUsersQuery => query !== null),
         tap((query) =>
           patchState(
             store,
@@ -233,14 +272,18 @@ export const AdminUsersStore = signalStore(
       },
 
       /**
-       * Binds the screen's `?name=`, `?page=` and `?size=` to the query, once, from its
-       * constructor.
+       * Binds the screen's `?name=`, `?page=`, `?size=` and `?permission=` to the query,
+       * once, from its constructor.
        *
        * Taking a computation rather than a value is what makes a deep link one request:
        * `rxMethod` subscribes through an effect, so it reads the parameters the router
        * has already bound instead of firing unfiltered first and filtered second. All
-       * three travel in one object because they go out on one request — binding them
+       * four travel in one object because they go out on one request — binding them
        * separately would fire a second query for every change to any of them.
+       *
+       * The computation may answer `null`, which means "not yet" rather than "everything":
+       * `?permission=` cannot be turned into a request until the permission catalog says
+       * whether the id exists, and a query withheld is one fewer wrong page on screen.
        */
       bindQuery: _runQuery,
 

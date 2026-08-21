@@ -19,12 +19,16 @@ import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 
+/** A permission id as the catalog would hand one to the filter. */
+const PERMISSION_ID = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+
 describe('AdminUsersStore (US-1201)', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof AdminUsersStore>;
   let term: ReturnType<typeof signal<string>>;
   let page: ReturnType<typeof signal<number>>;
   let pageSize: ReturnType<typeof signal<number>>;
+  let permissionId: ReturnType<typeof signal<string | null>>;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -41,16 +45,22 @@ describe('AdminUsersStore (US-1201)', () => {
     term = signal('');
     page = signal(1);
     pageSize = signal(DEFAULT_USER_PAGE_SIZE);
+    permissionId = signal<string | null>(null);
   });
 
   afterEach(() => {
     backend.verify();
   });
 
-  /** Wires the query the way the screen's constructor does — one computation, three inputs. */
+  /** Wires the query the way the screen's constructor does — one computation, four inputs. */
   function bind(): void {
     TestBed.runInInjectionContext(() =>
-      store.bindQuery(() => ({ name: term(), page: page(), pageSize: pageSize() })),
+      store.bindQuery(() => ({
+        name: term(),
+        page: page(),
+        pageSize: pageSize(),
+        permissionId: permissionId(),
+      })),
     );
     TestBed.tick();
   }
@@ -79,6 +89,95 @@ describe('AdminUsersStore (US-1201)', () => {
 
     expect(store.entities()).toHaveLength(1);
     expect(store.isFulfilled()).toBe(true);
+  });
+
+  it('sends permissionId only when the filter is on (US-1206)', async () => {
+    bind();
+
+    const unfiltered = expectSearch();
+    expect(unfiltered.request.params.has('permissionId')).toBe(false);
+    unfiltered.flush(
+      userPage([directoryUserFixture()], { totalCount: 312, pageSize: DEFAULT_USER_PAGE_SIZE }),
+    );
+    await settle();
+
+    permissionId.set(PERMISSION_ID);
+    await settle();
+
+    const filtered = expectSearch();
+    // The API's own spelling on the wire, whatever the URL calls it.
+    expect(filtered.request.params.get('permissionId')).toBe(PERMISSION_ID);
+    filtered.flush(
+      userPage([directoryUserFixture()], { totalCount: 4, pageSize: DEFAULT_USER_PAGE_SIZE }),
+    );
+    await settle();
+
+    // The pager reads the filtered total, because the server applied the filter before
+    // counting — the whole point of US-1205 over a client-side narrowing.
+    expect(store.totalCount()).toBe(4);
+    expect(store.countSummary()).toBe('Showing 1–4 of 4 users');
+  });
+
+  it('keeps the permission filter across a retry (US-1206)', async () => {
+    permissionId.set(PERMISSION_ID);
+    bind();
+    expectSearch().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
+      status: 500,
+      statusText: 'Server Error',
+    });
+    await settle();
+
+    store.retry();
+    await settle();
+
+    // Read back from state rather than from the computation, which a retry never re-runs.
+    const retried = expectSearch();
+    expect(retried.request.params.get('permissionId')).toBe(PERMISSION_ID);
+    retried.flush(
+      userPage([directoryUserFixture()], { totalCount: 1, pageSize: DEFAULT_USER_PAGE_SIZE }),
+    );
+    await settle();
+
+    expect(store.error()).toBeNull();
+  });
+
+  it('withholds the request while the query is unresolved, then sends it (US-1206)', async () => {
+    const ready = signal(false);
+    TestBed.runInInjectionContext(() =>
+      store.bindQuery(() =>
+        ready()
+          ? { name: '', page: 1, pageSize: DEFAULT_USER_PAGE_SIZE, permissionId: PERMISSION_ID }
+          : null,
+      ),
+    );
+    TestBed.tick();
+
+    // Not "sent unfiltered and corrected afterwards": a link naming a permission would
+    // otherwise put the whole directory on screen for a paint before narrowing it.
+    backend.expectNone((request) => request.url === USERS_URL);
+    expect(store.isIdle()).toBe(true);
+
+    ready.set(true);
+    await settle();
+
+    const request = expectSearch();
+    expect(request.request.params.get('permissionId')).toBe(PERMISSION_ID);
+    request.flush(
+      userPage([directoryUserFixture()], { totalCount: 1, pageSize: DEFAULT_USER_PAGE_SIZE }),
+    );
+    await settle();
+
+    expect(store.isFulfilled()).toBe(true);
+  });
+
+  it('blames the permission, not an empty search box, when nothing holds it (US-1206)', async () => {
+    permissionId.set(PERMISSION_ID);
+    bind();
+    expectSearch().flush(userPage([], { totalCount: 0, pageSize: DEFAULT_USER_PAGE_SIZE }));
+    await settle();
+
+    expect(store.isEmpty()).toBe(true);
+    expect(store.hasNoMatches()).toBe(true);
   });
 
   it('turns a page number into the offset the endpoint takes', async () => {

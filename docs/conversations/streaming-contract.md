@@ -51,8 +51,8 @@ sequenceDiagram
 |---|---|
 | Framing and serialization | `ConversationEndpoints.StreamConversationAsync` ([`ConversationEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs)) |
 | Producing the events | `ConversationService.StreamConversationCoreAsync` ([`ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs)), via `ToUiEventsAsync()` |
-| The event type and its JSON | `Andes.Extensions.AI.UI` 0.7.0 — `AssistantUiEvent`, `AssistantUiJsonContext` |
-| The client-side reducer | `Andes.Extensions.AI.UI` 0.7.0, `typescript/andes-assistant-ui.ts` (§5.2) |
+| The event type and its JSON | `Andes.Extensions.AI.UI` 0.8.0 — `AssistantUiEvent`, `AssistantUiJsonContext` |
+| The client-side reducer | `Andes.Extensions.AI.UI` 0.8.0, `typescript/andes-assistant-ui.ts` (§5.2) |
 | What the turn records | [Conversation Usage and Favourites](usage-and-favorites.md) |
 
 ## 2. Quick start
@@ -157,6 +157,8 @@ The line between "before" and "after" is the **synthetic opening pair** (§4.3).
 
 **After** — there is no error surface left. The exception handlers short-circuit on `Response.HasStarted` rather than corrupting a stream that is already `200 OK` with half an answer in it, so a mid-stream failure reaches the client as **a body that simply stops**. A client cannot distinguish that from a network drop and should not try to; treat an ended body with no `Finished` event as an incomplete turn and say so in the UI.
 
+That rule is unchanged by the transcript write §4.1.1 describes, and it is worth being precise about why: a turn whose write fails **after** the model finished still gets a `Finished` frame — the answer genuinely completed, and holding the frame back exists precisely so that fact cannot be lost — just one carrying no `metadata`. "No `Finished` at all" and "`Finished` with no `metadata`" are different signals answering different questions: the first says the turn did not end well, the second says it ended well but the transcript does not (yet, or ever) hold the message a client could act on by id.
+
 The turn is still recorded when this happens — see [usage §4](usage-and-favorites.md#4-what-happens-on-a-chat-turn). It is also recorded when a client disconnects on the opening pair itself: the synthetic yields sit inside the same `try`/`finally` that persists the turn's outcome, so a caller that heard only the first frames still counts as a turn.
 
 ## 4. The event contract
@@ -174,9 +176,9 @@ The turn is still recorded when this happens — see [usage §4](usage-and-favor
 | `ActivityFailed` | That activity threw | `scopeId`, `durationSeconds` |
 | `TextDelta` | A chunk of the assistant's answer | `text` |
 | `ReasoningDelta` | A chunk of reasoning text — the turn's first is server-authored, the rest are the model's reasoning summary | `text` |
-| `Finished` | The turn ran to completion | `usage`, `durationSeconds` |
+| `Finished` | The turn ran to completion | `usage`, `durationSeconds`, `metadata` (§4.1.1) |
 
-Three of these deserve their own note.
+Three of these deserve their own note, and `Finished` has a fourth of its own (§4.1.1).
 
 **`ReasoningDelta` is display-only.** It is streamed so the user can see the model thinking, and it is never written to the Cosmos transcript: replaying a model's own reasoning back to it on the next turn is neither useful nor what providers expect. Only `TextDelta` is transcribed.
 
@@ -185,6 +187,27 @@ Three of these deserve their own note.
 **Model reasoning does now arrive, on some turns.** Until recently the seeded sentence was all any turn produced: the single Azure provider talked to Chat Completions, which returns no reasoning content at all, so the separating blank line marked a boundary nothing was ever written after. The **Azure OpenAI** provider now talks to the Responses API, and a model whose catalog row sets `isReasoningEnabled` streams its own reasoning summary as further `ReasoningDelta` frames — arriving before the first `TextDelta`, and interleaved with activity events if the turn calls a tool while reasoning. So the honest expectation for a client is: **one** `ReasoningDelta` on most turns and **many** on some, decided by the provider and the model's catalog row rather than by anything on the wire. A client that shows a reasoning region should treat the seeded sentence as *not* reasoning — the shipped client suppresses it and renders only what follows — and must not assume more will come. See [Azure OpenAI §5](../models/azure-openai.md#5-reasoning) for what makes a turn produce them — and note that the *other* Azure provider ([Azure AI Foundry](../models/azure-ai-foundry.md), Chat Completions on the same resource) never produces any, so a client cannot infer the capability from "the model is on Azure" either.
 
 **`Finished` is not a terminator.** It arrives only when the turn ran to completion; a cancelled or faulted turn ends the body without it. End-of-body is the terminator, and `Finished` is the signal that the turn ended *well* — plus the only place a client gets the turn's total token usage.
+
+### 4.1.1 `Finished` carries the persisted message's identity (US-1101)
+
+Since `Andes.Extensions.AI.UI` 0.8.0, `AssistantUiEvent` carries an optional `metadata: Record<string, string>`, and the service uses exactly one key on it: `assistantMessageId`, the transcript id of the assistant message this turn wrote. The key name is the constant `IConversationService.AssistantMessageIdMetadataKey` — an **opaque identifier clients match verbatim**, like the `/problems/` type URIs in §3.3, so renaming it is a breaking API change.
+
+**The frame is held back, not forwarded live.** The middleware's own `Finished` is the last event the tool-tracking pipeline produces, and it used to reach the client the moment it was yielded — before `PersistTurnAsync` (§6.1's write, running in the `finally` below the model loop) had minted an id for anything. `ConversationService.StreamConversationCoreAsync` now intercepts it, keeps it out of the sequence, and re-yields it — stamped, if there is anything to stamp it with — only after that write has answered. Two consequences follow structurally, not by convention:
+
+- **`Finished` is always the true last frame of a completed turn.** Nothing the middleware could still emit after it arrives ahead of it on the wire, because the frame itself does not go out until the write is done.
+- **The identifier is claimed only when the transcript actually holds it.** A turn cannot receive a promise about a message that was never written.
+
+Exactly when the key is present:
+
+| Turn outcome | `Finished` sent? | `metadata` |
+|---|---|---|
+| Completed, transcript write succeeded | Yes | `{ "assistantMessageId": "<guid>" }` |
+| Completed, transcript write failed or threw | Yes | Absent — the serializer omits a null object entirely, not an empty one |
+| Cancelled or faulted | No | — (§4.1's existing rule; nothing changed here) |
+
+A write that **throws** is the one case worth spelling out, because it is easy to assume the frame is a casualty of the exception: the failure is captured with `ExceptionDispatchInfo`, the metadata-less `Finished` is yielded first, and only then is the exception rethrown — after the frame, never instead of it. A turn that ran to completion must not be downgraded, by an unrelated write failure, into one the client can only read as truncated (§3.3's "ended without `Finished`" case). On a stream that has already started, the rethrow reaches the same `Response.HasStarted` short-circuit as any other post-first-frame fault (§3.3), so nothing about the body's framing changes — only the exception is now raised one statement later than it used to be.
+
+See [Transcript Storage §6.1](transcript-storage.md#61-writing-a-turn) for the write this ordering depends on.
 
 ### 4.2 Fields
 
@@ -204,6 +227,7 @@ Every field except `kind`, `depth` and `timestamp` is optional and **omitted ent
 | `durationSeconds` | number | Elapsed time for a completion event, or the whole turn's duration on `Finished` |
 | `text` | string | The answer chunk (`TextDelta`) or the reasoning chunk (`ReasoningDelta`) |
 | `usage` | object | `{ inputTokens?, outputTokens?, totalTokens? }`, on `Finished` only. Each count is optional because a provider may report only some |
+| `metadata` | `Record<string, string>` | Application-supplied values the package does not interpret. This application writes it on `Finished` only, carrying `assistantMessageId` when the transcript write succeeded (§4.1.1); omitted entirely otherwise |
 | `timestamp` | string | ISO 8601, and only meaningful for status and activity events. `TextDelta`, `ReasoningDelta` and `Finished` have no source progress event and leave it at its default — **consume events in stream order, never sorted by this** |
 
 > **`depth` here is not the `Depth` column in the audit trail.** The event's depth is a *display* depth that counts the request as level 0 and inserts a level for sub-statuses; the persisted [`ConversationUsageToolCall.Depth`](usage-and-favorites.md#63-coreconversationusagetoolcall) counts nesting only, so a tool the assistant called directly is `1` on the wire and `0` in the database. They answer different questions and are not interchangeable.
@@ -232,10 +256,12 @@ A turn that calls one MCP tool and then answers, with the frames' blank-line sep
 {"kind":"ActivityCompleted","scopeId":"s1","depth":1,"toolKind":"McpTool","durationSeconds":2.41,"timestamp":"2026-08-08T10:14:04.531+00:00"}
 {"kind":"TextDelta","depth":0,"toolKind":"Unknown","text":"It will be "}
 {"kind":"TextDelta","depth":0,"toolKind":"Unknown","text":"sunny."}
-{"kind":"Finished","depth":0,"toolKind":"Unknown","durationSeconds":5.02,"usage":{"inputTokens":812,"outputTokens":146,"totalTokens":958}}
+{"kind":"Finished","depth":0,"toolKind":"Unknown","durationSeconds":5.02,"usage":{"inputTokens":812,"outputTokens":146,"totalTokens":958},"metadata":{"assistantMessageId":"5b7e2f1a-9c3d-4e6b-8f21-0a1b2c3d4e5f"}}
 ```
 
 The first two frames are the server's own, and **every** turn opens with them — synthesized in `ConversationService.StreamConversationCoreAsync` as plain `AssistantUiEvent` yields, not through the middleware's `ChatProgressUpdate.CreateCustom(...)`. They sit after every failure point that can still answer with problem JSON and ahead of the model's first token (§3.3), so the client hears something during model latency. The `Status` carries a real timestamp; the `ReasoningDelta` leaves it at its default, per §4.2's rule for deltas, and its trailing blank line separates it from a model's own first reasoning delta (§4.1).
+
+The **last** frame is server-authored too, in the opposite sense: `Finished` is the middleware's, but this service holds it back and re-yields it once the transcript write has answered, which is what lets it carry `metadata.assistantMessageId` at all (§4.1.1). A turn whose write failed would still show this exact `Finished` shape minus the `metadata` object — `durationSeconds` and `usage` are unaffected, because the middleware computed both before the write ever started.
 
 The MCP activity names the **tool** (`Weather_get_forecast`) and leaves the **server** in `source` (`Weather`); a client renders that pair as "Get forecast" over "Weather" (§4.2).
 
@@ -257,10 +283,10 @@ Agents nest arbitrarily: an agent invoked as a tool opens its own scope, and the
 
 ### 5.2 Do not write the reducer — the package ships it
 
-`Andes.Extensions.AI.UI` 0.7.0 includes a TypeScript file that is a 1:1 mirror of the C# contract, generated against the same JSON the endpoint writes:
+`Andes.Extensions.AI.UI` 0.8.0 includes a TypeScript file that is a 1:1 mirror of the C# contract, generated against the same JSON the endpoint writes:
 
 ```text
-~/.nuget/packages/andes.extensions.ai.ui/0.7.0/typescript/andes-assistant-ui.ts
+~/.nuget/packages/andes.extensions.ai.ui/0.8.0/typescript/andes-assistant-ui.ts
 ```
 
 It exports the interfaces (`AssistantUiEvent`, `AssistantActivity`, `AssistantStatusSnapshot`, `UsageSummary`, `SubStatus`) and two functions:
@@ -285,6 +311,7 @@ The snapshot it produces is what a component binds to:
 | `text` | The answer so far |
 | `reasoningText` | The reasoning summary so far — never empty once a turn starts, since the server seeds it (§4.1, §4.3) |
 | `usage` | The turn's totals, once `Finished` arrives |
+| `metadata` | Every event's `metadata` merged, last write per key — `assistantMessageId` once `Finished` arrives with one (§4.1.1) |
 
 ## 6. What the stream deliberately is not
 
@@ -327,6 +354,7 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 | Opening pair | every turn's first two events are the `Status` `"Starting"` (real timestamp) then the server-authored `ReasoningDelta` (default timestamp, trailing blank line), ahead of the first model event |
 | Activity production | a real tool run through a real `UseToolTracking()` → `UseFunctionInvocation()` pipeline emits `ActivityStarted` with the tool's name and kind, an `ActivityCompleted`, and `TextDelta`s alongside them |
 | Transcription | only the `TextDelta` text reaches the Cosmos transcript |
+| `Finished`'s identity (US-1101) | a completed turn's `Finished` carries `metadata.assistantMessageId` matching the transcript's own id and arrives last; the transcript is already written by the time it does; a failed transcript write still yields `Finished`, with no `metadata`, followed by the rethrown exception; a client-disconnect abandonment and a faulted stream both emit no `Finished` at all; the wire test pins the metadata object serializing as `{"assistantMessageId":"…"}` and its complete omission when unset |
 
 ## 9. Known limits
 
@@ -335,8 +363,9 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 - **Beyond the opening pair, `Status` events are the middleware's own.** The two frames every turn opens with (§4.3) are the only events this application authors itself — yielded directly as `AssistantUiEvent`s in the service, not through the middleware. A mid-turn request-level status would still come from `ChatProgressUpdate.CreateCustom(...)`.
 - **The activity tree is not persisted for replay.** It is reconstructible from SQL but not exposed over HTTP (§6.2).
 - **No per-activity token cost ever reaches the wire, and the per-turn accounting did not change that.** `AssistantActivity.usage` exists in the contract and the client already formats it, but the fold never writes it: the only `usage` on the wire is the turn total on `Finished`. Three separate things would each have to give, and they are independent. First, `ToolCallUsage.Usage` is null for an MCP tool because the MCP protocol has no token field — so the middleware has nothing to attribute. Second, what a tool *actually* costs is the growth of the **next** iteration's prompt ([usage §3.9](usage-and-favorites.md#39-turn-rows-partition-the-assistant-columns-they-never-add-to-them)), a number that does not exist yet when `ActivityCompleted` is emitted — the tool has returned, but the turn it feeds has not run. Third, by `Finished` the figure *is* computable, but no event kind attaches usage to an already-completed activity, and it would be a group figure rather than a per-tool one whenever an iteration issued several calls. So the SQL trail can answer "what did this tool cost" after the fact while the live card cannot, and that asymmetry is structural rather than an omission.
-- **`AssistantUiEvent` is a package type, not ours.** Its JSON shape is pinned by `Andes.Extensions.AI.UI` 0.7.0; a major upgrade of that package is an API change for every client of this endpoint, and should be treated as one.
+- **`AssistantUiEvent` is a package type, not ours.** Its JSON shape is pinned by `Andes.Extensions.AI.UI` 0.8.0; a major upgrade of that package is an API change for every client of this endpoint, and should be treated as one.
 - **A package upgrade can change what a field *means* without changing the shape it has.** 0.5.0 → 0.7.0 added, removed and retyped nothing, and `npm run check:contract` — which diffs the vendored TypeScript against the package's own — passed on the new file exactly as it had on the old. What changed was the content of `displayName` on an `McpTool` activity (§4.2), which is invisible to every mechanical gate and visible to every user. Read the package's release notes on an upgrade; the drift check is not a substitute for them.
+- **0.7.0 → 0.8.0 is the opposite case: an addition that stays invisible until used.** It adds `metadata?: Record<string, string>` to `AssistantUiEvent` and `AssistantStatusSnapshot` and nothing else — the public-surface delta across all four `Andes.Extensions.AI*` packages is exactly those three members, all in `.UI`. A client that ignores the field is unaffected, which is what makes this release safe to take without a corresponding frontend story: US-1101 shipped the backend half alone, and the vendored fold already merges `metadata` generically (§5.2), ahead of any feature reading `assistantMessageId` off it.
 - **A client that undoes the tool-name prefix depends on two API decisions staying true.** `McpToolProvider` must keep building the prefix from the catalog name *and* keep handing `WithTracking` that same catalog name. Reverting to the overload that reads the server's self-advertised name would leave `source` and the prefix as two different strings, and every stripped label would silently stop stripping — no error, no failing check, just verbose labels.
 
 ## 10. Key files
@@ -350,5 +379,5 @@ Covered in [`Endpoints/ConversationEndpointsTests.cs`](../../enterprise-gpt-api/
 | Client transport | [`enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts) |
 | Client label derivation (§4.2) | [`enterprise-gpt-ui/src/app/domain/stream/activity-label.ts`](../../enterprise-gpt-ui/src/app/domain/stream/activity-label.ts) |
 | The catalog name behind `source` and the tool prefix | [`Enterprise.Gpt.Service/McpToolProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/McpToolProvider.cs) (`SanitizeToolNamePrefix`, `WithTracking(server.Name, enableProgress: true)`) |
-| TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.7.0, `typescript/andes-assistant-ui.ts`, vendored at [`enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) |
+| TypeScript contract and reducer | `Andes.Extensions.AI.UI` 0.8.0, `typescript/andes-assistant-ui.ts`, vendored at [`enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts`](../../enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts) |
 | Related reference | [Conversation Streaming Client](streaming-client.md), [Conversation Usage and Favourites](usage-and-favorites.md), [Model Management](../models/model-management.md), [Azure OpenAI Provider](../models/azure-openai.md) |
