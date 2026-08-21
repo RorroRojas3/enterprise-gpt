@@ -59,9 +59,10 @@ public class UserEndpointsTests
             PageSize = 20,
             CurrentPage = 1
         };
-        _userService.SearchUsersAsync("ada", 0, 20, Arg.Any<CancellationToken>()).Returns(expected);
+        _userService.SearchUsersAsync("ada", 0, 20, null, null, null, Arg.Any<CancellationToken>()).Returns(expected);
 
-        var result = await UserEndpoints.SearchUsersAsync(_userService, "ada", 0, 20, TestContext.Current.CancellationToken);
+        var result = await UserEndpoints.SearchUsersAsync(
+            _userService, "ada", 0, 20, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
     }
@@ -70,13 +71,31 @@ public class UserEndpointsTests
     public async Task SearchUsersAsync_NoQueryArguments_PassesDefaultPagingToService()
     {
         var expected = new PaginatedResponseDto<UserDto>();
-        _userService.SearchUsersAsync(null, 0, 20, Arg.Any<CancellationToken>()).Returns(expected);
+        _userService.SearchUsersAsync(null, 0, 20, null, null, null, Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await UserEndpoints.SearchUsersAsync(
             _userService, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
-        await _userService.Received(1).SearchUsersAsync(null, 0, 20, Arg.Any<CancellationToken>());
+        await _userService.Received(1).SearchUsersAsync(null, 0, 20, null, null, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SearchUsersAsync_FilterAndOrderRequested_PassesEveryParameterThrough()
+    {
+        var permissionId = Guid.NewGuid();
+        _userService.SearchUsersAsync(
+            name: null, skip: 0, take: 20, permissionId: permissionId, sort: "email", dir: "desc",
+            cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<UserDto>());
+
+        await UserEndpoints.SearchUsersAsync(
+            _userService, permissionId: permissionId, sort: "email", dir: "desc",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await _userService.Received(1).SearchUsersAsync(
+            name: null, skip: 0, take: 20, permissionId: permissionId, sort: "email", dir: "desc",
+            cancellationToken: Arg.Any<CancellationToken>());
     }
 
     [Fact]

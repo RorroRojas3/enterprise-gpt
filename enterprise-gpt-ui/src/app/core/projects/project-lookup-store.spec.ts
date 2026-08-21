@@ -73,6 +73,12 @@ describe('ProjectLookupStore (US-307)', () => {
     expect(request.request.params.get('skip')).toBe('0');
     // No term ever: this list is not filtered on the server, unlike the grid's.
     expect(request.request.params.has('name')).toBe(false);
+    // Starred first (US-706). This is the whole mechanism behind the sidebar's
+    // *Favourite projects* section being complete within the ceiling rather than
+    // best-effort: without it, a favourite past the 500th most recently created project
+    // is simply never held, and nothing on screen says so.
+    expect(request.request.params.get('sort')).toBe('favorite');
+    expect(request.request.params.get('dir')).toBe('desc');
 
     request.flush(projectPage([projectFixture()]));
     flush();
@@ -100,6 +106,10 @@ describe('ProjectLookupStore (US-307)', () => {
 
     const second = expectRequest();
     expect(second.request.params.get('skip')).toBe(String(PROJECT_PAGE_SIZE));
+    // On every page, not just the first: the server orders each request independently, so
+    // a page fetched without it would splice a differently-ordered run into the set.
+    expect(second.request.params.get('sort')).toBe('favorite');
+    expect(second.request.params.get('dir')).toBe('desc');
     second.flush(
       projectPage([projectFixture(), projectFixture()], {
         totalCount: PROJECT_PAGE_SIZE + 2,
@@ -126,7 +136,7 @@ describe('ProjectLookupStore (US-307)', () => {
     expect(store.projects()).toHaveLength(PROJECT_LOAD_CEILING);
     expect(store.truncated()).toBe(true);
     expect(store.ceilingNotice()).toBe(
-      `Showing the ${PROJECT_LOAD_CEILING} most recent of ${total} projects.`,
+      `Showing the first ${PROJECT_LOAD_CEILING} of ${total} projects.`,
     );
   });
 

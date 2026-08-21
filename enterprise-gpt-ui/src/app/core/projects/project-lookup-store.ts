@@ -82,14 +82,15 @@ function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState
  * than a page:
  *
  * - **The project picker's list**, which filters client-side as the reader types. A
- *   server round trip per keystroke would be the wrong shape for a 320px popover, and
- *   `GET api/projects` accepts no sort parameter, so a page in hand is not a stable
- *   window to filter either.
+ *   server round trip per keystroke would be the wrong shape for a 320px popover, and a
+ *   page in hand is not a stable window to filter either.
  * - **The sidebar's favourite projects** (US-910), which is a filter over the same set
  *   rather than a second request: a dedicated `?isFavorite=true` store would be a second
  *   copy of rows already held here, to be kept in step on every rename, delete and
- *   toggle. It inherits this store's ceiling — a favourite past
- *   {@link PROJECT_LOAD_CEILING} is not held and so is not listed.
+ *   toggle. Since US-706 the drain asks for `sort=favorite`, so every starred project is
+ *   inside {@link PROJECT_LOAD_CEILING} unless the reader has starred more than 500 —
+ *   the section is complete rather than best-effort, and only the *naming* of a project
+ *   past the ceiling is still out of reach.
  * - **`projectId` → name**, which is the only way a project chip can be rendered:
  *   `ConversationDto` carries the id and no name. This mirrors exactly how the
  *   conversations library resolves a `modelId` against `ModelCatalogStore`, down to
@@ -129,7 +130,13 @@ export const ProjectLookupStore = signalStore(
     _querySuperseded$: new Subject<void>(),
   })),
   withComputed(({ entities, entityMap, isFulfilled, isPending, totalCount }) => ({
-    /** Every loaded project, in the server's order — `dateCreated` descending. */
+    /**
+     * Every loaded project, in the drain's order — starred first, then by name.
+     *
+     * Held rather than re-derived, so the order is the one the last drain produced: a
+     * project created or starred since then is patched in place rather than moved, and
+     * settles into position on the next drain.
+     */
     projects: entities,
     /**
      * The starred projects, in the same order (US-910).
@@ -149,7 +156,7 @@ export const ProjectLookupStore = signalStore(
      * the reader is looking for.
      */
     ceilingNotice: computed(
-      () => `Showing the ${entities().length} most recent of ${totalCount()} projects.`,
+      () => `Showing the first ${entities().length} of ${totalCount()} projects.`,
     ),
     /**
      * Whether anything is starred. The sidebar's whole section is absent when nothing is
@@ -170,7 +177,17 @@ export const ProjectLookupStore = signalStore(
   withMethods((store) => {
     function fetchPage(skip: number): Observable<PaginatedResponseDto<ProjectSummaryDto>> {
       return store._http.get<PaginatedResponseDto<ProjectSummaryDto>>(store._url, {
-        params: new HttpParams().set('skip', String(skip)).set('take', String(store.take())),
+        // Starred first (US-706's `sort=`), which is what makes {@link favorites} — and
+        // so the sidebar's whole *Favourite projects* section — complete rather than
+        // best-effort: without it a starred project sitting past the 500-row ceiling
+        // simply never appears, and this drain states no ceiling of its own. Names
+        // second, so the picker's list reads alphabetically inside each group instead
+        // of in whatever order the ceiling happened to admit.
+        params: new HttpParams()
+          .set('skip', String(skip))
+          .set('take', String(store.take()))
+          .set('sort', 'favorite')
+          .set('dir', 'desc'),
       });
     }
 
@@ -250,8 +267,11 @@ export const ProjectLookupStore = signalStore(
     // omit the one the reader just created from the panel they created it in.
     events.on(projectEvents.created).pipe(
       tap(({ payload }) => {
-        // The head, because the server orders by `dateCreated` descending and a project
-        // created now is the newest there is — where a refetch would put it.
+        // The head. Since US-706 this drain asks for `sort=favorite`, so a refetch would
+        // actually file a brand-new project alphabetically inside the non-favourite group
+        // rather than at the top — this is a guess, and deliberately the same guess the
+        // grid makes: the reader just created this project and every surface reading this
+        // store should be able to find it without a re-drain.
         patchState(
           store,
           setAllEntities([toProjectSummary(payload), ...store.entities()]),
@@ -282,6 +302,12 @@ export const ProjectLookupStore = signalStore(
 
     // Touches `isFavorite` and nothing else: the 204 confirms one field, and the
     // server does not bump `dateModified` for it, so there is no other value to adopt.
+    //
+    // It *does* change the row's position — favourite is the primary key of this drain's
+    // order since US-706 — and the row still does not move. Re-draining up to five pages
+    // because one star was pressed would rebuild the sidebar under the cursor that pressed
+    // it; `favorites()` filters rather than slices, so the section stays correct either
+    // way and only its internal order waits for the next drain.
     // A row past the ceiling is not held and is ignored, exactly as `updated` does.
     events.on(projectEvents.favorited).pipe(
       tap(({ payload: { id, isFavorite } }) => {

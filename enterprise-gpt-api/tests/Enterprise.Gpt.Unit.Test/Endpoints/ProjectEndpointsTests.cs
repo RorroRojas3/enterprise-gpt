@@ -117,6 +117,22 @@ public class ProjectEndpointsTests
     }
 
     [Fact]
+    public async Task SearchProjectsAsync_OrderRequested_PassesBothParametersThrough()
+    {
+        _projectService.SearchProjectsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, sort: "name", dir: "asc",
+            cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<ProjectSummaryDto>());
+
+        await ProjectEndpoints.SearchProjectsAsync(
+            _projectService, sort: "name", dir: "asc", cancellationToken: TestContext.Current.CancellationToken);
+
+        await _projectService.Received(1).SearchProjectsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, sort: "name", dir: "asc",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SetProjectFavoriteAsync_ServiceSucceeds_ReturnsNoContent()
     {
         var id = Guid.NewGuid();

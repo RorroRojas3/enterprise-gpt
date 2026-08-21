@@ -19,9 +19,11 @@
 
   @if (!users.isFirstLoad() && !users.error()) {
     <!--
-      Regime D. `GET api/users` orders by last name and accepts no sort parameter, so
-      rather than leaving that to be inferred from an absence, the order is named and
-      the reason is one keystroke away.
+      `GET api/users` orders by last name, so rather than leaving that to be inferred
+      from an absence the order is named and the detail is one keystroke away. The
+      sentence no longer claims the list cannot be reordered: US-706 put `sort=` on this
+      endpoint, and the control this tab still owes is a follow-up rather than something
+      the API refuses.
 
       The statement is not aria-hidden: nothing else carries it, and the criterion is
       that the order is *stated*. The explanation rides along as visually-hidden text so
@@ -37,7 +39,7 @@
     <button
       class="admin-users__order-info"
       type="button"
-      aria-label="Why this order"
+      aria-label="About this list"
       [appTooltip]="ORDER_EXPLANATION"
       appTooltipPlacement="top"
     >

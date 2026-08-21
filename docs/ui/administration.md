@@ -145,11 +145,13 @@ Three things about that table are decisions rather than incidentals.
 
 **All three go out on one request.** `bindQuery` takes a single `AdminUsersQuery { name, page, pageSize }` computation, so a deep link carrying all three issues one query rather than a default request followed by the real one. Binding them as three `rxMethod`s would fire a second query for every change to any of them.
 
-**`size=`, not the API's own `take=`.** The URL is a contract with the reader rather than a proxy for the request underneath it — the same reason the conversations library spells its favourites filter `favorites=1` and not `isFavorite=true` ([Conversation Library §2.2](conversation-library.md#22-the-two-url-parameters)).
+**`size=`, not the API's own `take=`.** The URL is a contract with the reader rather than a proxy for the request underneath it — the same reason the conversations library spells its favourites filter `favorites=1` and not `isFavorite=true` ([Conversation Library §2.2](conversation-library.md#22-the-three-url-parameters)).
 
 **Both numeric inputs are defensively transformed, and `?size=` is whitelisted rather than clamped.** `toPage` reads anything that is not a whole number at or above 1 as page 1 — a hand-edited `?page=0` would otherwise send `skip=-25`, and `?page=abc` a `skip=NaN`. `toPageSize` accepts only the three sizes the select offers, so the control can never display a value the URL contradicts.
 
 A search resets the page (`[PAGE_PARAM]: null`), and so does a size change: a narrowed search rarely has as many pages as the one before it, and row 26 is page 2 at 25 per page and page 1 at 50 — an offset that means something different than it did a moment ago.
+
+**The API accepts more than this URL spends.** `GET api/users` has taken `sort=`/`dir=` since US-706 and `permissionId=` since US-1205, both 2026-08-20 — but no control on this tab sends either yet, so `AdminUsersQuery` still carries only `{ name, page, pageSize }` and the three-parameter table above is still the whole contract. Wiring a fourth parameter is the same shape as the third: fold it into the query object `bindQuery` already takes as a computation, and reset the page the same way a search does.
 
 ### 2.3 Reading the model catalog
 
@@ -530,7 +532,7 @@ The seam is §5's, unchanged: `ModelActionsStore` is root-scoped and owns every 
 |                  | Directory (US-1201)                                    | Catalog (US-1207)                                    |
 | ---------------- | ------------------------------------------------------ | ---------------------------------------------------- |
 | Endpoint         | `GET api/users` — server-paged                         | `GET api/models/all` — the whole set, one request    |
-| Regime           | **D**: server query, no sort parameter                 | **C**: client filter over a complete set             |
+| Regime           | **D**: server-paged, search only — the endpoint has accepted `sort=`/`dir=` since US-706, but this tab wires no control onto it | **C**: client filter over a complete set             |
 | Query lives in   | The URL (`?name=`, `?page=`, `?size=`)                 | Store state — no route file, no `bindQuery`          |
 | Search           | A request per committed term                           | In memory, over the rows already held                |
 | After a mutation | `userCreated` re-reads; `userUpdated` patches in place | `modelCatalogChanged` — everything refetches (§10.6) |
@@ -540,11 +542,11 @@ The last two rows are the ones that surprise people, and both come from the same
 
 ### 10.2 Regime C, and `withClientQuery`'s first production consumer
 
-`GET api/models/all` is unpaginated and Administrator-gated, so one request _is_ the whole catalog and a filter over it is exact. That makes this the first store to compose [`withClientQuery`](frontend-foundation.md#54-withclientquerysource-config) in production — US-104 built the feature, and `ProjectListStore` has been deferring it to US-902 because a set drained to a 500-item ceiling is not authoritative and this one always is.
+`GET api/models/all` is unpaginated and Administrator-gated, so one request _is_ the whole catalog and a filter over it is exact. That makes this the first store to compose [`withClientQuery`](frontend-foundation.md#54-withclientquerysource-config) in production — US-104 built the feature, and `ProjectListStore` never composes it at all: a set drained to a 500-item ceiling is only ever conditionally authoritative, where this one always is, and since US-706 the projects grid orders server-side rather than over the drained set regardless ([Projects (UI) §4.1](projects.md#41-it-drains-rather-than-pages)).
 
 Two of the feature's four config values are shaped by that:
 
-- **`isAuthoritative` is `isFulfilled() || entities().length > 0`, not `isFulfilled` alone.** Every mutation triggers a refetch, which puts the store back into `pending`; on `isFulfilled` alone the set would read as non-authoritative for the length of every save, so US-902's sort control would vanish and come back on each one. **The rows on screen are still the whole catalog while the next copy of it is on the wire.**
+- **`isAuthoritative` is `isFulfilled() || entities().length > 0`, not `isFulfilled` alone.** Every mutation triggers a refetch, which puts the store back into `pending`; on `isFulfilled` alone the set would read as non-authoritative for the length of every save, so a sort control here would vanish and come back on each one. **The rows on screen are still the whole catalog while the next copy of it is on the wire.**
 - **`incompleteSetReason` is unreachable**, because nothing here can produce a partial set. It says what would have to have gone wrong rather than describing a state the screen can enter.
 
 **There is no URL contract, and that is a decision rather than an omission.** A client-side filter over a complete set is screen state; putting it in the address bar would promise a deep link that reproduces a _server_ result the server was never asked for. So there is no `models-route.ts`, no `bindQuery`, no `_applyQuery` and no `withComponentInputBinding()` on this screen — the one place in the admin area where `AdminUsers` is the wrong template to copy.
@@ -905,9 +907,9 @@ On the directory:
 | Missing from frame `5a` / `5c` | Owner             | Notes                                                                                                                                                                                                     |
 | ------------------------------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Last active**                | a backend enabler | `UserDto` carries no timestamp of any kind, and `DateModified` moves only on an administrator's edit (§4.5). Recorded in the build order's interim-behaviours table                                       |
-| **Any sort control**           | US-706            | `GET api/users` accepts no sort parameter — the PRD's regime **D**. A control that reordered one page would sort 25 rows out of 312 and read as if it had sorted all of them; the order is stated instead |
+| **Any sort control**           | a follow-up on this tab | `GET api/users` has accepted `sort=`/`dir=` since US-706, 2026-08-20 — this is no longer the PRD's regime **D**, an API limit. The tab simply has not wired a control onto it yet; the order is stated in the meantime, as it always was |
 | **A row-selection column**     | —                 | No endpoint acts on more than one user. A checkbox that can only ever select is not a control                                                                                                             |
-| **A "Permission: any" filter** | US-1206           | Waiting on the US-1205 enabler that puts `permissionId` on the endpoint. Until then it could filter only the loaded page, and a directory filter that quietly means "this page" is worse than none        |
+| **A "Permission: any" filter** | US-1206           | `GET api/users` has accepted `?permissionId=` since US-1205, 2026-08-20 — the enabler this waited on is done. Until this story wires the control, there is nothing on screen to send it, so the gap is now the same shape as the sort control's above |
 
 On the catalog:
 

@@ -139,6 +139,23 @@ public class ConversationEndpointsTests
     }
 
     [Fact]
+    public async Task SearchConversationsAsync_OrderRequested_PassesBothParametersThrough()
+    {
+        _conversationService.SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, projectId: null, sort: "name", dir: "asc",
+            cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<ConversationDto>());
+
+        await ConversationEndpoints.SearchConversationsAsync(
+            _conversationService, sort: "name", dir: "asc",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await _conversationService.Received(1).SearchConversationsAsync(
+            name: null, skip: 0, take: 20, isFavorite: null, projectId: null, sort: "name", dir: "asc",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SearchConversationsAsync_FavoritesRequested_PassesTheFilterThrough()
     {
         _conversationService.SearchConversationsAsync(

@@ -54,10 +54,11 @@ import {
  * `[value]` one-way, never `[(value)]`, and never navigate from an effect over the
  * bound inputs — only from the user's own gesture.
  *
- * Three controls frame `5a` draws are deliberately absent. There is **no sort control**,
- * because the endpoint accepts no sort parameter (regime D, and US-705's subject on the
- * conversations library). There is **no row-selection column**, because no endpoint acts
- * on more than one user and a checkbox that can only ever select is not a control. And
+ * Three controls frame `5a` draws are deliberately absent. There is **no sort control** —
+ * the endpoint accepts one since US-706, so this is a follow-up on this tab rather than a
+ * limit of the API, and the order is stated meanwhile. There is **no row-selection
+ * column**, because no endpoint acts on more than one user and a checkbox that can only
+ * ever select is not a control. And
  * there is **no "Permission: any" filter**, which is US-1206 and waits on the US-1205
  * enabler that would let it filter more than the loaded page.
  *

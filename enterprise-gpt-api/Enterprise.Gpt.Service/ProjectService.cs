@@ -5,9 +5,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Project;
+using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Service.Sorting;
 
 namespace Enterprise.Gpt.Service;
 
@@ -18,13 +20,15 @@ namespace Enterprise.Gpt.Service;
 public interface IProjectService
 {
     /// <summary>
-    /// Searches the caller's active projects by name, most recently created first.
+    /// Searches the caller's active projects by name, most recently created first unless an order is
+    /// requested.
     /// </summary>
     /// <remarks>
     /// Returns summaries rather than full projects: a listing never renders the instructions, and
     /// a page of them would ship far more text than the caller asked for. Paging arguments are
     /// clamped rather than rejected — <paramref name="skip"/> to zero or above and
-    /// <paramref name="take"/> to 1..100.
+    /// <paramref name="take"/> to 1..100. The ordering arguments are the opposite: an unrecognised
+    /// value is rejected, because a page in the wrong order looks exactly like a page in the right one.
     /// </remarks>
     /// <param name="name">An optional case-insensitive substring to filter on.</param>
     /// <param name="skip">The number of projects to skip.</param>
@@ -33,9 +37,16 @@ public interface IProjectService
     /// Optionally narrows the page to the caller's favourites, or to everything but them. Omitting
     /// it applies no filter at all — it is a <see cref="bool"/>?, not a defaulted <see cref="bool"/>.
     /// </param>
+    /// <param name="sort">
+    /// An optional field to order by — one of <see cref="Sorting.ProjectSortKeys.Supported"/>.
+    /// </param>
+    /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>A page of the caller's projects.</returns>
-    Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default);
+    /// <exception cref="ValidationException">
+    /// <paramref name="sort"/> or <paramref name="dir"/> names something this listing does not accept.
+    /// </exception>
+    Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets one of the caller's active projects by id.
@@ -144,8 +155,14 @@ public class ProjectService(ILogger<ProjectService> logger,
     private readonly IValidator<UpdateProjectActionDto> _updateValidator = updateValidator;
 
     /// <inheritdoc />
-    public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, CancellationToken cancellationToken = default)
+    public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
     {
+        // Resolved before any database work, so a misspelled sort field costs a round trip to
+        // nothing rather than a page the caller then has to distrust.
+        SortSelection<ProjectSortKey>? order = SortParameters.IsDefaultOrder(sort, dir)
+            ? null
+            : ProjectSortKeys.Resolve(sort, dir);
+
         // Clamped rather than validated: the paging arguments come straight off the query
         // string, and take = 0 would divide by zero when computing CurrentPage below.
         skip = Math.Max(skip, 0);
@@ -170,11 +187,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var items = await query
-            // Id breaks ties: DateCreated alone is not a total order, so two projects created in
-            // the same tick could straddle a page boundary and be duplicated or skipped.
-            .OrderByDescending(x => x.DateCreated)
-            .ThenByDescending(x => x.Id)
+        var items = await OrderProjects(query, order)
             .Skip(skip)
             .Take(take)
             .Select(ProjectMapper.MapToProjectSummaryDtoExpression)
@@ -187,6 +200,54 @@ public class ProjectService(ILogger<ProjectService> logger,
             PageSize = take,
             CurrentPage = (skip / take) + 1
         };
+    }
+
+    /// <remarks>
+    /// The string comparison is the database collation's, not the CLR's — case-insensitive on a SQL
+    /// Server default and ordinal on the SQLite the unit tests run against. A client must not re-sort
+    /// a page with <c>localeCompare</c> and expect to agree with it.
+    /// </remarks>
+    private static IOrderedQueryable<Project> OrderProjects(
+        IQueryable<Project> query,
+        SortSelection<ProjectSortKey>? order)
+    {
+        if (order is not { } requested)
+        {
+            // Left exactly as it was before this listing accepted an order, because that is what
+            // clients written against it are promised. Id breaks ties: DateCreated alone is not a
+            // total order, so two projects created in the same tick could straddle a page boundary
+            // and be duplicated or skipped.
+            return query
+                .OrderByDescending(x => x.DateCreated)
+                .ThenByDescending(x => x.Id);
+        }
+
+        var ordered = requested.Key switch
+        {
+            ProjectSortKey.Updated => requested.IsAscending
+                ? query.OrderBy(x => x.DateModified)
+                : query.OrderByDescending(x => x.DateModified),
+            ProjectSortKey.Name => requested.IsAscending
+                ? query.OrderBy(x => x.Name)
+                : query.OrderByDescending(x => x.Name),
+            // A two-value flag leaves almost every row tied, so the name carries the order inside
+            // each group rather than leaving it to whatever the engine returns. It stays ascending in
+            // both directions on purpose: a name reads A-Z whichever end of the list its group is at.
+            ProjectSortKey.Favorite => requested.IsAscending
+                ? query.OrderBy(x => x.IsFavorite).ThenBy(x => x.Name)
+                : query.OrderByDescending(x => x.IsFavorite).ThenBy(x => x.Name),
+            _ => requested.IsAscending
+                ? query.OrderBy(x => x.DateCreated)
+                : query.OrderByDescending(x => x.DateCreated)
+        };
+
+        // Every requested order gets the same tie-break, for the reason the default one has it: a
+        // client draining pages needs the row at a page boundary to be the same row every time. It
+        // follows the requested direction, or a listing whose rows are all tied on the primary key
+        // would return the same page for both directions and the control would look inert.
+        return requested.IsAscending
+            ? ordered.ThenBy(x => x.Id)
+            : ordered.ThenByDescending(x => x.Id);
     }
 
     /// <inheritdoc />

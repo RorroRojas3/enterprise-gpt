@@ -21,7 +21,7 @@ Every route requires an authenticated caller (`RequireAuthorization()` on the gr
 | Verb | Route | Access | Success | Failure modes |
 |---|---|---|---|---|
 | POST | `/api/users/me` | any authenticated | 200 `UserDto` (existing user) — or 201 `UserDto` + `Location: /api/users/{id}` on first sign-in | 403 caller's account is deactivated, 404 no directory user for the oid / directory user has no email |
-| GET | `/api/users` | **admin** | 200 `PaginatedResponseDto<UserDto>` — **active only**, ordered by last name then first name | 403 not admin |
+| GET | `/api/users` | **admin** | 200 `PaginatedResponseDto<UserDto>` — **active only**, in the requested order or by last name then first name by default | 400 validation-error — an unrecognised `sort`/`dir`, or a `permissionId` naming no active permission (below), 403 not admin |
 | GET | `/api/users/{id:guid}` | **admin** | 200 `UserDto` | 403 not admin, 404 unknown/deactivated id |
 | POST | `/api/users` | **admin** | 201 `UserDto` + `Location: /api/users/{id}` | 400 validation / email already active / email matches >1 directory user, 403 not admin, 404 unknown directory email / unusable directory object id / unknown permission |
 | PUT | `/api/users/{id:guid}` | **admin** | 200 `UserDto` | 400 validation / self-revocation of Administrator, 403 not admin, 404 unknown user / unknown permission |
@@ -42,15 +42,31 @@ All error responses are **RFC 9457 Problem Details**, served as `application/pro
 }
 ```
 
-`GET /api/users` accepts three optional query parameters:
+`GET /api/users` accepts six optional query parameters:
 
 | Parameter | Default | Behavior |
 |---|---|---|
 | `name` | `null` | `LIKE %name%` against `FirstName`, `LastName`, **and** `Email` (case sensitivity follows the database collation — case-insensitive on SQL Server defaults) |
 | `skip` | `0` | Clamped to `>= 0` |
 | `take` | `20` | Clamped to `1..100` |
+| `permissionId` | `null` | Since US-1205: narrows the page to active users holding an active grant of that permission. Applied **before** `CountAsync`, so `totalCount` describes the filtered directory. Combines with `name` |
+| `sort` | `null` | Since US-706: `name` \| `email` \| `created`. Unrecognised value → `400` (below) |
+| `dir` | `null` | Since US-706: `asc` \| `desc`, case-insensitive. Applies to the default field when `sort` is omitted |
 
 Paging arguments are **clamped, not validated** — they arrive straight off the query string, and `take = 0` would divide by zero when computing `CurrentPage`. A caller asking for `take=5000` silently gets 100 rather than a 400.
+
+**`sort`/`dir` take the opposite stance: an unrecognised value is rejected**, because a page in the wrong order looks exactly like a page in the right one, where a clamped `skip`/`take` at least fails safe. Resolved by [`UserSortKeys`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Sorting/UserSortKeys.cs) against the shared parser in `Enterprise.Gpt.Service.Sorting`, the same folder and pattern conversation and project search use ([Conversation Usage and Favourites §5.6](../conversations/usage-and-favorites.md#56-ordering--sort-and-dir-us-706), [Projects §3.6](../projects/project-management.md#36-ordering--sort-and-dir-us-706)). `name` and `email` default ascending, `created` defaults descending — a directory reads A–Z, a provisioning date reads newest first. Omitting both parameters preserves the pre-existing `LastName, FirstName` order byte-for-byte, with no `Id` tiebreak, exactly as before either parameter existed; requesting either one adds an `Id` tiebreak that **follows the requested direction**, because two people can share a surname and a fixed tiebreak would make a reversed sort collapse onto the same rows. No migration and no new index: `UserConfiguration` defines no indexes at all, so every order — including the pre-existing default — is a sort over the same unindexed active-user scan `name` already runs.
+
+**`permissionId` is refused, not silently ignored, when it names nothing active.** Unlike every other permission-existence check in this service, which raises a `404 NotFoundException`, an unknown or deactivated `permissionId` here is a `400 ValidationException` keyed by the literal query-parameter name `permissionId` — deliberately: a `404` on a list route reads as "the directory is gone", where a filter control can render a `400` naming its own field. A deactivated permission is refused alongside an absent one, because the filter this parameter exists for is offered from `GET api/permissions`, which returns neither.
+
+```json
+{
+  "type": "/problems/validation-error",
+  "errors": { "permissionId": ["'3f2a91b5-...' is not an active permission."] }
+}
+```
+
+The frontend control that will send `permissionId` — a "Permission: any" filter on the admin directory — is US-1206 and is not built yet; `sort`/`dir` reach the endpoint but no control on that screen sends them either (§12).
 
 ### 2.1 Related grant routes
 
@@ -195,7 +211,7 @@ Once a row exists, administrators use the remaining routes:
 
 | Task | Route |
 |---|---|
-| Find users (typeahead / list) | `GET /api/users?name=&skip=&take=` |
+| Find users (typeahead / list) | `GET /api/users?name=&skip=&take=&permissionId=&sort=&dir=` |
 | Inspect one user and their active grants | `GET /api/users/{id}` |
 | Edit profile and replace the permission set | `PUT /api/users/{id}` (§6) |
 | Add or remove a single permission | `POST` / `DELETE /api/users/{userId}/permissions/{permissionId}` |
@@ -395,5 +411,6 @@ The permission id must match `PermissionIds.Administrator` verbatim. Because thi
 - **Grant changes converge per instance only.** `PermissionService`, `UserService`, and `McpServerService` evict the affected users from the permission cache immediately, but only on the instance that served the mutation. Everywhere else the change lands when the entry expires. Fanning `Invalidate(userId)` out over Redis or Service Bus is the intended fix — see [Permission Cache §5.1](../permissions/permission-cache.md#51-entrylifetime--the-scale-out-staleness-bound).
 - **Out-of-band grant SQL bypasses eviction.** The bootstrap `INSERT` in §11.3 writes `Core.UserPermission` directly, so nothing evicts the cache. If the new administrator already has a cached entry, the grant takes effect on their next sign-in or after `Permissions:Cache:EntryLifetime`.
 - **Search does not scale.** `EF.Functions.Like($"%{name}%")` cannot seek an index — every search is a table scan over active users. Fine for hundreds of users; revisit with full-text search or a prefix-only match if the directory grows.
+- **Neither does sorting or the permission filter, for the identical reason.** `UserConfiguration` defines no indexes at all — not even on `LastName`, the pre-existing default order — so `?sort=`, `?dir=` and `?permissionId=` all run as a scan alongside `?name=`. The `permissionId` filter additionally starts from `Users` and probes `UserPermission`'s existing filtered grant index from that side rather than the reverse; a directory large enough for `?name=` to need an index is large enough for these to need one too.
 - **No "last administrator" guard beyond self-protection.** The API cannot reach zero administrators (§7), but nothing prevents an operator from doing so with direct SQL, and nothing warns an administrator that they are the last one.
 - **Defaults are not retroactive.** Consider a `POST /api/permissions/{id}/backfill` (admin) if administrators need to push a newly flagged default onto existing users; today they must grant it user by user.

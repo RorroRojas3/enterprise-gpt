@@ -1,6 +1,13 @@
 <h1 class="projects__title font-display">Projects</h1>
 
 <div class="projects__toolbar">
+  <!--
+    `[busy]` is the *list* loading, and since US-902 a sort re-query raises it too — so a
+    reorder marks this field busy rather than the select that caused it. Left as it is
+    deliberately: separating the two means holding "which input started this request" in
+    store state, and the field is still the control the reader most recently used in every
+    other case. Recorded in the build order's interim-behaviours table.
+  -->
   <app-search-input
     class="projects__search"
     label="Search projects by name"
@@ -11,11 +18,31 @@
   />
 
   <!--
-    Frame `4c` puts a sort select between the field and this button. It is US-902's,
-    and it is absent rather than disabled: no endpoint here accepts a sort parameter,
-    so the control only becomes honest once the drain below has materialised the set it
-    would reorder — which is the whole reason that story exists.
+    Frame `4c`'s sort select (US-902). The label is hidden rather than absent: "Last
+    updated" reads as a value, not as what the control does, and the board draws no
+    visible label for it.
+
+    The selection is bound on the options, never as `[value]` on the select: that binding
+    runs before `@for` inserts the options, so it sets `selectedIndex = -1` on an empty
+    list and the browser's reset then selects the first — a deep link to `?sort=name`
+    would request Alphabetical and display "Last updated".
+
+    It is never disabled. Frame `4d` disables it past the load ceiling, because a
+    client-side sort over 500 of 1,284 rows would be a lie; US-706 moved the ordering to
+    the server, so the 500 on screen are the correct first 500 in this order and the
+    notice below the toolbar states the truncation instead.
   -->
+  <label class="projects__sort">
+    <span class="visually-hidden">Sort projects</span>
+    <select class="form-select" (change)="onSorted($event)">
+      @for (option of sortOptions; track option.value) {
+        <option [value]="option.value" [selected]="option.value === sort().value">
+          {{ option.label }}
+        </option>
+      }
+    </select>
+  </label>
+
   <button
     class="btn btn-primary btn-sm projects__new"
     type="button"
@@ -80,10 +107,11 @@
   </app-empty-state>
 } @else {
   <!--
-    Stated rather than left to be inferred from a grid that simply stops. The board
-    words it around sorting (frame `4d`); with no sort control on screen that sentence
-    would explain a control the reader cannot see, so this is frame `4g`'s neutral
-    shape instead — and US-902 replaces it with `4d`'s when the select arrives.
+    Stated rather than left to be inferred from a grid that simply stops. Frame `4d`
+    words it around sorting — "Sorting is unavailable past the 500-project load ceiling"
+    — and that sentence is no longer true: the server applied the order to the whole set
+    before the ceiling cut it. What is left is a truncation, so the notice states the
+    truncation and names the order, and the select above stays enabled.
   -->
   @if (projects.truncated()) {
     <p class="projects__ceiling">

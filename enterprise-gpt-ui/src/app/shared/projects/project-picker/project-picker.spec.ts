@@ -235,7 +235,7 @@ describe('ProjectPicker (US-307)', () => {
 
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('.picker__status--ceiling')?.textContent).toContain(
-      'Showing the 500 most recent of 4000 projects.',
+      'Showing the first 500 of 4000 projects.',
     );
   });
 

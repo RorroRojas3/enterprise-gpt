@@ -45,15 +45,17 @@ import {
   withRequestStatus,
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { DEFAULT_PROJECT_SORT, ProjectSortOption } from './projects-route';
 
 // Re-exported so this screen's own module still reads as one contract; they moved to
 // `core/projects/` when US-307's root lookup store needed them, and `core` may not
 // import `features`.
 export { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from '@core/projects/project-load';
 
-/** What the URL says about which projects to fetch (US-901). */
+/** What the URL says about which projects to fetch, and in what order (US-901, US-902). */
 export interface ProjectListQuery {
   readonly name: string;
+  readonly sort: ProjectSortOption;
 }
 
 interface ProjectListState {
@@ -64,6 +66,13 @@ interface ProjectListState {
    * the term that produced it rather than the one still being typed.
    */
   readonly name: string;
+  /**
+   * The order the cards on screen are in.
+   *
+   * Held for the same reason as {@link name}: the ceiling notice names it, and naming
+   * the order still on the wire would describe a grid nobody is looking at yet.
+   */
+  readonly sort: ProjectSortOption;
   /** The drain stopped at {@link PROJECT_LOAD_CEILING} with more still on the server. */
   readonly truncated: boolean;
 }
@@ -92,19 +101,25 @@ function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState
  * clears state and does not cancel work — with one structural difference: **it drains
  * rather than pages.**
  *
- * There is no Load more here and there never will be. `GET api/projects` accepts no
- * sort parameter, so US-902's sort is only ever honest over a set the client holds in
- * full; a grid that sorted its first page would put a second sorted run underneath it
- * on the next fetch. So each query walks the pages itself, up to a stated ceiling, and
- * {@link ProjectListState.truncated} is what stops the shortfall being silent.
+ * There is no Load more here and there never will be: the grid is a card grid, and one
+ * that grew a page at a time would keep moving the reader's cursor. So each query walks
+ * the pages itself, up to a stated ceiling, and {@link ProjectListState.truncated} is
+ * what stops the shortfall being silent.
  *
- * **`withClientQuery` is deliberately not composed yet.** Search here is server-side —
- * US-901's second criterion sends `name=` — and no sort control ships until US-902.
- * That story is the feature's consumer and wires it as its own doc example shows, over
- * `entities` with `isAuthoritative: isFulfilled() && isFullyLoaded()`.
+ * **The order is the server's, not a comparator here (US-902).** `sort=` and `dir=` ride
+ * every drained page, so the 500 the ceiling admits are the correct first 500 *in the
+ * chosen order* — which is why the select is never disabled and why frame `4d`'s
+ * "Sorting is unavailable…" line is not the one {@link ceilingNotice} renders.
+ *
+ * **`withClientQuery` is therefore not composed.** The store's doc block used to forecast
+ * that it would be, over `entities` with `isAuthoritative: isFulfilled() &&
+ * isFullyLoaded()`; that forecast was written when no endpoint accepted a sort parameter.
+ * US-706 changed the premise, and filtering here was already server-side, so the feature
+ * would contribute a second filter over an already-filtered set and a comparator nothing
+ * would call.
  */
 export const ProjectListStore = signalStore(
-  withState<ProjectListState>({ name: '', truncated: false }),
+  withState<ProjectListState>({ name: '', sort: DEFAULT_PROJECT_SORT, truncated: false }),
   withEntities<ProjectSummaryDto>(),
   withRequestStatus(),
   withOffsetPagination(PROJECT_PAGE_SIZE),
@@ -122,7 +137,7 @@ export const ProjectListStore = signalStore(
      */
     _querySuperseded$: new Subject<void>(),
   })),
-  withComputed(({ entities, isFulfilled, isPending, name, totalCount }) => {
+  withComputed(({ entities, isFulfilled, isPending, name, sort, totalCount }) => {
     const isEmpty = computed(() => isFulfilled() && entities().length === 0);
     const hasTerm = computed(() => name().trim() !== '');
 
@@ -140,19 +155,31 @@ export const ProjectListStore = signalStore(
        */
       isFirstLoad: computed(() => isPending() && entities().length === 0),
       /**
-       * Frame `4g`'s neutral wording rather than frame `4d`'s, which names sorting: with
-       * no sort control on screen until US-902, a sentence about sorting would explain
-       * a control the reader cannot see.
+       * What the grid is showing when the drain stopped short, and in what order.
+       *
+       * Neither of frame `4d`'s two claims survives US-706: the sort is not unavailable
+       * — the server applied it to the whole set before the ceiling cut it — and "the
+       * 500 most recent" is only true under one of the four orders on offer. What is
+       * left is a truncation, so the sentence states the truncation and names the order
+       * that produced it.
        */
       ceilingNotice: computed(
-        () => `Showing the ${entities().length} most recent of ${totalCount()} projects.`,
+        () =>
+          `Showing the first ${entities().length} of ${totalCount()} projects, ${sort().order}.`,
       ),
     };
   }),
   withMethods((store) => {
     function pageParams(query: ProjectListQuery, skip: number): HttpParams {
       const trimmed = query.name.trim();
-      let params = new HttpParams().set('skip', String(skip)).set('take', String(store.take()));
+      // The order rides *every* page, not just the first: the drain is a sequence of
+      // requests and the server orders each one independently, so a page fetched without
+      // it would splice a differently-ordered run into the middle of the grid.
+      let params = new HttpParams()
+        .set('skip', String(skip))
+        .set('take', String(store.take()))
+        .set('sort', query.sort.wire.sort)
+        .set('dir', query.sort.wire.dir);
 
       // Omitted rather than sent empty: a blank `name=` still takes the server down its
       // LIKE branch, and US-901's second criterion is about a term that exists.
@@ -202,9 +229,9 @@ export const ProjectListStore = signalStore(
     // `retry()` pushes the same query again on purpose.
     const _runQuery = rxMethod<ProjectListQuery>(
       pipe(
-        tap(({ name }) => {
+        tap(({ name, sort }) => {
           store._querySuperseded$.next();
-          patchState(store, { name, truncated: false }, setPending());
+          patchState(store, { name, sort, truncated: false }, setPending());
         }),
         switchMap((query) =>
           fetchPage(query, 0).pipe(
@@ -235,17 +262,17 @@ export const ProjectListStore = signalStore(
 
     return {
       /**
-       * Binds the screen's `?name=` to the query, once, from its constructor.
+       * Binds the screen's `?name=` and `?sort=` to the query, once, from its constructor.
        *
        * Taking a computation rather than a value is what makes a deep link one drain:
-       * `rxMethod` subscribes through an effect, so it reads the parameter the router
+       * `rxMethod` subscribes through an effect, so it reads the parameters the router
        * has already bound instead of firing unfiltered first and filtered second.
        */
       bindQuery: _runQuery,
 
       /** Re-runs the query the cards on screen belong to, after a failure. */
       retry(): void {
-        _runQuery({ name: store.name() });
+        _runQuery({ name: store.name(), sort: store.sort() });
       },
     };
   }),
@@ -262,9 +289,11 @@ export const ProjectListStore = signalStore(
           return;
         }
 
-        // The head of the list, because the server orders by `dateCreated` descending
-        // and a project created now is the newest there is — so this is where a refetch
-        // would put it.
+        // The head of the list, which is where a refetch would put it under either date
+        // order. Under Alphabetical or Favourites first it is a guess, and deliberately
+        // the same guess: the reader just made this project and wants to see it, and the
+        // alternative is re-draining up to five pages to move one card. The order settles
+        // on the next query.
         patchState(
           store,
           setAllEntities([toProjectSummary(payload), ...store.entities()]),
@@ -303,9 +332,13 @@ export const ProjectListStore = signalStore(
     ),
 
     // Touches `isFavorite` and nothing else. Unlike `updated` above, a star can never
-    // evict a card: this grid filters on `name=`, which a favourite does not change, and
-    // the server does not bump `dateModified` for it either — so there is no ordering to
-    // restore and nothing else to adopt.
+    // evict a card: this grid filters on `name=`, which a favourite does not change.
+    //
+    // It *can* change the order, under Favourites first — and the card still does not
+    // move. Re-draining up to five pages because the reader starred one card would
+    // rearrange the grid under the cursor that pressed the star, which is a worse answer
+    // than an order that settles on the next query. The other three orders are unaffected:
+    // the server does not bump `dateModified` for a favourite either.
     events.on(projectEvents.favorited).pipe(
       tap(({ payload: { id, isFavorite } }) => {
         if (store.entityMap()[id] !== undefined) {

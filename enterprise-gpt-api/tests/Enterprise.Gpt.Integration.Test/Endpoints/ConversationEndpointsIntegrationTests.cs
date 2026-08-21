@@ -36,6 +36,55 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         };
     }
 
+    #region Ordering
+    [Fact]
+    public async Task SearchConversations_SortedByNameAscending_OrdersAlphabetically()
+    {
+        await _fixture.AddConversationAsync(name: "it-order-zulu", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationAsync(name: "it-order-alpha", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationAsync(name: "it-order-mike", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ConversationDto>>(
+            "api/conversations/search?name=it-order-&sort=name&dir=asc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(
+            ["it-order-alpha", "it-order-mike", "it-order-zulu"],
+            page.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchConversations_SortedByNameDescending_ReversesTheOrder()
+    {
+        await _fixture.AddConversationAsync(name: "it-rorder-zulu", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationAsync(name: "it-rorder-alpha", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationAsync(name: "it-rorder-mike", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ConversationDto>>(
+            "api/conversations/search?name=it-rorder-&sort=name&dir=desc", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(
+            ["it-rorder-zulu", "it-rorder-mike", "it-rorder-alpha"],
+            page.Items.Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task SearchConversations_UnrecognisedSortField_ReturnsAValidationProblemNamingTheParameter()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync(
+            "api/conversations/search?sort=updated", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Single(Assert.Contains("sort", problem.Errors));
+    }
+    #endregion
+
     #region Authorization
     [Fact]
     public async Task SearchConversations_Anonymous_ReturnsUnauthorized()

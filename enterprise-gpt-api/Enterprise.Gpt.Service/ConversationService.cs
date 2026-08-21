@@ -1,4 +1,4 @@
-﻿using Andes.Extensions.AI;
+using Andes.Extensions.AI;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +25,7 @@ using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Sorting;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Service.Transcripts;
@@ -62,17 +63,20 @@ namespace Enterprise.Gpt.Service
         Task UpdateConversationNameAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Searches the caller's active conversations, newest first.
+        /// Searches the caller's active conversations, newest first unless an order is requested.
         /// </summary>
         /// <param name="name">A substring to match against the conversation name, or <see langword="null"/> for no name filter.</param>
         /// <param name="skip">The number of conversations to skip.</param>
         /// <param name="take">The page size.</param>
         /// <param name="isFavorite">Restricts the results to favourites when <see langword="true"/>, to non-favourites when <see langword="false"/>, and applies no filter when <see langword="null"/>.</param>
         /// <param name="projectId">Restricts the results to one of the caller's projects, or <see langword="null"/> for no project filter.</param>
+        /// <param name="sort">An optional field to order by — one of <see cref="Sorting.ConversationSortKeys.Supported"/>.</param>
+        /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A page of conversations.</returns>
         /// <exception cref="NotFoundException"><paramref name="projectId"/> is not an active project of the caller.</exception>
-        Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, CancellationToken cancellationToken = default);
+        /// <exception cref="ValidationException"><paramref name="sort"/> or <paramref name="dir"/> names something this listing does not accept.</exception>
+        Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default);
 
         Task<ConversationDto> UpdateConversationAsync(UpdateConversationActionDto request, CancellationToken cancellationToken = default);
 
@@ -561,8 +565,14 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, CancellationToken cancellationToken = default)
+        public async Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
         {
+            // Resolved before any database work, so a misspelled sort field costs a round trip to
+            // nothing rather than a page the caller then has to distrust.
+            SortSelection<ConversationSortKey>? order = SortParameters.IsDefaultOrder(sort, dir)
+                ? null
+                : ConversationSortKeys.Resolve(sort, dir);
+
             // Clamped rather than validated: the paging arguments come straight off the query
             // string, and take = 0 would divide by zero when computing CurrentPage below.
             skip = Math.Max(skip, 0);
@@ -597,8 +607,7 @@ namespace Enterprise.Gpt.Service
 
             var totalCount = await query.CountAsync(cancellationToken);
 
-            var items = await query
-                .OrderByDescending(x => x.DateCreated)
+            var items = await OrderConversations(query, order)
                 .Skip(skip)
                 .Take(take)
                 .Select(ChatExtensions.MapToChatDtoExpression)
@@ -611,6 +620,45 @@ namespace Enterprise.Gpt.Service
                 PageSize = take,
                 CurrentPage = (skip / take) + 1
             };
+        }
+
+        /// <remarks>
+        /// The string comparison is the database collation's, not the CLR's — case-insensitive on a
+        /// SQL Server default and ordinal on the SQLite the unit tests run against. A client must not
+        /// re-sort a page with <c>localeCompare</c> and expect to agree with it.
+        /// </remarks>
+        private static IOrderedQueryable<Conversation> OrderConversations(
+            IQueryable<Conversation> query,
+            SortSelection<ConversationSortKey>? order)
+        {
+            if (order is not { } requested)
+            {
+                // Left exactly as it was before this listing accepted an order, tie-break and all —
+                // which is to say without one. Adding Id here would reorder conversations created in
+                // the same tick, and clients written against this route are promised it unchanged.
+                return query.OrderByDescending(x => x.DateCreated);
+            }
+
+            var ordered = requested.Key switch
+            {
+                ConversationSortKey.Name => requested.IsAscending
+                    ? query.OrderBy(x => x.Name)
+                    : query.OrderByDescending(x => x.Name),
+                _ => requested.IsAscending
+                    ? query.OrderBy(x => x.DateCreated)
+                    : query.OrderByDescending(x => x.DateCreated)
+            };
+
+            // Every requested order gets a tie-break the default cannot be given: a client paging
+            // through a list needs the row at a page boundary to be the same row every time.
+            //
+            // It follows the requested direction rather than being fixed, and on this listing that
+            // is the difference between a working control and an inert one: every untitled
+            // conversation carries the same name, so under a fixed tie-break A-Z and Z-A would both
+            // collapse to the tie-break's own order and the reader would see nothing happen.
+            return requested.IsAscending
+                ? ordered.ThenBy(x => x.Id)
+                : ordered.ThenByDescending(x => x.Id);
         }
 
         public async Task<ConversationDto> UpdateConversationAsync(UpdateConversationActionDto request, CancellationToken cancellationToken = default)

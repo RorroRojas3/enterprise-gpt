@@ -1,10 +1,12 @@
 /**
  * A project as `GET api/projects` returns one.
  *
- * Mirrors `Enterprise.Gpt.Dto.ProjectSummaryDto`. The search route orders by
- * **`dateCreated` descending** (with `id` breaking ties), not `dateModified` — so
- * "newest first" here means newest *created*, and the client renders the server's
- * order rather than re-sorting it. `name` is unique among the owner's active projects,
+ * Mirrors `Enterprise.Gpt.Dto.ProjectSummaryDto`. Asked for no order the listing route
+ * returns **`dateCreated` descending** (with `id` breaking ties), not `dateModified` — so
+ * "newest first" there means newest *created*. Since US-706 it also accepts `sort=` and
+ * `dir=`, and both stores over it send one: the grid the reader's choice, the root lookup
+ * a fixed favourites-first. Either way the client renders the server's order and never
+ * re-sorts a page. `name` is unique among the owner's active projects,
  * which is the constraint behind the duplicate-name validation problem.
  */
 export interface ProjectSummaryDto {

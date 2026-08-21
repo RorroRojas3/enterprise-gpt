@@ -15,18 +15,75 @@ export const FAVORITES_PARAM = 'favorites';
 export const FAVORITES_ON = '1';
 
 /**
- * Why the library offers no sort control (US-705).
+ * The query parameter the library orders on (US-706).
  *
- * `GET api/conversations/search` orders by `dateCreated` descending and accepts no
- * sort parameter, so the PRD's regime **B** applies: server order, stated rather than
- * left to be inferred. A control that reordered only the loaded rows would put a
- * second sorted run underneath the first on the next Load more, which is the failure
- * the regime exists to avoid.
- *
- * US-706 is the enabler that replaces this with a real control.
+ * One key, not the API's two, and it spells an *order* rather than a field: the control
+ * is a single select and each option carries its own direction, so `?sort=oldest` is
+ * what the reader chose while `sort=created&dir=asc` is what the request needs. It
+ * replaces US-705's `ORDER_EXPLANATION`, which stated the order because no endpoint
+ * accepted one.
  */
-export const ORDER_EXPLANATION =
-  "Conversations are listed newest first. This list can't be reordered.";
+export const SORT_PARAM = 'sort';
+
+/** One entry per option in the library's sort select (US-706). */
+export interface ConversationSortOption {
+  /** The `?sort=` value, and the option's DOM value. */
+  readonly value: string;
+  /** The label the select renders. */
+  readonly label: string;
+  /** What `GET api/conversations/search` is sent for this option. */
+  readonly wire: { readonly sort: string; readonly dir: string };
+}
+
+/**
+ * The orders the library offers.
+ *
+ * No favourites order, because the toolbar beside it already carries a favourites
+ * *filter*, and no "recently active": `dateModified` moves on a rename, a star, a model
+ * change and a move between projects as readily as on a turn, so an option built on it
+ * would promise something the column cannot answer.
+ */
+const NEWEST_FIRST: ConversationSortOption = {
+  value: 'newest',
+  label: 'Newest first',
+  wire: { sort: 'created', dir: 'desc' },
+};
+
+export const CONVERSATION_SORTS: readonly ConversationSortOption[] = [
+  NEWEST_FIRST,
+  { value: 'oldest', label: 'Oldest first', wire: { sort: 'created', dir: 'asc' } },
+  { value: 'name', label: 'Alphabetical', wire: { sort: 'name', dir: 'asc' } },
+];
+
+/**
+ * The order a link that names none is read as.
+ *
+ * "Newest first" — the order US-705 used to state in prose, so a bare `/conversations`
+ * is the screen it has always been.
+ */
+export const DEFAULT_CONVERSATION_SORT = NEWEST_FIRST;
+
+/**
+ * Reads a `?sort=` into one of {@link CONVERSATION_SORTS}.
+ *
+ * Restricted to the offered set rather than passed through, so the select always shows
+ * the order in force and the server never sees a value it would answer with a 400 the
+ * reader never asked for.
+ */
+export function toConversationSort(value: string | undefined): ConversationSortOption {
+  return CONVERSATION_SORTS.find((option) => option.value === value) ?? DEFAULT_CONVERSATION_SORT;
+}
+
+/**
+ * The value {@link SORT_PARAM} holds for an order, or `''` for the default.
+ *
+ * `''` rather than the default's own name because that is what the URL holds — the key is
+ * removed, not spelled out — which is what lets `shouldReplaceHistory` read a sort change
+ * on exactly the terms it reads a search term.
+ */
+export function sortKey(option: ConversationSortOption): string {
+  return option.value === DEFAULT_CONVERSATION_SORT.value ? '' : option.value;
+}
 
 /**
  * Re-exported so this screen's route contract still reads from one file.

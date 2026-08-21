@@ -73,7 +73,7 @@ Every route lives in the `api/projects` group with `RequireAuthorization()`, so 
 
 | Verb | Route | Success | Failure modes |
 |---|---|---|---|
-| GET | `/api/projects?name=&skip=&take=&isFavorite=` | `200 PaginatedResponseDto<ProjectSummaryDto>` — the caller's active projects, newest first | 400 a query parameter that will not bind (paging is clamped, not rejected — §3.2) |
+| GET | `/api/projects?name=&skip=&take=&isFavorite=&sort=&dir=` | `200 PaginatedResponseDto<ProjectSummaryDto>` — the caller's active projects, in the requested order or newest first by default | 400 a query parameter that will not bind (paging is clamped, not rejected — §3.2); 400 validation-error an unrecognised `sort` or `dir` (§3.6) |
 | GET | `/api/projects/{id:guid}` | `200 ProjectDto` | 404 unknown, deactivated, or owned by someone else |
 | POST | `/api/projects` | `201 ProjectDto` + `Location: /api/projects/{id}` | 400 validation **or duplicate name** |
 | PUT | `/api/projects/{id:guid}` | `200 ProjectDto` | 400 validation or duplicate name, 404 unknown/foreign |
@@ -92,7 +92,7 @@ Error bodies are **RFC 9457 Problem Details** (`application/problem+json`), with
 
 | Status | `type` | Raised by |
 |---|---|---|
-| 400 | `/problems/validation-error` | the create/update validators, and the duplicate-name rule (§3.4) — carries `errors` keyed by property name |
+| 400 | `/problems/validation-error` | the create/update validators, the duplicate-name rule (§3.4), and an unrecognised `?sort=`/`?dir=` (§3.6) — carries `errors` keyed by property name, or by the lowercase query-parameter name for the sort case |
 | 400 | `/problems/upload-too-large` | `MaxUploadSizeEndpointFilter` on the upload route — carries `maxBytes` |
 | 403 | `/problems/permission-required` | `PermissionEndpointFilter` on the upload route — carries `permissions: ["Upload File"]` |
 | 404 | `/problems/resource-not-found` | `NotFoundException` — unknown, deactivated, or foreign project or document |
@@ -154,7 +154,9 @@ Request DTOs — [`ProjectActions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.D
 
 `skip` and `take` come straight off the query string and are clamped in `ProjectService.SearchProjectsAsync`: `skip` to `>= 0`, `take` to `1..100`. They are *not* validated, because rejecting them would turn a cosmetic client bug into a `400` — and because `take = 0` would divide by zero when computing `currentPage`. `?take=0` therefore returns one project, not a `500`.
 
-Ordering is `DateCreated DESC, Id DESC`. The id tiebreak is load-bearing: `DateCreated` alone is not a total order, so two projects created in the same tick could straddle a page boundary and be duplicated or skipped.
+`?sort=` and `?dir=` take the opposite stance, and deliberately: an unrecognised value is *rejected*, because a page in the wrong order looks exactly like a page in the right one, where a clamped `skip`/`take` at least fails safe. See §3.6.
+
+Absent `?sort=` and `?dir=`, ordering is `DateCreated DESC, Id DESC` — unchanged since before either parameter existed. The id tiebreak is load-bearing: `DateCreated` alone is not a total order, so two projects created in the same tick could straddle a page boundary and be duplicated or skipped. A requested order gets the identical tiebreak, but only §3.6's version of it — see there for why a fixed tiebreak would not do.
 
 The `name` filter is a `LIKE '%value%'` — case-insensitive under the database's default collation. It is **not** wildcard-escaped, so a `%` or `_` typed by the user behaves as a wildcard against that user's own projects (§10.4).
 
@@ -205,7 +207,28 @@ It is a **set, not a toggle**: the body carries the state being asked for, so a 
 
 `GET /api/projects` takes an optional `isFavorite`: `true` returns only favourites, `false` only non-favourites, and **omitting it applies no filter at all** — it is a `bool?`, not a defaulted `bool`. The filter is applied **before** `CountAsync`, so `totalCount` describes the filtered set rather than the whole listing, the same ordering `SearchConversationsAsync` uses for its own filters.
 
+Since US-706, `?sort=favorite` **orders** by the same flag rather than filtering on it — the two compose (`isFavorite=true&sort=favorite` is a filtered, ordered page of only favourites), but neither implies the other, and the frontend uses `sort=favorite&dir=desc` alone: it is what `ProjectLookupStore` sends to keep the sidebar's favourite-projects lookup complete within its own drain ceiling (§3.6, [Projects (UI) §9.1](../ui/projects.md#91-the-lookup-behind-it-and-why-a-failed-drain-keeps-its-pages)).
+
 **No index was added for `IsFavorite`, deliberately** — see [`ProjectConfiguration`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ProjectConfiguration.cs)'s comment. `Core.Conversation` carries a favourites-aware index only because its *unfiltered* listing already seeks an ordered `(UserId, DateDeactivated, DateCreated DESC)` sibling that the favourites variant has to stay in parity with. `IX_Project_UserId_DateDeactivated` (§8.1) carries no `DateCreated`, so the unfiltered project listing already sorts *after* its seek — a favourites index would buy the *filtered* listing an ordered path the unfiltered one lacks, paid for on every project write. `IsFavorite` stays a residual predicate over one user's projects, which is a bounded set.
+
+### 3.6 Ordering — `?sort=` and `?dir=` (US-706)
+
+`GET /api/projects` accepts `?sort=` (`created` | `updated` | `name` | `favorite`) and `?dir=` (`asc` | `desc`, case-insensitive), resolved by [`ProjectSortKeys`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Sorting/ProjectSortKeys.cs) against the shared parser in `Enterprise.Gpt.Service.Sorting`, the same folder and pattern conversation and user search use (§5.6 of [Conversation Usage and Favourites](../conversations/usage-and-favorites.md#56-ordering--sort-and-dir-us-706), §2 of [User Management](../users/user-management.md#2-api-surface)).
+
+An unrecognised `sort` or `dir` is refused as a `400 /problems/validation-error`, keyed by the lowercase query-parameter name it came from (`sort` or `dir`) rather than a C# property name — a client can render the rejection against the control that raised it, the same choice the export route's `format` failure makes:
+
+```json
+{
+  "type": "/problems/validation-error",
+  "errors": { "sort": ["'recency' is not a supported sort field. Supported fields are 'created', 'updated', 'name', 'favorite'."] }
+}
+```
+
+`dir` alone is a real request, not a no-op: it applies to the listing's default field (`created`). Each field has its own natural direction when `dir` is omitted — `name` ascends, everything else (including `favorite`) descends — because a name reads A–Z and a date or a starred flag reads most usefully newest-and-starred-first.
+
+**Omitting both parameters is byte-for-byte §3.2's pre-existing order**, tiebreak included. Supplying either one switches to the requested field and adds a tiebreak on `Id` — necessary for the same reason §3.2's default tiebreak is: two rows tied on the primary field would otherwise straddle a page boundary. That tiebreak **follows the requested direction** rather than being fixed, which matters concretely for `favorite`: a two-value flag leaves almost every row tied on it, so `OrderByDescending(x => x.IsFavorite).ThenBy(x => x.Name)` carries the actual ordering inside each group — the name stays ascending in both directions on purpose, because a name reads A–Z whichever end of the list its group sits at.
+
+No migration and no new index. `IX_Project_UserId_DateDeactivated` (§8.1) carries no `DateCreated`, so the unfiltered listing already sorts *after* its own seek regardless of which field is requested — the same fact §3.5 already gives as the reason no favourites index exists either.
 
 ## 4. Putting a conversation in a project
 
@@ -450,7 +473,7 @@ The old `enterprise-ui/` client is deleted, and its project scaffolding — a st
 
 **EP-9 has since shipped the whole area** in `enterprise-gpt-ui/` — the grid, the lifecycle dialogs, the detail screen with its standing instructions and files panel, a composer that creates conversations inside a project, US-307's move flow, and US-908's conversations panel on §4.2's filter. See [Projects (UI)](../ui/projects.md).
 
-One API-side gap the client works around rather than closes: `GET api/projects` accepts no sort parameter, so both the grid and the root lookup **drain** to a 500-project ceiling and say so when they hit it (US-902 waits on US-706). The other has since closed: `ProjectSummaryDto` now carries `isFavorite` (§3.5), and US-910 put a star on the grid card, on the detail header, and a **Favorite projects** section in the sidebar that reads it — [Projects (UI) §5.7](../ui/projects.md#57-favourites-us-909-and-why-the-flip-is-not-optimistic), [Shell and Navigation §5.7](../ui/shell-and-navigation.md#57-favourite-projects-in-the-sidebar-us-910).
+Two client-side gaps this section used to name have since closed. **`GET api/projects` now accepts `sort=`/`dir=`** (§3.6, US-706), so the grid and the root lookup still **drain** to a 500-project ceiling — that never depended on sorting, it is a card grid and a picker list that both need everything they will render before rendering it — but the order riding every page of that drain is the server's, not a client-side comparator over a partial set, and US-902 put a working select on the grid rather than the disabled one frame `4d` drew. And `ProjectSummaryDto` carries `isFavorite` (§3.5), and US-910 put a star on the grid card, on the detail header, and a **Favorite projects** section in the sidebar that reads it — [Projects (UI) §5.7](../ui/projects.md#57-favourites-us-909-and-why-the-flip-is-not-optimistic), [Shell and Navigation §5.7](../ui/shell-and-navigation.md#57-favourite-projects-in-the-sidebar-us-910). One gap remains screen-side rather than API-side: neither store re-sorts a row in place on a write, so a star pressed under Favourites-first order, or a project created under any order, settles into its true position only on the next query ([Projects (UI) §4.3](../ui/projects.md#43-the-screen)).
 
 ### 10.4 Everything else
 
