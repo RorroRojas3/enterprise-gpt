@@ -144,6 +144,29 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
         Task<ChatConversationDto> GetConversationMessagesAsync(
             Guid id, int? take, DateTimeOffset? before, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Records, replaces or withdraws the caller's rating of an assistant message (US-1102).
+        /// </summary>
+        /// <param name="conversationId">The unique identifier of the conversation.</param>
+        /// <param name="messageId">The unique identifier of the assistant message being rated.</param>
+        /// <param name="request">The verdict, or a null rating to withdraw one already recorded.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <remarks>
+        /// The rating lands on the transcript message document, which is what the transcript
+        /// response projects and therefore what survives a reload; the relational
+        /// <c>MessageFeedback</c> row written after it is a projection for reporting, and failing to
+        /// write it is logged rather than thrown. That order is deliberate — see the implementation.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+        /// <exception cref="NotFoundException">
+        /// The conversation is not an active conversation of the caller, or it holds no message with
+        /// this identifier.
+        /// </exception>
+        /// <exception cref="ValidationException">The message is not an assistant message.</exception>
+        Task SetMessageFeedbackAsync(
+            Guid conversationId, Guid messageId, SetMessageFeedbackActionDto request,
+            CancellationToken cancellationToken = default);
     }
 
     public class ConversationService(ILogger<ConversationService> logger,
@@ -161,6 +184,7 @@ namespace Enterprise.Gpt.Service
         IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
         IValidator<UpdateConversationActionDto> updateSessionValidator,
+        IValidator<SetMessageFeedbackActionDto> setMessageFeedbackValidator,
         IOptions<WeatherToolOptions> weatherToolOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
@@ -183,6 +207,7 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<CreateConversationStreamActionDto> _createChatStreamActionValidator = createChatStreamActionValidator;
         private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
+        private readonly IValidator<SetMessageFeedbackActionDto> _setMessageFeedbackValidator = setMessageFeedbackValidator;
         private readonly WeatherToolOptions _weatherToolOptions = weatherToolOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
@@ -1805,7 +1830,7 @@ namespace Enterprise.Gpt.Service
             var fetched = await ReadMessagesAsync(userId, id, probe, before, cancellationToken);
 
             var hasMore = clamped.HasValue && fetched.Count > clamped.Value;
-            var documents = hasMore ? fetched.TakeLast(clamped!.Value).ToList() : fetched;
+            var documents = hasMore ? [.. fetched.TakeLast(clamped!.Value)] : fetched;
 
             var messages = documents
                             .Where(x => x.Role != ChatRoles.System)
@@ -1828,6 +1853,16 @@ namespace Enterprise.Gpt.Service
                                     {
                                         InputTokens = x.Usage.InputTokens,
                                         OutputTokens = x.Usage.OutputTokens
+                                    },
+                                // Read off the document for the same reason, and the reason it is
+                                // written there first: this projection is the whole of what a reader
+                                // gets back on a reload, so the relational row cannot stand in for it.
+                                Feedback = x.Feedback is null
+                                    ? null
+                                    : new ConversationMessageFeedbackDto
+                                    {
+                                        Rating = x.Feedback.Rating,
+                                        DateModified = x.Feedback.DateModified
                                     }
                             })
                             .ToList();
@@ -1847,6 +1882,194 @@ namespace Enterprise.Gpt.Service
                 TotalCount = header.MessageCount,
                 HasMore = hasMore
             };
+        }
+
+        /// <inheritdoc />
+        public async Task SetMessageFeedbackAsync(
+            Guid conversationId, Guid messageId, SetMessageFeedbackActionDto request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            _setMessageFeedbackValidator.ValidateAndThrow(request);
+
+            var userId = _tokenService.GetOid();
+
+            // Establishes the 404 for an unknown, deactivated or foreign conversation, and satisfies
+            // the projection row's foreign key before anything tries to write it.
+            await EnsureConversationExistsAsync(conversationId, userId, cancellationToken);
+
+            // A point read rather than a query, and no "does this message belong to that
+            // conversation" check afterwards: the partition key composes the caller's user id with
+            // the conversation id, so a message from another conversation — or another user's copy
+            // of this one — addresses a partition that holds nothing and this answers null.
+            var message = await _transcriptStore.ReadItemAsync<TranscriptMessageDocument>(
+                messageId.ToString(), TranscriptPartition(userId, conversationId), cancellationToken);
+
+            // The discriminator is checked here and not only in the query predicates, because this
+            // is the one read in the service whose id comes straight off the route. The header
+            // document shares the partition under the conversation's own id, so a caller passing the
+            // conversation id as the message id would otherwise point-read the header, have it
+            // deserialize into this shape with every unmapped member dropped, and be answered about
+            // a message that does not exist.
+            if (message is null || message.Type is not TranscriptDocumentTypes.Message)
+            {
+                _logger.LogWarning(
+                    "Message {MessageId} not found in conversation {ConversationId}", messageId, conversationId);
+
+                throw new NotFoundException($"Message with id {messageId} not found");
+            }
+
+            if (message.Role is not ChatRoles.Assistant)
+            {
+                // Keyed on the route parameter rather than a property of the body, as the sort and
+                // export parameters are: the rating is well-formed, and the message it names is not
+                // one there is anything to rate.
+                throw new ValidationException(
+                [
+                    new ValidationFailure(
+                        "messageId", "Feedback can only be recorded against an assistant message.")
+                ]);
+            }
+
+            var ratedAt = DateTimeOffset.UtcNow;
+
+            var written = await PatchTranscriptFeedbackAsync(
+                message, userId, conversationId, messageId, request.Rating, ratedAt, cancellationToken);
+
+            if (!written)
+            {
+                // Withdrawing a rating nobody recorded. Projecting it anyway would file a row
+                // claiming this message was considered, for every message a client cared to post a
+                // null rating at — and "messages considered" is the denominator reporting reads.
+                return;
+            }
+
+            await ProjectFeedbackAsync(
+                userId, conversationId, messageId, request.Rating, ratedAt, cancellationToken);
+        }
+
+        /// <summary>
+        /// Writes the rating onto the transcript message document, which is what the transcript
+        /// response reads back.
+        /// </summary>
+        /// <param name="message">The message document as it was read a moment ago.</param>
+        /// <param name="userId">The object identifier of the conversation's owner.</param>
+        /// <param name="conversationId">The conversation's unique identifier.</param>
+        /// <param name="messageId">The message's unique identifier.</param>
+        /// <param name="rating">The verdict, or <see langword="null"/> to withdraw one.</param>
+        /// <param name="ratedAt">The moment to stamp on the rating.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <returns>
+        /// <see langword="true"/> when the document was written; <see langword="false"/> when the
+        /// rating asked for is the one it already holds and there was nothing to do.
+        /// </returns>
+        /// <exception cref="NotFoundException">The document was deleted between the read and the patch.</exception>
+        private async Task<bool> PatchTranscriptFeedbackAsync(
+            TranscriptMessageDocument message, Guid userId, Guid conversationId, Guid messageId,
+            MessageFeedbackRatings? rating, DateTimeOffset ratedAt, CancellationToken cancellationToken)
+        {
+            if (rating is null && message.Feedback is null)
+            {
+                // Withdrawing a rating that was never recorded. The end state is already the one
+                // being asked for, so nothing is written and nothing is charged. Safe to decide
+                // from a read this time, unlike the branch below: skipping a write can only ever
+                // leave the document as the caller found it.
+                return false;
+            }
+
+            // Set to null rather than Remove, even though Remove is what "withdraw" sounds like.
+            // Cosmos rejects Remove against a path the document does not carry, and two withdrawals
+            // racing each other would both pass the read above and the loser would take a 400 the
+            // caller can do nothing with — a 500 for a request whose work was already done. Set is
+            // idempotent whatever the document currently holds, and a JSON null deserializes back
+            // into a null Feedback, which the transcript projection reports as no rating at all.
+            var operation = rating is { } verdict
+                ? PatchOperation.Set(
+                    "/feedback",
+                    new TranscriptMessageFeedback { Rating = verdict, DateModified = ratedAt })
+                : PatchOperation.Set<TranscriptMessageFeedback?>("/feedback", null);
+
+            var patched = await _transcriptStore.PatchItemAsync(
+                messageId.ToString(), TranscriptPartition(userId, conversationId), [operation], cancellationToken);
+
+            if (!patched)
+            {
+                // The document was there for the read and gone for the patch: a purge landed in
+                // between. Reported as the 404 it now is, rather than as a write failure.
+                _logger.LogWarning(
+                    "Message {MessageId} of conversation {ConversationId} disappeared between the read and the feedback patch",
+                    messageId, conversationId);
+
+                throw new NotFoundException($"Message with id {messageId} not found");
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Maintains the relational <see cref="MessageFeedback"/> row that mirrors the rating.
+        /// </summary>
+        /// <param name="userId">The object identifier of the conversation's owner.</param>
+        /// <param name="conversationId">The conversation's unique identifier.</param>
+        /// <param name="messageId">The message's unique identifier.</param>
+        /// <param name="rating">The verdict, or <see langword="null"/> to withdraw one.</param>
+        /// <param name="ratedAt">The moment to stamp on the row.</param>
+        /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+        /// <remarks>
+        /// Never throws, and the breadth of the catch is the point rather than an oversight. Every
+        /// 204 this route returns has to mean the reader's rating comes back on the next reload, and
+        /// the transcript patch above is what decides that; this row exists so the same fact is
+        /// queryable outside one conversation's partition. Failing the request here would revert a
+        /// thumb over a rating that was in fact stored, and rating the message again repairs the row
+        /// — so the failure is logged, loudly, and swallowed. The same trade
+        /// <see cref="ConversationUsage.AssistantMessageId"/> documents, in the same direction.
+        /// <para>
+        /// Two consequences of that choice are deliberate. A failed save leaves the new entity
+        /// tracked as <c>Added</c>; nothing saves again inside this request, so it dies with the
+        /// scoped context. And cancellation is excluded from the catch, so a token cancelled between
+        /// the two writes answers 499 for a rating the transcript has already stored — the caller
+        /// asked to stop, and the alternative is reporting success on a request they abandoned.
+        /// </para>
+        /// </remarks>
+        private async Task ProjectFeedbackAsync(
+            Guid userId, Guid conversationId, Guid messageId, MessageFeedbackRatings? rating,
+            DateTimeOffset ratedAt, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var existing = await _ctx.MessageFeedback
+                    .FirstOrDefaultAsync(
+                        x => x.ConversationId == conversationId && x.MessageId == messageId, cancellationToken);
+
+                if (existing is null)
+                {
+                    _ctx.MessageFeedback.Add(new MessageFeedback
+                    {
+                        Id = Guid.NewGuid(),
+                        ConversationId = conversationId,
+                        UserId = userId,
+                        MessageId = messageId,
+                        Rating = rating,
+                        DateCreated = ratedAt,
+                        DateModified = ratedAt
+                    });
+                }
+                else
+                {
+                    existing.Rating = rating;
+                    existing.DateModified = ratedAt;
+                }
+
+                await _ctx.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to project feedback {Rating} for message {MessageId} of conversation {ConversationId}. The transcript holds the rating; this row is stale until the message is rated again.",
+                    rating, messageId, conversationId);
+            }
         }
 
         /// <summary>

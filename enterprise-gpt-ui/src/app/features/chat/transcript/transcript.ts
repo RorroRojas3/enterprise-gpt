@@ -17,6 +17,7 @@ import {
   COPY_LABEL,
   copyText,
 } from '@core/clipboard/copy-text';
+import { MessageFeedbackRating } from '@domain/api/conversation';
 import { canRetry, userMessage } from '@core/errors/error-message';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
@@ -118,6 +119,25 @@ export class Transcript {
     const notice: TurnErrorNotice | null = this.turn.turnError();
     if (notice?.retry != null) {
       this.turn.retryTurn(notice.retry);
+    }
+  }
+
+  /**
+   * US-1103's two bindings, narrowing the entry's nullable id for the template.
+   *
+   * `strictTemplates` will not let a `string | null` reach a `string` parameter, and the
+   * alternative is a non-null assertion in the template — which would be a claim the
+   * template cannot back, since the same entry type carries a null id for every turn that
+   * never became a persisted message. The controls are not rendered in that case, so
+   * neither of these is reachable with null; both refuse anyway rather than assert.
+   */
+  protected isRatingPending(messageId: string | null): boolean {
+    return messageId !== null && this.turn.isRowPending(messageId);
+  }
+
+  protected rateMessage(messageId: string | null, rating: MessageFeedbackRating): void {
+    if (messageId !== null) {
+      this.turn.rateMessage(messageId, rating);
     }
   }
 

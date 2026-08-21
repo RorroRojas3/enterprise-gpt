@@ -1,4 +1,5 @@
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Common.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using NSubstitute;
@@ -304,6 +305,35 @@ public class ConversationEndpointsTests
 
         Assert.NotNull(result);
         await _conversationService.Received(1).SetConversationFavoriteAsync(id, request, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetMessageFeedbackAsync_ServiceSucceeds_ReturnsNoContent()
+    {
+        var id = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var request = new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up };
+
+        var result = await ConversationEndpoints.SetMessageFeedbackAsync(
+            id, messageId, request, _conversationService, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        await _conversationService.Received(1)
+            .SetMessageFeedbackAsync(id, messageId, request, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetMessageFeedbackAsync_NullRating_ForwardsTheWithdrawalRatherThanSkippingTheCall()
+    {
+        var id = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var request = new SetMessageFeedbackActionDto { Rating = null };
+
+        await ConversationEndpoints.SetMessageFeedbackAsync(
+            id, messageId, request, _conversationService, TestContext.Current.CancellationToken);
+
+        await _conversationService.Received(1).SetMessageFeedbackAsync(
+            id, messageId, Arg.Is<SetMessageFeedbackActionDto>(x => x.Rating == null), Arg.Any<CancellationToken>());
     }
 
     [Fact]

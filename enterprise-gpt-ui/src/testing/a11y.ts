@@ -139,7 +139,20 @@ export async function expectNoSeriousViolations(
     resultTypes: ['violations'],
     // Merged, not spread over: `rules` is the likeliest thing a caller passes, and
     // `...options` would silently re-enable `region` for that caller alone.
-    rules: { region: { enabled: false }, ...rules },
+    //
+    // `target-size` is switched **on**, and it is the only rule this harness enables that
+    // axe does not. It is WCAG 2.2 AA (SC 2.5.8) at `serious`, and axe-core ships it
+    // disabled by default — so every icon-only control in this application has gone
+    // unmeasured, which is the same shape of gap US-1405 found with `--brand` on
+    // `--active-bg`: the run was green because nothing was looking. Switched on with
+    // US-1103, whose thumbs are the first pair of adjacent icon-only toggles here, and
+    // every other audit in this suite was already clean under it.
+    //
+    // It is also the rule most prone to answering `incomplete` — its own messages carry
+    // "too many overlapping elements" and "obscured" — and `resultTypes` above drops that
+    // bucket, so a target axe could not measure is silence rather than a failure. The
+    // general warning is at the top of this file; it is worth naming the rule it bites.
+    rules: { region: { enabled: false }, 'target-size': { enabled: true }, ...rules },
     ...rest,
   });
 

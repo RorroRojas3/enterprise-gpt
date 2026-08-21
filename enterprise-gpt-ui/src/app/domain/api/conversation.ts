@@ -54,12 +54,50 @@ export const CHAT_ROLE = {
 export type ChatRole = (typeof CHAT_ROLE)[keyof typeof CHAT_ROLE];
 
 /**
- * One persisted message. `text` and `role` are the whole shape: there is no
- * id, no timestamp, and no usage until US-1101 adds them.
+ * The two verdicts a reader can record against an assistant message (US-1102).
+ *
+ * PascalCase because the API applies a string-enum converter to this property alone, and
+ * its parameterless form writes the enum member names as declared. The transcript
+ * document underneath stores the same values camel-cased; that is storage, this is the
+ * wire, and they are separate contracts.
+ */
+export const MESSAGE_FEEDBACK_RATING = {
+  up: 'Up',
+  down: 'Down',
+} as const;
+
+export type MessageFeedbackRating =
+  (typeof MESSAGE_FEEDBACK_RATING)[keyof typeof MESSAGE_FEEDBACK_RATING];
+
+/**
+ * A rating already recorded against a message (US-1102).
+ *
+ * A nested object rather than a bare field, so a later story can add a comment beside the
+ * verdict without changing the message shape.
+ */
+export interface ConversationMessageFeedbackDto {
+  readonly rating: MessageFeedbackRating;
+  /** ISO 8601 with offset. */
+  readonly dateModified: string;
+}
+
+/**
+ * One persisted message.
+ *
+ * `id` is the anchor a rating is addressed to (US-1101), and the only reason it is read
+ * here. The rest of what US-1101 put on the wire — `dateCreated`, `htmlContent`,
+ * `tokens`, `tokenAccuracy` and the turn's `usage` — stays deliberately unread: a
+ * replayed turn still shows no token counts, and closing that belongs to US-1101's own
+ * frontend half rather than to this story.
+ *
+ * `feedback` is optional as well as nullable because the API omits nothing today but is
+ * free to; every reader normalizes it with `?? null`.
  */
 export interface ConversationMessageDto {
+  readonly id: string;
   readonly text: string;
   readonly role: ChatRole;
+  readonly feedback?: ConversationMessageFeedbackDto | null;
 }
 
 /**

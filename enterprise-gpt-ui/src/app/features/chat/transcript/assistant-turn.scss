@@ -62,9 +62,14 @@
 
 // The third selector is the confirmation's: clicking can leave focus and the
 // pointer elsewhere, and a "Copied" nobody can see is not a confirmation.
+// The last selector is the rating's, and it differs from the third in kind: a copy
+// confirmation is transient and this is not. A rating that is only visible while the
+// pointer is over the answer is a state the reader cannot see survive a reload, which is
+// the criterion — so a rated turn keeps its footer up, counts and Copy along with it.
 .assistant-turn:hover .assistant-turn__footer,
 .assistant-turn:focus-within .assistant-turn__footer,
-.assistant-turn__footer:has(.message-copy--copied) {
+.assistant-turn__footer:has(.message-copy--copied),
+.assistant-turn__footer:has(.message-feedback--rated) {
   opacity: 1;
 }
 

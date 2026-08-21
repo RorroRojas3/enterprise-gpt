@@ -100,8 +100,9 @@ public sealed class TranscriptStore(
         ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxPatchOperations);
         EnsurePartitioned(partitionKey);
 
-        // The patched document is a header carrying counters and a name; nothing reads it back, and
-        // returning it on every rename and every turn is bandwidth spent on a discarded value.
+        // No caller reads the patched document back — a header's counters and name, a message's
+        // rating — so returning it on every rename, every turn and every thumb is bandwidth spent
+        // on a value that is discarded.
         var requestOptions = new PatchItemRequestOptions { EnableContentResponseOnWrite = false };
 
         try

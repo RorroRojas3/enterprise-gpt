@@ -3,11 +3,14 @@
  * truth for three things: the sprite `scripts/build-icon-sprite.mjs` emits, the
  * `IconName` template type, and the build check in `scripts/check-icon-names.mjs`.
  *
- * 75 entries: the 73 distinct glyphs the design boards under `docs/design/project/`
+ * 77 entries: the 73 distinct glyphs the design boards under `docs/design/project/`
  * reference — the PRD's figure of 60 is stale — plus `bi-file-earmark`, which the
- * attachment chip falls back to for an extension it does not recognise, and
+ * attachment chip falls back to for an extension it does not recognise,
  * `bi-file-earmark-ppt`, which the boards never drew because their example set omits
- * `.pptx` — a format the API does accept. All 75 exist in bootstrap-icons 1.13.1.
+ * `.pptx` — a format the API does accept — and the two thumbs-`fill` variants, which
+ * the boards never drew either because they draw no selected state at all, and which
+ * US-1103 needs so a rating is not signalled by colour alone (SC 1.4.1). All 77 exist
+ * in bootstrap-icons 1.13.1.
  *
  * Adding a name here is not enough on its own — re-run `npm run assets:icons`, or
  * the glyph will be typed but absent from the sprite and render blank.
@@ -56,7 +59,9 @@ export const ICON_NAMES = [
   'bi-folder2',
   'bi-graph-up',
   'bi-hand-thumbs-down',
+  'bi-hand-thumbs-down-fill',
   'bi-hand-thumbs-up',
+  'bi-hand-thumbs-up-fill',
   'bi-hourglass-split',
   'bi-info-circle',
   'bi-kanban',

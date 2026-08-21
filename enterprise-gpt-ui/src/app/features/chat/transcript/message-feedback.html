@@ -1,0 +1,30 @@
+<!-- Static names with the state on `aria-pressed`, not a name that swaps with it: these
+     controls carry no visible label, so `aria-pressed` is the only place the state can
+     live, and a name that also said "Remove" would announce it twice.
+
+     `aria-disabled`, never the native attribute. A natively disabled button blurs itself
+     the instant it is pressed, which here costs three things at once: a keyboard reader
+     is stranded on `<body>` for the round trip, the footer's `:focus-within` reveal goes
+     false and fades the whole row away mid-request, and the `aria-pressed` transition is
+     announced to nobody because the element carrying it no longer has focus. `press()`
+     refuses while pending, so the guard is real either way. -->
+<button
+  type="button"
+  class="message-feedback__thumb"
+  [attr.aria-pressed]="isUp()"
+  [attr.aria-disabled]="pending() ? 'true' : null"
+  aria-label="Helpful"
+  (click)="press(ratings.up)"
+>
+  <app-icon [name]="isUp() ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-up'" />
+</button>
+<button
+  type="button"
+  class="message-feedback__thumb"
+  [attr.aria-pressed]="isDown()"
+  [attr.aria-disabled]="pending() ? 'true' : null"
+  aria-label="Not helpful"
+  (click)="press(ratings.down)"
+>
+  <app-icon [name]="isDown() ? 'bi-hand-thumbs-down-fill' : 'bi-hand-thumbs-down'" />
+</button>

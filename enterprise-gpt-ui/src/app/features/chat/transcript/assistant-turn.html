@@ -106,6 +106,18 @@
         @if (copySource(); as source) {
           <app-message-copy [text]="source" subject="response" />
         }
+        <!-- The one @if inside the footer that is allowed to be one: §9.2 forbids an @if
+             on the footer itself, because its height must not change under the
+             ResizeObserver US-606 pins the transcript with. This condition is fixed for
+             the life of the entry — a settled turn either became a persisted message or
+             never will — so it is evaluated once and never toggles under the reader. -->
+        @if (messageId() !== null) {
+          <app-message-feedback
+            [rating]="rating()"
+            [pending]="ratingPending()"
+            (rated)="rated.emit($event)"
+          />
+        }
         @if (usageLine(); as usage) {
           <span class="assistant-turn__usage font-mono">{{ usage }}</span>
         }

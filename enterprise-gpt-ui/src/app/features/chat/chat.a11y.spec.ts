@@ -12,10 +12,18 @@ import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
-import { conversationDetailFixture, conversationFixture } from '@testing/conversations';
-import { afterEach, beforeEach, describe, it, vi } from 'vitest';
+import {
+  conversationDetailFixture,
+  conversationFixture,
+  messageFixture,
+} from '@testing/conversations';
+import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@domain/api/conversation';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chat } from './chat';
 import { chatMatcher } from './chat-route';
+
+/** ISO 8601 with offset, as the transcript response carries it. */
+const RATED_AT = '2026-08-21T09:30:00+00:00';
 
 /**
  * The chat route in both themes — the empty screen of frame `1a` and an open
@@ -155,6 +163,52 @@ describe('chat accessibility (US-1405)', () => {
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/chat/:id download menu (${theme})`);
+    });
+
+    /**
+     * US-1103's thumbs, which no other audit reaches: the transcript above flushes a
+     * message with no `id`, so the controls are correctly absent there and would stay
+     * silently unaudited for ever.
+     *
+     * The answer is flushed **already rated**, and that is what makes the audit run at
+     * all. The footer is `opacity: 0` at rest and axe skips a zero-opacity subtree for
+     * every visibility-dependent rule — colour contrast and target size among them, which
+     * are the two an icon-only toggle pair is most likely to fail. A rated turn is the one
+     * state that forces the row visible without a synthetic hover.
+     */
+    it(`finds nothing serious with a rated answer in the ${theme} theme`, async () => {
+      const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
+      const element = await open(`/chat/${conversation.id}`, theme);
+
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
+        .flush(conversationDetailFixture({ ...conversation }));
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
+        .flush({
+          id: conversation.id,
+          name: conversation.name,
+          messages: [
+            messageFixture({ text: 'What shipped?', role: CHAT_ROLE.user }),
+            messageFixture({
+              text: 'The RC build.',
+              role: CHAT_ROLE.assistant,
+              feedback: { rating: MESSAGE_FEEDBACK_RATING.up, dateModified: RATED_AT },
+            }),
+          ],
+        });
+      await loadCatalogues();
+      await harness.fixture.whenStable();
+
+      // Not merely present: *revealed*. Axe skips a zero-opacity subtree for every
+      // visibility-dependent rule — target size and colour contrast among them, which are
+      // the two this audit exists to measure — so a regression in the `--rated` reveal
+      // would quietly turn this into a green no-op rather than a failure.
+      const footer = element.querySelector('.assistant-turn__footer');
+      expect(footer?.querySelector('app-message-feedback')).not.toBeNull();
+      expect(getComputedStyle(footer as Element).opacity).toBe('1');
+
+      await expectNoSeriousViolations(element, `/chat/:id rated answer (${theme})`);
     });
   }
 });

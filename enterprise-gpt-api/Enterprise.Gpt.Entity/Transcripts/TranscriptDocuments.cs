@@ -224,6 +224,22 @@ public sealed record TranscriptMessageDocument
     [JsonPropertyName("usage")]
     public TranscriptMessageUsage? Usage { get; init; }
 
+    /// <summary>
+    /// Gets the reader's verdict on this message, or <see langword="null"/> when it has never
+    /// been rated, or the rating was withdrawn.
+    /// </summary>
+    /// <remarks>
+    /// The rating a reader sees, and the source the transcript response projects from (US-1102).
+    /// The relational <c>MessageFeedback</c> row beside it is a projection for reporting, not the
+    /// other way round: this is what comes back on a reload, so this is what a rating has to reach.
+    /// <para>
+    /// Set only on an assistant message — the write path rejects every other role — and written by
+    /// a patch long after the document was created, unlike every other property here.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("feedback")]
+    public TranscriptMessageFeedback? Feedback { get; init; }
+
     /// <summary>Gets the moment the message was produced.</summary>
     /// <remarks>
     /// The sort key for the whole transcript. A user message is stamped when its prompt was
@@ -287,4 +303,30 @@ public sealed record TranscriptMessageUsage
     /// <summary>Gets the turn's total output tokens, tools included.</summary>
     [JsonPropertyName("outputTokens")]
     public long OutputTokens { get; init; }
+}
+
+/// <summary>
+/// A reader's verdict on one assistant message (US-1102).
+/// </summary>
+/// <remarks>
+/// Stamped rather than versioned: the transcript is append-only for its messages, but a rating is
+/// the one thing about a message that a reader may change afterwards, so the moment recorded here
+/// is the moment of the latest change and there is no history of the ones before it. The
+/// relational <c>MessageFeedback</c> row keeps its own <c>DateCreated</c> beside this, which is
+/// where a first-rated-at ever comes from.
+/// </remarks>
+public sealed record TranscriptMessageFeedback
+{
+    /// <summary>Gets the verdict.</summary>
+    /// <remarks>
+    /// Serialized as a lowercase string here and as PascalCase on the HTTP wire, because the Cosmos
+    /// serializer registers a camel-casing string-enum converter and the API deliberately does not
+    /// — the same split <see cref="TranscriptMessageDocument.Role"/> already carries.
+    /// </remarks>
+    [JsonPropertyName("rating")]
+    public MessageFeedbackRatings Rating { get; init; }
+
+    /// <summary>Gets the moment the rating was last set.</summary>
+    [JsonPropertyName("dateModified")]
+    public DateTimeOffset DateModified { get; init; }
 }

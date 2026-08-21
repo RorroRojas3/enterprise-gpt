@@ -103,6 +103,7 @@ public sealed class ConversationServiceTests : IDisposable
             new CreateConversationStreamActionDtoValidator(),
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
+            new SetMessageFeedbackActionDtoValidator(),
             Options.Create(new WeatherToolOptions()),
             _fixture.Context);
     }
@@ -129,6 +130,7 @@ public sealed class ConversationServiceTests : IDisposable
             new CreateConversationStreamActionDtoValidator(),
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
+            new SetMessageFeedbackActionDtoValidator(),
             Options.Create(new WeatherToolOptions { Enabled = true, DelayMilliseconds = 0 }),
             _fixture.Context);
 
@@ -1704,6 +1706,347 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Empty(result.Messages);
         Assert.Equal(conversation.Id, result.Id);
         Assert.Equal(conversation.Name, result.Name);
+    }
+    #endregion
+
+    #region Message feedback
+    /// <summary>
+    /// Seeds one message document for the point read the feedback write opens with, and lets the
+    /// patch succeed. Tests that need the patch to miss override the last arrangement.
+    /// </summary>
+    private TranscriptMessageDocument SetUpRatableMessage(
+        Guid conversationId, Guid messageId, ChatRoles role = ChatRoles.Assistant,
+        TranscriptMessageFeedback? feedback = null)
+    {
+        var partition = new PartitionKey(PartitionKeys.For(KnownIds.SeedUserId, conversationId));
+
+        var message = TranscriptMessageDocument.Create(
+            KnownIds.SeedUserId, conversationId, messageId, role, "Answer.", DateTimeOffset.UtcNow) with
+        {
+            Feedback = feedback
+        };
+
+        _transcriptStore.ReadItemAsync<TranscriptMessageDocument>(
+                messageId.ToString(), partition, Arg.Any<CancellationToken>())
+            .Returns(message);
+
+        _transcriptStore.PatchItemAsync(
+                messageId.ToString(), partition, Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        return message;
+    }
+
+    private async Task<MessageFeedback?> ReadFeedbackRowAsync(Guid conversationId, Guid messageId)
+    {
+        using var ctx = _fixture.CreateContext();
+
+        return await ctx.MessageFeedback
+            .SingleOrDefaultAsync(
+                x => x.ConversationId == conversationId && x.MessageId == messageId,
+                TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The transcript document is where a rating has to land, because the transcript response is
+    /// what a reader gets back on a reload. The relational row beside it is a projection.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_AssistantMessage_PatchesTheTranscriptAndProjectsTheRow()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+
+        await _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        await _transcriptStore.Received(1).PatchItemAsync(
+            messageId.ToString(),
+            new PartitionKey(PartitionKeys.For(KnownIds.SeedUserId, conversation.Id)),
+            Arg.Is<IReadOnlyList<PatchOperation>>(operations =>
+                operations!.Count == 1
+                && operations[0].OperationType == PatchOperationType.Set
+                && operations[0].Path == "/feedback"),
+            Arg.Any<CancellationToken>());
+
+        var row = await ReadFeedbackRowAsync(conversation.Id, messageId);
+        Assert.NotNull(row);
+        Assert.Equal(MessageFeedbackRatings.Up, row.Rating);
+        Assert.Equal(KnownIds.SeedUserId, row.UserId);
+    }
+
+    /// <summary>
+    /// Re-rating replaces rather than accumulates. The unique index is what guarantees it, and this
+    /// pins that the upsert seeks the existing row rather than inserting a second one.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_RatedTwice_ReplacesTheRatingWithoutASecondRow()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+
+        await _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        // The second call reads the document again, and by then it carries the first rating.
+        SetUpRatableMessage(
+            conversation.Id, messageId,
+            feedback: new TranscriptMessageFeedback
+            {
+                Rating = MessageFeedbackRatings.Up,
+                DateModified = DateTimeOffset.UtcNow
+            });
+
+        await _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Down },
+            TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var rows = await ctx.MessageFeedback
+            .Where(x => x.ConversationId == conversation.Id && x.MessageId == messageId)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(rows);
+        Assert.Equal(MessageFeedbackRatings.Down, rows[0].Rating);
+    }
+
+    /// <summary>
+    /// Withdrawing removes the block from the document and nulls the projection, rather than
+    /// deleting the row: the row records that this message was considered, which is itself the
+    /// reportable fact.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_NullRatingOnARatedMessage_RemovesTheBlockAndKeepsTheRow()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(
+            conversation.Id, messageId,
+            feedback: new TranscriptMessageFeedback
+            {
+                Rating = MessageFeedbackRatings.Down,
+                DateModified = DateTimeOffset.UtcNow
+            });
+
+        await _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = null },
+            TestContext.Current.CancellationToken);
+
+        // Set to null rather than Remove: Remove is what two concurrent withdrawals would race on,
+        // and the loser would take a Cosmos 400 for work that was already done.
+        await _transcriptStore.Received(1).PatchItemAsync(
+            messageId.ToString(),
+            Arg.Any<PartitionKey>(),
+            Arg.Is<IReadOnlyList<PatchOperation>>(operations =>
+                operations!.Count == 1
+                && operations[0].OperationType == PatchOperationType.Set
+                && operations[0].Path == "/feedback"),
+            Arg.Any<CancellationToken>());
+
+        var row = await ReadFeedbackRowAsync(conversation.Id, messageId);
+        Assert.NotNull(row);
+        Assert.Null(row.Rating);
+    }
+
+    /// <summary>
+    /// The end state asked for is already the one the message is in, so nothing is written to
+    /// either store. Skipping the projection matters as much as skipping the patch: a row here
+    /// claims the message was considered, and any client could otherwise mint one per message by
+    /// posting a null rating across a transcript.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_NullRatingOnAnUnratedMessage_WritesNothingToEitherStore()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+
+        await _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = null },
+            TestContext.Current.CancellationToken);
+
+        await _transcriptStore.DidNotReceive().PatchItemAsync(
+            Arg.Any<string>(), Arg.Any<PartitionKey>(),
+            Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>());
+        Assert.Null(await ReadFeedbackRowAsync(conversation.Id, messageId));
+    }
+
+    /// <summary>
+    /// The header document shares the partition under the conversation's own id, and the message id
+    /// comes straight off the route — so without the discriminator check this point-reads the
+    /// header, deserializes it into the message shape with every unmapped member dropped, and
+    /// answers 400 about a role the caller never named.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_ConversationIdPassedAsTheMessageId_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.SetMessageFeedbackAsync(
+            conversation.Id, conversation.Id,
+            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// The string-enum converter allows integer values, and Microsoft documents that as allowing
+    /// undefined ones — so an unvalidated request would write a rating the enum has no name for,
+    /// and it would come back out of the transcript as a number rather than a string.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_RatingOutsideTheEnum_ThrowsValidationAndWritesNothing()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId,
+            new SetMessageFeedbackActionDto { Rating = (MessageFeedbackRatings)7 },
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            nameof(SetMessageFeedbackActionDto.Rating), Assert.Single(exception.Errors).PropertyName);
+        await _transcriptStore.DidNotReceive().PatchItemAsync(
+            Arg.Any<string>(), Arg.Any<PartitionKey>(),
+            Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetMessageFeedbackAsync_UserMessage_ThrowsValidationKeyedOnTheRouteParameter()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId, ChatRoles.User);
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("messageId", Assert.Single(exception.Errors).PropertyName);
+
+        await _transcriptStore.DidNotReceive().PatchItemAsync(
+            Arg.Any<string>(), Arg.Any<PartitionKey>(),
+            Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetMessageFeedbackAsync_UnknownMessage_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync();
+
+        _transcriptStore.ReadItemAsync<TranscriptMessageDocument>(
+                Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<CancellationToken>())
+            .Returns((TranscriptMessageDocument?)null);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.SetMessageFeedbackAsync(
+            conversation.Id, Guid.NewGuid(), new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// A foreign conversation is refused by the relational guard before the transcript is touched,
+    /// so it cannot be used to probe for conversation or message identifiers.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_AnotherUsersConversation_ThrowsNotFoundWithoutReadingTheTranscript()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+        _tokenService.GetOid().Returns(Guid.NewGuid());
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken));
+
+        await _transcriptStore.DidNotReceive().ReadItemAsync<TranscriptMessageDocument>(
+            Arg.Any<string>(), Arg.Any<PartitionKey>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The document was there for the read and gone for the patch. Reported as the 404 it now is,
+    /// rather than as a write failure the caller cannot act on.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_MessagePurgedBetweenReadAndPatch_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+
+        _transcriptStore.PatchItemAsync(
+                Arg.Any<string>(), Arg.Any<PartitionKey>(),
+                Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// The projection row is best-effort by design. A 204 has to mean the rating comes back on the
+    /// next reload, and the transcript patch is what decides that — so a failure to write the
+    /// reporting row is logged and swallowed rather than costing the reader their rating.
+    /// </summary>
+    [Fact]
+    public async Task SetMessageFeedbackAsync_ProjectionWriteFails_StillSucceedsBecauseTheTranscriptHoldsTheRating()
+    {
+        var conversation = await AddConversationAsync();
+        var messageId = Guid.NewGuid();
+        SetUpRatableMessage(conversation.Id, messageId);
+
+        // The projection table is dropped rather than the context disposed: the guard that
+        // establishes the 404 reads the relational side too, so disposing would fail the request
+        // before it ever reached the write this test is about.
+        await _fixture.Context.Database.ExecuteSqlRawAsync(
+            "DROP TABLE MessageFeedback", TestContext.Current.CancellationToken);
+
+        await _service.SetMessageFeedbackAsync(
+            conversation.Id, messageId, new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
+            TestContext.Current.CancellationToken);
+
+        await _transcriptStore.Received(1).PatchItemAsync(
+            messageId.ToString(), Arg.Any<PartitionKey>(),
+            Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The rating on the way back out (US-1102's fourth criterion): read off the document beside the
+    /// message, exactly as its usage block is.
+    /// </summary>
+    [Fact]
+    public async Task GetConversationMessagesAsync_RatedAssistantMessage_CarriesItsFeedback()
+    {
+        var conversation = await AddConversationAsync();
+        var transcript = BuildTranscript(conversation.Id, userTurns: 1);
+        var ratedAt = new DateTimeOffset(2026, 8, 21, 9, 30, 0, TimeSpan.Zero);
+        transcript[2] = transcript[2] with
+        {
+            Feedback = new TranscriptMessageFeedback
+            {
+                Rating = MessageFeedbackRatings.Up,
+                DateModified = ratedAt
+            }
+        };
+        SetUpPagedTranscript(conversation.Id, transcript);
+
+        var result = await _service.GetConversationMessagesAsync(
+            conversation.Id, null, null, TestContext.Current.CancellationToken);
+
+        var assistant = result.Messages[1];
+        Assert.Equal(MessageFeedbackRatings.Up, assistant.Feedback?.Rating);
+        Assert.Equal(ratedAt, assistant.Feedback?.DateModified);
+
+        // Absent rather than a default verdict on a message nobody rated: "not rated" and "rated
+        // up" are different facts, and the UI draws neither thumb for the first.
+        Assert.Null(result.Messages[0].Feedback);
     }
     #endregion
 

@@ -1,7 +1,34 @@
-import { ConversationDetailDto, ConversationDto } from '../app/domain/api/conversation';
+import {
+  CHAT_ROLE,
+  ConversationDetailDto,
+  ConversationDto,
+  ConversationMessageDto,
+} from '../app/domain/api/conversation';
 import { PaginatedResponseDto } from '../app/domain/api/paginated-response';
 
 let sequence = 0;
+let messageSequence = 0;
+
+/**
+ * A `ConversationMessageDto` as `GET api/conversations/{id}/messages` returns one.
+ *
+ * Ids are distinct per call for the same reason conversation ids are: a repeated one
+ * would let a spec pass while two messages shared a rating, which is precisely the bug
+ * a per-message anchor exists to prevent.
+ */
+export function messageFixture(
+  overrides: Partial<ConversationMessageDto> = {},
+): ConversationMessageDto {
+  const index = messageSequence++;
+
+  return {
+    id: `${String(index).padStart(8, '0')}-aaaa-4bbb-8ccc-dddddddddddd`,
+    text: `Message ${index}`,
+    role: CHAT_ROLE.assistant,
+    feedback: null,
+    ...overrides,
+  };
+}
 
 /** A `ConversationDto` exactly as `GET api/conversations/search` returns one. */
 export function conversationFixture(overrides: Partial<ConversationDto> = {}): ConversationDto {
