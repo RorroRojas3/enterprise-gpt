@@ -9,7 +9,7 @@ import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
-import { directoryUserFixture, userPage } from '@testing/users';
+import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import { adminRoutes } from './admin.routes';
 
@@ -81,6 +81,10 @@ describe('administration accessibility (US-1405)', () => {
   for (const theme of THEMES) {
     it(`finds nothing serious on the user directory in the ${theme} theme`, async () => {
       const element = await open('/admin/users', theme);
+
+      // Flushed with rows so the permission filter has options to audit rather than the
+      // single "any" it renders before the catalog lands (US-1206).
+      flushPermissions(backend);
 
       // Two rows rather than none: an empty table has no cells, no per-row controls and
       // no permission badges, which is most of the surface worth auditing.

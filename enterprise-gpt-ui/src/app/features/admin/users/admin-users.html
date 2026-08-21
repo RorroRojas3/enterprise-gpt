@@ -3,11 +3,7 @@
 <div class="admin-users__toolbar">
   <!-- One field, because the server matches first name, last name *and* email with the
        same LIKE — an email fragment finds the user and a second control would only
-       imply otherwise.
-
-       Frame `5a` also draws a "Permission: any" filter here, which is US-1206: until
-       US-1205 puts `permissionId` on the endpoint it could filter only the loaded page,
-       and a directory filter that quietly means "this page" is worse than none. -->
+       imply otherwise. -->
   <app-search-input
     class="admin-users__search"
     label="Search users by name or email"
@@ -17,7 +13,41 @@
     (searched)="onSearched($event)"
   />
 
-  @if (!users.isFirstLoad() && !users.error()) {
+  <!-- Frame `5a`'s permission filter (US-1206). It narrows the whole directory, not the
+       rows on screen: US-1205 put `permissionId` on the endpoint and the pager reads the
+       filtered total — which is why the board's "Filters loaded rows only." caption, the
+       interim this replaced, is deliberately not here.
+
+       `[selected]` on the option, never `[value]` on the select: a `[value]` binding is
+       evaluated before `@for` inserts the options, leaving `selectedIndex` at -1, and the
+       browser then resets to the first option — so a shared link would display "any"
+       while filtering by something else. -->
+  <label class="admin-users__permission">
+    <span class="visually-hidden">Filter users by permission</span>
+    <!-- Never disabled while the catalog loads. The other three selects in this app carry
+         no disabled binding either, and a control that greys out for one paint is the
+         shown-and-inert affordance US-203 rejected in miniature; with only the "any"
+         option it can do nothing harmful, and it fills in when the catalog lands. -->
+    <select #permissionField class="form-select" (change)="onPermissionFiltered($event)">
+      <option value="" [selected]="selectedPermission() === null && unnamedFilter() === null">
+        {{ ANY_PERMISSION_LABEL }}
+      </option>
+      <!-- Only when the catalog itself failed, which is the one case a filter is in force
+           that no option can name. Rendered so the control stops claiming "any" while the
+           request is narrowed — and so there is something to move off, since re-selecting
+           an already-selected option fires no `change` and would strand the reader. -->
+      @if (unnamedFilter(); as filtered) {
+        <option [value]="filtered" selected>Filtered permission</option>
+      }
+      @for (permission of actions.checklist(); track permission.id) {
+        <option [value]="permission.id" [selected]="permission.id === selectedPermission()?.id">
+          {{ permission.name }}
+        </option>
+      }
+    </select>
+  </label>
+
+  @if (!isTableLoading() && !users.error()) {
     <!--
       `GET api/users` orders by last name, so rather than leaving that to be inferred
       from an absence the order is named and the detail is one keystroke away. The
@@ -76,7 +106,7 @@
     [columns]="columns"
     [trackKey]="trackKey"
     [rowLabel]="rowLabel"
-    [loading]="users.isFirstLoad()"
+    [loading]="isTableLoading()"
     [summary]="users.countSummary()"
     [pendingIds]="actions.pendingIds()"
   >
@@ -189,15 +219,15 @@
         <app-empty-state
           [heading]="noMatchHeading()"
           [headingLevel]="2"
-          message="Search covers first name, last name and email address."
+          [message]="noMatchMessage()"
         >
           <button
             emptyStateAction
             type="button"
             class="btn btn-outline-secondary btn-sm"
-            (click)="clearSearch()"
+            (click)="clearFilters()"
           >
-            Clear search
+            {{ clearFiltersLabel() }}
           </button>
         </app-empty-state>
       } @else {

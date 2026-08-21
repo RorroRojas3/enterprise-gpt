@@ -11,7 +11,7 @@ import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { directoryUserFixture, userPage } from '@testing/users';
+import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { AdminLayout } from './admin-layout';
 import { adminRoutes } from './admin.routes';
 
@@ -80,6 +80,8 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
       // Nothing to answer: the tab has no store and no endpoint until US-1301 lands.
       // `backend.verify()` in afterEach is what asserts it stayed that way.
     } else {
+      // The users tab also asks for the permission catalog, for its filter (US-1206).
+      flushPermissions(backend, undefined, { optional: true });
       backend
         .expectOne((request) => request.url === USERS_URL)
         .flush(userPage([directoryUserFixture()]));
@@ -202,6 +204,7 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     // before the router has heard about it.
     await new Promise((resolve) => setTimeout(resolve, 0));
     await harness.fixture.whenStable();
+    flushPermissions(backend, undefined, { optional: true });
     backend
       .expectOne((request) => request.url === USERS_URL)
       .flush(userPage([directoryUserFixture()]));

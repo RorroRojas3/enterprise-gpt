@@ -115,6 +115,49 @@ describe('foldAssistantEvents', () => {
     expect(snapshot.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
   });
 
+  it('surfaces the assistant message id the API attaches to Finished', () => {
+    const snapshot = fold([
+      assistantEvent('TextDelta'),
+      assistantEvent('Finished', {
+        metadata: { assistantMessageId: '9f2c0f1e-4f0a-4d2a-9d3f-2f9a1c7b5e10' },
+      }),
+    ]);
+
+    expect(snapshot.phase).toBe('Completed');
+    expect(snapshot.metadata?.['assistantMessageId']).toBe('9f2c0f1e-4f0a-4d2a-9d3f-2f9a1c7b5e10');
+  });
+
+  it('accumulates metadata across events, last write per key winning', () => {
+    const snapshot = fold([
+      assistantEvent('Status', { metadata: { turn: '1', trace: 'abc' } }),
+      assistantEvent('TextDelta', { metadata: { turn: '2' } }),
+    ]);
+
+    expect(snapshot.metadata).toEqual({ turn: '2', trace: 'abc' });
+  });
+
+  it('merges metadata from a kind it does not recognize', () => {
+    // The merge happens ahead of the kind switch, so a frame this build cannot interpret still
+    // contributes its correlation data rather than dropping it with the rest of the event.
+    const unknown = {
+      ...assistantEvent('Status'),
+      kind: 'ToolPreamble',
+      metadata: { assistantMessageId: 'from-an-unknown-kind' },
+    } as unknown as AssistantUiEvent;
+
+    expect(foldAssistantEvents(createInitialSnapshot(), unknown).metadata).toEqual({
+      assistantMessageId: 'from-an-unknown-kind',
+    });
+  });
+
+  it('leaves the snapshot untouched when an event carries no metadata', () => {
+    const before = fold([assistantEvent('Status', { metadata: { turn: '1' } })]);
+
+    expect(foldAssistantEvents(before, assistantEvent('TextDelta')).metadata).toEqual({
+      turn: '1',
+    });
+  });
+
   it('returns the snapshot unchanged for an unknown kind', () => {
     const before = fold([assistantEvent('TextDelta')]);
     const unknown = {

@@ -245,7 +245,7 @@ The two callers disagree about one thing, `keepLive`:
 
 **Two contracts, two shapes, one enum.** The stored Cosmos document serializes `role` as a camel-cased *string* (`"assistant"`), because that keeps an exported document readable and matches the SSE contract. The HTTP DTO serializes it as an integer, because this client depends on that. Reading the storage shape — through the JSON export, say — and the HTTP shape as though they were the same thing is the mistake this note exists to prevent.
 
-A message still carries no per-turn `usage` over this route and no activity timeline; §7.5 explains why the latter is permanent.
+**A message now carries per-turn `usage` over this route (US-1101), and this client does not read it yet.** An assistant message's `usage` (`{ inputTokens, outputTokens }`) is the turn's billed total, tools included — deliberately not the same figure as `tokens` above, and closer to what the message footer shows (§8.5) than to it, except that the footer's number comes from the live stream's own `Finished` event, not from a replayed history read. Nothing in `TurnStore` or `domain/api/conversation.ts` maps this field today, so a replayed turn's counts stay session-only exactly as §7.5 already describes — reading `usage` off history is additive work for whichever story chooses to close that gap, not something this release changed the shape of. The activity timeline is still absent from this route, and still permanent; §7.5 explains why.
 
 ### 7.5 Replayed history carries no activity timeline — permanently
 

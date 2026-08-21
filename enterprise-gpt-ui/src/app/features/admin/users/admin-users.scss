@@ -13,7 +13,8 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
-  // Five controls past a 360px viewport, and only the field can shrink (WCAG SC 1.4.10).
+  // Six controls past a 360px viewport, and only the field and the permission select can
+  // shrink (WCAG SC 1.4.10).
   flex-wrap: wrap;
 }
 
@@ -23,6 +24,31 @@
   min-width: 0;
   flex: 1 1 220px;
   max-width: 300px;
+}
+
+// Frame `5a` draws this at 200px. It shrinks rather than wrapping the toolbar early,
+// because the longest option is an administrator-authored permission name and a fixed
+// track would either truncate it or push the Add button off the row.
+.admin-users__permission {
+  display: block;
+  min-width: 0;
+  flex: 0 1 200px;
+  margin: 0;
+
+  // The toolbar's metrics, not Bootstrap's. `.form-select` carries a 1rem font by
+  // default, which reads a size larger than the search field and the Add button either
+  // side of it — the same 38px / 10px / 13px the projects and conversations sort selects
+  // set, so the three read as one control across the app.
+  //
+  // `width: 100%` where those two set a fixed width, because this one shrinks: the track
+  // is the wrapper's flex basis (frame `5a`'s 200px), and a fixed width here would keep
+  // the select at 200px while the label around it narrowed.
+  .form-select {
+    width: 100%;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
 }
 
 .admin-users__order {

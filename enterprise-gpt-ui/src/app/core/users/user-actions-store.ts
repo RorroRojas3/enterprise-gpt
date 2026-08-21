@@ -82,6 +82,15 @@ interface UserActionsState {
   /** Every grantable permission, for the checklist. Loaded once per session. */
   readonly permissions: readonly PermissionDto[];
   readonly permissionsLoading: boolean;
+  /**
+   * Whether a load has answered, separately from whether it answered with rows.
+   *
+   * `permissions.length > 0` cannot stand in for this. For the checklist the difference
+   * only ever cost a redundant refetch, but the users tab's permission filter waits on
+   * the catalog before it can decide whether a `?permission=` names anything (US-1206) —
+   * and a `200 []` that reads as "not loaded yet" leaves that wait unending.
+   */
+  readonly permissionsLoaded: boolean;
   readonly permissionsError: AppError | null;
   /** The user the deactivate confirmation names. Null keeps it closed. */
   readonly deactivateTarget: UserDto | null;
@@ -107,6 +116,7 @@ const initialState: UserActionsState = {
   formSelfRevokedAdmin: false,
   permissions: [],
   permissionsLoading: false,
+  permissionsLoaded: false,
   permissionsError: null,
   deactivateTarget: null,
   selfDeactivateRefusedId: null,
@@ -270,7 +280,15 @@ export const UserActionsStore = signalStore(
       // switchMap: reopening the form while the first load is on the wire replaces it,
       // and only the newest answer may fill the checklist.
       switchMap(() => {
-        patchState(store, { permissionsLoading: true, permissionsError: null });
+        // `permissionsLoaded` is cleared alongside the error, so it means "*this* load
+        // answered" rather than "a load answered once". A sticky flag would report a
+        // catalog that is being retried as settled, and the users tab's permission filter
+        // decides whether a `?permission=` names anything on exactly that answer.
+        patchState(store, {
+          permissionsLoading: true,
+          permissionsLoaded: false,
+          permissionsError: null,
+        });
         // `permissions`, not `permissions/all`. The criterion names the latter, but that
         // route additionally returns *deactivated* permissions, and the server answers a
         // grant of one with a 404 — so offering it would be a checkbox that can only ever
@@ -280,9 +298,17 @@ export const UserActionsStore = signalStore(
         return store._http.get<PermissionDto[]>(url).pipe(
           takeUntil(store._signedOut$),
           tapResponse({
-            next: (permissions) => patchState(store, { permissions }),
+            // `permissionsLoaded` is set on both arms but **not** in `finalize`: a failure
+            // settles the question as surely as rows do, while an unsubscribe — which is
+            // what `takeUntil(signedOut$)` does — settles nothing. `finalize` runs then
+            // too, and writing the flag there would land it *after* the sign-out reset,
+            // leaving a cleared store claiming a catalog it no longer holds.
+            next: (permissions) => patchState(store, { permissions, permissionsLoaded: true }),
             error: (cause: unknown) =>
-              patchState(store, { permissionsError: toAppError(cause, { url }) }),
+              patchState(store, {
+                permissionsError: toAppError(cause, { url }),
+                permissionsLoaded: true,
+              }),
             finalize: () => patchState(store, { permissionsLoading: false }),
           }),
         );
@@ -399,8 +425,9 @@ export const UserActionsStore = signalStore(
     /**
      * Loads the grantable permissions if they are not already held.
      *
-     * Called when a form opens rather than at construction: this store is root-scoped
-     * and most sessions never open the administration area at all.
+     * Called when a form opens — or when a screen that filters by permission mounts —
+     * rather than at construction: this store is root-scoped and most sessions never open
+     * the administration area at all.
      */
     function ensurePermissions(): void {
       if (store.permissions().length > 0 || store.permissionsLoading()) {
@@ -415,6 +442,16 @@ export const UserActionsStore = signalStore(
       isRowPending(id: string): boolean {
         return store.pendingIds().has(id);
       },
+
+      /**
+       * Loads the grantable permissions unless they are already held or on the wire.
+       *
+       * Exposed for the users tab's permission filter (US-1206), which needs the catalog
+       * to render its options and to tell a `?permission=` naming a real permission from
+       * one naming nothing. Sharing this store's copy rather than fetching a second is
+       * what keeps the filter and the edit panel from disagreeing about what exists.
+       */
+      ensurePermissions,
 
       /** Retries a failed permission load, from the checklist's own error line. */
       retryPermissions(): void {

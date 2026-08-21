@@ -66,7 +66,7 @@ Paging arguments are **clamped, not validated** — they arrive straight off the
 }
 ```
 
-The frontend control that will send `permissionId` — a "Permission: any" filter on the admin directory — is US-1206 and is not built yet; `sort`/`dir` reach the endpoint but no control on that screen sends them either (§12).
+The frontend control that sends `permissionId` — a "Permission: any" filter on the admin directory (US-1206, 2026-08-21) — is built; see [Administration §4.6](../ui/administration.md#46-the-permission-filter-us-1206) for the URL contract and the repair behaviour on an id the catalog no longer lists. `sort`/`dir` reach the endpoint but no control on that screen sends them yet (§12).
 
 ### 2.1 Related grant routes
 
@@ -403,7 +403,7 @@ The permission id must match `PermissionIds.Administrator` verbatim. Because thi
 
 ## 12. Known gaps and extension points
 
-- **No admin UI.** The frontend only calls `POST /api/users/me`; `UserDto` and `PermissionDto` exist in `enterprise-ui`, but there are no user- or permission-management screens. Everything in §2 is reachable only from Scalar/HTTP today.
+- **This bullet is stale and kept only as a marker of how much changed.** It used to read: "No admin UI. The frontend only calls `POST /api/users/me`; `UserDto` and `PermissionDto` exist in `enterprise-ui`, but there are no user- or permission-management screens. Everything in §2 is reachable only from Scalar/HTTP today." Both premises are gone — `enterprise-ui` was deleted and rebuilt from scratch as `enterprise-gpt-ui/`, and that rebuild's admin area (EP-12) now covers the whole of §2: a server-paged user directory with search, sort and a permission filter (US-1201, US-1206), a create modal (US-1202), a permission-editing offcanvas (US-1203), and a deactivate confirmation (US-1204), beside the model catalog and MCP server registry tabs. See [Administration](../ui/administration.md) for the frontend's own reference, which is the accurate document from here on.
 - **Profiles never refresh from Graph.** After the row exists, `POST /api/users/me` returns it verbatim. A name change or mailbox move in Entra ID is not picked up until an administrator runs `PUT /api/users/{id}` or a pre-creation revive.
 - **Concurrent pre-creation is not guarded.** The duplicate-insert recovery in §4.1 exists only on the `me` path. Two administrators racing `POST /api/users` for the same email can both miss the existence check and one will fail the save — surfacing as a 500 rather than a 400/409.
 - **Concurrency conflicts surface as 500.** The `rowversion Version` column turns racing writes into `DbUpdateConcurrencyException`, which the fallback handler maps to 500. A 409 arm in `GlobalExceptionHandler` would make that honest (same gap as [model management](../models/model-management.md)).

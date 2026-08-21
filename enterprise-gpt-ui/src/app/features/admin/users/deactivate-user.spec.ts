@@ -18,7 +18,7 @@ import { UserActionsStore } from '@core/users/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { directoryUserFixture, userPage } from '@testing/users';
+import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { AdminUsers } from './admin-users';
 import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
@@ -67,6 +67,8 @@ describe('Deactivate a user (US-1204)', () => {
 
   async function open(users: UserDto[], totalCount = users.length): Promise<void> {
     await harness.navigateByUrl('/admin/users', AdminUsers);
+    // The permission filter's catalog, requested on mount (US-1206).
+    flushPermissions(backend);
     backend
       .expectOne((request) => request.url === USERS_URL)
       .flush(userPage(users, { totalCount, pageSize: DEFAULT_USER_PAGE_SIZE }));

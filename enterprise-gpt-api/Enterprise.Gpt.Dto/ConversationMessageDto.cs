@@ -58,5 +58,40 @@ namespace Enterprise.Gpt.Dto
         /// </remarks>
         [JsonConverter(typeof(JsonStringEnumConverter<TokenAccuracies>))]
         public TokenAccuracies TokenAccuracy { get; set; }
+
+        /// <summary>
+        /// What the turn that produced this message was billed, or <see langword="null"/> when the
+        /// message is not an assistant message or was stored before per-message usage existed.
+        /// </summary>
+        /// <remarks>
+        /// The counterpart to <see cref="Tokens"/> rather than a restatement of it, and the two
+        /// deliberately disagree: <see cref="Tokens"/> is what this message's own text costs the
+        /// prompt on every future turn, while this is what the provider charged for the whole turn
+        /// — every tool round trip, MCP call and agent underneath it included. A turn that ran tools
+        /// reports far more here than the answer beside it weighs.
+        /// </remarks>
+        public ConversationMessageUsageDto? Usage { get; set; }
+    }
+
+    /// <summary>
+    /// What a turn consumed, as it was recorded beside the assistant message it produced.
+    /// </summary>
+    /// <remarks>
+    /// Carries the turn's totals rather than the assistant's share alone. The split between the
+    /// assistant's own model turns and the tools underneath them lives in the relational audit
+    /// trail, which is where a report reads it from; a reader looking at one message wants the one
+    /// number that message cost.
+    /// </remarks>
+    public class ConversationMessageUsageDto
+    {
+        /// <summary>
+        /// The turn's total input tokens, tools included.
+        /// </summary>
+        public long InputTokens { get; set; }
+
+        /// <summary>
+        /// The turn's total output tokens, tools included.
+        /// </summary>
+        public long OutputTokens { get; set; }
     }
 }

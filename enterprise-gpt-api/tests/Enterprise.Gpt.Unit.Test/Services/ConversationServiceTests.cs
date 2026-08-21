@@ -1626,6 +1626,35 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(TokenAccuracies.Estimated, first.TokenAccuracy);
     }
 
+    /// <summary>
+    /// What the turn was billed, beside the message it produced (US-1101). It is read off the
+    /// document the transcript already stores rather than joined from the usage row, which is keyed
+    /// the other way and would cost a query per page.
+    /// </summary>
+    [Fact]
+    public async Task GetConversationMessagesAsync_AssistantMessages_CarryTheirTurnsUsage()
+    {
+        var conversation = await AddConversationAsync();
+        var transcript = BuildTranscript(conversation.Id, userTurns: 1);
+        transcript[2] = transcript[2] with
+        {
+            Usage = new TranscriptMessageUsage { InputTokens = 812, OutputTokens = 146 }
+        };
+        SetUpPagedTranscript(conversation.Id, transcript);
+
+        var result = await _service.GetConversationMessagesAsync(
+            conversation.Id, null, null, TestContext.Current.CancellationToken);
+
+        var assistant = result.Messages[1];
+        Assert.Equal(ChatRoles.Assistant, assistant.Role);
+        Assert.Equal(812, assistant.Usage?.InputTokens);
+        Assert.Equal(146, assistant.Usage?.OutputTokens);
+
+        // Null rather than zero on a message no turn was billed for. Zero would claim the turn ran
+        // and cost nothing, which is a different fact from "this message has no usage".
+        Assert.Null(result.Messages[0].Usage);
+    }
+
     [Fact]
     public async Task GetConversationMessagesAsync_AnotherUsersConversation_ThrowsNotFound()
     {
@@ -2189,6 +2218,201 @@ public sealed class ConversationServiceTests : IDisposable
 
         Assert.Equal(ChatRoles.Assistant, assistantMessage.Role);
         Assert.Equal(assistantMessage.Id, usage.AssistantMessageId?.ToString());
+    }
+
+    /// <summary>
+    /// The identifier a client needs to act on the message it just watched arrive (US-1101). It is
+    /// the transcript's own id rather than a correlation token, so a rating or a permalink can be
+    /// sent against it without refetching the transcript first.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamCompletes_StampsTheFinishedFrameWithThePersistedMessageId()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        var events = await StreamEventsToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var assistantMessage = Assert.IsType<TranscriptMessageDocument>(CapturedBatchOperations()[1].Item);
+        var finished = Assert.Single(events, e => e.Kind == AssistantUiEventKind.Finished);
+        var metadata = finished.Metadata;
+        Assert.NotNull(metadata);
+
+        Assert.Equal(
+            assistantMessage.Id,
+            Assert.Contains(IConversationService.AssistantMessageIdMetadataKey, metadata));
+
+        // Last, not merely present: the frame is held back until the write answers, so anything
+        // after it would mean the turn kept producing events past the point it was recorded.
+        Assert.Same(finished, events[^1]);
+    }
+
+    /// <summary>
+    /// The frame is held until the transcript write answers, which is the whole reason it can carry
+    /// an identifier at all — the id does not exist until then. Asserted against the store rather
+    /// than against the clock: by the time the client can see the frame, the message it names is
+    /// already readable.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFinishedFrameArrives_TheTranscriptIsAlreadyWritten()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        var writtenBeforeFinished = false;
+
+        await foreach (var uiEvent in _service.StreamConversationAsync(
+            conversation.Id, request, TestContext.Current.CancellationToken))
+        {
+            if (uiEvent.Kind is AssistantUiEventKind.Finished)
+            {
+                writtenBeforeFinished = CapturedBatchOperations().Count > 0;
+            }
+        }
+
+        Assert.True(writtenBeforeFinished);
+    }
+
+    /// <summary>
+    /// The usage row still asserts an <c>AssistantMessageId</c> here, because it commits before the
+    /// append is attempted — but nothing was written, so the wire must not repeat the claim. A
+    /// client that acted on the id would address a message the transcript will never return.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheTranscriptWriteFails_TheFinishedFrameClaimsNoMessageId()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _transcriptStore.ExecuteBatchAsync(
+                Arg.Any<PartitionKey>(), Arg.Any<Action<TranscriptBatch>>(), Arg.Any<CancellationToken>())
+            .Returns(new TranscriptBatchResult(
+                false, System.Net.HttpStatusCode.Conflict, 1, System.Net.HttpStatusCode.Conflict));
+
+        var events = await StreamEventsToEndAsync(conversation.Id, new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = []
+        });
+
+        var finished = Assert.Single(events, e => e.Kind == AssistantUiEventKind.Finished);
+
+        Assert.DoesNotContain(
+            IConversationService.AssistantMessageIdMetadataKey,
+            finished.Metadata ?? new Dictionary<string, string>());
+    }
+
+    /// <summary>
+    /// The third abandonment mode, and the only one that rests on compiler semantics rather than on
+    /// an exception: a client that disconnects leaves the enumerator suspended at a
+    /// <c>yield return</c>, and disposing it resumes the state machine in dispose mode — which runs
+    /// the finally that records the turn and then terminates, never reaching the statement that
+    /// would emit the frame.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheClientDisconnects_RecordsTheTurnAndEmitsNoFinishedFrame()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        var events = new List<AssistantUiEvent>();
+
+        await foreach (var uiEvent in _service.StreamConversationAsync(
+            conversation.Id, request, TestContext.Current.CancellationToken))
+        {
+            events.Add(uiEvent);
+
+            // What `await foreach` compiles a client disconnect into: the enumerator is disposed
+            // while suspended, rather than drained.
+            break;
+        }
+
+        Assert.DoesNotContain(events, e => e.Kind == AssistantUiEventKind.Finished);
+
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+        Assert.Null(usage.AssistantMessageId);
+        await _transcriptStore.DidNotReceiveWithAnyArgs().ExecuteBatchAsync(
+            default, default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A completed turn is owed its <c>Finished</c> frame whatever the write then does. Holding the
+    /// frame back until after persistence must not quietly turn a turn that ran to completion into
+    /// one the client can only read as truncated — so the failure is captured, the frame goes out
+    /// without an identifier it cannot honour, and the exception follows it.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenPersistingACompletedTurnThrows_StillEmitsFinishedThenRethrows()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        var events = new List<AssistantUiEvent>();
+
+        // Deleting the row the usage insert references breaks its foreign key, so the write throws
+        // on a turn that otherwise ran to completion.
+        await Assert.ThrowsAnyAsync<DbUpdateException>(async () =>
+        {
+            await foreach (var uiEvent in _service.StreamConversationAsync(
+                conversation.Id, request, TestContext.Current.CancellationToken))
+            {
+                if (events.Count == 0)
+                {
+                    using var ctx = _fixture.CreateContext();
+                    await ctx.Conversations
+                        .Where(x => x.Id == conversation.Id)
+                        .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+                }
+
+                events.Add(uiEvent);
+            }
+        });
+
+        var finished = Assert.Single(events, e => e.Kind == AssistantUiEventKind.Finished);
+        Assert.Null(finished.Metadata);
+        Assert.Same(finished, events[^1]);
+    }
+
+    /// <summary>
+    /// A faulted turn is billed and never transcribed, so there is no message to name. The absence
+    /// is structural rather than conditional: the frame is yielded after the write, and a fault
+    /// leaves that statement unreached.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenStreamFaults_EmitsNoFinishedFrame()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _chatClient.StreamFailure = new HttpRequestException("The provider dropped the connection.");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        var events = new List<AssistantUiEvent>();
+
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        {
+            await foreach (var uiEvent in _service.StreamConversationAsync(
+                conversation.Id, request, TestContext.Current.CancellationToken))
+            {
+                events.Add(uiEvent);
+            }
+        });
+
+        Assert.DoesNotContain(events, e => e.Kind == AssistantUiEventKind.Finished);
     }
 
     [Fact]

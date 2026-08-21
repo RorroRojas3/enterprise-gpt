@@ -38,6 +38,35 @@ export const DEFAULT_USER_PAGE_SIZE = USER_PAGE_SIZES[0];
 export const ORDER_EXPLANATION = 'Search covers names and email addresses.';
 
 /**
+ * The permission filter (US-1206).
+ *
+ * `permission`, not the API's own `permissionId`, for the reason {@link SIZE_PARAM}
+ * records: the URL is a contract with the reader. The wire keeps `permissionId`.
+ */
+export const PERMISSION_PARAM = 'permission';
+
+/** The label the filter's "no filter" option carries, as frame `5a` words it. */
+export const ANY_PERMISSION_LABEL = 'Permission: any';
+
+/**
+ * Reads a `?permission=` into an id to look up, or `null` for no filter.
+ *
+ * A shape check and nothing more. {@link toPageSize} can restrict `?size=` to the set the
+ * select offers because that set is a constant; permission ids are rows an administrator
+ * creates, so whether one exists is a question only `GET api/permissions` can answer. The
+ * screen settles it against the loaded catalog and reads an id the catalog does not list
+ * as no filter — the same invariant, enforced one step later.
+ */
+export function toPermissionFilter(value: string | undefined): string | null {
+  // Narrowed rather than trusted. `withComponentInputBinding()` hands over the raw
+  // `Params` value, which is an **array** for a repeated key — `?permission=a&permission=b`
+  // would call `.trim()` on it and throw inside the transform, failing the navigation.
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
  * Reads a `?page=` into a 1-based page number.
  *
  * Anything that is not a whole number at or above 1 reads as the first page: a
