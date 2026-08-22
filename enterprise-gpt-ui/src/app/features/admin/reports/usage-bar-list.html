@@ -1,0 +1,18 @@
+<ol class="bars">
+  @for (bar of bars(); track bar.key) {
+    <li class="bars__row">
+      <span class="bars__rank font-mono" aria-hidden="true">{{ bar.rank }}</span>
+      <span class="bars__label" [title]="bar.label">{{ bar.label }}</span>
+      <span class="bars__track">
+        <span
+          class="bars__fill"
+          [class.bars__fill--leader]="bar.isLeader"
+          [style.width]="bar.width"
+        ></span>
+      </span>
+      <span class="bars__value font-mono">{{ bar.value }}</span>
+    </li>
+  } @empty {
+    <li class="bars__empty">No models used in this range.</li>
+  }
+</ol>

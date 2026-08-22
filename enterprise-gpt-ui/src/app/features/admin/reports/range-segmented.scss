@@ -1,0 +1,36 @@
+@use 'breakpoints' as bp;
+
+.segmented {
+  display: flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.segmented__option {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition:
+    background var(--t-fast),
+    color var(--t-fast);
+
+  // The board's own active treatment: the option lifts onto `--surface` rather than taking a
+  // fill, which is what keeps the group legible against `--surface-2` in both themes.
+  &--active {
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgb(11 31 51 / 12%);
+    color: var(--brand);
+    font-weight: 600;
+  }
+
+  // WCAG SC 2.5.8. The board draws a 26px control; below the tablet edge it becomes a touch
+  // target, and the group is the only way to change what every panel on the screen is showing.
+  @include bp.mobile {
+    min-height: 44px;
+  }
+}

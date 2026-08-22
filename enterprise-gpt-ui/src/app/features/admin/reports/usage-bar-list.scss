@@ -1,0 +1,76 @@
+@use 'breakpoints' as bp;
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bars__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bars__rank {
+  flex: 0 0 16px;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-align: right;
+}
+
+.bars__label {
+  overflow: hidden;
+  flex: 0 0 132px;
+  width: 132px;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  // The fixed track is what makes the bars comparable; below the tablet edge there is no room for
+  // it, so the label takes what it can and the bar keeps the rest.
+  @include bp.mobile {
+    flex: 1 1 auto;
+    width: auto;
+    text-align: start;
+  }
+}
+
+.bars__track {
+  overflow: hidden;
+  flex: 1;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--surface-2);
+
+  @include bp.mobile {
+    flex: 0 0 90px;
+  }
+}
+
+.bars__fill {
+  display: block;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--accent);
+
+  &--leader {
+    background: var(--brand);
+  }
+}
+
+.bars__empty {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.bars__value {
+  flex: 0 0 46px;
+  color: var(--muted);
+  font-size: 11px;
+}

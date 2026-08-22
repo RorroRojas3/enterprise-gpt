@@ -1,0 +1,13 @@
+<div class="segmented" role="group" aria-label="Reporting period">
+  @for (range of ranges; track range) {
+    <button
+      type="button"
+      class="segmented__option"
+      [class.segmented__option--active]="range === value()"
+      [attr.aria-pressed]="range === value()"
+      (click)="onSelect(range)"
+    >
+      {{ range }} days
+    </button>
+  }
+</div>

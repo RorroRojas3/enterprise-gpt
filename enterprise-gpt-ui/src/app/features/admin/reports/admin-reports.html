@@ -1,12 +1,207 @@
 <h1 class="admin-reports__title font-display">Reports</h1>
 
-<!-- Copy is frame `5i`'s own, and the second sentence is load-bearing rather than
-     consolation: `ConversationUsage` rows are written for every turn, including the
-     cancelled and failed ones, so nothing is being lost while this tab waits for the
-     route that reads them. -->
-<div class="admin-reports__body">
-  <app-unavailable-panel
-    heading="Usage reports aren’t available yet"
-    message="The reporting API isn’t enabled for this deployment. Token usage is still recorded — this dashboard will populate once the capability ships."
-  />
+<div class="admin-reports__toolbar">
+  <!-- Never disabled while a report is in flight. A control that goes inert under the reader's
+       own gesture blurs itself, which drops a keyboard user back to the top of the document — and
+       on a closed select, which commits on the first arrow key, it makes the rest of the list
+       unreachable. `switchMap` in the store already discards the superseded request. -->
+  <app-range-segmented [value]="range()" (selected)="onRangeSelected($event)" />
+
+  <!-- A read-out, not a picker. The board draws no custom-range control, and this states the
+       window the response was actually taken from rather than the one the control asked for. -->
+  <span class="admin-reports__chip">
+    <app-icon name="bi-calendar3" class="admin-reports__chip-icon" />
+    {{ dateRange() }}
+  </span>
+
+  <label class="visually-hidden" for="usage-group-by">Group usage by</label>
+  <!-- `[selected]` on the option, never `[value]` on the select: a `[value]` binding is evaluated
+       before `@for` inserts the options, leaving `selectedIndex` at -1, and the browser then
+       resets to the first one — so a shared link would display "Model" while grouping by user. -->
+  <select
+    id="usage-group-by"
+    class="form-select admin-reports__group"
+    (change)="onGroupingChanged($event)"
+  >
+    @for (grouping of groupings; track grouping) {
+      <!-- On every option, not just the first. The board prefixes only the default, which reads
+           correctly until something else is chosen and the closed control then says "User" with
+           no clue what it groups. -->
+      <option [value]="grouping" [selected]="grouping === group()">
+        Group by: {{ columnLabel(grouping) }}
+      </option>
+    }
+  </select>
 </div>
+
+@if (reports.error(); as error) {
+  <!-- Instead of the dashboard rather than beside it: every panel below belongs to one request,
+       and a chart left on screen beside a failure notice is a chart of the last range the reader
+       looked at, labelled with this one. `ErrorPanel` carries the traceId and the retry. -->
+  <app-error-panel
+    [error]="error"
+    [canRetry]="canRetry(error)"
+    heading="Usage reports couldn’t load"
+    (retried)="reports.retry()"
+  />
+} @else if (reports.isFirstLoad()) {
+  <div class="admin-reports__skeleton" aria-hidden="true">
+    <div class="admin-reports__kpis">
+      @for (tile of skeletonTiles; track tile) {
+        <app-skeleton variant="block" height="76px" />
+      }
+    </div>
+    <app-skeleton variant="block" height="220px" />
+    <div class="admin-reports__split">
+      <app-skeleton variant="block" height="240px" />
+      <app-skeleton variant="block" height="240px" />
+    </div>
+  </div>
+} @else if (reports.isEmpty()) {
+  <!-- A named range rather than a dashboard of zeroes. Charts drawn from zeros are indistinguishable
+       from charts drawn from a quiet month, and the four tiles would each read as a measurement. -->
+  <app-empty-state
+    [heading]="emptyHeading()"
+    [headingLevel]="2"
+    message="No model calls were billed in this range. Try a longer period."
+  />
+} @else if (reports.report(); as report) {
+  <!-- `aria-busy` while the next report is on the wire, and a dimmed panel to match. The controls
+       stay operable — the round of feedback they used to give by disabling themselves was the
+       defect — but a dashboard that swaps wholesale with no sign anything was asked for is its own
+       problem, and for a screen reader there was nothing at all between the gesture and the count
+       changing. -->
+  <div
+    class="admin-reports__dashboard"
+    [class.admin-reports__dashboard--busy]="reports.isPending()"
+    [attr.aria-busy]="reports.isPending() ? 'true' : null"
+  >
+    <div class="admin-reports__kpis">
+      @for (kpi of kpis(); track kpi.label) {
+        <app-kpi-tile
+          [label]="kpi.label"
+          [value]="kpi.value"
+          [delta]="kpi.delta"
+          [comparison]="priorCaption()"
+        />
+      }
+    </div>
+
+    <section class="admin-reports__card">
+      <h2 class="admin-reports__card-title">
+        Usage over time
+        <span class="admin-reports__card-note">tokens per day</span>
+      </h2>
+      <app-usage-area-chart [points]="report.series" />
+    </section>
+
+    <div class="admin-reports__split">
+      <section class="admin-reports__card">
+        <h2 class="admin-reports__card-title admin-reports__card-title--row">
+          <span>
+            Tokens by model
+            <span class="admin-reports__card-note">top 10</span>
+          </span>
+          @if (canViewAllModels()) {
+            <button
+              type="button"
+              class="btn btn-link admin-reports__view-all"
+              (click)="viewAllModels()"
+            >
+              View all
+            </button>
+          }
+        </h2>
+        <app-usage-bar-list [rows]="report.topModels" />
+      </section>
+
+      <section class="admin-reports__card admin-reports__card--donut">
+        <h2 class="admin-reports__card-title">Turn outcomes</h2>
+        <p class="admin-reports__card-subtitle">Tokens billed for answers nobody read</p>
+        <app-outcome-donut [outcomes]="report.outcomes" />
+      </section>
+    </div>
+
+    <!-- Above the table rather than in its `[tableNotice]` slot. That slot only collapses when it is
+       `:empty`, and a conditional has to project a *stable* wrapper — an `@if` around a projected
+       node compiles to an `ng-template` carrying no selector attribute and is never projected — so
+       the wrapper itself would keep the slot non-empty and leave 10px of dead space on every
+       report that is not truncated. -->
+    @if (reports.truncationNotice(); as notice) {
+      <p class="admin-reports__truncation">{{ notice }}</p>
+    }
+
+    <app-data-table
+      class="admin-reports__table"
+      [label]="tableLabel()"
+      [rows]="reports.pagedGroups()"
+      [columns]="columns()"
+      [trackKey]="trackKey"
+      [rowLabel]="rowLabel"
+      [summary]="reports.countSummary()"
+    >
+      <ng-template appTableCell="group" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <span class="admin-reports__group-name" [title]="row.label">{{ row.label }}</span>
+        @if (row.sublabel) {
+          <!-- Only when grouping by user, where two people can share a display name and a spend
+             figure attributed to the wrong one is worse than a second line. -->
+          <span class="admin-reports__group-sublabel">{{ row.sublabel }}</span>
+        }
+      </ng-template>
+
+      <ng-template appTableCell="turns" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <span class="admin-reports__number font-mono">{{ count(row.turns) }}</span>
+      </ng-template>
+
+      <ng-template appTableCell="completed" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <span class="admin-reports__number font-mono">{{ count(row.completedTurns) }}</span>
+      </ng-template>
+
+      <ng-template appTableCell="cancelled" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <span class="admin-reports__number font-mono">{{ count(row.cancelledTurns) }}</span>
+      </ng-template>
+
+      <ng-template appTableCell="failed" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <!-- Toned only when there were failures, and never as the only channel: the number itself
+           is the message, and the tone is what makes a row worth looking at twice. -->
+        <span
+          class="admin-reports__number font-mono"
+          [class.admin-reports__number--warn]="row.failedTurns > 0"
+          >{{ count(row.failedTurns) }}</span
+        >
+      </ng-template>
+
+      <ng-template appTableCell="tokens" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <span class="admin-reports__number font-mono">{{ tokens(row.totalTokens) }}</span>
+      </ng-template>
+
+      <ng-template appTableCell="cost" [appTableCellFor]="reports.pagedGroups()" let-row>
+        <!-- An em dash where the row could not be priced, with the reason in the title: a `$0`
+           here would say the calls were free, which is the one thing it does not mean. -->
+        <span
+          class="admin-reports__number font-mono"
+          [class.admin-reports__number--muted]="row.estimatedCost === null"
+          [attr.title]="row.estimatedCost === null ? 'No price recorded for this model' : null"
+          >{{ cost(row.estimatedCost) }}</span
+        >
+      </ng-template>
+
+      <!-- The shared paginator, not the board's two bare chevrons. It already renders this exact
+         sentence, disables its ends genuinely and is keyboard-operable; a second pagination
+         mechanism in a codebase with one is the cost of the fidelity, and the numbered window is
+         the only visible difference. `liveSummary` is false because `[summary]` above is already
+         a live region carrying the same string. -->
+      <div tableFooter>
+        <app-paginator
+          [itemLabel]="itemLabel()"
+          [page]="reports.page()"
+          [totalPages]="reports.totalPages()"
+          [totalCount]="reports.totalCount()"
+          [pageSize]="reports.pageSize()"
+          [liveSummary]="false"
+          (pageChanged)="reports.setPage($event)"
+        />
+      </div>
+    </app-data-table>
+  </div>
+}

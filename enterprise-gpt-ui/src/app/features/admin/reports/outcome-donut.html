@@ -1,0 +1,50 @@
+<div class="donut">
+  <svg
+    class="donut__ring"
+    viewBox="0 0 150 150"
+    width="150"
+    height="150"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <circle class="donut__track" cx="75" cy="75" [attr.r]="radius" fill="none" stroke-width="17" />
+    @for (arc of arcs(); track arc.status) {
+      <circle
+        class="donut__arc"
+        [class]="'donut__arc--' + arc.tone"
+        cx="75"
+        cy="75"
+        [attr.r]="radius"
+        fill="none"
+        stroke-width="17"
+        [attr.stroke-dasharray]="arc.dasharray"
+        [attr.stroke-dashoffset]="arc.dashoffset"
+        transform="rotate(-90 75 75)"
+      />
+    }
+    @if (hasTurns()) {
+      <text class="donut__centre font-display" x="75" y="71" text-anchor="middle">
+        {{ wastedPercent() }}
+      </text>
+      <text class="donut__caption" x="75" y="88" text-anchor="middle">cancelled + failed</text>
+    }
+  </svg>
+
+  <ul class="donut__legend" aria-label="Turn outcomes">
+    @for (row of legend(); track row.status) {
+      <li class="donut__row">
+        <app-status-dot class="donut__swatch" [tone]="row.tone" [label]="row.label" [size]="9" />
+        <span class="donut__figure font-mono">{{ row.figure }}</span>
+      </li>
+    }
+    <li class="donut__total">
+      <!-- The share the ring's centre draws, restated as text. That `<svg>` is `aria-hidden`, so
+           without this the combined figure — the one the panel is named after — exists nowhere a
+           screen reader can reach it. -->
+      <span class="donut__wasted font-display"
+        >{{ wastedPercent() }} · {{ wastedTokens() }} tokens</span
+      >
+      <span class="donut__wasted-caption">cancelled or failed</span>
+    </li>
+  </ul>
+</div>
