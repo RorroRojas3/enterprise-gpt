@@ -33,9 +33,11 @@ public sealed class RequestLoggingOptions
 
     // "dir" and "permissionId" join the paging keys because neither identifies a person: one is
     // 'asc' or 'desc', the other a permission's id. Redacting them would leave the access log unable
-    // to explain the two rejections the list routes can now raise.
+    // to explain the two rejections the list routes can now raise. The three reporting keys join
+    // them on the same test — two timestamps and a dimension name — and the range is the one thing
+    // that explains why a report was slow.
     private static readonly string[] _defaultSafeQueryKeys =
-        ["skip", "take", "page", "pageSize", "sort", "order", "dir", "permissionId"];
+        ["skip", "take", "page", "pageSize", "sort", "order", "dir", "permissionId", "from", "to", "groupBy"];
 
     /// <summary>
     /// Whether request logging is active. Default: <see langword="true"/>.

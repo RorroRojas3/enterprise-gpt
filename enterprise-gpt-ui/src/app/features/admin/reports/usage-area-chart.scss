@@ -1,0 +1,44 @@
+:host {
+  display: block;
+}
+
+.area {
+  margin: 0;
+}
+
+.area__plot {
+  display: block;
+  width: 100%;
+  height: 170px;
+}
+
+// The stops are set here rather than as presentation attributes so they can read tokens. The
+// board hard-codes `#21A8D8` over `#14324F`, which are light `--accent` over light `--brand`;
+// naming the tokens instead is what carries the ridgeline motif into the dark theme, where
+// `--brand` is itself the accent and a literal navy would sit wrong on a navy card.
+.area__stop--top {
+  stop-color: var(--accent);
+  stop-opacity: 0.5;
+}
+
+.area__stop--bottom {
+  stop-color: var(--brand);
+  stop-opacity: 0.04;
+}
+
+// `--brand`, not the `--accent` the board draws. This line is the only visual presentation of
+// the daily series — there is no table of per-day figures beside it — so SC 1.4.11 applies to it
+// as a graphical object, and light `--accent` `#21a8d8` measures 2.74:1 against `--surface`. The
+// dark theme is unaffected, because `--brand` *is* that cyan there, and the accent still carries
+// the ridgeline motif in the gradient underneath, which is what frame `5k`'s caption names.
+.area__line {
+  stroke: var(--brand);
+}
+
+.area__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+}

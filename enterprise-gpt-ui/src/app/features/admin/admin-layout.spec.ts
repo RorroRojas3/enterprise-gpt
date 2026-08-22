@@ -11,6 +11,7 @@ import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { usageReportFixture } from '@testing/reports';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { AdminLayout } from './admin-layout';
 import { adminRoutes } from './admin.routes';
@@ -18,6 +19,7 @@ import { adminRoutes } from './admin.routes';
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
+const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 
 /** Stands in for the chat route an unmatched URL used to be ejected to. */
 @Component({ template: 'chat' })
@@ -77,8 +79,7 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     } else if (url.includes('/mcps')) {
       backend.expectOne(MCPS_URL).flush([mcpServerFixture()]);
     } else if (url.includes('/reports')) {
-      // Nothing to answer: the tab has no store and no endpoint until US-1301 lands.
-      // `backend.verify()` in afterEach is what asserts it stayed that way.
+      backend.expectOne((request) => request.url === REPORTS_URL).flush(usageReportFixture());
     } else {
       // The users tab also asks for the permission catalog, for its filter (US-1206).
       flushPermissions(backend, undefined, { optional: true });
@@ -173,9 +174,12 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     expect(active?.getAttribute('aria-current')).toBe('page');
   });
 
-  it('opens the reports tab by URL, instantiating no store at all (US-1209)', async () => {
+  it('opens the reports tab by URL, instantiating only its own store (US-1302)', async () => {
     await open('/admin/reports');
 
+    // Its own request is answered in `open`; that no sibling asked for anything is what
+    // `backend.verify()` in afterEach asserts. Until US-1302 this tab had no store at all,
+    // because it had no endpoint to call.
     expect(element().querySelector('app-admin-reports')).not.toBeNull();
     expect(element().querySelector('app-admin-users')).toBeNull();
     expect(element().querySelector('app-admin-models')).toBeNull();

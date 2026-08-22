@@ -18,7 +18,7 @@ US-1403 is a **conformance** story, not a build one. Most of what its criteria a
 | 4a — admin tables become stacked cards at 44px targets                                                     | Already held (US-106's `DataTable`, US-1201)                                                                                                       |
 | 4b — the admin sub-nav becomes scrollable pills (frame `5m`)                                               | Already held (US-1201's `PillSubnav`)                                                                                                              |
 | 4c — the project-detail tab strip becomes stacked accordions                                               | **Departed from deliberately** — it becomes the same pill strip (§8.5)                                                                             |
-| 5 — the reports charts stack into one column below 1024px                                                  | **Vacuous.** `/admin/reports` is an `UnavailablePanel` until US-1302; there are no charts to stack                                                  |
+| 5 — the reports charts stack into one column below 1024px                                                  | **Vacuous when this story opened** — `/admin/reports` was an `UnavailablePanel`, and there were no charts to stack. **Retired by US-1302, 2026-08-21** (§10) |
 | 6 — no horizontal scrollbar at any of the three widths                                                     | **Gated here**, in a real browser — jsdom computes no layout and cannot answer it ([Accessibility audit §4](accessibility-audit.md#4-the-harness)) |
 
 So the work divides into five things, and only the second is a screen:
@@ -289,7 +289,6 @@ Conversations, projects, project detail and the admin layout each gained `overfl
 
 ## 10. Limits, recorded rather than hidden
 
-- **Criterion 5 is vacuous until US-1302.** `/admin/reports` renders an `UnavailablePanel` and no charts, so "charts stack into a single column below 1024px" has nothing to assert. US-1302 owns it when the dashboard exists.
 - **Criterion 6 is gated in the browser only.** `shell.a11y.spec.ts` checks it at three widths in both themes; jsdom cannot answer it at all, so the jsdom suite pins the structure instead.
 - **The overflow check reports only containers that clip.** `overflow-x: auto` or `scroll` is a deliberate scroll region — a code block, the pill strip, a wide table — and reporting those would be reporting the design. Elements 1px wide or narrower are skipped too, because a `visually-hidden` box is a clipped 1×1 whose content is _meant_ to overflow it; without that skip the check's first run reported three of them and nothing real.
 - **The project-detail pills are a departure the boards do not describe** (§8.5), recorded in [the build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table so it is not later mistaken for drift.

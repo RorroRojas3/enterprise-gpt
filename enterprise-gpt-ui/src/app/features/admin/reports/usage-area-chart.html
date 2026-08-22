@@ -1,0 +1,32 @@
+<figure class="area" role="img" [attr.aria-label]="summary()">
+  <svg
+    class="area__plot"
+    [attr.viewBox]="viewBox"
+    preserveAspectRatio="none"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <defs>
+      <linearGradient [attr.id]="gradientId" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" class="area__stop area__stop--top" />
+        <stop offset="1" class="area__stop area__stop--bottom" />
+      </linearGradient>
+    </defs>
+    <path class="area__fill" [attr.d]="areaPath()" [attr.fill]="'url(#' + gradientId + ')'" />
+    <path
+      class="area__line"
+      [attr.d]="linePath()"
+      fill="none"
+      stroke-width="2"
+      stroke-linejoin="round"
+      stroke-linecap="round"
+      vector-effect="non-scaling-stroke"
+    />
+  </svg>
+
+  <div class="area__axis font-mono" aria-hidden="true">
+    @for (label of axisLabels(); track $index) {
+      <span>{{ label }}</span>
+    }
+  </div>
+</figure>

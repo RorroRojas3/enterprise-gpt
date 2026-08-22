@@ -564,7 +564,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
     /// <summary>
     /// Inserts a usage audit row directly into the database, bypassing the API, for arranging the
-    /// read scenarios that restore a conversation's last model and MCP selection.
+    /// read scenarios that restore a conversation's last model and MCP selection, and the usage
+    /// report's aggregates.
     /// </summary>
     /// <param name="conversationId">The conversation the turn belongs to.</param>
     /// <param name="modelId">The model that served the turn.</param>
@@ -572,11 +573,31 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="userId">The owner. Defaults to the regular test user.</param>
     /// <param name="mcpServerIds">The MCP servers attached to the turn.</param>
     /// <param name="kind">The kind of call. Defaults to a chat turn.</param>
+    /// <param name="status">How the call ended. Defaults to completed.</param>
+    /// <param name="inputTokens">Assistant input tokens billed.</param>
+    /// <param name="outputTokens">Assistant output tokens billed.</param>
+    /// <param name="toolInputTokens">Input tokens billed inside tools.</param>
+    /// <param name="toolOutputTokens">Output tokens billed inside tools.</param>
+    /// <param name="contextTokens">
+    /// The locally estimated transcript weight, or <see langword="null"/> for a turn that was never
+    /// transcribed — which is every cancelled and failed one.
+    /// </param>
+    /// <param name="inputPricePerMillionTokens">
+    /// The input price captured on the row, or <see langword="null"/> to leave the call unpriced.
+    /// Defaults to null, so a caller that does not care about cost writes rows the report counts
+    /// as unpriced rather than as free.
+    /// </param>
+    /// <param name="outputPricePerMillionTokens">The output price, on the same terms.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted usage row.</returns>
     public async Task<Guid> AddConversationUsageAsync(
         Guid conversationId, Guid modelId, DateTimeOffset dateCreated, Guid? userId = null,
         IReadOnlyCollection<Guid>? mcpServerIds = null, ConversationUsageKinds kind = ConversationUsageKinds.Chat,
+        ConversationUsageStatuses status = ConversationUsageStatuses.Completed,
+        long inputTokens = 10, long outputTokens = 5,
+        long toolInputTokens = 0, long toolOutputTokens = 0,
+        long? contextTokens = null,
+        decimal? inputPricePerMillionTokens = null, decimal? outputPricePerMillionTokens = null,
         CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
@@ -590,9 +611,14 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             ProviderId = KnownIds.SeedProviderId,
             DeploymentName = "integration-deployment",
             Kind = kind,
-            Status = ConversationUsageStatuses.Completed,
-            InputTokens = 10,
-            OutputTokens = 5,
+            Status = status,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            ToolInputTokens = toolInputTokens,
+            ToolOutputTokens = toolOutputTokens,
+            ContextTokens = contextTokens,
+            InputPricePerMillionTokens = inputPricePerMillionTokens,
+            OutputPricePerMillionTokens = outputPricePerMillionTokens,
             DateCreated = dateCreated,
             McpServers =
             [

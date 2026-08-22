@@ -1,0 +1,96 @@
+@use 'breakpoints' as bp;
+
+:host {
+  display: flex;
+  flex: 1;
+}
+
+.donut {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 18px;
+  margin-top: 8px;
+
+  // Below the tablet edge the ring and its legend stop fitting side by side, and a 150px ring
+  // squeezed next to three figures reads as neither.
+  @include bp.mobile {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.donut__ring {
+  flex: 0 0 150px;
+}
+
+.donut__track {
+  stroke: var(--surface-2);
+}
+
+.donut__arc--ok {
+  stroke: var(--ok);
+}
+
+.donut__arc--muted {
+  stroke: var(--muted);
+}
+
+.donut__arc--warn {
+  stroke: var(--warn);
+}
+
+.donut__centre {
+  fill: var(--bs-body-color);
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.donut__caption {
+  fill: var(--muted);
+  font-size: 9.5px;
+}
+
+.donut__legend {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  font-size: 12.5px;
+  list-style: none;
+}
+
+.donut__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.donut__swatch {
+  flex: 1;
+}
+
+.donut__figure {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.donut__total {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bs-border-color);
+  color: var(--bs-body-color);
+  font-size: 12px;
+}
+
+.donut__wasted {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.donut__wasted-caption {
+  color: var(--muted);
+}

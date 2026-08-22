@@ -15,11 +15,14 @@ import { AdminUsers } from './users/admin-users';
  * Tabs are **children of one layout route**, which is what lets the rail mark the open
  * one from the router rather than from local state, and what makes the browser's back
  * button restore the previous tab for free (US-1209). All four the board draws are here;
- * US-1302 changes what `reports` renders, not that it resolves.
+ * US-1302 changed what `reports` renders, not that it resolves — the route, its title and its
+ * rail entry are unchanged.
  *
  * Each tab provides its own store on the component the route names, never on the layout —
- * US-1209 requires that opening one tab instantiates that tab's store and no other, and
- * `AdminReports` instantiates none because there is no endpoint to call yet.
+ * US-1209 requires that opening one tab instantiates that tab's store and no other. That
+ * placement is also what makes the reports tab re-fetch on every entry (FR-41): a component-level
+ * provider is rebuilt each time the route is entered, so there is nothing left alive to serve a
+ * cached report.
  */
 export const adminRoutes: Routes = [
   {

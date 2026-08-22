@@ -1,0 +1,18 @@
+<div class="kpi">
+  <div class="kpi__label">{{ label() }}</div>
+  <div class="kpi__value font-display">{{ value() }}</div>
+
+  @if (hasDelta()) {
+    <p class="kpi__delta" [class.kpi__delta--up]="isUp()">
+      @if (!isFlat()) {
+        <app-icon [name]="icon()" class="kpi__arrow" />
+      }
+      <span class="kpi__change">{{ deltaText() }}</span>
+      <span class="kpi__comparison">vs. {{ comparison() }}</span>
+    </p>
+  } @else {
+    <p class="kpi__delta">
+      <span class="kpi__comparison">No {{ comparison() }} to compare with</span>
+    </p>
+  }
+</div>

@@ -7,8 +7,18 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
+import {
+  THEMES,
+  VIEWPORTS,
+  ViewportName,
+  applyTheme,
+  atViewport,
+  clearTheme,
+  expectNoHorizontalOverflow,
+  expectNoSeriousViolations,
+} from '@testing/a11y';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
+import { emptyUsageReportFixture, usageReportFixture } from '@testing/reports';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import { adminRoutes } from './admin.routes';
@@ -26,6 +36,7 @@ import { adminRoutes } from './admin.routes';
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
+const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 
 @Component({ template: 'chat' })
 class ChatStub {}
@@ -60,7 +71,9 @@ describe('administration accessibility (US-1405)', () => {
     TestBed.inject(Router).setUpLocationChangeListener();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Or the next file inherits whatever width the last test left behind.
+    await atViewport('desktop');
     attached?.remove();
     attached = null;
     clearTheme();
@@ -124,12 +137,39 @@ describe('administration accessibility (US-1405)', () => {
     });
 
     it(`finds nothing serious on the reports tab in the ${theme} theme`, async () => {
-      // No store and no request by design (US-1209): this tab is the shared
-      // `UnavailablePanel` until US-1301 exists to feed it.
+      // A real report rather than an empty screen. Every mark on this tab is drawn from the
+      // response — the ridgeline, ten bars, three donut arcs and a paged table — and an audit of
+      // the empty state would be an audit of an empty state.
       const element = await open('/admin/reports', theme);
+      backend.expectOne((request) => request.url === REPORTS_URL).flush(usageReportFixture());
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/admin/reports (${theme})`);
+    });
+
+    it(`finds nothing serious on an empty reports range in the ${theme} theme`, async () => {
+      // The other half: a named empty state is what this tab shows for a quiet range, and it is
+      // a different tree from the dashboard rather than the same one with zeroes in it.
+      const element = await open('/admin/reports', theme);
+      backend.expectOne((request) => request.url === REPORTS_URL).flush(emptyUsageReportFixture());
+      await harness.fixture.whenStable();
+
+      await expectNoSeriousViolations(element, `/admin/reports empty (${theme})`);
+    });
+  }
+
+  // US-1403's criterion 5, which has been vacuous for two phases: "the reports charts stack into
+  // a single column below 1024px" had nothing to assert while this tab was an unavailable panel.
+  // A real browser is the only thing that can answer it, and overflow is the failure it produces —
+  // a 640-unit chart, a 1.2fr/1fr split and a seven-column table all have to give way.
+  for (const width of Object.keys(VIEWPORTS) as ViewportName[]) {
+    it(`keeps the dashboard inside the viewport at the ${width} width`, async () => {
+      await atViewport(width);
+      const element = await open('/admin/reports', 'light');
+      backend.expectOne((request) => request.url === REPORTS_URL).flush(usageReportFixture());
+      await harness.fixture.whenStable();
+
+      expectNoHorizontalOverflow(element, `/admin/reports ${width}`);
     });
   }
 });

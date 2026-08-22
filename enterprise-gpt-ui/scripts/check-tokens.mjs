@@ -209,6 +209,26 @@ const CONTRAST_PAIRS = [
   // measured.
   { background: 'code-head', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
   { background: 'code-bg', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
+  // US-1302. The usage dashboard's marks, measured as graphical objects (SC 1.4.11): the area
+  // chart's line and the donut's three arcs on the card surface, and the leading bar's fill on
+  // the bar track. The line takes --brand rather than the --accent frame `5j` draws precisely
+  // because of this gate — --accent is 2.74:1 on --surface in the light theme, and that line is
+  // the sole visual presentation of the daily series, so it has to clear the threshold.
+  //
+  // One mark is deliberately not measured: the --accent fill on bars two through ten. Every bar
+  // carries its own name and value as text beside it, so those fills are redundant presentation
+  // rather than something the reader depends on — which is just as well, because --accent could
+  // not clear 3:1 on --surface-2 either, and the board tints them with it.
+  {
+    background: 'surface',
+    foregrounds: ['brand', 'ok', 'muted', 'warn'],
+    minimum: NON_TEXT_MINIMUM,
+  },
+  {
+    background: 'surface-2',
+    foregrounds: ['brand', 'ok', 'muted', 'warn'],
+    minimum: NON_TEXT_MINIMUM,
+  },
   // US-1401. `_tokens.scss` claims --focus-ring clears 3:1 "on every surface in
   // the kit"; until now nothing measured it, which is how four controls came to
   // draw their ring from --ring instead and fail SC 1.4.11 with every gate green.

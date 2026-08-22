@@ -35,6 +35,7 @@ using Enterprise.Gpt.Service.Converters;
 using Enterprise.Gpt.Service.Export;
 using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Rendering;
+using Enterprise.Gpt.Service.Reports;
 using Enterprise.Gpt.Service.Serialization;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
@@ -538,6 +539,14 @@ builder.Services.AddOptions<UserPermissionCacheOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IUserPermissionCache, UserPermissionCache>();
 
+// Usage reporting. Both bounds are refusals rather than clamps, so they are validated at startup:
+// a MaxRangeDays of zero would reject every window with a message naming a limit no caller could
+// satisfy, and a MaxGroups of zero would return an empty breakdown beside non-empty totals.
+builder.Services.AddOptions<ReportOptions>()
+    .Bind(builder.Configuration.GetSection(ReportOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // Per-message token estimation. Validated at startup because a negative overhead term or a
 // nonsensical calibration multiplier silently corrupts every stored token count and, through the
 // context budget built on them, silently shrinks what is replayed to the model.
@@ -644,6 +653,7 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentRetrievalService, DocumentRetrievalService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IMcpServerService, McpServerService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -724,6 +734,8 @@ app.MapModelEndpoints();
 app.MapProjectEndpoints();
 
 app.MapMcpEndpoints();
+
+app.MapReportEndpoints();
 
 app.MapPermissionEndpoints();
 

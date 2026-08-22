@@ -1,25 +1,183 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: flex;
-  // Fills `.admin__content`, which the layout makes a column for exactly this: it is
-  // what lets the panel centre in the pane rather than sit under the title, which is
-  // how frame `5i` draws it.
   flex: 1;
   flex-direction: column;
+  gap: 16px;
 }
 
 .admin-reports__title {
-  margin: 0 0 16px;
+  margin: 0;
   font-size: 20px;
   font-weight: 600;
 }
 
-.admin-reports__body {
+.admin-reports__toolbar {
+  display: flex;
+  align-items: center;
+  // Wraps rather than overflowing: three controls with a combined intrinsic width well past a
+  // 360px viewport, and only the select can shrink (WCAG SC 1.4.10 Reflow).
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-reports__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.admin-reports__chip-icon {
+  font-size: 12px;
+}
+
+.admin-reports__group {
+  width: 180px;
+  height: 36px;
+  // Pushed to the trailing edge, as the board draws it — but only while the row has not wrapped,
+  // where an auto margin would leave the select stranded on a line of its own.
+  margin-inline-start: auto;
+  border-radius: 10px;
+  font-size: 13px;
+
+  @include bp.mobile {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+}
+
+// The panels, apart from the controls above them, so a request in flight can dim the figures
+// without touching what the reader is operating. A transition on the shared duration scale rather
+// than a keyframe: `check:forbidden` allows exactly four of those, and the reduced-motion block
+// already suppresses transitions.
+.admin-reports__dashboard {
   display: flex;
   flex: 1;
   flex-direction: column;
-  justify-content: center;
-  // Trailing only: the title's own margin already separates it from the panel where the
-  // pane is too short for `flex: 1` to leave any slack to centre in, and doubling it
-  // there would put this screen out of step with its three siblings.
-  padding-block-end: 16px;
+  gap: 16px;
+  transition: opacity var(--t-fast);
+
+  &--busy {
+    opacity: 0.6;
+  }
+}
+
+.admin-reports__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+
+  // US-1403's criterion 5: the dashboard stacks into a single column below the desktop edge.
+  @include bp.below-desktop {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include bp.mobile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-reports__split {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+
+  @include bp.below-desktop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-reports__card {
+  padding: 16px 18px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  background: var(--surface);
+
+  &--donut {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.admin-reports__card-title {
+  margin: 0 0 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+
+  &--row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+}
+
+.admin-reports__card-note {
+  margin-inline-start: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.admin-reports__card-subtitle {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-reports__view-all {
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-reports__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+// Wrapped, not clipped, and that is the deliberate half. `DataTable` gives every cell
+// `overflow: hidden`, so a name wider than its column would be truncated with no way to read the
+// rest — and below the desktop edge, where the column is narrowest, that is most of them. Wrapping
+// grows the row instead, which a table of six numeric columns has room for. `anywhere` covers the
+// unbroken cases the other two groupings produce: a deployment name and an email address.
+.admin-reports__group-name {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.admin-reports__group-sublabel {
+  display: block;
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.admin-reports__truncation {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-reports__number {
+  font-size: 11.5px;
+
+  &--warn {
+    color: var(--warn);
+  }
+
+  &--muted {
+    color: var(--muted);
+  }
 }
