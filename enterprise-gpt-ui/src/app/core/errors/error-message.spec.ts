@@ -29,16 +29,6 @@ describe('traceLine', () => {
 });
 
 describe('userMessage', () => {
-  it('names the MCP server that needs authorization, and who can grant it', () => {
-    const message = userMessage(errorFrom(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403));
-
-    expect(message).toContain('Weather');
-    // US-412: this is what the transcript's status region announces, and it
-    // must not offer the user an action they have no way to take.
-    expect(message).toContain('administrator');
-    expect(message).not.toContain('your authorization');
-  });
-
   it('names the MCP server that could not be reached', () => {
     expect(userMessage(errorFrom(PROBLEM_FIXTURES.mcpServerUnavailable, 502))).toContain('Weather');
   });
@@ -112,9 +102,6 @@ describe('canRetry', () => {
   });
 
   it.each([
-    // US-412: consent happens elsewhere, so the same call cannot supply it —
-    // this is what keeps the consent card from growing a dead button.
-    ['mcp-authorization-required', PROBLEM_FIXTURES.mcpAuthorizationRequired, 403],
     ['forbidden', PROBLEM_FIXTURES.forbidden, 403],
     ['permission-required', PROBLEM_FIXTURES.permissionRequired, 403],
     ['resource-not-found', PROBLEM_FIXTURES.resourceNotFound, 404],

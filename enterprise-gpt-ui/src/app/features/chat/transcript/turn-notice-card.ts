@@ -25,8 +25,7 @@ interface NoticeView {
    * beyond the single sentence.
    */
   readonly layout: 'stack' | 'row';
-  readonly icon:
-    'bi-exclamation-triangle-fill' | 'bi-plug' | 'bi-hourglass-split' | 'bi-shield-lock';
+  readonly icon: 'bi-exclamation-triangle-fill' | 'bi-plug' | 'bi-hourglass-split';
   /** Colour only — the title's weight follows {@link NoticeView.layout}. */
   readonly titleTone: 'warn' | 'fail' | 'body';
   readonly title: string;
@@ -36,16 +35,15 @@ interface NoticeView {
 
 /**
  * Frame `1h`'s turn-edge notices: the cut-off warning (US-406) and the
- * pre-stream failure cards — tool-server-unavailable (US-403/US-406),
- * conversation-busy (US-408), and MCP consent required (US-412). Every other
- * arm falls back to the generic warning, which is deliberate: an arm without
- * a designed frame gets the honest generic treatment rather than invented
- * copy.
+ * pre-stream failure cards — tool-server-unavailable (US-403/US-406) and
+ * conversation-busy (US-408). Every other arm falls back to the generic
+ * warning, which is deliberate: an arm without a designed frame gets the
+ * honest generic treatment rather than invented copy.
  *
  * Whether a Retry appears is the caller's decision — {@link retryable} — not
  * this card's, because only the caller knows whether it holds a re-sendable
- * turn. `canRetry` then decides per arm, which is why the consent card shows
- * no action even though the store kept a retry snapshot.
+ * turn. `canRetry` then decides per arm, so an arm the store kept a retry
+ * snapshot for can still render without an action.
  *
  * Session-only by construction: the store state these render from vanishes on
  * route change, sign-out, and reload alike.
@@ -103,31 +101,6 @@ export class TurnNoticeCard {
           : 'A tool server is unavailable',
         body: 'The tool server could not be reached. This turn produced no answer.',
         trace: traceLine(error),
-      };
-    }
-
-    if (error.kind === 'mcp-authorization-required') {
-      // US-412. Not a warning panel: the turn failed for a reason the user
-      // cannot act on, so it reads as a statement rather than an alarm. The
-      // trace id is omitted for the same reason — there is nothing to
-      // correlate, and the copy already names what an administrator must fix.
-      //
-      // No "Authorize" action ships: `scope` is null on every 403 this build
-      // can receive, and there is no consent endpoint to call. Frame `1h`'s
-      // second consent variant arrives with US-411, which puts the scope on
-      // the wire.
-      return {
-        tone: 'surface',
-        layout: 'stack',
-        icon: 'bi-shield-lock',
-        titleTone: 'body',
-        title: error.serverName
-          ? `${error.serverName} requires authorization`
-          : 'This tool server requires authorization',
-        body:
-          'This tool server needs interactive consent before Enterprise GPT can call it. ' +
-          'No authorization flow is available yet — contact your administrator.',
-        trace: null,
       };
     }
 

@@ -5,6 +5,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import {
@@ -20,7 +21,7 @@ import {
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
 import { emptyUsageReportFixture, usageReportFixture } from '@testing/reports';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
-import { afterEach, beforeEach, describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adminRoutes } from './admin.routes';
 
 /**
@@ -130,10 +131,38 @@ describe('administration accessibility (US-1405)', () => {
 
       backend
         .expectOne((request) => request.url === MCPS_URL)
-        .flush([mcpServerFixture({ name: 'Andes Test MCP' })]);
+        .flush([
+          mcpServerFixture({ name: 'Andes Test MCP' }),
+          mcpServerFixture({ name: 'Microsoft Learn', iconKey: 'microsoft' }),
+        ]);
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/admin/mcps (${theme})`);
+    });
+
+    /**
+     * The MCP form open (US-1208/US-1210, frame `5h`).
+     *
+     * Six labelled controls, two of them selects, plus a `role="alert"` region per field
+     * and a `role="status"` note — none of which the table behind it exercises. Opened on
+     * an **edit** of a row whose icon key this build ships no artwork for, because that is
+     * the one state that renders the note and the icon preview at once.
+     */
+    it(`finds nothing serious with the MCP form open in the ${theme} theme`, async () => {
+      const element = await open('/admin/mcps', theme);
+
+      backend
+        .expectOne((request) => request.url === MCPS_URL)
+        .flush([mcpServerFixture({ name: 'Microsoft Learn', iconKey: 'microsoft' })]);
+      await harness.fixture.whenStable();
+
+      TestBed.inject(McpServerActionsStore).beginEdit(
+        mcpServerFixture({ name: 'Something New', iconKey: 'future-brand' }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(element.querySelector('#mcp-form-icon')).not.toBeNull();
+      await expectNoSeriousViolations(element, `/admin/mcps form (${theme})`);
     });
 
     it(`finds nothing serious on the reports tab in the ${theme} theme`, async () => {

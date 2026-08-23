@@ -48,14 +48,11 @@ internal static class ProblemTypes
         new($"{BaseUri}conversation-busy", "Conversation is busy");
 
     /// <summary>
-    /// An MCP server needs interactive consent or a Conditional Access challenge. Accompanied by a
-    /// <c>serverName</c> extension. Carried on a 403 rather than a 401, and the distinct type URI is
-    /// what lets a client prompt for consent instead of retrying the token.
+    /// An MCP server could not be used: unreachable, or its on-behalf-of token could not be
+    /// acquired — a consent or Conditional Access requirement included, since these servers are
+    /// consented tenant-wide and a UI-required result is a registration fault rather than
+    /// something the caller can act on. Accompanied by a <c>serverName</c> extension.
     /// </summary>
-    public static readonly ProblemType McpAuthorizationRequired =
-        new($"{BaseUri}mcp-authorization-required", "MCP authorization required");
-
-    /// <summary>An MCP server could not be reached. Accompanied by a <c>serverName</c> extension.</summary>
     public static readonly ProblemType McpServerUnavailable =
         new($"{BaseUri}mcp-server-unavailable", "MCP server unavailable");
 

@@ -121,15 +121,15 @@ describe('authInterceptor', () => {
     expect(await response).toMatchObject({ status: 401 });
   });
 
-  it('never refreshes on an MCP consent requirement', async () => {
-    // A 403 asking for interactive consent to a downstream server cannot be satisfied
-    // by any number of token refreshes, so entering that path would spin forever.
+  it('never refreshes on a 403, whose token is fine and whose grant is not', async () => {
+    // No number of refreshes turns a missing grant into a present one, so entering
+    // that path would spin forever.
     const response = firstValueFrom(http.get(API_URL)).catch((error: unknown) => error);
     await settle();
 
     backend
       .expectOne(API_URL)
-      .flush(PROBLEM_FIXTURES.mcpAuthorizationRequired, { status: 403, statusText: 'Forbidden' });
+      .flush(PROBLEM_FIXTURES.forbidden, { status: 403, statusText: 'Forbidden' });
     await settle();
 
     expect(await response).toMatchObject({ status: 403 });

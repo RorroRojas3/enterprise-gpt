@@ -197,15 +197,15 @@ describe('ConversationStreamClient', () => {
     }
   });
 
-  it('never refreshes the token for an mcp-authorization-required 403', async () => {
+  it('never refreshes the token for a 403', async () => {
     const client = setup();
-    const { response, getReader } = problemResponse(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403);
+    const { response, getReader } = problemResponse(PROBLEM_FIXTURES.forbidden, 403);
     fetchMock.mockResolvedValue(response);
 
     const observed = observe(client);
     await settle();
 
-    expect(observed.error?.kind).toBe('mcp-authorization-required');
+    expect(observed.error?.kind).toBe('forbidden');
     expect(getToken).toHaveBeenCalledTimes(1);
     expect(getToken).not.toHaveBeenCalledWith({ forceRefresh: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);

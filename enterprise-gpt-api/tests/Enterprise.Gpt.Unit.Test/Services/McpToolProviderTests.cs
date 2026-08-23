@@ -221,19 +221,38 @@ public sealed class McpToolProviderTests : IDisposable
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task AcquireToolsAsync_TokenAcquisitionRequiresUi_ThrowsMcpAuthorizationRequiredException()
+    public static TheoryData<string, Exception> TokenAcquisitionFailures() => new()
     {
-        var server = await AddMcpServerAsync("aaa-consent", McpAuthTypes.EntraIdOnBehalfOf, "api://client-id/access_as_user");
-        var msalException = new MsalUiRequiredException("interaction_required", "User consent is required.");
-        _tokenAcquisition.GetAuthenticationResultForUserAsync(Arg.Any<IEnumerable<string>>())
-            .ThrowsAsync(msalException);
+        // Consent or Conditional Access, reported by MSAL itself. Reaches the same arm as any
+        // other MsalException by derivation, which is the whole point of the fold.
+        { "ui-required", new MsalUiRequiredException("interaction_required", "User consent is required.") },
+        // The same requirement, wrapped by Microsoft.Identity.Web. This one derives from
+        // Exception rather than MsalException, so it has to be named separately or it escapes.
+        {
+            "challenge",
+            new MicrosoftIdentityWebChallengeUserException(
+                new MsalUiRequiredException("interaction_required", "User consent is required."),
+                ["api://client-id/access_as_user"])
+        },
+        // An ordinary service failure, to pin that the fold widened the arm rather than narrowing it.
+        { "service", new MsalServiceException("service_unavailable", "The service is unavailable.") },
+    };
 
-        var exception = await Assert.ThrowsAsync<McpAuthorizationRequiredException>(
+    [Theory]
+    [MemberData(nameof(TokenAcquisitionFailures))]
+    public async Task AcquireToolsAsync_TokenAcquisitionFails_ThrowsMcpServerUnavailableException(
+        string label, Exception failure)
+    {
+        var server = await AddMcpServerAsync(
+            $"aaa-token-{label}", McpAuthTypes.EntraIdOnBehalfOf, "api://client-id/access_as_user");
+        _tokenAcquisition.GetAuthenticationResultForUserAsync(Arg.Any<IEnumerable<string>>())
+            .ThrowsAsync(failure);
+
+        var exception = await Assert.ThrowsAsync<McpServerUnavailableException>(
             () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
 
         Assert.Equal(server.Name, exception.ServerName);
-        Assert.Same(msalException, exception.InnerException);
+        Assert.Same(failure, exception.InnerException);
         Assert.Empty(_mcpClientCache.ReceivedCalls());
     }
 

@@ -38,8 +38,21 @@
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
+.admin-mcps__server {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.admin-mcps__brand {
+  flex: 0 0 auto;
+  font-size: 15px;
+}
+
 .admin-mcps__name {
   display: block;
+  min-width: 0;
   overflow: hidden;
   font-size: 13px;
   font-weight: 600;

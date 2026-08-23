@@ -267,7 +267,7 @@ The interceptor short-circuits unless `ApiUrl.owns(request.url)`. Without that c
 
 ### 5.4 The 401 replay
 
-A 401 is replayed exactly once with `forceRefresh: true`, and only when [`authErrorDecision`](frontend-foundation.md#45-autherrordecision--the-only-place-refresh-is-decided) says `refresh`. That function — written in US-103 against an exhaustive `satisfies` table — is the single source of truth, and the arm that matters most is `mcp-authorization-required`: the API answers it **403, deliberately not 401**, because it asks for interactive consent to a downstream tool server, which no number of token refreshes can supply. Refreshing on it produces a loop that cannot terminate.
+A 401 is replayed exactly once with `forceRefresh: true`, and only when [`authErrorDecision`](frontend-foundation.md#45-autherrordecision--the-only-place-refresh-is-decided) says `refresh`. That function — written in US-103 against an exhaustive `satisfies` table — is the single source of truth, and the arms that matter most are `forbidden` and `permission-required`: the API answers those **403, deliberately not 401**, because the token is fine and the grant is not, which no number of token refreshes can supply. Refreshing on either produces a loop that cannot terminate.
 
 The single replay needs no attempt counter. `catchError` does not catch the observable its own handler returns, so the replay cannot re-enter the branch.
 
@@ -654,7 +654,7 @@ The suite was **550 specs** at the end of EP-2, all green, with `npm run lint` a
 | Cross-tab | `session-channel` | A sign-out carried to another tab; unrelated traffic ignored; the receiving tab tearing down and leaving; no echo, so two tabs cannot bounce a sign-out between them |
 | Abort primitive | `session-events` | Every outstanding signal aborted on sign-out; one signal per request; composition with a caller-owned Stop; already-aborted after the session ended; aborted on injector destroy |
 | Tokens | `token-service` | Shared in-flight acquisition; `forceRefresh` bypassing the memo; `InteractionRequiredAuthError` → redirect + throw; a swallowed second redirect |
-| Interceptor | `auth.interceptor` | Non-API URLs untouched; one 401 replay with a forced refresh; an MCP-consent 403 **not** refreshed; three retried attempts carrying `token-1/2/3` |
+| Interceptor | `auth.interceptor` | Non-API URLs untouched; one 401 replay with a forced refresh; an ordinary 403 **not** refreshed; three retried attempts carrying `token-1/2/3` |
 | Guards | `auth.guard`, `session.guard`, `admin.guard` | `UrlTree` on every failure; a rejecting `signIn`; the `RouterTestingHarness` assertion that `loadChildren` is never invoked; each guard refusing to re-activate mid-sign-out, including the admin chunk never being fetched on the way out |
 | Session | `session-store` | The empty-grant session as success; the generation counter; `idle` rather than `error` on sign-out cancellation; `canUploadFiles` false for an administrator whose grants omit it |
 | Shell | `app` | The latch and the emptied session in one synchronous step; the interstitial replacing the shell for the whole of sign-out; the footer appearing only once a session exists; the toast region mounted throughout; focus moved to the interstitial heading |
@@ -683,7 +683,7 @@ npm run build   # budgets, then check-initial-chunk.mjs (which covers features/a
 | The redirect URI is rejected | Under a sub-path deployment, the `/`-prefixed values in `config.json` resolve against the origin rather than `<base href>` (§4.1) |
 | A new tab asks Entra again | Expected: the token cache is `sessionStorage` (§12.1) |
 | Requests reach the API with no `Authorization` header | The URL did not come from `ApiUrl.build()`, so `ApiUrl.owns()` returned false (§5.3) |
-| A 403 puts the client in a refresh loop | Something bypassed `authErrorDecision`. `mcp-authorization-required` must never refresh (§5.4) |
+| A 403 puts the client in a refresh loop | Something bypassed `authErrorDecision`. `forbidden` and `permission-required` must never refresh (§5.4) |
 | Blank page after sign-in | A guard returned `false` instead of a `UrlTree` (§6.1) |
 | The build fails naming `features/admin/` | A static import reached the admin area. The error names the import path (§9) |
 | The build fails naming a `localStorage` write | Route it through `core/storage/local-preferences.ts` and add the key to `PREFERENCE_KEYS` — but read §11.6's rule first; most values do not belong there at all |

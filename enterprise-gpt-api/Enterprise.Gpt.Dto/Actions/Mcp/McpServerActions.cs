@@ -14,6 +14,8 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
         public McpAuthTypes AuthType { get; init; }
 
         public string? Scope { get; init; }
+
+        public string? IconKey { get; init; }
     }
 
     public class CreateMcpServerActionDtoValidator : AbstractValidator<CreateMcpServerActionDto>
@@ -42,7 +44,20 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
                 .Empty()
                 .When(x => x.AuthType == McpAuthTypes.None)
                 .WithMessage($"Scope must be empty when the auth type is {nameof(McpAuthTypes.None)}.");
+            // A slug, not an enum: the artwork lives in the client, so shipping a new icon must
+            // not require a server deploy. A key the client does not recognise degrades to its
+            // generic glyph, which is why an unknown-but-well-formed value is accepted here.
+            // `is not null` rather than `IsNullOrEmpty`: an empty string would otherwise be
+            // stored as '' beside the NULLs meaning the same thing, and `IconKey IS NULL` and
+            // `iconKey === null` would disagree about the same row. Null clears the icon.
+            RuleFor(x => x.IconKey)
+                .MaximumLength(64)
+                .Matches(IconKeyPattern)
+                .When(x => x.IconKey is not null)
+                .WithMessage("IconKey must be a lowercase slug such as 'microsoft'.");
         }
+
+        private const string IconKeyPattern = "^[a-z0-9]+(-[a-z0-9]+)*$";
 
         private static bool BeAnAbsoluteHttpUri(string url)
         {
@@ -62,6 +77,8 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
         public McpAuthTypes AuthType { get; init; }
 
         public string? Scope { get; init; }
+
+        public string? IconKey { get; init; }
     }
 
     public class UpdateMcpServerActionDtoValidator : AbstractValidator<UpdateMcpServerActionDto>
@@ -90,7 +107,20 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
                 .Empty()
                 .When(x => x.AuthType == McpAuthTypes.None)
                 .WithMessage($"Scope must be empty when the auth type is {nameof(McpAuthTypes.None)}.");
+            // A slug, not an enum: the artwork lives in the client, so shipping a new icon must
+            // not require a server deploy. A key the client does not recognise degrades to its
+            // generic glyph, which is why an unknown-but-well-formed value is accepted here.
+            // `is not null` rather than `IsNullOrEmpty`: an empty string would otherwise be
+            // stored as '' beside the NULLs meaning the same thing, and `IconKey IS NULL` and
+            // `iconKey === null` would disagree about the same row. Null clears the icon.
+            RuleFor(x => x.IconKey)
+                .MaximumLength(64)
+                .Matches(IconKeyPattern)
+                .When(x => x.IconKey is not null)
+                .WithMessage("IconKey must be a lowercase slug such as 'microsoft'.");
         }
+
+        private const string IconKeyPattern = "^[a-z0-9]+(-[a-z0-9]+)*$";
 
         private static bool BeAnAbsoluteHttpUri(string url)
         {

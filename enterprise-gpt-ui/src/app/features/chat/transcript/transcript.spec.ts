@@ -1022,18 +1022,19 @@ describe('Transcript', () => {
       expect(document.activeElement).toBe(host.querySelector('.notice__retry'));
     });
 
-    it('renders the 403 as the consent card with no action (US-412)', async () => {
-      await failWith(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403);
+    it('renders a 403 as the generic warning with no Retry', async () => {
+      await failWith(PROBLEM_FIXTURES.forbidden, 403);
 
       const notice = host.querySelector('app-turn-notice-card .notice');
-      expect(notice?.classList.contains('notice--warn')).toBe(false);
-      expect(notice?.textContent).toContain('Weather requires authorization');
-      expect(notice?.textContent).toContain('contact your administrator');
-      // Retry is withheld by `canRetry`, not by the card: consent cannot be
-      // supplied by repeating the call.
+      expect(notice).not.toBeNull();
+      // Retry is withheld by `canRetry`, not by the card: a denied grant
+      // answers the same however often it is asked.
       expect(notice?.querySelector('button')).toBeNull();
-      // What a screen reader is told has to agree with what the card says.
-      expect(host.querySelector('[role="status"]')?.textContent).toContain('administrator');
+      // The card is not a live region — the transcript's persistent status region is
+      // what a screen reader hears, and it has to agree with what the card shows.
+      expect(host.querySelector('[role="status"]')?.textContent).toContain(
+        'You do not have access to that.',
+      );
     });
   });
 

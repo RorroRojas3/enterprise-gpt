@@ -20,6 +20,7 @@ import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { UnavailablePanel } from '@shared/feedback/unavailable-panel/unavailable-panel';
 import { SearchInput } from '@shared/form/search-input/search-input';
+import { BrandIcon } from '@shared/icon/brand-icon';
 import { Icon } from '@shared/icon/icon';
 import { PillItem, PillSubnav } from '@shared/nav/pill-subnav/pill-subnav';
 import { Menu } from '@shared/overlay/menu/menu';
@@ -29,6 +30,7 @@ import { Modal } from '@shared/overlay/modal/modal';
 import { Offcanvas } from '@shared/overlay/offcanvas/offcanvas';
 import { Tooltip } from '@shared/overlay/tooltip/tooltip';
 import { Ridgeline } from '@shared/ridgeline/ridgeline';
+import { Switch } from '@shared/switch/switch';
 import { DropOverlay } from '@shared/upload/drop-overlay';
 import { FileDropTarget } from '@shared/upload/file-drop-target';
 
@@ -53,6 +55,7 @@ interface DemoRow {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AttachmentChip,
+    BrandIcon,
     BrandLogo,
     BulkActionBar,
     CardRow,
@@ -77,6 +80,7 @@ interface DemoRow {
     Skeleton,
     SourceBadge,
     StatusDot,
+    Switch,
     TableCell,
     Tooltip,
     UnavailablePanel,
@@ -94,6 +98,7 @@ export class UiKit {
   protected readonly page = signal(7);
 
   /** Stands in for `SessionStore.canUploadFiles()`, which no dev session can toggle. */
+  protected readonly switchOn = signal(true);
   protected readonly canUpload = signal(true);
   protected readonly lastDrop = signal('Nothing dropped yet.');
 

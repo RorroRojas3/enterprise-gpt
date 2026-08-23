@@ -146,14 +146,13 @@ The JSON comes from `AssistantUiJsonContext.Default.AssistantUiEvent`, the packa
 | Status | `type` | When |
 |---|---|---|
 | `400` | `/problems/validation-error` | The request body failed validation; `errors` is keyed by property name |
-| `403` | `/problems/mcp-authorization-required` | A selected MCP server needs consent. Deliberately not `401`, which would send clients into a token-refresh loop that cannot fix a consent requirement |
 | `403` | `/problems/forbidden` | The caller may not use something the turn needs |
 | `404` | `/problems/resource-not-found` | The conversation is unknown, deactivated, or another user's |
 | `409` | `/problems/conversation-busy` | A turn is already in flight for this conversation |
-| `502` | `/problems/mcp-server-unavailable` | A selected MCP server could not be reached |
+| `502` | `/problems/mcp-server-unavailable` | A selected MCP server could not be reached, or its on-behalf-of token could not be acquired — a consent or Conditional Access requirement included, since these servers are consented tenant-wide and a UI-required result is a registration fault, not something the caller can act on |
 | `503` | `/problems/provider-not-configured` | The model exists but this deployment has no chat client for its provider — an operator fixes it, not the caller |
 
-The line between "before" and "after" is the **synthetic opening pair** (§4.3). Everything in the table runs ahead of the first yield — the conversation lock, the conversation reads, first-turn naming, model resolution, and MCP validation, consent and tool acquisition — so those failures still arrive as ordinary problem JSON. The model's first token does not: the two synthetic frames commit the response to `text/event-stream` *before* the provider is called, so a provider that faults on its very first token — a bad deployment, an expired key, exhausted quota — now surfaces as the mid-stream truncation below instead of a problem response. That is the deliberate price of the opening pair: the client hears something during model latency, and first-token faults lose their problem body.
+The line between "before" and "after" is the **synthetic opening pair** (§4.3). Everything in the table runs ahead of the first yield — the conversation lock, the conversation reads, first-turn naming, model resolution, and MCP validation and tool acquisition — so those failures still arrive as ordinary problem JSON. The model's first token does not: the two synthetic frames commit the response to `text/event-stream` *before* the provider is called, so a provider that faults on its very first token — a bad deployment, an expired key, exhausted quota — now surfaces as the mid-stream truncation below instead of a problem response. That is the deliberate price of the opening pair: the client hears something during model latency, and first-token faults lose their problem body.
 
 **After** — there is no error surface left. The exception handlers short-circuit on `Response.HasStarted` rather than corrupting a stream that is already `200 OK` with half an answer in it, so a mid-stream failure reaches the client as **a body that simply stops**. A client cannot distinguish that from a network drop and should not try to; treat an ended body with no `Finished` event as an incomplete turn and say so in the UI.
 

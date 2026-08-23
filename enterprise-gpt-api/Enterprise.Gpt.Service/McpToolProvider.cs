@@ -58,8 +58,7 @@ namespace Enterprise.Gpt.Service
         /// <returns>A lease set the caller must dispose when the stream completes.</returns>
         /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
         /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
-        /// <exception cref="McpAuthorizationRequiredException">Token acquisition requires user consent or additional authentication.</exception>
-        /// <exception cref="McpServerUnavailableException">Connecting to a server or listing its tools failed.</exception>
+        /// <exception cref="McpServerUnavailableException">Connecting to a server, listing its tools, or acquiring an on-behalf-of token for it failed — including a consent or Conditional Access requirement, which for a tenant-consented server means a broken registration rather than a user-actionable state.</exception>
         Task<IMcpToolLeaseSet> AcquireToolsAsync(IReadOnlyCollection<Guid> mcpServerIds, CancellationToken cancellationToken);
     }
 
@@ -180,15 +179,18 @@ namespace Enterprise.Gpt.Service
                 var result = await _tokenAcquisition.GetAuthenticationResultForUserAsync([server.Scope!]);
                 return (result.AccessToken, result.ExpiresOn);
             }
-            catch (MicrosoftIdentityWebChallengeUserException ex)
-            {
-                throw new McpAuthorizationRequiredException(server.Name, ex);
-            }
-            catch (MsalUiRequiredException ex)
-            {
-                throw new McpAuthorizationRequiredException(server.Name, ex);
-            }
-            catch (MsalException ex)
+            // One arm for every token-acquisition failure, deliberately. `MsalUiRequiredException`
+            // derives from `MsalException`, so a consent or Conditional Access requirement lands
+            // here too: these servers are consented tenant-wide by an administrator, which makes a
+            // UI-required result a broken registration rather than something the signed-in user can
+            // act on. `MicrosoftIdentityWebChallengeUserException` derives from `Exception`, not
+            // from `MsalException`, so it has to be named as well.
+            //
+            // The client offers Retry on this arm and did not on the consent problem this replaced.
+            // That is accepted rather than overlooked: 502 also covers genuinely transient service
+            // failures, where a retry does help, and a second attempt against a mis-registered
+            // server merely fails the same way instead of misleading the reader about who can fix it.
+            catch (Exception ex) when (ex is MicrosoftIdentityWebChallengeUserException or MsalException)
             {
                 throw new McpServerUnavailableException(server.Name, ex);
             }

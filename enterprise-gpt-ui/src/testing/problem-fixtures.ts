@@ -64,15 +64,6 @@ export const PROBLEM_FIXTURES = {
     instance: '/api/conversations/6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b/stream',
     traceId: TRACE_ID,
   },
-  mcpAuthorizationRequired: {
-    type: PROBLEM_TYPE.mcpAuthorizationRequired,
-    title: 'MCP authorization required',
-    status: 403,
-    detail: "Consent or additional authentication is required for MCP server 'Weather'.",
-    instance: '/api/conversations/6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b/stream',
-    traceId: TRACE_ID,
-    serverName: 'Weather',
-  },
   mcpServerUnavailable: {
     type: PROBLEM_TYPE.mcpServerUnavailable,
     title: 'MCP server unavailable',

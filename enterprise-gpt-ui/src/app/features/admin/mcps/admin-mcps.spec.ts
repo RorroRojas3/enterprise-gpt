@@ -152,7 +152,7 @@ describe('AdminMcps (US-1208)', () => {
     ]);
 
     expect(rowText()).toContain('Inactive');
-    expect(element().querySelectorAll('.admin-mcps__name--retired')).toHaveLength(1);
+    expect(element().querySelectorAll('.admin-mcps__server--retired')).toHaveLength(1);
     // There is no reactivate route, so every item would be an affordance that cannot
     // work — the shown-and-disabled pattern US-203 rejected. One live row, one menu.
     expect(element().querySelectorAll('app-menu')).toHaveLength(1);

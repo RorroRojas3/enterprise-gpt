@@ -1,0 +1,14 @@
+<!--
+  The Microsoft logo, in colour.
+
+  Geometry is bootstrap-icons' own `microsoft.svg` (1.13.1) with its single
+  four-subpath `d` split into one path per quadrant, so this mark sits at exactly
+  the same optical weight and on the same 16x16 grid as every other glyph in the
+  sprite. Colours are Microsoft's brand hexes.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <path fill="#F25022" d="M7.462 0H0v7.19h7.462z"/>
+  <path fill="#7FBA00" d="M16 0H8.538v7.19H16z"/>
+  <path fill="#00A4EF" d="M7.462 8.211H0V16h7.462z"/>
+  <path fill="#FFB900" d="M16 8.211H8.538V16H16z"/>
+</svg>

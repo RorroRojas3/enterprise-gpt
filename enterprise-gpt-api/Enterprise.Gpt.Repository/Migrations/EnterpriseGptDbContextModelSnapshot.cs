@@ -528,6 +528,10 @@ namespace Enterprise.Gpt.Repository.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
 
+                    b.Property<string>("IconKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid>("ModifiedById")
                         .HasColumnType("uniqueidentifier")
                         .HasJsonPropertyName("modifiedBy");

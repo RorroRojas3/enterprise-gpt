@@ -33,7 +33,6 @@ const RETRYABLE_REJECTIONS = {
   forbidden: false,
   'permission-required': false,
   'conversation-busy': false,
-  'mcp-authorization-required': false,
   'mcp-server-unavailable': false,
   'provider-not-configured': false,
   'storage-not-configured': false,

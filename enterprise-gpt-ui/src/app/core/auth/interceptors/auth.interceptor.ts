@@ -26,9 +26,6 @@ import { TokenService } from '../token-service';
  *
  * A 401 is retried exactly once with a forced refresh, and only when
  * {@link authErrorDecision} says so — the single source of truth for that decision.
- * A `mcp-authorization-required` 403 in particular must never enter the refresh
- * path: it asks for interactive consent to a downstream server, which no number of
- * refreshes can supply, so refreshing on it produces a loop that cannot terminate.
  * The single retry needs no attempt counter: `catchError` does not catch the
  * observable its own handler returns, so the replay cannot re-enter this branch.
  */

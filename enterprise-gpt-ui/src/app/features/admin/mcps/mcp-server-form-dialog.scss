@@ -25,6 +25,17 @@
   grid-column: 1 / -1;
 }
 
+.mcp-form__icon-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-form__icon-preview {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+
 // Frame `5h`'s `--fail` panel: the failure names the server, and the form never clears
 // what the reader typed.
 .mcp-form__summary {

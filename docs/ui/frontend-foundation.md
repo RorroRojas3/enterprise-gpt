@@ -227,7 +227,7 @@ To see it: rename `public/config.json`, hard-reload, rename it back.
 
 ### 4.1 Ten problem types, mirrored verbatim
 
-[`problem-types.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-types.ts) mirrors `Enterprise.Gpt.Api/Problems/ProblemTypes.cs` exactly: `validation-error`, `upload-too-large`, `resource-not-found`, `forbidden`, `permission-required`, `conversation-busy`, `mcp-authorization-required`, `mcp-server-unavailable`, `provider-not-configured`, `storage-not-configured`, all under the relative base `/problems/`.
+[`problem-types.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-types.ts) mirrors `Enterprise.Gpt.Api/Problems/ProblemTypes.cs` exactly: `validation-error`, `upload-too-large`, `resource-not-found`, `forbidden`, `permission-required`, `conversation-busy`, `mcp-server-unavailable`, `provider-not-configured`, `storage-not-configured`, `export-renderer-not-configured`, all under the relative base `/problems/`.
 
 They are **opaque identifiers matched verbatim, never resolved as links** — RFC 9457 §3.1.1 permits a relative reference, and the API treats them that way. Changing one is a breaking API change on both sides. A response carrying any other `type` (typically the RFC 9110 status-section link ASP.NET Core supplies) is a framework-level problem, not a domain one, and lands on the `http` arm.
 
@@ -245,10 +245,10 @@ Every failure the client can observe becomes one value with a `kind` discriminan
 | `forbidden`                  | 403    | —                     | Not allowed                                                           |
 | `permission-required`        | 403    | `permissions`         | Display names, not permission ids                                     |
 | `conversation-busy`          | 409    | —                     | A turn is already running. Never auto-retried                         |
-| `mcp-authorization-required` | 403    | `serverName`, `scope` | Interactive consent needed (§4.5)                                     |
-| `mcp-server-unavailable`     | 502    | `serverName`          | Tool server unreachable                                               |
+| `mcp-server-unavailable`     | 502    | `serverName`          | Tool server unreachable, or its on-behalf-of token could not be acquired (§4.5) |
 | `provider-not-configured`    | 503    | `providerId`          | The model's provider has no chat client here                          |
 | `storage-not-configured`     | 503    | —                     | Blob storage cannot sign download links here                          |
+| `export-renderer-not-configured` | 503 | `format`             | This deployment has no renderer for the requested export format       |
 | `http`                       | any    | —                     | Any failure with no domain type: 401, routing 404, bare 413, 499, 500 |
 | `network`                    | 0      | —                     | No response at all: DNS, TLS, offline, CORS rejection, timeout        |
 | `aborted`                    | 0      | —                     | The caller stopped it. Not a failure                                  |
@@ -301,7 +301,7 @@ authErrorDecision(error); // 'refresh' | 'passthrough'
 
 **Only a bare 401 may trigger a token refresh.** `authInterceptor` (US-201) consults this rather than re-deriving the rule, and replays the request exactly once with a forced refresh when it answers `refresh` — see [Authentication and Session §5.4](authentication-and-session.md#54-the-401-replay).
 
-The arm that matters most is `mcp-authorization-required`. The API answers it **403, deliberately not 401**, because it asks for interactive consent to a downstream tool server — something no number of token refreshes can supply. A client that treats it as an authentication failure enters a refresh loop that cannot terminate. `forbidden` and `permission-required` are 403s for the same underlying reason: the token is fine, the grant is not.
+The arms that matter most are `forbidden` and `permission-required`. The API answers both **403, deliberately not 401**, because the token is fine and the grant is not — something no number of token refreshes can supply. A client that treats either as an authentication failure enters a refresh loop that cannot terminate. (An earlier arm, `mcp-authorization-required`, existed here for the same reason before US-414/US-415 deleted it: tool servers are provisioned tenant-wide by an administrator, so there was never a per-user consent state for a 403 to describe, and a token acquisition that cannot complete now raises 502 `/problems/mcp-server-unavailable` instead — retryable, unlike the card it replaced.)
 
 The decision is backed by `AUTH_DECISIONS`, an exhaustive `as const satisfies Record<AppErrorKind, AuthErrorDecision>` table. Adding an arm to `AppError` without deciding its refresh behaviour is a **compile error**, and the table is exported so a spec asserts the key set too — which makes a new arm fail the suite as well as the compiler.
 

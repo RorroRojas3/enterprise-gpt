@@ -104,7 +104,14 @@ describe('chat accessibility (US-1405)', () => {
     const mcps = TestBed.inject(McpCatalogStore).ensureLoaded();
 
     backend.expectOne((request) => request.url === MODELS_URL).flush([modelFixture()]);
-    backend.expectOne((request) => request.url === MCPS_URL).flush([mcpFixture()]);
+    backend
+      .expectOne((request) => request.url === MCPS_URL)
+      // One row with a brand mark and one without, so the audit covers both arms of the
+      // picker's icon slot rather than only the generic glyph.
+      .flush([
+        mcpFixture({ name: 'Microsoft Learn', iconKey: 'microsoft' }),
+        mcpFixture({ name: 'Jira Cloud', iconKey: null }),
+      ]);
     await Promise.all([models, mcps]);
     await harness.fixture.whenStable();
   }
@@ -163,6 +170,26 @@ describe('chat accessibility (US-1405)', () => {
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/chat/:id download menu (${theme})`);
+    });
+
+    /**
+     * The Tools picker open (US-403/US-417/US-418, frame `2c`).
+     *
+     * Audited open for the reason the download menu is, and one more: its rows are
+     * `menuitemcheckbox` carrying an `aria-hidden` switch that is not a `role="switch"`,
+     * because that role is not an allowed owned element of `role="menu"`. That is exactly
+     * what `aria-required-children` and `aria-hidden-focus` are for, and the closed pill
+     * exercises neither.
+     */
+    it(`finds nothing serious with the tools picker open in the ${theme} theme`, async () => {
+      const element = await open('/chat', theme);
+      await loadCatalogues();
+
+      element.querySelector<HTMLButtonElement>('app-tools-menu .menu__trigger')?.click();
+      await harness.fixture.whenStable();
+
+      expect(element.querySelector('.tools-menu__option')).not.toBeNull();
+      await expectNoSeriousViolations(element, `/chat tools picker (${theme})`);
     });
 
     /**

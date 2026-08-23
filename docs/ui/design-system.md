@@ -11,7 +11,7 @@ Companion to [Frontend Foundation](frontend-foundation.md), which covers configu
 Four stories landed together, and they solve one problem each:
 
 1. **Theming** (US-105). Two themes, one token vocabulary, and a pre-paint contract that gets the right one on screen before the first frame (§2, §3).
-2. **Assets** (US-109). Three type faces, 74 icons and four brand images, all served from our own origin. The application issues **zero third-party requests at runtime** — no Google Fonts, no CDN, no icon font (§4, §5, §6).
+2. **Assets** (US-109). Three type faces, 75 icons, two multi-colour brand marks (US-418) and four brand images, all served from our own origin. The application issues **zero third-party requests at runtime** — no Google Fonts, no CDN, no icon font (§4, §5, §6).
 3. **The kit** (US-106). Twenty-odd presentational components with the accessibility contracts written into them rather than left to each screen (§7, §8).
 4. **The gates** (US-108). ESLint plus five Node checks that keep all of the above from drifting (§10).
 
@@ -31,7 +31,9 @@ Two rules to internalize before writing any component stylesheet:
 | Stylesheet order, Bootstrap trim, motion | [`src/styles.scss`](../../enterprise-gpt-ui/src/styles.scss), [`src/styles/`](../../enterprise-gpt-ui/src/styles/) |
 | `@font-face`, the three stacks, `unicode-range` | [`src/styles/_typography.scss`](../../enterprise-gpt-ui/src/styles/_typography.scss) |
 | Icon manifest and the `IconName` union | [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts) |
+| Brand mark manifest, sources and `BrandIcon` (§5.4) | [`shared/icon/brand-icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon-names.ts), [`shared/icon/brand/`](../../enterprise-gpt-ui/src/app/shared/icon/brand/), [`shared/icon/brand-icon.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon.ts) |
 | Sprite injection | [`core/icons/load-icon-sprite.ts`](../../enterprise-gpt-ui/src/app/core/icons/load-icon-sprite.ts) |
+| Switch (§7.8) | [`shared/switch/switch.ts`](../../enterprise-gpt-ui/src/app/shared/switch/switch.ts) |
 | Toast state (not presentation) | [`core/notifications/toast-store.ts`](../../enterprise-gpt-ui/src/app/core/notifications/toast-store.ts) |
 | Every kit component | [`src/app/shared/`](../../enterprise-gpt-ui/src/app/shared/) |
 | Asset and check scripts | [`enterprise-gpt-ui/scripts/`](../../enterprise-gpt-ui/scripts/) |
@@ -209,10 +211,10 @@ Points that will otherwise cost an hour:
 
 ### 5.1 How it works
 
-The icon font is **not** shipped: its stylesheet alone is roughly 72 kB, and it would carry 2,078 glyphs to render the 74 the design uses. Instead:
+The icon font is **not** shipped: its stylesheet alone is roughly 72 kB, and it would carry 2,078 glyphs to render the 75 the design uses. Instead:
 
 ```text
-shared/icon/icon-names.ts   74 sorted names + the IconName union   ← checked in
+shared/icon/icon-names.ts   75 sorted names + the IconName union   ← checked in
         │  npm run assets:icons
         ▼
 public/icons/sprite.svg     one <symbol> per glyph, fill=currentColor   ← gitignored
@@ -220,6 +222,8 @@ public/icons/sprite.svg     one <symbol> per glyph, fill=currentColor   ← giti
         ▼
 <div aria-hidden> prepended to <body>   → <use href="#bi-search"> resolves same-document
 ```
+
+The same sprite file carries a second, differently-built set of symbols — the multi-colour brand marks (§5.4).
 
 **The sprite is injected, not referenced.** An externally referenced sprite (`sprite.svg#bi-search`) is a separate document, and `currentColor` inside it resolves against *that* document's initial colour — black — instead of inheriting from the host element. Every icon would render black in both themes.
 
@@ -243,7 +247,7 @@ Supplying `label` promotes the icon from decoration to content. Leave it unset w
 
 ```bash
 $ npm run assets:icons
-icon sprite OK — 74 glyphs, 33.5 kB → public/icons/sprite.svg
+icon sprite OK — 75 glyphs + 2 brand marks, 33.5 kB → public/icons/sprite.svg
 ```
 
 The build refuses a name that is malformed, duplicated, out of order, or absent from `bootstrap-icons` 1.13.1 — the last with the URL to check the spelling against. Adding the name without rebuilding leaves the glyph *typed* but absent from the sprite, where it renders blank; `prestart`, `prebuild` and `pretest` all rebuild it, so that only bites someone serving `dist/` by hand.
@@ -255,6 +259,19 @@ Three layers catch a wrong name, deliberately, because each sees something the o
 | `strictTemplates` + the `IconName` union | `<app-icon name="bi-typo">` and any expression not typed `IconName` — at compile time |
 | `npm run check:icons` | A raw `class="bi bi-…"` in a template, or a `bi-*` literal in TypeScript flowing into a class binding |
 | A dev-only `effect` in `Icon` | A name assembled at run time (`'bi-' + kind`), which neither of the above can see |
+
+### 5.4 Brand marks: a second lane in the same sprite (US-418)
+
+A tool server registered with an icon ([Administration §11.3.1](administration.md#1131-icon-a-select-a-live-preview-and-a-key-nobody-typed-us-1210)) needs its own logo, not a `bi-*` glyph tinted to `currentColor` — a brand mark has to keep the colours its owner specifies. `build-icon-sprite.mjs` therefore reads a **second** manifest, [`shared/icon/brand-icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon-names.ts), against sources checked in under `shared/icon/brand/` rather than resolved from `node_modules`, and emits those `<symbol>` elements into the same `sprite.svg` **without** the `fill="currentColor"` rewrite the `bi-*` lane gets. Two names, `brand-microsoft` and `brand-context7` today: the Microsoft mark is bootstrap-icons' own `microsoft.svg`, its four-subpath `d` split one path per quadrant and coloured with the brand hexes so it sits at the same optical weight and the same 16-unit grid as every other glyph; Context7's is the project's own MIT-licensed mark, kept at its native 28-unit `viewBox` — a `<symbol>` establishes its own viewport, so a differently-scaled source still renders at whatever `font-size` the caller sets.
+
+```html
+<app-brand-icon name="brand-microsoft" />                  <!-- decorative -->
+<app-brand-icon name="brand-context7" label="Context7" />  <!-- content -->
+```
+
+`<app-brand-icon>` ([`shared/icon/brand-icon.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon.ts)) is a **sibling** of `Icon`, not a widening of it: `icon.scss` forces `fill: currentColor` on the sprite reference, which is exactly what a brand mark must not inherit, so the two components — and the two manifests behind them — stay independently checkable. `strictTemplates` rejects a misspelled `name` at compile time for a static reference; the one run-time lookup, `mcpBrandIcon` resolving a server's stored `iconKey` to a `BrandIconName`, is covered instead by a dev-mode `effect` that logs a miss rather than failing silently, the same pattern §5.3's table uses for `Icon`.
+
+`npm run check:icons` is **not** extended to the brand lane: it exists to catch a raw `class="bi bi-…"` the type system cannot see, there is no icon-font class for a brand mark to write by hand, and scanning for a `brand-` prefix would false-positive on every unrelated `brand-logo__*` class from §6. `strictTemplates`, the dev-mode guard above, and the sprite-build's own manifest-vs-source check (§5.3's malformed/duplicate/missing-source failures, run separately per lane) cover it instead — the sprite spec additionally asserts the two lanes are disjoint and that only the `bi-` lane carries `currentColor`.
 
 ## 6. Brand assets
 
@@ -471,6 +488,14 @@ Two consequences for anyone using it:
 
 The mechanics — the depth counter rather than a boolean, the `AbortController`-scoped listeners, the `types` filter that keeps a text drag working, and the window-level `providePreventDropNavigation()` that stops a missed drop replacing the application — are in [Authentication and Session §10](authentication-and-session.md#10-upload-gated-on-the-grant-us-204), because they exist to satisfy a permission criterion rather than a visual one.
 
+### 7.8 Switch — `shared/switch/` (US-417)
+
+`<app-switch [checked]="…" />` draws an on/off track and thumb and **nothing else**: no role, always `aria-hidden`, state supplied by the caller. That split exists for one reason — `role="switch"` is not an allowed owned element of `role="menu"`, which permits only `menuitem`, `menuitemcheckbox`, `menuitemradio`, `group` and `separator`. A native `<input type="checkbox" role="switch">` is therefore not a valid child of the composer's Tools menu, so the row's own `menuitemcheckbox` button keeps `aria-checked` and `app-switch` only draws what that state means. Where a real form control is available instead — `ModelFormDialog`'s Entra-only fields, for instance — use Bootstrap's own `.form-check.form-switch` with `[formField]`, not this component; `app-switch` matches its geometry so the two read as one idiom rather than becoming a second mechanism.
+
+No new design token: the off track is transparent with a `--muted` border and thumb, the on track is `--btnP-bg` with a `--btnP-fg` thumb — 5.27:1 on `--surface` and 4.76:1 on `--surface-2`, against SC 1.4.11's 3:1 non-text minimum. State is carried by the thumb's *position* as well as its fill, so it survives SC 1.4.1 (colour is not the only channel), reduced motion, and forced-colours mode; the transition is one of the four `_motion.scss` already declares, not a fifth keyframe `check:forbidden` would reject. `check-tokens.mjs`'s `FOCUS_SURFACE_EXCLUSIONS` gained `btnP-fg`, newly painted as a background here rather than the text colour it usually is.
+
+Its only consumer today is the Tools menu ([Frontend Foundation](frontend-foundation.md), the composer), which is also why `bi-square` and `bi-check-square-fill` left the icon manifest (§5.3) — the checkbox-glyph pair they drew was that row's only user.
+
 ## 8. Accessibility contracts
 
 The PRD's **accessibility precedence** rule (§5) states that where the boards and the PRD disagree on accessibility, the PRD wins; the prototypes carry known gaps that the rebuild corrects rather than reproduces. §9 lists what that authorised. This section is what the kit guarantees.
@@ -592,6 +617,8 @@ npm start
 
 Every kit component, light and dark **side by side**, because `data-bs-theme` is per-subtree. It exists because the kit has no consumer until EP-3 and two of its properties cannot be checked by a unit test: that a component reads correctly in dark as well as light, and that motion stops under `prefers-reduced-motion`. US-1405's browser target now covers the first of those two automatically for every route (§10); the second is still eyes-only, because a suppressed animation looks identical to an animation that never started.
 
+US-1210 added the two newest entries: the brand marks (§5.4), sized larger than the monochrome glyphs above them because these are logos and the point of showing them here is that they must read against both surfaces without inheriting either one's text colour; and the switch (§7.8), shown inside the one button shape it is ever used in — a bare `<app-switch>` on this page would model a control that does not exist, since the component itself carries no role and no state of its own.
+
 US-204 added a third kind of entry, and it is the more interesting use of the gallery: a **drop zone with a checkbox on the grant**, standing in for `SessionStore.canUploadFiles()`, which no development session can toggle. Tick it off and drag a file over the box — nothing lights up, the cursor reads "no drop", and a file released on the page background is swallowed rather than navigating away. That is the half of US-204 only a real pointer can check.
 
 The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **never requested in production** — the same mechanism US-203 uses to keep the admin chunk off a non-administrator's device. It is scaffolding; delete it once the real screens exercise the kit.
@@ -603,6 +630,8 @@ The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **nev
 | An icon renders as an empty box | The name is not in the sprite. Either it is missing from `icon-names.ts`, or it is there but `npm run assets:icons` has not run since. In development the console names it |
 | Every icon renders black in both themes | The sprite is being referenced externally instead of injected. `currentColor` resolves against the sprite's own document (§5.1) |
 | No icons at all | `loadIconSprite()` swallowed a failure by design. Check the network panel for `icons/sprite.svg`; the app is meant to keep working without it |
+| A brand mark renders as an empty box | The name is not in `brand-icon-names.ts`, or it is there with no matching `brand/<name>.svg` source — the sprite build fails loudly for the latter, so check the console first for a dev-mode name the manifest does not recognise (§5.4) |
+| A brand mark renders tinted to the surrounding text colour instead of its own colours | `<app-icon>` was used instead of `<app-brand-icon>`. `icon.scss` forces `fill: currentColor`, which only the `bi-*` lane of the sprite is built to take (§5.4) |
 | A dark-theme user sees a light flash | Check `optimization.styles.inlineCritical` is still `false` in `angular.json` (§3.2). It is the only setting that can reintroduce this |
 | `npm run check:tokens` fails after a design change | `theme.css` moved and the app did not. Update the map in `_tokens.scss`; if the changed value is `--bs-body-bg` or `--bs-body-color`, update the duplicated pair in `index.html` too |
 | Sass `@error: Token --x is defined in $light but missing from $dark` | Exactly what it says. Add the token to both maps |
@@ -643,6 +672,8 @@ The route is guarded with `canMatch: [() => isDevMode()]`, so the chunk is **nev
 | Theme state | [`core/theme/theme-service.ts`](../../enterprise-gpt-ui/src/app/core/theme/theme-service.ts) |
 | Stored preferences and the `localStorage` allowlist | [`core/storage/local-preferences.ts`](../../enterprise-gpt-ui/src/app/core/storage/local-preferences.ts) |
 | Icon manifest / sprite / injection | [`shared/icon/icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/icon-names.ts), [`scripts/build-icon-sprite.mjs`](../../enterprise-gpt-ui/scripts/build-icon-sprite.mjs), [`core/icons/load-icon-sprite.ts`](../../enterprise-gpt-ui/src/app/core/icons/load-icon-sprite.ts) |
+| Brand mark manifest / sources / component | [`shared/icon/brand-icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon-names.ts), [`shared/icon/brand/`](../../enterprise-gpt-ui/src/app/shared/icon/brand/), [`shared/icon/brand-icon.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon.ts) |
+| Switch | [`shared/switch/switch.ts`](../../enterprise-gpt-ui/src/app/shared/switch/switch.ts) |
 | Brand images | [`scripts/build-brand-images.mjs`](../../enterprise-gpt-ui/scripts/build-brand-images.mjs), [`shared/brand-logo/`](../../enterprise-gpt-ui/src/app/shared/brand-logo/) |
 | Accessibility primitives | [`shared/a11y/`](../../enterprise-gpt-ui/src/app/shared/a11y/) — including `focus-on-render.ts`, which US-205 moved here from `features/auth/` |
 | Upload drop zone and overlay | [`shared/upload/`](../../enterprise-gpt-ui/src/app/shared/upload/), [`core/dnd/prevent-drop-navigation.ts`](../../enterprise-gpt-ui/src/app/core/dnd/prevent-drop-navigation.ts) |

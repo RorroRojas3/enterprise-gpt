@@ -19,6 +19,8 @@ namespace Enterprise.Gpt.Dto
 
         public string? Scope { get; init; }
 
+        public string? IconKey { get; init; }
+
         public Guid? PermissionId { get; init; }
 
         public DateTimeOffset? DateDeactivated { get; init; }

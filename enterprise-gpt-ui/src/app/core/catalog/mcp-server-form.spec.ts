@@ -25,6 +25,7 @@ function formValue(overrides: Partial<McpServerFormValue> = {}): McpServerFormVa
     url: 'https://mcp.example.test/sap',
     authType: NONE,
     scope: '',
+    iconKey: '',
     ...overrides,
   };
 }
@@ -116,6 +117,7 @@ describe('MCP server form rules (US-1208)', () => {
         url: '',
         authType: NONE,
         scope: '',
+        iconKey: '',
       });
     });
 
@@ -126,6 +128,7 @@ describe('MCP server form rules (US-1208)', () => {
         url: 'https://mcp.example.test/sap',
         authType: MCP_AUTH_TYPE.entraIdOnBehalfOf,
         scope: 'api://sap/.default',
+        iconKey: 'microsoft',
       });
 
       expect(toMcpServerFormValue(server)).toEqual({
@@ -134,9 +137,14 @@ describe('MCP server form rules (US-1208)', () => {
         url: 'https://mcp.example.test/sap',
         authType: ENTRA,
         scope: 'api://sap/.default',
+        iconKey: 'microsoft',
       });
 
       expect(toMcpServerFormValue(mcpServerFixture({ scope: null })).scope).toBe('');
+      expect(toMcpServerFormValue(mcpServerFixture({ iconKey: null })).iconKey).toBe('');
+      // A key this build ships no artwork for still seeds, so re-saving an
+      // untouched row cannot silently drop it.
+      expect(toMcpServerFormValue(mcpServerFixture({ iconKey: 'future' })).iconKey).toBe('future');
     });
   });
 
@@ -148,7 +156,13 @@ describe('MCP server form rules (US-1208)', () => {
         url: 'https://mcp.example.test/sap',
         authType: MCP_AUTH_TYPE.entraIdOnBehalfOf,
         scope: 'api://sap/.default',
+        iconKey: null,
       });
+    });
+
+    it('sends a null icon key for an empty select, and the slug otherwise', () => {
+      expect(toMcpServerBody(formValue({ iconKey: '' }))?.iconKey).toBeNull();
+      expect(toMcpServerBody(formValue({ iconKey: 'context7' }))?.iconKey).toBe('context7');
     });
 
     it('sends a null scope for None, whatever the hidden field still holds', () => {

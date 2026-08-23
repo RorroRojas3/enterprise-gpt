@@ -142,8 +142,8 @@ describe('retryInterceptor', () => {
     expect(attempts).toBe(DEFAULT_RETRY_POLICY.maxRetries + 1);
   });
 
-  it('passes an mcp-authorization-required 403 through unchanged and unretried', async () => {
-    const original = failure(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403);
+  it('passes a typed 403 through unchanged and unretried', async () => {
+    const original = failure(PROBLEM_FIXTURES.forbidden, 403);
 
     const { attempts, caught } = await run(get(), original);
 
