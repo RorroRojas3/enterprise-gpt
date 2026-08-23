@@ -19,7 +19,6 @@ const NOTIFIABLE_KINDS = {
   forbidden: true,
   'permission-required': true,
   'conversation-busy': true,
-  'mcp-authorization-required': true,
   'mcp-server-unavailable': true,
   'provider-not-configured': true,
   'storage-not-configured': true,
@@ -59,8 +58,6 @@ const RETRYABLE_KINDS = {
   'permission-required': false,
   // The whole point of the 409: the turn in front of it finishes and the next one works.
   'conversation-busy': true,
-  // Consent is interactive and happens elsewhere; retrying the same call cannot supply it.
-  'mcp-authorization-required': false,
   'mcp-server-unavailable': true,
   'provider-not-configured': false,
   'storage-not-configured': false,
@@ -111,14 +108,6 @@ export function userMessage(error: AppError): string {
         : 'You do not have permission to do that.';
     case 'conversation-busy':
       return 'This conversation already has a response in progress. Try again once it finishes.';
-    // "your authorization" would be false: consent is an administrative act
-    // here, and there is no flow to send the user to (US-412). This string is
-    // the only channel a screen-reader user gets — the notice card is not a
-    // live region — so it has to agree with what the card says.
-    case 'mcp-authorization-required':
-      return error.serverName
-        ? `The tool server "${error.serverName}" requires authorization. Contact your administrator.`
-        : 'That tool server requires authorization. Contact your administrator.';
     case 'mcp-server-unavailable':
       return error.serverName
         ? `The tool server "${error.serverName}" could not be reached.`

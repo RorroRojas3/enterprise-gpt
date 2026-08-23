@@ -85,47 +85,6 @@ describe('TurnNoticeCard (frame 1h)', () => {
     });
   });
 
-  describe('the MCP consent requirement (US-412)', () => {
-    const consent: TurnNotice = {
-      kind: 'error',
-      error: errorFrom(PROBLEM_FIXTURES.mcpAuthorizationRequired),
-    };
-
-    it('names the server and explains that interactive authorization is needed', async () => {
-      await render(consent);
-
-      expect(title()).toBe('Weather requires authorization');
-      expect(host.querySelector('.notice__body')?.textContent).toContain('interactive consent');
-      expect(iconHrefs()).toContain('#bi-shield-lock');
-    });
-
-    it('draws the plain surface card, not a warning panel', async () => {
-      await render(consent);
-
-      expect(card().classList).not.toContain('notice--warn');
-      expect(card().classList).not.toContain('notice--row');
-      expect(host.querySelector('.notice__title--body')).not.toBeNull();
-    });
-
-    it('offers no consent action, because the scope to request is not on the wire', async () => {
-      // `retryable` false is what the Transcript passes for this arm, since
-      // `canRetry` rejects it — which `error-message.spec.ts` pins. The card
-      // adds no action of its own until US-411 puts the scope on the body.
-      await render(consent, false);
-
-      expect(host.querySelector('button')).toBeNull();
-      expect(host.textContent).not.toContain('Authorize');
-      expect(host.querySelector('.notice__trace')).toBeNull();
-    });
-
-    it('falls back to a serverless title when the problem omitted the server name', async () => {
-      const { serverName: _omitted, ...withoutServer } = PROBLEM_FIXTURES.mcpAuthorizationRequired;
-      await render({ kind: 'error', error: errorFrom(withoutServer) });
-
-      expect(title()).toBe('This tool server requires authorization');
-    });
-  });
-
   describe('the other frame 1h variants', () => {
     it('keeps the cut-off warning stacked, with its icon on the Retry', async () => {
       await render({ kind: 'cut-off' }, true);

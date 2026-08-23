@@ -69,14 +69,6 @@ export function buildAppError(parts: AppErrorParts): AppError {
         };
       case PROBLEM_TYPE.conversationBusy:
         return { ...base, kind: 'conversation-busy', message: messageOf(base) };
-      case PROBLEM_TYPE.mcpAuthorizationRequired:
-        return {
-          ...base,
-          kind: 'mcp-authorization-required',
-          message: messageOf(base),
-          serverName: stringExtension(problem, 'serverName') ?? '',
-          scope: stringExtension(problem, 'scope'),
-        };
       case PROBLEM_TYPE.mcpServerUnavailable:
         return {
           ...base,

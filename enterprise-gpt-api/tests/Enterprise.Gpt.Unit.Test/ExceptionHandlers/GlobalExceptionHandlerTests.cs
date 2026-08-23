@@ -33,23 +33,6 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
-    public async Task TryHandleAsync_McpAuthorizationRequiredException_Returns403WithMessage()
-    {
-        var httpContext = CreateHttpContext();
-        var exception = new McpAuthorizationRequiredException("docs", new InvalidOperationException("consent required"));
-
-        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
-
-        Assert.True(handled);
-        Assert.Equal(StatusCodes.Status403Forbidden, httpContext.Response.StatusCode);
-        var problem = await ReadProblemAsync(httpContext);
-        Assert.Equal("Consent or additional authentication is required for MCP server 'docs'.", problem.Detail);
-        // The distinct type is the only thing separating this from an ordinary 403 denial.
-        Assert.Equal(ProblemTypes.McpAuthorizationRequired.Type, problem.Type);
-        Assert.Equal("docs", ReadExtension(problem, "serverName"));
-    }
-
-    [Fact]
     public async Task TryHandleAsync_McpServerUnavailableException_Returns502WithMessage()
     {
         var httpContext = CreateHttpContext();

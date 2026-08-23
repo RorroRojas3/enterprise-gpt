@@ -24,6 +24,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 Url = server.Url,
                 AuthType = server.AuthType,
                 Scope = server.Scope,
+                IconKey = server.IconKey,
                 PermissionId = permissionId,
                 DateDeactivated = server.DateDeactivated
             };
@@ -43,6 +44,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 Url = server.Url,
                 AuthType = server.AuthType,
                 Scope = server.Scope,
+                IconKey = server.IconKey,
                 PermissionId = server.Permissions
                     .Where(p => !p.DateDeactivated.HasValue)
                     .Select(p => (Guid?)p.Id)
@@ -59,7 +61,8 @@ namespace Enterprise.Gpt.Service.Mappers
             {
                 Id = server.Id,
                 Name = server.Name,
-                Description = server.Description
+                Description = server.Description,
+                IconKey = server.IconKey
             };
 
         /// <summary>
@@ -77,7 +80,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 Description = dto.Description,
                 Url = dto.Url,
                 AuthType = dto.AuthType,
-                Scope = dto.Scope
+                Scope = dto.Scope,
+                IconKey = dto.IconKey
             };
         }
 
@@ -95,6 +99,7 @@ namespace Enterprise.Gpt.Service.Mappers
             server.Url = dto.Url;
             server.AuthType = dto.AuthType;
             server.Scope = dto.Scope;
+            server.IconKey = dto.IconKey;
         }
     }
 }

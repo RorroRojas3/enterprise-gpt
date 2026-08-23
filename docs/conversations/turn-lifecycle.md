@@ -1,8 +1,8 @@
 # Conversation Turn Lifecycle
 
-The layer above the [Conversation Streaming Client](streaming-client.md): what happens between pressing Send and a settled transcript entry, and what happens when a conversation is reopened. Shipped by thirteen stories: US-401 (send a first prompt; the conversation is created _around_ it), US-406 (streamed answer rendering), US-407 (Stop, keeping the partial output) and US-501 (the chronological activity timeline) built the live turn; EP-4's closing five then finished it — **US-408** (the busy warning, §8.1), **US-412** (the MCP consent card, §8.2), **US-410** (reopening a conversation: its stored messages _and_ the settings it last used, §7), **US-409** (the name the server generates after a first turn, §7.8) and **US-413** (dictation, §9.2). EP-5's closing four then finished the turn's _own_ surfaces — **US-502** (nested activity cards, §8.4), **US-505** (a failed activity, §8.4), **US-504** (what a turn cost, §8.5) and **US-503** (the reasoning region, §4.2 and §8.6). Four recorded deferrals closed along the way: US-303's suggested prompt chips, US-403's tool-server-unavailable card, the generic notice standing in for the busy and consent frames, and US-407's `composer__aux` dimming rule, which had matched no control until the microphone arrived.
+The layer above the [Conversation Streaming Client](streaming-client.md): what happens between pressing Send and a settled transcript entry, and what happens when a conversation is reopened. Shipped by thirteen stories: US-401 (send a first prompt; the conversation is created _around_ it), US-406 (streamed answer rendering), US-407 (Stop, keeping the partial output) and US-501 (the chronological activity timeline) built the live turn; EP-4's closing five then finished it — **US-408** (the busy warning, §8.1), **US-412** (the MCP consent card — removed 2026-08-22, superseded by US-414/US-415, §8.2), **US-410** (reopening a conversation: its stored messages _and_ the settings it last used, §7), **US-409** (the name the server generates after a first turn, §7.8) and **US-413** (dictation, §9.2). EP-5's closing four then finished the turn's _own_ surfaces — **US-502** (nested activity cards, §8.4), **US-505** (a failed activity, §8.4), **US-504** (what a turn cost, §8.5) and **US-503** (the reasoning region, §4.2 and §8.6). Four recorded deferrals closed along the way: US-303's suggested prompt chips, US-403's tool-server-unavailable card, the generic notice standing in for the busy and consent frames, and US-407's `composer__aux` dimming rule, which had matched no control until the microphone arrived.
 
-Audience: whoever builds the stories on top — the consent action (US-411), response rating (US-1103), the streaming live region (US-1402) — or debugs a turn that ended strangely. The wire format lives in the [contract](streaming-contract.md); the codec, transport, and turn settings live in the [streaming client](streaming-client.md); how the answer text becomes HTML, how a message or a code block is copied, and how the page follows the newest text all live in [Answer Rendering](../ui/answer-rendering.md) — none of the three is restated here.
+Audience: whoever builds the stories on top — response rating (US-1103), the streaming live region (US-1402) — or debugs a turn that ended strangely. The wire format lives in the [contract](streaming-contract.md); the codec, transport, and turn settings live in the [streaming client](streaming-client.md); how the answer text becomes HTML, how a message or a code block is copied, and how the page follows the newest text all live in [Answer Rendering](../ui/answer-rendering.md) — none of the three is restated here.
 
 ## 1. Overview
 
@@ -313,9 +313,8 @@ Reasoning takes **no timeline node**: it is not a block of the answer and never 
 | Arm                        | Frame `1h` variant                                                    | Story           |
 | -------------------------- | --------------------------------------------------------------------- | --------------- |
 | Cut off                    | Warn panel, triangle, Retry                                           | US-406          |
-| Tool server unavailable    | Plain `--surface` card, plug icon, names the server                   | US-403 / US-406 |
+| Tool server unavailable    | Plain `--surface` card, plug icon, names the server, **Retry**        | US-403 / US-406, US-414 / US-415 |
 | Conversation busy          | Warn panel, **one row** — hourglass, one sentence, Retry pushed right | US-408 (§8.1)   |
-| MCP authorization required | Plain `--surface` card, `--warn` shield, **no action**                | US-412 (§8.2)   |
 | Anything else              | Generic warning with the `userMessage` and the `traceId` line         | —               |
 
 The fallback is deliberate rather than lazy: an arm with no designed frame gets the honest generic treatment instead of invented copy. The card gained a `layout` axis (`stack` | `row`) for the busy arm, which is the only one-line variant the design draws.
@@ -328,17 +327,15 @@ The copy is hard-coded beside the tool-server arm's rather than taken from `user
 
 **One accessibility defect was found in review and fixed here**, and it is the reason `TurnNoticeCard` exposes a `focusRetry()` method. Retrying destroys the button that was pressed — the send clears the notice — so focus falls to `<body>` for the length of the attempt; the composer's settle fixup (§9) then claimed it for an empty prompt box, and a keyboard user re-traversed the page on **every** attempt of exactly the loop this story is about. Two changes close it: `Transcript` hands focus to the replacement Retry when focus has fallen through, and the composer's fixup stands down while a notice is on screen, because the prompt a retry re-sends lives in the notice rather than in the box. Both are conditioned on "focus is nowhere" — `null`, `<body>`, or a detached element — never on "the user retried", so a notice raised while the user is somewhere real never steals focus from them.
 
-### 8.2 The MCP consent card (US-412)
+### 8.2 The MCP consent card is gone (US-414 / US-415)
 
-A 403 `/problems/mcp-authorization-required` renders frame `1h`'s **current** consent variant: the plain `--surface` card, a `--warn` shield, the title "_{serverName}_ requires authorization" in body colour, and copy stating that no authorization flow is available yet and to contact an administrator. No trace line — there is nothing to correlate, and the copy already names what an administrator must fix.
+US-412's consent card, and the 403 `/problems/mcp-authorization-required` it rendered, are deleted. Tool servers are provisioned for users by an administrator who consents tenant-wide, so there was never a per-user consent state for this card to be honest about — it named a server and told the reader to contact an administrator for a requirement that did not exist. **US-411**, the enabler that would have put a `scope` on that problem so a future "Authorize _{serverName}_" action could request it, is withdrawn for the same reason: there is nothing here for a user to consent to.
 
-**There is no consent action, and the future variant is deliberately not built.** `scope` is null on every 403 this build can receive — `McpDto` omits it and only the administrative `McpServerDto` carries it — so an "Authorize _{serverName}_" button would have nothing to request. It arrives with **US-411**, the enabler that puts the scope on the wire. That deferral is recorded in the build order.
+`MicrosoftIdentityWebChallengeUserException` and every `MsalException` — `MsalUiRequiredException` included, by derivation — now raise `McpServerUnavailableException` instead, so a token acquisition that cannot complete without user interaction reaches the client exactly like any other unreachable server: 502 `/problems/mcp-server-unavailable`, rendered by the **tool-server-unavailable card** in the table above. That card is otherwise unchanged, and is now the only card a failed tool acquisition can produce.
 
-Retry is withheld by `canRetry`, not by the card: `mcp-authorization-required` is `false` in `RETRYABLE_KINDS` because consent happens elsewhere and re-sending the same turn cannot supply it. Review found that table had **no test anywhere**; it is now pinned in both directions, since it is the single fact keeping this card from growing a dead button and US-408's from losing its live one.
+**One behaviour change worth stating rather than discovering: the card grew a Retry.** `mcp-server-unavailable` is `true` in `RETRYABLE_KINDS` ([`error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts)), where `mcp-authorization-required` was `false` — the consent card offered none. That is accepted deliberately: 502 also covers genuinely transient failures a retry can fix, and a second attempt against a mis-registered server just fails the same way instead of misleading the reader about who can fix it.
 
-Criterion 1 — no token refresh, no refresh loop — was already structural: `authErrorDecision` refreshes only the bare-401 `http` arm ([Frontend Foundation §4.5](../ui/frontend-foundation.md#45-autherrordecision--the-only-place-refresh-is-decided)), so this 403 cannot enter the refresh path however it is handled. It now carries a chat-level regression test beside the policy-level one.
-
-**`userMessage` changed for this arm.** It said the tool server needs "_your_ authorization", which is false — consent is an administrative act here and there is no flow to send the user to — and it is the only channel a screen-reader user gets, since the card is not a live region. It now reads `The tool server "X" requires authorization. Contact your administrator.` and agrees with the card.
+Roughly a dozen specs had used the consent fixture to pin *general* invariants — a 403 never triggers a token refresh, a typed 403 is never retried, a problem body parses into its arm — and each was retargeted to an ordinary 403 or to this 502 rather than deleted, since the invariant, not the fixture, is what mattered. Review caught the one spec that lost real coverage in that move — the transcript's `[role="status"]` live region on the **error** path, which is what a screen reader hears and which no other test asserted — and it is restored.
 
 ### 8.3 Who decides whether Retry appears
 
@@ -350,7 +347,7 @@ Three layers, each answering a different question, and they must not be collapse
 | Could a person pressing Retry plausibly get past this failure? | `canRetry` ([shell §8](../ui/shell-and-navigation.md#8-canretry--whether-to-offer-the-control-at-all)) |
 | May the interceptor replay this automatically?                 | `isTransientRetriable` — never for a 409, never for a problem-typed 503                                |
 
-The card itself decides none of them, which is why the consent arm shows no action even though the store kept a retry snapshot.
+The card itself decides none of them — which before US-415 was why the consent arm showed no action even though the store kept a retry snapshot, and is now why the tool-server-unavailable card does show one.
 
 ### 8.4 Nested activities, and one that failed (US-502, US-505)
 
@@ -446,7 +443,7 @@ EP-4's closing five added four seams to that:
 
 - **Replay** is framework-free too — [`replayed-turn.spec.ts`](../../enterprise-gpt-ui/src/app/domain/stream/replayed-turn.spec.ts) runs in Node, and `TurnStore`'s specs cover the id ranges, both `keepLive` arms, the shrinking transcript, and the read cancelled by a route change.
 - **`turnEvents.completed`** is asserted on both sides: dispatched only on `Finished` and with the right `wasFirstTurn`, and handled by `ConversationStore` without going pending.
-- **The `RETRYABLE_KINDS` table** is pinned in both directions, which is what keeps the consent card actionless and the busy card actionable.
+- **The `RETRYABLE_KINDS` table** is pinned in both directions, which is what keeps the permission-required arm actionless and the busy and tool-server-unavailable cards actionable.
 - **Dictation** substitutes `SPEECH_RECOGNITION` by provider override with the fake in [`@testing/speech`](../../enterprise-gpt-ui/src/testing/speech.ts) — the real interface exists in no test environment, so there is nothing else to drive it with.
 
 EP-5's four added two more:

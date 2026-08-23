@@ -84,11 +84,9 @@ export type AuthErrorDecision = 'refresh' | 'passthrough';
 /**
  * Whether a failure warrants acquiring a fresh token.
  *
- * Only a bare 401 does. A `mcp-authorization-required` 403 in particular must
- * never enter the refresh path: it asks for interactive consent to a downstream
- * server, which no number of token refreshes can supply, so refreshing on it
- * produces a loop that cannot terminate. `forbidden` and `permission-required`
- * are 403s for the same reason — the token is fine, the grant is not.
+ * Only a bare 401 does. `forbidden` and `permission-required` are 403s and must
+ * never enter the refresh path — the token is fine, the grant is not, and no
+ * number of refreshes can change that.
  *
  * Shipped as a standalone decision because the authentication interceptor arrives
  * later; it consults this rather than re-deriving the rule.
@@ -116,7 +114,6 @@ export const AUTH_DECISIONS = {
   forbidden: 'passthrough',
   'permission-required': 'passthrough',
   'conversation-busy': 'passthrough',
-  'mcp-authorization-required': 'passthrough',
   'mcp-server-unavailable': 'passthrough',
   'provider-not-configured': 'passthrough',
   'storage-not-configured': 'passthrough',

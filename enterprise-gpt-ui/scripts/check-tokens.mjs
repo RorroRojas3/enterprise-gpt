@@ -426,7 +426,10 @@ const FOCUS_RING = 'focus-ring';
 /** Why a surface the ring could land on is not measured against it. */
 const FOCUS_SURFACE_EXCLUSIONS = {
   bubble: 'no focusable content on it; the message footer sits below the bubble',
-  'btnP-bg': 'the ring is offset, so it sits on the page behind the button, not the fill',
+  'btnP-bg':
+    'the ring is offset, so it sits on the page behind the button, not the fill — and as the ' +
+    "switch's on-state track it is inside a menu row whose ring is inset at the row's own " +
+    'edge, nine pixels clear of the 28x16 track',
   'btnP-hover': 'the same button, hovered or active — and the ring is offset off it too',
   brand: 'the same — offset rings on the skip link, the sub-nav pill and the user footer',
   accent: 'the same, plus the code surface, where the ring *is* --accent and is measured above',
@@ -443,12 +446,15 @@ const FOCUS_SURFACE_EXCLUSIONS = {
   // the surface underneath, which is measured.
   ok: 'a StatusDot fill — an 8px dot, not a surface',
   warn: 'a StatusDot fill, and a 10% wash on the two deactivate dialogs',
-  muted: 'a StatusDot fill',
+  muted:
+    'a StatusDot fill, and the switch thumb and its off-state track border — the menu row ' +
+    'holding the switch draws its ring inset at its own edge, never adjacent to the track',
   'provider-azure-openai': 'a provider dot in frame 2b',
   'provider-bedrock': 'a provider dot in frame 2b',
   'provider-anthropic': 'a provider dot in frame 2b',
   'toast-accent': "the toast's 4px left edge",
   'bs-border-color': 'a 1px separator rule in the menu and the picker',
+  'btnP-fg': 'the switch thumb — a 10px circle inside a track, and the track is not focusable',
 };
 
 const focusSurfaces = new Set(

@@ -61,18 +61,6 @@ export interface ConversationBusyAppError extends AppErrorBase {
   readonly kind: 'conversation-busy';
 }
 
-/**
- * A 403 requiring interactive consent for an MCP server.
- *
- * Must never enter a token-refresh path — see {@link authErrorDecision}.
- */
-export interface McpAuthorizationRequiredAppError extends AppErrorBase {
-  readonly kind: 'mcp-authorization-required';
-  readonly serverName: string;
-  /** Supplied only once US-411 has shipped. */
-  readonly scope: string | null;
-}
-
 /** A 502: an MCP server could not be reached. */
 export interface McpServerUnavailableAppError extends AppErrorBase {
   readonly kind: 'mcp-server-unavailable';
@@ -146,7 +134,6 @@ export type AppError =
   | ForbiddenAppError
   | PermissionRequiredAppError
   | ConversationBusyAppError
-  | McpAuthorizationRequiredAppError
   | McpServerUnavailableAppError
   | ProviderNotConfiguredAppError
   | StorageNotConfiguredAppError
@@ -174,7 +161,6 @@ const PROBLEM_KINDS = {
   forbidden: true,
   'permission-required': true,
   'conversation-busy': true,
-  'mcp-authorization-required': true,
   'mcp-server-unavailable': true,
   'provider-not-configured': true,
   'storage-not-configured': true,

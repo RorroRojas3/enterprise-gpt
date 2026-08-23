@@ -37,6 +37,42 @@
       </section>
 
       <section class="kit-group">
+        <h3>Brand marks</h3>
+        <!--
+          A second sprite lane, drawn in its owner's colours rather than tinted to
+          `currentColor` (US-418). Sized larger than the glyphs above because these are
+          logos, and the point of showing them here is that they must read against both
+          surfaces without inheriting either one's text colour.
+        -->
+        <div class="kit-row kit-row--brand">
+          <app-brand-icon name="brand-microsoft" />
+          <app-brand-icon name="brand-context7" label="Context7" />
+        </div>
+      </section>
+
+      <section class="kit-group">
+        <h3>Switch</h3>
+        <!--
+          Decoration only, so it is shown here inside the button that owns its
+          semantics — which is the entire contract (US-417) and the only way it is ever
+          used. A bare `<app-switch>` on this page would model a control that does not
+          exist.
+        -->
+        <div class="kit-row">
+          <button
+            class="kit-switch"
+            type="button"
+            role="switch"
+            [attr.aria-checked]="switchOn()"
+            (click)="switchOn.set(!switchOn())"
+          >
+            <span>Tool server</span>
+            <app-switch [checked]="switchOn()" />
+          </button>
+        </div>
+      </section>
+
+      <section class="kit-group">
         <h3>Buttons</h3>
         <div class="kit-row">
           <button class="btn btn-primary" type="button">Primary</button>

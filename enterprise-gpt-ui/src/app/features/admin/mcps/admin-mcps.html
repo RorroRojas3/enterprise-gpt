@@ -55,8 +55,14 @@
     [pendingIds]="actions.pendingIds()"
   >
     <ng-template appTableCell="server" [appTableCellFor]="servers.results()" let-row>
-      <span class="admin-mcps__name" [class.admin-mcps__name--retired]="isRetired(row)">
-        {{ row.name }}
+      <span class="admin-mcps__server" [class.admin-mcps__server--retired]="isRetired(row)">
+        <!-- Decoration: the name is right beside it, and the mark carries nothing the
+             name does not. A row with no icon, or one this build ships no artwork for,
+             leaves the slot empty rather than drawing a placeholder logo. -->
+        @if (brandIcon(row); as mark) {
+          <app-brand-icon class="admin-mcps__brand" [name]="mark" />
+        }
+        <span class="admin-mcps__name">{{ row.name }}</span>
       </span>
     </ng-template>
 

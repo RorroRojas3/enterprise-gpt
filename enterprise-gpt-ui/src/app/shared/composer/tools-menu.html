@@ -36,12 +36,16 @@
         [attr.aria-checked]="settings.selectedIdSet().has(server.id)"
         (click)="settings.toggleMcpServer(server.id)"
       >
-        <app-icon
-          class="tools-menu__checkbox"
-          [class.tools-menu__checkbox--checked]="settings.selectedIdSet().has(server.id)"
-          [name]="settings.selectedIdSet().has(server.id) ? 'bi-check-square-fill' : 'bi-square'"
-        />
+        @if (brandIcon(server); as brand) {
+          <app-brand-icon class="tools-menu__brand" [name]="brand" />
+        } @else {
+          <app-icon class="tools-menu__brand tools-menu__brand--generic" [name]="fallbackIcon" />
+        }
         <span class="tools-menu__name">{{ server.name }}</span>
+        <app-switch
+          class="tools-menu__switch"
+          [checked]="settings.selectedIdSet().has(server.id)"
+        />
       </button>
     }
     <hr appMenuSeparator />

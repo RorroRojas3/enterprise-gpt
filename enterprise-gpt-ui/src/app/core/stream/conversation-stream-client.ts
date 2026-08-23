@@ -53,10 +53,9 @@ export const STREAM_BATCH_WINDOW_MS = 16;
  *   `application/problem+json`, parsed *before* a single body byte is read.
  * - A bare 401 is replayed exactly once with a force-refreshed token, gated by
  *   {@link authErrorDecision} — the same single source of truth the
- *   interceptor consults, which structurally keeps the 403
- *   `mcp-authorization-required` out of the refresh path. The replay is safe
- *   because authentication is rejected before the conversation lock is taken,
- *   so it cannot double-start a turn.
+ *   interceptor consults. The replay is safe because authentication is
+ *   rejected before the conversation lock is taken, so it cannot double-start
+ *   a turn.
  * - Aborting (the caller's Stop, sign-out, or unsubscribing) errors with the
  *   `aborted` arm — the race-free discriminator against a natural end; every
  *   previously flushed batch has already been delivered, so partial output

@@ -18,13 +18,13 @@ describe('toAppErrorFromResponse', () => {
   it('parses a problem body into the matching arm', async () => {
     const error = await toAppErrorFromResponse(
       response({
-        status: 403,
-        text: async () => JSON.stringify(PROBLEM_FIXTURES.mcpAuthorizationRequired),
+        status: 502,
+        text: async () => JSON.stringify(PROBLEM_FIXTURES.mcpServerUnavailable),
       }),
     );
 
-    expect(error.kind).toBe('mcp-authorization-required');
-    expect(error.kind === 'mcp-authorization-required' && error.serverName).toBe('Weather');
+    expect(error.kind).toBe('mcp-server-unavailable');
+    expect(error.kind === 'mcp-server-unavailable' && error.serverName).toBe('Weather');
     expect(error.traceId).toBe(TRACE_ID);
     expect(error.url).toBe(URL);
   });

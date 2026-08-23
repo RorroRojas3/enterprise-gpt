@@ -11,7 +11,9 @@ import { TableColumn } from '@shared/data/data-table/table-column';
 import { EmptyState } from '@shared/feedback/empty-state/empty-state';
 import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { SearchInput } from '@shared/form/search-input/search-input';
+import { BrandIcon } from '@shared/icon/brand-icon';
 import { Icon } from '@shared/icon/icon';
+import { mcpBrandIcon } from '@shared/icon/mcp-icon';
 import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { AdminMcpsStore } from './admin-mcps-store';
@@ -42,6 +44,7 @@ import { McpServerFormDialog } from './mcp-server-form-dialog';
   selector: 'app-admin-mcps',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BrandIcon,
     DataTable,
     DeactivateMcpServerDialog,
     EmptyState,
@@ -70,6 +73,10 @@ export class AdminMcps {
 
   protected readonly authTypeLabel = authTypeLabel;
   protected readonly isRetired = isMcpServerRetired;
+
+  protected brandIcon(server: McpServerDto) {
+    return mcpBrandIcon(server.iconKey);
+  }
 
   protected readonly noMatchHeading = computed(
     () => `No servers match “${this.servers.query().trim()}”`,

@@ -18,6 +18,7 @@ public class McpServerMapperTests
             Url = "https://mcp.example.com/sse",
             AuthType = McpAuthTypes.EntraIdOnBehalfOf,
             Scope = "api://client-id/access_as_user",
+            IconKey = "microsoft",
             DateDeactivated = dateDeactivated,
             DateCreated = DateTimeOffset.UtcNow.AddDays(-1),
             DateModified = DateTimeOffset.UtcNow,
@@ -40,6 +41,7 @@ public class McpServerMapperTests
         Assert.Equal(server.Url, dto.Url);
         Assert.Equal(server.AuthType, dto.AuthType);
         Assert.Equal(server.Scope, dto.Scope);
+        Assert.Equal(server.IconKey, dto.IconKey);
         Assert.Equal(permissionId, dto.PermissionId);
         Assert.Equal(server.DateDeactivated, dto.DateDeactivated);
     }
@@ -114,6 +116,7 @@ public class McpServerMapperTests
         Assert.Equal(server.Id, dto.Id);
         Assert.Equal(server.Name, dto.Name);
         Assert.Equal(server.Description, dto.Description);
+        Assert.Equal(server.IconKey, dto.IconKey);
     }
 
     [Fact]
@@ -125,7 +128,8 @@ public class McpServerMapperTests
             Description = "A new MCP server.",
             Url = "https://mcp.example.com/new",
             AuthType = McpAuthTypes.None,
-            Scope = null
+            Scope = null,
+            IconKey = "context7"
         };
 
         var server = request.FromCreateMcpServerActionDtoToMcpServer();
@@ -135,6 +139,7 @@ public class McpServerMapperTests
         Assert.Equal(request.Url, server.Url);
         Assert.Equal(request.AuthType, server.AuthType);
         Assert.Null(server.Scope);
+        Assert.Equal(request.IconKey, server.IconKey);
         Assert.Equal(Guid.Empty, server.Id);
         Assert.Equal(default, server.DateCreated);
         Assert.Equal(default, server.DateModified);
@@ -157,7 +162,8 @@ public class McpServerMapperTests
             Description = "An updated MCP server.",
             Url = "https://mcp.example.com/renamed",
             AuthType = McpAuthTypes.None,
-            Scope = null
+            Scope = null,
+            IconKey = null
         };
 
         request.FromUpdateMcpServerActionDtoToMcpServer(server);
@@ -167,6 +173,8 @@ public class McpServerMapperTests
         Assert.Equal(request.Url, server.Url);
         Assert.Equal(request.AuthType, server.AuthType);
         Assert.Null(server.Scope);
+        // The PUT is a full representation, not a patch: an omitted icon clears the stored one.
+        Assert.Null(server.IconKey);
         Assert.Equal(originalId, server.Id);
         Assert.Equal(originalDateCreated, server.DateCreated);
         Assert.Equal(originalCreatedById, server.CreatedById);

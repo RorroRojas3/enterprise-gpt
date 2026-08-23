@@ -108,6 +108,46 @@
         }
       </div>
 
+      <div class="mcp-form__field">
+        <label class="form-label" for="mcp-form-icon">Icon</label>
+        <div class="mcp-form__icon-row">
+          <select
+            id="mcp-form-icon"
+            class="form-select"
+            [formField]="f.iconKey"
+            [class.is-invalid]="fieldErrors().iconKey.show"
+            [attr.aria-describedby]="fieldErrors().iconKey.show ? 'mcp-form-icon-errors' : null"
+          >
+            @for (option of icons; track option.value) {
+              <option [value]="option.value">{{ option.label }}</option>
+            }
+          </select>
+          <!--
+            Decoration: the select's own value is what a screen reader announces, and a
+            second reading of the same choice beside it would be announced twice.
+          -->
+          @if (iconPreview(); as mark) {
+            <app-brand-icon class="mcp-form__icon-preview" [name]="mark" />
+          }
+        </div>
+        @if (fieldErrors().iconKey.show) {
+          <div class="mcp-form__errors" id="mcp-form-icon-errors" role="alert">
+            @for (message of fieldErrors().iconKey.messages; track $index) {
+              <p class="mcp-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+        <!--
+          A row a newer client wrote. `role="status"`, not the `role="alert"` its sibling
+          fields use, because this is explicitly not a blocker: the key round-trips
+          unchanged and Save stays enabled, so interrupting the dialog's own announcement
+          to say so would overstate it.
+        -->
+        @if (unsupportedIcon(); as message) {
+          <p class="mcp-form__note" id="mcp-form-icon-note" role="status">{{ message }}</p>
+        }
+      </div>
+
       <div class="mcp-form__field mcp-form__field--wide">
         <label class="form-label" for="mcp-form-description">Description</label>
         <input

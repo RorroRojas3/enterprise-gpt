@@ -68,28 +68,6 @@ describe('toAppError — application problem types', () => {
     );
   });
 
-  it('maps mcp-authorization-required from a 403 and exposes serverName', () => {
-    const error = toAppError(httpError(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403));
-
-    expect(error.kind).toBe('mcp-authorization-required');
-    if (error.kind !== 'mcp-authorization-required') {
-      throw new Error('unreachable');
-    }
-    expectTypeOf(error.serverName).toEqualTypeOf<string>();
-    expect(error.serverName).toBe('Weather');
-    // US-411 has not shipped, so no scope is on the wire yet.
-    expect(error.scope).toBeNull();
-  });
-
-  it('reads the scope extension once US-411 supplies it', () => {
-    const body = { ...PROBLEM_FIXTURES.mcpAuthorizationRequired, scope: 'api://weather/.default' };
-    const error = toAppError(httpError(body, 403));
-
-    expect(error.kind === 'mcp-authorization-required' && error.scope).toBe(
-      'api://weather/.default',
-    );
-  });
-
   it('maps mcp-server-unavailable and exposes serverName', () => {
     const error = toAppError(httpError(PROBLEM_FIXTURES.mcpServerUnavailable, 502));
 

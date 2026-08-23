@@ -6,7 +6,7 @@ import {
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MCP_AUTH_TYPE } from '@domain/api/mcp';
+import { MCP_AUTH_TYPE, McpServerWriteBody } from '@domain/api/mcp';
 import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
@@ -228,11 +228,12 @@ describe('McpServerFormDialog (US-1208)', () => {
     await fixture.whenStable();
   });
 
-  it('sends the five fields, with the auth type as the number the wire carries', async () => {
+  it('sends the six fields, with the auth type as the number the wire carries', async () => {
     await openCreate();
     await fill();
     await choose('mcp-form-auth', ENTRA);
     await type('mcp-form-scope', 'api://sap/.default');
+    await choose('mcp-form-icon', 'context7');
 
     const request = await submit();
     expect(request.request.method).toBe('POST');
@@ -242,9 +243,38 @@ describe('McpServerFormDialog (US-1208)', () => {
       url: 'https://mcp.example.test/sap',
       authType: 2,
       scope: 'api://sap/.default',
+      iconKey: 'context7',
     });
 
     request.flush(mcpServerFixture(), { status: 201, statusText: 'Created' });
+    await fixture.whenStable();
+  });
+
+  it('previews the chosen icon, and keeps one this build does not ship (US-1210)', async () => {
+    await openCreate();
+
+    expect(host().querySelector('app-brand-icon')).toBeNull();
+
+    await choose('mcp-form-icon', 'microsoft');
+
+    expect(host().querySelector('app-brand-icon use')?.getAttribute('href')).toBe(
+      '#brand-microsoft',
+    );
+
+    // A row a newer client wrote: explained ungated by `touched`, and not a blocker —
+    // the key round-trips unchanged, so leaving it alone is the safe act.
+    actions.beginEdit(mcpServerFixture({ iconKey: 'future-brand' }));
+    await fixture.whenStable();
+
+    // The `<select>` sets `selectedIndex = -1` with no matching option, so this is the
+    // one place the value could be normalised to '' behind the reader's back.
+    expect(field('mcp-form-icon').value).toBe('');
+    expect(host().querySelector('#mcp-form-icon-note')?.textContent).toContain('future-brand');
+    expect(submitButton().disabled).toBe(false);
+
+    const request = await submit();
+    expect((request.request.body as McpServerWriteBody).iconKey).toBe('future-brand');
+    request.flush(mcpServerFixture());
     await fixture.whenStable();
   });
 

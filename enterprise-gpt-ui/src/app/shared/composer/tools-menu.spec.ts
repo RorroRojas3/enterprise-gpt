@@ -41,6 +41,12 @@ describe('ToolsMenu', () => {
       pillText: () => host.querySelector('.tools-menu__pill')?.textContent?.trim() ?? '',
       panel: () => host.querySelector('[role="menu"]'),
       rows: () => [...host.querySelectorAll<HTMLButtonElement>('.tools-menu__option')],
+      switches: () => [...host.querySelectorAll<HTMLElement>('.tools-menu__option app-switch')],
+      brandHrefs: () =>
+        [...host.querySelectorAll('.tools-menu__option app-brand-icon use')].map((node) =>
+          node.getAttribute('href'),
+        ),
+      genericIcons: () => [...host.querySelectorAll('.tools-menu__brand--generic')],
       async open() {
         (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
         await fixture.whenStable();
@@ -66,7 +72,7 @@ describe('ToolsMenu', () => {
     await loaded;
   }
 
-  it('renders frame 2c: heading, checkbox rows by name only, and the stay-open footnote', async () => {
+  it('renders frame 2c: heading, switch rows by name only, and the stay-open footnote', async () => {
     const menu = await render();
     await loadModels([modelFixture({ isDefault: true })]);
     await loadServers([
@@ -89,6 +95,12 @@ describe('ToolsMenu', () => {
     // No key column exists to render: McpDto carries no key (deliberate deviation).
     expect(menu.host.querySelector('.font-mono')).toBeNull();
 
+    // The switch is decoration; the row keeps the semantics, because a native
+    // `<input role="switch">` is not a valid child of `role="menu"` (US-417).
+    expect(menu.switches()).toHaveLength(2);
+    expect(menu.host.querySelector('[role="switch"]')).toBeNull();
+    expect(menu.host.querySelector('.tools-menu__option input')).toBeNull();
+
     expect(menu.host.querySelector('.tools-menu__footnote')?.textContent?.trim()).toBe(
       'Stays open while you toggle — applies to the next turn.',
     );
@@ -106,6 +118,8 @@ describe('ToolsMenu', () => {
     expect(menu.panel()).not.toBeNull();
     expect(menu.rows()[0]?.getAttribute('aria-checked')).toBe('true');
     expect(menu.rows()[1]?.getAttribute('aria-checked')).toBe('false');
+    // How the switch draws itself is `switch.spec.ts`'s business; what this menu owes is
+    // that the row's `aria-checked` is what moved, since that is the state AT reads.
     expect(menu.pillText()).toBe('1 Tool');
 
     await menu.toggle(1);
@@ -151,6 +165,23 @@ describe('ToolsMenu', () => {
     expect(menu.panel()).toBeNull();
 
     expect(settings.streamSelection()).toEqual({ modelId: limited.id, mcpServerIds: [] });
+  });
+
+  it('draws each server its brand mark, and bi-plug for everything else (US-418)', async () => {
+    const menu = await render();
+    await loadModels([modelFixture({ isDefault: true })]);
+    await loadServers([
+      mcpFixture({ name: 'Microsoft Learn', iconKey: 'microsoft' }),
+      mcpFixture({ name: 'Context7', iconKey: 'context7' }),
+      mcpFixture({ name: 'Jira Cloud', iconKey: null }),
+      // A key a newer client wrote. It degrades to the generic glyph rather than
+      // rendering an empty box, which is what an unknown `<use>` target would.
+      mcpFixture({ name: 'Something New', iconKey: 'future-brand' }),
+    ]);
+    await menu.open();
+
+    expect(menu.brandHrefs()).toEqual(['#brand-microsoft', '#brand-context7']);
+    expect(menu.genericIcons()).toHaveLength(2);
   });
 
   it('explains an empty tool-server list rather than rendering a bare panel', async () => {

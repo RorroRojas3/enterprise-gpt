@@ -64,6 +64,25 @@
   gap: 10px;
 }
 
+// The brand marks are logos rather than glyphs; at the row's default size they read as
+// specks and their colour — the whole reason they are a separate lane — is unreviewable.
+.kit-row--brand {
+  font-size: 28px;
+}
+
+// The switch is decoration, so the kit shows it inside a control that owns the state.
+.kit-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--bs-body-color);
+  font-size: 13px;
+  gap: 10px;
+}
+
 .kit-stack {
   display: flex;
   flex-direction: column;

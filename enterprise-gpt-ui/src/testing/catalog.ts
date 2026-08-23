@@ -37,6 +37,7 @@ export function mcpFixture(overrides: Partial<McpDto> = {}): McpDto {
     id: `${String(index).padStart(8, '0')}-1111-4222-8333-555555555555`,
     name: `Tool Server ${index}`,
     description: null,
+    iconKey: null,
     ...overrides,
   };
 }
@@ -58,6 +59,7 @@ export function mcpServerFixture(overrides: Partial<McpServerDto> = {}): McpServ
     // and the only arm that must carry a null scope.
     authType: MCP_AUTH_TYPE.none,
     scope: null,
+    iconKey: null,
     permissionId: `${String(index).padStart(8, '0')}-3333-4444-8555-777777777777`,
     ...overrides,
   };

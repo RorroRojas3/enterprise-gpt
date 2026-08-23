@@ -98,12 +98,6 @@ describe('authErrorDecision', () => {
     );
   });
 
-  it('never refreshes on mcp-authorization-required, which no token can satisfy', () => {
-    expect(authErrorDecision(errorFrom(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403))).toBe(
-      'passthrough',
-    );
-  });
-
   it.each([
     ['forbidden', PROBLEM_FIXTURES.forbidden, 403],
     ['permission-required', PROBLEM_FIXTURES.permissionRequired, 403],
@@ -139,7 +133,6 @@ describe('authErrorDecision', () => {
       'forbidden',
       'permission-required',
       'conversation-busy',
-      'mcp-authorization-required',
       'mcp-server-unavailable',
       'provider-not-configured',
       'storage-not-configured',

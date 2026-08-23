@@ -51,17 +51,6 @@ export interface PermissionRequiredProblemDetails extends ProblemDetails {
   readonly permissions: readonly string[];
 }
 
-/**
- * A 403 — deliberately not a 401 — raised when an MCP server needs interactive
- * consent. A token refresh cannot satisfy it and would spin.
- */
-export interface McpAuthorizationRequiredProblemDetails extends ProblemDetails {
-  readonly type: typeof PROBLEM_TYPE.mcpAuthorizationRequired;
-  readonly serverName: string;
-  /** Added by US-411; absent until that enabler ships. */
-  readonly scope?: string | null;
-}
-
 /** A 502 raised when an MCP server could not be reached. */
 export interface McpServerUnavailableProblemDetails extends ProblemDetails {
   readonly type: typeof PROBLEM_TYPE.mcpServerUnavailable;
@@ -103,7 +92,6 @@ export type AnyProblemDetails =
   | ValidationProblemDetails
   | UploadTooLargeProblemDetails
   | PermissionRequiredProblemDetails
-  | McpAuthorizationRequiredProblemDetails
   | McpServerUnavailableProblemDetails
   | ProviderNotConfiguredProblemDetails
   | ExportRendererNotConfiguredProblemDetails

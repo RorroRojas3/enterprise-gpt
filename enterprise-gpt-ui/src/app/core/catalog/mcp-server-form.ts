@@ -6,6 +6,7 @@ export const MCP_SERVER_FIELD_LENGTHS = {
   description: 1024,
   url: 2048,
   scope: 512,
+  iconKey: 64,
 } as const;
 
 /** One entry of the form's Auth type select (frame `5h`). */
@@ -83,6 +84,8 @@ export interface McpServerFormValue {
   readonly url: string;
   readonly authType: string;
   readonly scope: string;
+  /** `''` is "no icon", which the wire carries as null. */
+  readonly iconKey: string;
 }
 
 /**
@@ -97,6 +100,7 @@ const REJECTED_FIELD_LABELS: Readonly<Record<string, string>> = {
   Url: 'URL',
   AuthType: 'auth type',
   Scope: 'scope',
+  IconKey: 'icon',
 };
 
 /**
@@ -180,6 +184,7 @@ export function toMcpServerFormValue(server: McpServerDto | null): McpServerForm
       // parse to, and `None` is the type a server registered without Entra ID takes.
       authType: String(MCP_AUTH_TYPE.none),
       scope: '',
+      iconKey: '',
     };
   }
 
@@ -189,6 +194,9 @@ export function toMcpServerFormValue(server: McpServerDto | null): McpServerForm
     url: server.url,
     authType: String(server.authType),
     scope: server.scope ?? '',
+    // A key this build does not know is seeded through unchanged rather than
+    // blanked, so re-saving an untouched row cannot silently drop it.
+    iconKey: server.iconKey ?? '',
   };
 }
 
@@ -229,6 +237,7 @@ export function toMcpServerBody(value: McpServerFormValue): McpServerWriteBody |
   }
 
   const scope = value.scope.trim();
+  const iconKey = value.iconKey.trim();
 
   return {
     name,
@@ -236,5 +245,6 @@ export function toMcpServerBody(value: McpServerFormValue): McpServerWriteBody |
     url: value.url.trim(),
     authType,
     scope: requiresScope(authType) ? scope : null,
+    iconKey: iconKey === '' ? null : iconKey,
   };
 }

@@ -30,7 +30,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         string name = "it-mcp-created",
         string url = "https://mcp.example.com/sse",
         McpAuthTypes authType = McpAuthTypes.None,
-        string? scope = null)
+        string? scope = null,
+        string? iconKey = null)
     {
         return new CreateMcpServerActionDto
         {
@@ -38,7 +39,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
             Description = $"{name} description",
             Url = url,
             AuthType = authType,
-            Scope = scope
+            Scope = scope,
+            IconKey = iconKey
         };
     }
 
@@ -46,7 +48,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         string name = "it-mcp-updated",
         string url = "https://mcp-updated.example.com/sse",
         McpAuthTypes authType = McpAuthTypes.None,
-        string? scope = null)
+        string? scope = null,
+        string? iconKey = null)
     {
         return new UpdateMcpServerActionDto
         {
@@ -54,7 +57,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
             Description = $"{name} description",
             Url = url,
             AuthType = authType,
-            Scope = scope
+            Scope = scope,
+            IconKey = iconKey
         };
     }
 
@@ -128,6 +132,61 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         Assert.Equal(request.Name, permission.Name);
         Assert.Equal(created.Id, permission.McpServerId);
         Assert.Null(permission.DateDeactivated);
+    }
+
+    [Fact]
+    public async Task CreateMcpServer_IconKey_RoundTrips()
+    {
+        var request = CreateRequest(name: "it-mcp-icon", iconKey: "microsoft");
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<McpServerDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(created);
+        Assert.Equal("microsoft", created.IconKey);
+
+        var read = await client.GetFromJsonAsync<McpServerDto>(
+            $"api/mcps/{created.Id}", TestContext.Current.CancellationToken);
+        Assert.NotNull(read);
+        Assert.Equal("microsoft", read.IconKey);
+    }
+
+    [Fact]
+    public async Task UpdateMcpServer_OmittedIconKey_ClearsIt()
+    {
+        var request = CreateRequest(name: "it-mcp-icon-clear", iconKey: "microsoft");
+        using var client = _fixture.Factory.CreateAdminClient();
+        var createResponse = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
+        var created = await createResponse.Content.ReadFromJsonAsync<McpServerDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(created);
+
+        // The PUT is a full representation, not a patch.
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{created.Id}",
+            UpdateRequest(name: "it-mcp-icon-clear", iconKey: null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await response.Content.ReadFromJsonAsync<McpServerDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(updated);
+        Assert.Null(updated.IconKey);
+    }
+
+    [Theory]
+    [InlineData("Microsoft Logo")]
+    [InlineData("")]
+    public async Task CreateMcpServer_MalformedIconKey_ReturnsBadRequest(string iconKey)
+    {
+        var request = CreateRequest(name: $"it-mcp-bad-icon-{iconKey.Length}", iconKey: iconKey);
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.True(problem.Errors.TryGetValue("IconKey", out var messages));
+        Assert.Contains("IconKey must be a lowercase slug such as 'microsoft'.", messages);
     }
 
     [Fact]

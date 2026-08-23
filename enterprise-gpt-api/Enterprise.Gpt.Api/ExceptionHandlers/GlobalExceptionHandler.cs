@@ -11,7 +11,6 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <see cref="ConversationBusyException"/>,
     /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
     /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
-    /// <see cref="McpAuthorizationRequiredException"/>,
     /// <see cref="McpServerUnavailableException"/>,
     /// <see cref="ProviderNotConfiguredException"/>,
     /// <see cref="StorageNotConfiguredException"/>,
@@ -104,12 +103,6 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                     StatusCodes.Status404NotFound, exception.Message, ProblemTypes.NotFound),
                 ForbiddenException => Create(
                     StatusCodes.Status403Forbidden, exception.Message, ProblemTypes.Forbidden),
-                // 403, not 401: a 401 would send clients into token-refresh loops that cannot
-                // fix a consent or Conditional Access requirement. The distinct type URI is what
-                // lets a client tell this apart from an ordinary denial and prompt for consent.
-                McpAuthorizationRequiredException authorizationRequired => WithServerName(
-                    Create(StatusCodes.Status403Forbidden, exception.Message, ProblemTypes.McpAuthorizationRequired),
-                    authorizationRequired.ServerName),
                 McpServerUnavailableException serverUnavailable => WithServerName(
                     Create(StatusCodes.Status502BadGateway, exception.Message, ProblemTypes.McpServerUnavailable),
                     serverUnavailable.ServerName),

@@ -12,7 +12,6 @@ describe('PROBLEM_TYPE', () => {
       forbidden: '/problems/forbidden',
       permissionRequired: '/problems/permission-required',
       conversationBusy: '/problems/conversation-busy',
-      mcpAuthorizationRequired: '/problems/mcp-authorization-required',
       mcpServerUnavailable: '/problems/mcp-server-unavailable',
       providerNotConfigured: '/problems/provider-not-configured',
       storageNotConfigured: '/problems/storage-not-configured',
@@ -20,11 +19,11 @@ describe('PROBLEM_TYPE', () => {
     });
   });
 
-  it('declares all eleven types, with no duplicates', () => {
+  it('declares all ten types, with no duplicates', () => {
     const values = Object.values(PROBLEM_TYPE);
 
-    expect(values).toHaveLength(11);
-    expect(new Set(values).size).toBe(11);
+    expect(values).toHaveLength(10);
+    expect(new Set(values).size).toBe(10);
   });
 
   it('places every type under the shared relative base', () => {

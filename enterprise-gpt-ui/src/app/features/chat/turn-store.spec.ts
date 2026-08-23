@@ -638,18 +638,15 @@ describe('TurnStore', () => {
       expect(store.phase()).toBe('idle');
     });
 
-    it('surfaces a 403 consent requirement without a token refresh (US-412)', async () => {
+    it('surfaces a 403 without a token refresh', async () => {
       setup();
-      await failWith(PROBLEM_FIXTURES.mcpAuthorizationRequired, 403);
+      await failWith(PROBLEM_FIXTURES.forbidden, 403);
 
       const notice = store.turnError();
-      expect(notice?.error.kind).toBe('mcp-authorization-required');
-      expect(notice?.error.kind === 'mcp-authorization-required' && notice.error.serverName).toBe(
-        'Weather',
-      );
-      // One acquisition — the request's own. A 403 consent problem must never
-      // take the replay path a bare 401 takes: no refresh can satisfy a consent
-      // requirement, so a loop is all it would produce.
+      expect(notice?.error.kind).toBe('forbidden');
+      // One acquisition — the request's own. A 403 must never take the replay
+      // path a bare 401 takes: the token is fine and the grant is not, so a
+      // loop is all a refresh would produce.
       expect(getToken).toHaveBeenCalledExactlyOnceWith(undefined);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });

@@ -12,6 +12,13 @@ export interface McpDto {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  /**
+   * Slug naming the brand mark to draw, such as `microsoft`; null for the generic
+   * glyph. Presentation rather than a connection detail, which is why it crosses
+   * to this shape while `url`, `authType` and `scope` do not. The artwork ships in
+   * the sprite, so a key this build does not know degrades — see `mcpBrandIcon`.
+   */
+  readonly iconKey: string | null;
 }
 
 /**
@@ -51,6 +58,8 @@ export interface McpServerDto {
   readonly authType: number;
   /** Required for {@link MCP_AUTH_TYPE.entraIdOnBehalfOf}, and rejected for `none`. */
   readonly scope: string | null;
+  /** The brand mark's slug, or null for the generic glyph. */
+  readonly iconKey: string | null;
   /** Null once the server is retired — deactivation cascades to the permission. */
   readonly permissionId: string | null;
   /** Only populated by the administrative `GET api/mcps/all`. */
@@ -60,7 +69,7 @@ export interface McpServerDto {
 /**
  * The body `POST api/mcps` and `PUT api/mcps/{id}` both take.
  *
- * `CreateMcpServerActionDto` and `UpdateMcpServerActionDto` are the same five fields
+ * `CreateMcpServerActionDto` and `UpdateMcpServerActionDto` are the same six fields
  * server-side, so one shape serves both. Neither carries a permission field: the
  * server creates and renames the linked permission itself, which is why frame `5h`'s
  * "Linked permission" select does not exist here.
@@ -76,6 +85,7 @@ export interface McpServerWriteBody {
   readonly url: string;
   readonly authType: McpAuthType;
   readonly scope: string | null;
+  readonly iconKey: string | null;
 }
 
 /**

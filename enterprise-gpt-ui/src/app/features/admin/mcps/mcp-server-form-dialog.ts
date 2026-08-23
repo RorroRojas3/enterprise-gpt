@@ -28,6 +28,8 @@ import {
   urlError,
 } from '@core/catalog/mcp-server-form';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
+import { BrandIcon } from '@shared/icon/brand-icon';
+import { MCP_ICON_OPTIONS, mcpBrandIcon } from '@shared/icon/mcp-icon';
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
@@ -36,14 +38,15 @@ import { Modal } from '@shared/overlay/modal/modal';
  * **One component, two modes**, as `ModelFormDialog` and `ProjectFormDialog` are — every
  * invoker talks to `McpServerActionsStore` and none of them talks to this dialog.
  *
- * It binds **five** fields where frame `5h` draws six. The missing one is the board's
- * **Linked permission** select, and it is absent because neither `CreateMcpServerActionDto`
+ * It binds **six** fields, five of them frame `5h`'s. The board's sixth is its
+ * **Linked permission** select, and that one is absent because neither `CreateMcpServerActionDto`
  * nor `UpdateMcpServerActionDto` carries a permission field: `McpServerService` creates the
  * gating permission alongside the server, names it after the server and renames it in step.
  * There is nothing for such a control to bind, and rendering it disabled would be the
  * "shown and inert" affordance this codebase has refused twice already. The rule is stated
  * under the Name field instead, because it is *also* why a name can be refused for
- * colliding with a permission the administrator never created by hand.
+ * colliding with a permission the administrator never created by hand. The sixth field
+ * here is **Icon**, which the board predates (US-1210).
  *
  * The board's three auth types are two — `None` and `EntraIdOnBehalfOf` — for the same
  * reason: those are the only two `McpAuthTypes` has.
@@ -56,7 +59,7 @@ import { Modal } from '@shared/overlay/modal/modal';
 @Component({
   selector: 'app-mcp-server-form-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Modal],
+  imports: [BrandIcon, FormField, Modal],
   templateUrl: './mcp-server-form-dialog.html',
   styleUrl: './mcp-server-form-dialog.scss',
 })
@@ -64,6 +67,7 @@ export class McpServerFormDialog {
   protected readonly actions = inject(McpServerActionsStore);
   protected readonly lengths = MCP_SERVER_FIELD_LENGTHS;
   protected readonly authTypes = AUTH_TYPE_OPTIONS;
+  protected readonly icons = MCP_ICON_OPTIONS;
 
   /** The form's backing model, reseeded from the target each time the dialog opens. */
   private readonly model = signal<McpServerFormValue>(toMcpServerFormValue(null));
@@ -96,6 +100,13 @@ export class McpServerFormDialog {
     // that row leaves the select with no matching option. Without this rule Save would be
     // enabled over a body `toMcpServerBody` refuses, and clicking it would do nothing.
     validate(path.authType, ({ value }) => clientError(authTypeError(value())));
+
+    // Length only. The select cannot produce a malformed slug, and the API validates the
+    // shape rather than the value on purpose — so a key written by a newer client has to
+    // survive a round trip through this form rather than be refused by it.
+    maxLength(path.iconKey, MCP_SERVER_FIELD_LENGTHS.iconKey, {
+      message: `Icon keys are limited to ${MCP_SERVER_FIELD_LENGTHS.iconKey} characters.`,
+    });
 
     // `hidden` rather than only an `@if`: a hidden field contributes nothing to its
     // parent's validity, which is what stops the `None` arm from reaching a state where
@@ -144,6 +155,25 @@ export class McpServerFormDialog {
    * type, so the template and the schema cannot disagree about which fields are in play.
    */
   protected readonly showScope = computed(() => !this.f.scope().hidden());
+
+  /** The mark the Icon select's current value draws, or null for the generic glyph. */
+  protected readonly iconPreview = computed(() => mcpBrandIcon(this.f.iconKey().value()));
+
+  /**
+   * The seeded icon key is one this build ships no artwork for.
+   *
+   * Same shape and same reason as {@link unsupportedAuthType}: reachable by editing a row
+   * a newer client wrote, ungated by `touched` because nobody typed it. It does *not*
+   * block Save — the key round-trips unchanged, so leaving it alone is the safe act and
+   * the message says so.
+   */
+  protected readonly unsupportedIcon = computed(() => {
+    const value = this.f.iconKey().value();
+
+    return value === '' || this.icons.some((option) => option.value === value)
+      ? null
+      : `This server uses an icon this version doesn’t ship (${value}). It is kept as-is unless you choose another.`;
+  });
 
   protected readonly canSubmit = computed(() => !this.f().invalid() && !this.actions.formBusy());
 
@@ -194,7 +224,7 @@ export class McpServerFormDialog {
   });
 
   /**
-   * Messages the five fields cannot carry — object-level rules, and any property the
+   * Messages the six fields cannot carry — object-level rules, and any property the
    * server faults that no control here renders.
    *
    * A server message the reader cannot see is a save that silently fails.
@@ -258,8 +288,8 @@ export class McpServerFormDialog {
   }
 }
 
-/** The five fields the server can key an `errors` entry to. */
-const SERVER_FIELDS = ['name', 'description', 'url', 'authType', 'scope'] as const;
+/** The six fields the server can key an `errors` entry to. */
+const SERVER_FIELDS = ['name', 'description', 'url', 'authType', 'scope', 'iconKey'] as const;
 
 type FieldName = (typeof SERVER_FIELDS)[number];
 

@@ -50,14 +50,20 @@
   font-size: 12px;
 }
 
-.tools-menu__checkbox {
+// Sized above the row's text so the marks read as logos rather than bullets.
+.tools-menu__brand {
   flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 14px;
+  font-size: 16px;
 
-  &--checked {
-    color: var(--brand);
+  // The generic glyph is not a logo and should not compete with the ones that are.
+  &--generic {
+    color: var(--muted);
+    font-size: 14px;
   }
+}
+
+.tools-menu__switch {
+  flex: 0 0 auto;
 }
 
 .tools-menu__name {

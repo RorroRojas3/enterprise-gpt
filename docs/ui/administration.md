@@ -14,7 +14,7 @@ Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md), the authority f
 
 ## 1. Overview
 
-Nine stories. The first four were taken in their numbered order because they all write the same three files; US-1207 followed, on the second tab, touching none of them, and US-1208 copied _that_ tab rather than the first. Between them they landed the part of US-1209 that frame `5a` draws as part of the users screen — the layout route, the rail and the redirect — which is why US-1209 closed as a fourth tab and two route-table entries rather than as an epic of its own. **US-1206 landed on 2026-08-21**, back on the first tab: its enabler US-1205 shipped the day before, on the same track, and this story is the frontend half that wires the control to it (§4.6). **US-1302 landed the same day, on the fourth tab**: its enabler, the backend-only US-1301, unblocked it that morning, and this story is what finally fills the route US-1209 had already built (§3.4, §12).
+Ten stories. The first four were taken in their numbered order because they all write the same three files; US-1207 followed, on the second tab, touching none of them, and US-1208 copied _that_ tab rather than the first. Between them they landed the part of US-1209 that frame `5a` draws as part of the users screen — the layout route, the rail and the redirect — which is why US-1209 closed as a fourth tab and two route-table entries rather than as an epic of its own. **US-1206 landed on 2026-08-21**, back on the first tab: its enabler US-1205 shipped the day before, on the same track, and this story is the frontend half that wires the control to it (§4.6). **US-1302 landed the same day, on the fourth tab**: its enabler, the backend-only US-1301, unblocked it that morning, and this story is what finally fills the route US-1209 had already built (§3.4, §12). **US-1210 landed on 2026-08-22, back on the third tab**: its enabler US-416 shipped the same day, and this story is the sixth field US-1208's form was built without — an Icon select, with the mark it names riding beside every server's name in both the registry table and the composer's picker (§11.3).
 
 | Story               | What it delivers                                                                                                                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,6 +27,7 @@ Nine stories. The first four were taken in their numbered order because they all
 | **US-1209**         | The layout route, the rail marking the open tab from the router and the `/admin` → `/admin/users` redirect — all landed with the four above — plus the reports tab, the fourth URL its first criterion names, and a `**` child that keeps an unknown admin URL inside the area (§3.1, §3.4) |
 | **US-1206**         | The directory's "Permission: any" filter — `?permission=` in the URL, withheld against the permission catalogue, repaired when it names nothing, and a three-arm empty state (§4.6) |
 | **US-1302**         | The reports tab: `ReportsStore` provided on the screen, a 7/30/90-day range and a Group-by select carried in the URL, four KPI tiles against the prior period, three hand-drawn charts, and a paged breakdown table (§12) |
+| **US-1210**         | The MCP form's sixth field — an Icon select with a live preview, kept rather than blanked for a key this build ships no artwork for — and the mark it names drawn beside the server's name in the registry table and the composer's Tools picker (§11.3) |
 
 Nine decisions shape the directory, and each looks removable until you know what it prevents:
 
@@ -53,9 +54,9 @@ Ten more shape the model catalog, and none of them is a preference:
 9. **`provider.ts` gained Azure AI Foundry.** `Providers.cs` seeds four and the client mirror had three; there is no `GET api/providers`, so the mirror is the only source (§10.7).
 10. **The `DEFAULT` pill renders in `--brand`, not frame `5e`'s `--accent`**, which measures 2.74:1 on light `--surface` — below AA, with the border in the same colour, so there is no second channel (§10.3).
 
-Nine shape the MCP server registry. It copies the catalog's shape and departs from it in exactly one place, which is the fourth below:
+Ten shape the MCP server registry. It copies the catalog's shape and departs from it in exactly one place, which is the fourth below:
 
-1. **The form binds five fields where frame `5h` draws six.** Neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field — the server creates the gating permission itself, names it after the server and re-syncs that name on every rename — so the board's "Linked permission" select is a control this API has nothing to bind. A note under the Name field states the rule instead, which is also the only way the name-collision 400 makes sense to a reader (§11.3).
+1. **The form binds six fields, and it is still not frame `5h`'s six.** Five are the board's; the sixth is Icon, which the board predates (US-1210). The board's own sixth field, "Linked permission", is still absent, because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field — the server creates the gating permission itself, names it after the server and re-syncs that name on every rename. A note under the Name field states that rule instead, which is also the only way the name-collision 400 makes sense to a reader (§11.3).
 2. **Two auth types, not frame `5h`'s three, and they travel as numbers.** `McpAuthTypes` has `None = 1` and `EntraIdOnBehalfOf = 2`; "Header key" and "OAuth2" do not exist in this system. The API registers no `JsonStringEnumConverter`, and `IsInEnum` rejects the `0` an empty select parses to — which is why a create seeds `None` rather than a blank option (§11.3).
 3. **Scope is conditional in both directions, because the validator is**: required for `EntraIdOnBehalfOf`, refused outright for `None`. It is `hidden()` in the schema, guarded by an `@if`, **and** cleared by an effect, and `toMcpServerBody` normalizes it to `null` on top of all three (§11.3).
 4. **Every rejection kept on the dialog's own surface renders in the modal's `--fail` panel, a validation problem included.** This is the one place `ModelActionsStore`'s shape is deliberately not copied: the criterion asks for a panel that names the server on a 502 as well as on a 400, so a non-validation failure renders there rather than raising a toast (§11.4).
@@ -64,6 +65,7 @@ Nine shape the MCP server registry. It copies the catalog's shape and departs fr
 7. **Deactivated servers render, muted, with no kebab at all** — `mcps/all` is the only route returning them, and there is no reactivate route (§11.2).
 8. **The confirmation says what the cascade actually does.** `DeactivateMcpServerAsync` deactivates the server, its linked permission **and every grant of that permission** in one atomic save. No other delete in this application revokes other people's access, so it is on the `--warn` surface rather than an aside (§11.5).
 9. **The Auth column is 150px, not frame `5g`'s 90px.** "Entra ID (on behalf of)" is one of only two values it can hold, and a narrower grid track ellipsises it permanently (§11.2).
+10. **A key a newer client wrote is kept, not blanked, and Save stays enabled.** `IconKey` is validated for shape only, never against a list of known icons, so a row a future build registered can carry a key this one ships no artwork for. The `<select>` shows blank — `selectedIndex = -1` with no matching option — but the model keeps the value and the save sends it back unchanged; a `role="status"` note explains why, ungated by `touched`, the same shape as the unsupported-auth-type note (§11.3).
 
 Ten shape the reports tab, and it took two releases, four days apart, to get there:
 
@@ -702,7 +704,7 @@ It shares Azure OpenAI's dot tone. The boards draw three provider hues and the p
 
 `PROVIDER_OPTIONS` — the select's entries — is built in `core/catalog/model-form.ts` rather than beside `providerMeta`, so it stays off the initial graph: `domain/api/provider.ts` is reached by the chat composer's model menu, and this list has exactly one consumer, on a lazy admin route. An id it offers that a deployment has since deactivated fails the save with the 404 §10.5 renders at the Provider field, which is the correct failure and the only one a client with no provider endpoint can know about.
 
-## 11. The MCP server registry (US-1208)
+## 11. The MCP server registry (US-1208, US-1210)
 
 The third tab, frame `5g`: every MCP tool server the deployment knows about, where it is reached, how the API authenticates to it, which delegated scope it asks for, and which permission gates it — plus the three things an administrator can do to one. Like the catalog it is a surface the chat screen reads from, but the blast radius is wider in one direction: **deactivating a server revokes a permission from everybody who held it**, which no other delete in this application does.
 
@@ -730,8 +732,9 @@ Eight columns — server, description, URL, auth, scope, permission, status, act
 
 **Deactivated servers are rendered, not hidden.** `DELETE api/mcps/{id}` is a soft delete and `mcps/all` is the only route that returns what it produces; the user-facing `api/mcps` shows only active servers the caller holds a grant for. A table that dropped those rows would make Deactivate look as though it had done nothing. So the row stays, with **two** channels saying so — frame `5g`'s own active/inactive `StatusDot`, and the server name at `opacity: 0.65` — and **no kebab at all** rather than a disabled one, because there is no reactivate route and every item would be an affordance that cannot work (§15).
 
-Six more details are load-bearing:
+Seven more details are load-bearing:
 
+- **The server cell leads with its brand mark where an administrator picked one, and draws nothing for a row with none** (US-1210) — never a placeholder logo. The mark carries nothing the name beside it does not, so it is decoration: `app-brand-icon` with no `label`, the same rule the composer's Tools picker follows for the same row.
 - **The Auth column is 150px, not frame `5g`'s 90px.** The longer of the two values this column can hold is "Entra ID (on behalf of)", and at 90px it ellipsises permanently — a column that can never show one of its two values in full is a column that says nothing. The board's width was drawn against a three-value enum this system does not have.
 - **An auth type this build does not know is rendered, not hidden.** `authTypeLabel` degrades to the raw number, exactly as the models table's unknown provider degrades to its raw id: a row must still say _something_ about how it authenticates. §11.3 covers what happens when such a row is opened for editing.
 - **The URL and the Scope cells carry `[title]`.** Both are mono, both ellipsise, and both hold exactly the kind of value that is read character by character when something is wrong — the URL column is the only place in the application an administrator can check one.
@@ -741,13 +744,15 @@ Six more details are load-bearing:
 
 Two empty states, because they are two situations: nothing matched a term (**Clear search**, which returns focus to the field, since the button removes itself the moment rows come back), and a genuinely empty registry, whose message says what registering one achieves.
 
-### 11.3 The dialog binds five fields where frame `5h` draws six
+### 11.3 The dialog binds six fields, still not the board's Linked permission
 
-The missing one is the board's **Linked permission** select, and it is absent because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field. `McpServerService` creates the gating permission alongside the server, names it after the server, and re-syncs that name on every rename. Rendering the control disabled would be the shown-and-inert affordance US-203 rejected for the Admin entry itself — so the **rule is stated under the Name field** instead:
+Five of the six are frame `5h`'s. The board's own sixth field, **Linked permission**, is still absent, and it is absent because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field. `McpServerService` creates the gating permission alongside the server, names it after the server, and re-syncs that name on every rename. Rendering the control disabled would be the shown-and-inert affordance US-203 rejected for the Admin entry itself — so the **rule is stated under the Name field** instead:
 
 > A permission with this name is created alongside the server, and renamed with it.
 
 That note is not a consolation prize. It is the only thing that makes a name-collision 400 comprehensible: the server and its permission share one uniqueness space, so a name can be refused for colliding with a permission nobody created by hand.
+
+The sixth field this dialog actually binds is **Icon** (US-1210), which the board predates.
 
 | Field         | Notes                                                                                                                    |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -756,8 +761,9 @@ That note is not a consolation prize. It is the only thing that makes a name-col
 | `url`         | 2048, mono, `inputmode="url"`. Validated against `BeAnAbsoluteHttpUri` — absolute, `http` or `https`                     |
 | `authType`    | A select over `AUTH_TYPE_OPTIONS`. **Two entries**, and they submit as numbers                                           |
 | `scope`       | 512, mono, and **conditional in both directions**. Hidden, cleared and normalized on the `None` arm                      |
+| `iconKey`     | A select over `MCP_ICON_OPTIONS` plus "None", previewed live beside itself, sent as the stored slug or `null` (§11.3.1)  |
 
-Four decisions inside it outlive the story.
+Five decisions inside it outlive the story.
 
 **Two auth types, not three, and they travel as numbers.** `McpAuthTypes` has `None = 1` and `EntraIdOnBehalfOf = 2`; frame `5h`'s "Header key" and "OAuth2" do not exist in this system — the same class of board error as frame `4l`'s file extensions. The API registers no `JsonStringEnumConverter`, so the enum serializes as its underlying `int`, and the validator's `IsInEnum` rejects `0` — which is why `toMcpServerFormValue(null)` seeds **`None`** rather than offering a blank option that could only ever fail. `AUTH_TYPE_OPTIONS` lives in `core/catalog/mcp-server-form.ts` rather than beside the constant in `domain/api/mcp.ts`, for `PROVIDER_OPTIONS`'s reason (§10.7): that file is reached by the composer's Tools menu, and this list has exactly one consumer on a lazy route.
 
@@ -778,6 +784,14 @@ The last row is why `toMcpServerBody` normalizes rather than refusing. A refusal
 
 The rest is `ModelFormDialog`'s shape, the app's fifth Signal Form: `disabled` as one root-level schema rule rather than a `[disabled]` binding (NG8022, as with `maxlength`); the server's verdict through a declarative `validate` rule that reports it only while the field still holds the exact value that was sent; `unmatchedServerMessages` rendering anything keyed to a property no control here displays; the whole **raw** form value held as `formRejectedValue`, so the comparison is exact and a scope the body dropped is still compared against the field that holds it; and every field marked touched on submit, because Enter submits without a blur.
 
+#### 11.3.1 Icon: a select, a live preview, and a key nobody typed (US-1210)
+
+The select offers the marks `MCP_ICON_OPTIONS` names — Microsoft, Context7 — plus "None", and a live `app-brand-icon` preview sits beside it, decorative and unlabelled: the select's own value is what a screen reader announces, and a second reading of the same choice would announce it twice. `iconPreview` is one `computed` over the field's current value, so typing (selecting) and the preview never disagree.
+
+The server's own rule — `MaximumLength(64)` and a lowercase-slug pattern — validates the key's **shape** only, never its membership in a list of known icons, because the artwork lives in the client and shipping a new one must stay a client-only deploy (US-416). That is what makes the interesting case not the one an administrator types, but the one nobody does: **a row a newer client wrote, carrying a key this build ships no artwork for.** The `<select>` has no matching option, so it shows blank — `selectedIndex = -1`, never normalized to `''` behind the reader's back, which review pinned end to end — but the model keeps the key and the save sends it back unchanged. A `role="status"` note explains why, **ungated by `touched`**, the same shape `unsupportedAuthType` already uses and for the same reason: nobody typed the value, so no interaction should have to happen before the explanation is visible. It is `role="status"`, not the `role="alert"` its sibling fields use, because it is explicitly not a blocker — Save stays **enabled**, since leaving the value alone is the safe act.
+
+A full-representation PUT that omits `iconKey` clears the stored value, exactly as every other field on `McpServerMapper` behaves — so a client that does not know about icons yet cannot silently preserve one by omission.
+
 ### 11.4 One panel for every rejection this surface keeps
 
 This is the one place `ModelActionsStore`'s shape is deliberately not copied. The acceptance criterion asks for a `--fail` panel at the top of the modal that names the server **on a 502 as well as on a 400** — so a non-validation failure kept on this surface renders _there_ rather than raising a toast, because reporting the same fact twice is the defect the shape avoids. It falls back to a toast only once its surface is no longer the one on screen.
@@ -792,13 +806,13 @@ This is the one place `ModelActionsStore`'s shape is deliberately not copied. Th
 
 `describeRejectedFields` builds frame `5h`'s "The server rejected the URL." clause from the `errors` keys — PascalCase, because that is how FluentValidation keys them — and **returns null rather than naming a field the reader cannot find**, so an object-level rule or a key a later API version introduces falls back to the generic line instead of pointing at a control that is not there.
 
-**The criterion's 502 is unreachable on save, and that is worth recording rather than quietly satisfying.** `POST` and `PUT api/mcps` attempt no MCP connection at all — they write a row and a permission — so `/problems/mcp-server-unavailable` arises only from a chat turn. The panel is built to render _any_ error kept on this surface, which is what the criterion is asking for and what would cover a 502 the day a validation enabler ([MCP Server Integration](../prd/mcp/mcp-server-integration.md)'s US-103) introduces one.
+**The criterion's 502 is unreachable on save, and that is worth recording rather than quietly satisfying.** `POST` and `PUT api/mcps` attempt no MCP connection at all — they write a row and a permission — so `/problems/mcp-server-unavailable` arises only from a chat turn, now including a token-acquisition failure on that server (§16, US-414/US-415). The panel is built to render _any_ error kept on this surface, which is what the criterion is asking for and what would cover a 502 the day a save-time validation enabler introduces one.
 
 Everything else is §6.5's rule in a third store, over §10.5's three flags unchanged — `formBusy`, `pendingIds` and `formRejectedValue`, each with its own job:
 
 - **The flow identifies itself.** `rejectForm` takes `{ mode: 'create' }` or `{ mode: 'edit', id }`, carried through the request rather than read back off `formMode()`, and for an edit the target id is checked too.
 - **`formBusy` is set only by the dialog's own submit**, drives the fields, both buttons and `Modal`'s Escape/backdrop suppression, and is released in `finalize` — not in `cancelForm()`, because it tracks a request rather than a surface.
-- **No failure closes the dialog.** Five fields including a 1024-character description are behind it, and `retryInterceptor` retries neither a POST nor a PUT.
+- **No failure closes the dialog.** Six fields including a 1024-character description are behind it, and `retryInterceptor` retries neither a POST nor a PUT.
 - **A row action's failure is always a toast**: no form produced it, so there is nowhere inline to put it.
 - The screen's constructor calls `cancelForm()` and `cancelDeactivate()`, because the store outlives the route and a dialog left open would otherwise re-mount `showModal()` on a surface the reader never asked for.
 
@@ -997,6 +1011,15 @@ And US-1302's, on the reports dashboard (71 net specs: 16 more on `admin-reports
 | The bar list            | `usage-bar-list` (6)       | Bar width read against the *peak* row, not the total, so a leader does not shrink the whole chart; a floor width for a rounding-to-zero row that is not genuinely zero; every row numbered |
 | Formatting              | `usage-format` (11)        | `null` cost rendering an em dash, never `$0`; sub-$10 costs keeping their cents; a `0`-denominator percentage reading `0%` rather than `NaN`; a zero prior period reporting no delta rather than `+∞%`; the date-range chip's year printed once when both ends share it and on both when they do not |
 
+And US-1210's, the Icon field on the MCP form (§11.3.1):
+
+| Area                 | Spec                             | Notable cases                                                                                                                                                                                                                                     |
+| -------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The form dialog      | `mcp-server-form-dialog`          | **The six fields the API now accepts, iconKey included**; the preview appearing only once a mark is chosen; editing a row whose key this build ships no artwork for showing a blank select **and** the raw key in the note, Save staying enabled, and the untouched key round-tripping on submit |
+| The form's rules     | `mcp-server-form`                 | `iconKey` seeded from the server unchanged, including a key this build does not recognise; `''` normalized to `null` on submit; the field's own length rule |
+| The registry table   | `admin-mcps`                      | A row with a mark drawing it beside the name; a row with none drawing nothing rather than a placeholder logo |
+| Accessibility (US-1405) | `admin.a11y`, `chat.a11y` (2 new audits each) | The MCP form open, on a row carrying both a recognised and an unrecognised icon key; the composer's Tools picker open, on a mix of marked and unmarked rows — 50 audits total, up from 46 |
+
 ```bash
 # from enterprise-gpt-ui/
 npm test        # Vitest, single run
@@ -1035,8 +1058,8 @@ On the registry:
 | **Restore for a deactivated server**         | a backend enabler                                                                           | `DELETE` is a soft delete; `GET`, `PUT` and `DELETE` on `{id}` all 404 on a deactivated row, and there is no reactivate route. The kebab is therefore absent rather than disabled (§11.2)                                |
 | **A "Linked permission" select**             | —                                                                                           | Neither action DTO carries one. The server owns that permission's name, and a disabled select would be an affordance with nothing behind it (§11.3)                                                                     |
 | **Header key and OAuth2 auth types**         | —                                                                                           | `McpAuthTypes` has two members. Offering a third would be a select entry the wire refuses (§11.3)                                                                                                                       |
-| **More than one scope**                      | [MCP PRD](../prd/mcp/mcp-server-integration.md)'s US-101                                     | `McpServer.Scope` is a single `nvarchar(512)`. The form binds one field and says "One scope only." under it; that story's `Scope` → `Scopes` rename is a **breaking change to this client** and has to carry it          |
-| **Dry-run validation, a tool-surface view, a health signal** | that PRD's US-103, US-104 and US-405                                        | Frame-adjacent capability an administrator wants when registering a server, and nothing routes to `McpToolProvider` or `McpClientCache` over HTTP today                                                                 |
+| **More than one scope**                      | —                                                                                            | `McpServer.Scope` is a single `nvarchar(512)`. The form binds one field and says "One scope only." under it; a future `Scope` → `Scopes` rename would be a **breaking change to this client** and would have to carry it |
+| **Dry-run validation, a tool-surface view, a health signal** | —                                                                            | Frame-adjacent capability an administrator wants when registering a server, and nothing routes to `McpToolProvider` or `McpClientCache` over HTTP today; no work item currently tracks it                               |
 
 The reports tab has no table of its own here any more: US-1302 built frames `5j`/`5k` in full, and §12 records what it renders rather than what it does not.
 
@@ -1106,6 +1129,9 @@ And on the MCP servers tab:
 | A mobile card prints the server name twice                                                    | The visually-hidden "Linked permission:" label came off the badges slot, which has no column header below the breakpoint (§11.2)                                                              |
 | Editing a server registered with an unknown auth type leaves Save dead and silent             | `authTypeError` or the `unsupportedAuthType` message was gated on `touched`. Nobody typed the value, and the disabled Save prevents the interaction that would reveal it (§11.3)              |
 | "Entra ID (on behalf of)" is ellipsised in every row                                          | The Auth column was returned to frame `5g`'s 90px. It holds one of two values and the wider one never fits (§11.2)                                                                            |
+| **Saving a row silently drops an icon a newer client set**                                    | An unrecognised `iconKey` was blanked on the client instead of round-tripped. The select showing "no match" must not become the model holding `''` — Save stays enabled and the value is kept as-is (§11.3.1) |
+| A server's mark does not appear in the composer's Tools picker after it is saved              | The picker reads `McpDto.iconKey` through `mcpBrandIcon`, which needs an exact match against `MCP_ICON_OPTIONS`; check the stored key is one this build ships artwork for, and that `mcpCatalogChanged` fired (§11.6) |
+| **A tool server fails every turn, and users are told it "could not be reached"**               | Check the API logs before the client: a 502 `/problems/mcp-server-unavailable` now covers a broken on-behalf-of registration — an admin consent withdrawn, an expired client secret, a Conditional Access policy the service principal cannot satisfy — as well as a genuinely unreachable host. The client cannot and does not tell these apart; it offers Retry either way (US-414/US-415) |
 | A long table is cut off at the bottom of the pane and will not scroll                         | `overflow-y: auto` came off the `AdminLayout` host. `.shell__main` is `overflow: hidden` and clips whatever does not scroll itself (§3.3)                                                     |
 | The mobile navbar still reads "Admin" after navigating to chat                                | The layout did not `clear()` its `ShellChrome` entry on destroy (§3.3)                                                                                                                        |
 
@@ -1136,4 +1162,4 @@ And on the MCP servers tab:
 | The pager                      | [`shared/data/paginator/paginator.ts`](../../enterprise-gpt-ui/src/app/shared/data/paginator/paginator.ts)                                                                                                                                                                                                                                                                                          |
 | The admin route guard          | [`core/auth/guards/admin.guard.ts`](../../enterprise-gpt-ui/src/app/core/auth/guards/admin.guard.ts), [`core/auth/auth-routes.ts`](../../enterprise-gpt-ui/src/app/core/auth/auth-routes.ts)                                                                                                                                                                                                        |
 | The API side                   | [`Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs), [`UserService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/UserService.cs), [`ModelEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs), [`ModelService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ModelService.cs), [`McpEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/McpEndpoints.cs), [`McpServerService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/McpServerService.cs), [`ReportEndpoints.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ReportEndpoints.cs), [`ReportService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Reports/ReportService.cs) — see [Usage and Favourites §7](../conversations/usage-and-favorites.md#7-reporting) |
-| Related reference              | [User Management](../users/user-management.md), [Model Management](../models/model-management.md), [Permission Cache](../permissions/permission-cache.md), [Usage and Favourites §7](../conversations/usage-and-favorites.md#7-reporting), [Conversation Library](conversation-library.md), [Frontend Foundation](frontend-foundation.md), [Design System](design-system.md), [Authentication and Session](authentication-and-session.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md), [MCP Server Integration PRD](../prd/mcp/mcp-server-integration.md) |
+| Related reference              | [User Management](../users/user-management.md), [Model Management](../models/model-management.md), [Permission Cache](../permissions/permission-cache.md), [Usage and Favourites §7](../conversations/usage-and-favorites.md#7-reporting), [Conversation Library](conversation-library.md), [Frontend Foundation](frontend-foundation.md), [Design System](design-system.md), [Authentication and Session](authentication-and-session.md), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |

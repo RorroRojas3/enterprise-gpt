@@ -30,6 +30,16 @@ namespace Enterprise.Gpt.Entity
         [StringLength(512)]
         public string? Scope { get; set; }
 
+        /// <summary>
+        /// Slug naming the brand mark the client draws for this server, such as
+        /// <c>microsoft</c>; <see langword="null"/> for the generic glyph. The artwork lives in
+        /// the client, so this is deliberately an open slug rather than an enum — shipping a new
+        /// icon must not require a server deploy, and a key this client does not recognise
+        /// degrades to the generic glyph rather than failing.
+        /// </summary>
+        [StringLength(64)]
+        public string? IconKey { get; set; }
+
         public ICollection<Permission> Permissions { get; set; } = [];
     }
 }

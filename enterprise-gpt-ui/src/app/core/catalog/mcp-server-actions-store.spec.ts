@@ -23,6 +23,7 @@ function formValue(overrides: Partial<McpServerFormValue> = {}): McpServerFormVa
     url: 'https://mcp.example.test/sap',
     authType: String(MCP_AUTH_TYPE.entraIdOnBehalfOf),
     scope: 'api://sap/.default',
+    iconKey: '',
     ...overrides,
   };
 }
@@ -82,7 +83,7 @@ describe('McpServerActionsStore (US-1208)', () => {
 
     const request = backend.expectOne(MCPS_URL);
     expect(request.request.method).toBe('POST');
-    // All five, and the auth type as the number the wire carries: the API registers no
+    // All six, and the auth type as the number the wire carries: the API registers no
     // string enum converter, so `"EntraIdOnBehalfOf"` would fail `IsInEnum`.
     expect(request.request.body).toEqual({
       name: 'SAP Ledger',
@@ -90,6 +91,7 @@ describe('McpServerActionsStore (US-1208)', () => {
       url: 'https://mcp.example.test/sap',
       authType: 2,
       scope: 'api://sap/.default',
+      iconKey: null,
     });
 
     request.flush(mcpServerFixture({ name: 'SAP Ledger' }), { status: 201, statusText: 'Created' });
@@ -134,11 +136,12 @@ describe('McpServerActionsStore (US-1208)', () => {
 
     const request = backend.expectOne(`${MCPS_URL}/${target.id}`);
     expect(request.request.method).toBe('PUT');
-    // Every field, not only the changed one: the mapper assigns all five unconditionally,
+    // Every field, not only the changed one: the mapper assigns all six unconditionally,
     // so an omitted one is a cleared one.
     expect(Object.keys(request.request.body as object).sort()).toEqual([
       'authType',
       'description',
+      'iconKey',
       'name',
       'scope',
       'url',
