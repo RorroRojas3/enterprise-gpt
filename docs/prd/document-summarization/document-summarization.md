@@ -18,7 +18,7 @@
 - **Completeness**: 0 documents that fit inside the summarizer's single-pass budget are ever routed through map-reduce, and 0 documents that do not fit ever fail *for that reason* — measured by `US-203`'s unit test matrix spanning documents just under, at, and just over the budget boundary, and by `document_summary.call.duration`'s outcome tag (`US-405`) showing zero occurrences of a context-window failure reason in production.
 - **Accounting integrity**: every summarization model call has exactly one `ConversationUsage` row — measured by comparing a summary row's own persisted `ModelCallCount` (`US-404`) against `COUNT(*)` from `Core.ConversationUsage WHERE Kind = Summarization` for the same document's most recent run, which must be equal on every run in `US-402`'s and `US-406`'s integration tests.
 - **Cache effectiveness**: a repeat, non-regenerating request for an already-summarized document writes 0 `ConversationUsage` rows and leaves every conversation token counter unmoved — measured by `US-406`'s integration test and, in production, by zero `document_summary.call.duration` records against a `200`-only request pattern.
-- **Processing visibility**: ≥ 99% of summarization jobs reach a terminal job status within a p95 duration derived from `US-001`/`US-002`'s measured single-call latency — measured through the same job-duration telemetry document ingestion already emits, filtered to jobs whose stage sequence includes `Summarizing`.
+- **Processing visibility**: ≥ 99% of summarization jobs reach a terminal job status within a p95 duration TBD — set from the feature's own job-duration telemetry (`US-405`) once real production data exists, since no pre-production latency measurement is scoped in this cycle (§9) — measured through the same job-duration telemetry document ingestion already emits, filtered to jobs whose stage sequence includes `Summarizing`.
 
 A user, end to end: Priya opens a project conversation holding three documents — one she uploaded herself, two the project already had. She asks for a summary of the largest one, a 40-page policy document that does not fit the summarizer's window in one call. The chip shows a summarizing indicator while a background job splits it into map units, summarizes each, collapses the partial summaries once because they still overflow the budget, and reduces the result — she reads one paragraph a minute or two later. She then asks for the whole conversation's digest. Two of the three documents already have summaries — hers from this session, one project document a teammate summarized last week — so the digest costs one map call for the one remaining document and one reduce call over all three summaries, not three fresh passes. Every one of those calls, including the ones over the project's own documents, shows up on *her* conversation's usage, at the summarizer's flat, predictable rate — never at whatever the conversation's selected chat model would have charged.
 
@@ -57,7 +57,7 @@ A user, end to end: Priya opens a project conversation holding three documents �
 - **Chat user**: a signed-in employee holding a conversation that can see at least one document. Requests a summary or a digest and reads the result; never sees the summarizer's deployment name, its budget math, or which path (single-pass or map-reduce) served the request.
 - **Administrator**: holds `PermissionIds.Administrator` (`a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d`). Toggles a catalog model's picker visibility (`IsUserSelectable`) from the existing admin models screen; does not separately administer "which model is the summarizer" — that is an operator-owned configuration value pointing at a `Model.Id`, not a database flag an admin screen writes.
 - **Operator**: runs the deployment. Sets `Summarization:ModelId`, the feature flag, the safety fraction, the map-unit ceiling, and the per-user/per-conversation/digest bounds; reads the telemetry this PRD adds.
-- **Backend engineer**: owns EP-0 through EP-4 and EP-6, in `enterprise-gpt-api/` under `.claude/rules/csharp.md` and `aspnet-rest-apis.md`.
+- **Backend engineer**: owns EP-1 through EP-4 and EP-6, in `enterprise-gpt-api/` under `.claude/rules/csharp.md` and `aspnet-rest-apis.md`.
 - **Frontend engineer**: owns EP-5, in `enterprise-gpt-ui/` under the `ngrx-signal-store` and `angular-developer` skills.
 
 **Role-based access.**
@@ -73,42 +73,40 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 
 | ID | Requirement | Priority | Epic(s) |
 | --- | --- | --- | --- |
-| FR-1 | A near-window single-pass summarization call is proven accepted by the configured summarizer deployment, with request-body size, client timeout, and latency recorded before anything downstream is sized against it | P0 | EP-0 |
-| FR-2 | `ChatOptions.MaxOutputTokens` is proven to actually cap the summarizer's response before any production code depends on it | P0 | EP-0 |
-| FR-3 | The catalog carries a `Model.IsUserSelectable` flag, defaulting to `true`, that hides a row from the chat model picker without touching `DateDeactivated` | P0 | EP-1 |
-| FR-4 | A migration corrects the seeded summarizer row's `DeploymentName`, `ContextWindowSize`, and `MaxOutputTokens`, and sets its `IsUserSelectable` to `false` | P0 | EP-1 |
-| FR-5 | `GET api/models` (the chat picker's source) excludes non-user-selectable rows; `GET api/models/all` (the admin listing) is unaffected | P0 | EP-1 |
-| FR-6 | An administrator can toggle a model's picker visibility from the existing admin models screen | P2 | EP-1 |
-| FR-7 | A `Summarization` configuration section names the summarizer by an existing `Model.Id`, validated at startup against the database and against registered chat-client providers | P0 | EP-1 |
-| FR-8 | A summarization request against a summarizer catalog row whose `ContextWindowSize` is `<= 0` fails clearly rather than being treated as unbounded | P0 | EP-2 |
-| FR-9 | A document's text is reassembled from its existing chunk rows — never re-extracted from the blob — for both conversation and project document families, with the chunker's own overlap stripped at each seam | P0 | EP-2 |
-| FR-10 | Token counting for the fit decision uses the summarizer's own provider and deployment name, never the requesting conversation's selected chat model | P0 | EP-2 |
-| FR-11 | A document that fits the summarizer's budget is summarized in exactly one model call | P0 | EP-2 |
-| FR-12 | A document that does not fit is split into map units sized to the summarizer's own computed budget, not the 512-token retrieval chunk size | P0 | EP-2 |
-| FR-13 | Map-phase calls run under a bounded concurrency gate, a per-call timeout, and cooperative cancellation | P0 | EP-2 |
-| FR-14 | A collapse loop re-summarizes partial summaries that still exceed the budget until they fit, bounded by a maximum pass count | P0 | EP-2 |
-| FR-15 | Exactly one final reduce call produces a document's canonical summary text | P0 | EP-2 |
-| FR-16 | Every summarization prompt (single-pass, map, reduce) delimits the document or partial-summary text against instructions embedded inside it | P0 | EP-2 |
-| FR-17 | One canonical summary row is persisted per document, shared across every conversation that can read the document, and regenerable on demand | P0 | EP-3 |
-| FR-18 | A summary row is soft-deleted when its document, its parent conversation, or its parent project is soft-deleted | P0 | EP-3 |
-| FR-19 | A background job carrying a new `Summarizing` stage performs summarization work off the request path, reusing the existing job infrastructure | P0 | EP-3 |
-| FR-20 | `POST` a document's summary route returns `202` with a `JobDto` when generation is needed and `200` with the existing summary on a cache hit | P0 | EP-3 |
-| FR-21 | A regeneration request bypasses the cache and overwrites the canonical summary row in place | P1 | EP-3 |
-| FR-22 | `GET` a document's summary route returns the stored summary or `404`, for both document families | P1 | EP-3 |
-| FR-23 | `POST api/conversations/{id}/summary` computes a digest — synchronously when every document in scope already has a summary, asynchronously otherwise — and never persists the digest itself | P1 | EP-3 |
-| FR-24 | A summarization or digest job is visible through the existing upload-status polling route with no change to the polling mechanism itself | P0 | EP-3 |
-| FR-25 | Every summarization model call writes exactly one `ConversationUsage` row of kind `Summarization`, billed to the conversation that requested it — including a call made over a project document | P0 | EP-4 |
-| FR-26 | Conversation `InputTokens`/`OutputTokens` increment in the same transaction as each usage row; `ContextTokens` is never set by a summarization call | P0 | EP-4 |
-| FR-27 | A summary row persists the token totals and model-call count for the run that produced it | P1 | EP-4 |
-| FR-28 | Summarization call duration, outcome, and map-unit count emit through the existing `ChatMetrics` meter | P1 | EP-4 |
-| FR-29 | A cache-hit request writes zero usage rows and leaves every conversation counter unmoved | P0 | EP-4 |
-| FR-30 | A user can request a document's summary or a conversation's digest from the existing attachment surface | P0 | EP-5 |
-| FR-31 | Summarizing, summarized, failed, and not-yet-summarized states are each visually distinguishable | P1 | EP-5 |
-| FR-32 | Every new surface this feature adds is operable by keyboard and announced to assistive technology | P0 | EP-5 |
-| FR-33 | No component or store this feature adds reaches the initial bundle graph | P0 | EP-5 |
-| FR-34 | Summarization is gated on the existing `Upload File` permission grant, resolved through `IUserPermissionCache` | P0 | EP-6 |
-| FR-35 | The whole feature sits behind a configuration flag with a documented, no-redeploy rollback | P0 | EP-6 |
-| FR-36 | Per-user/per-conversation request bounds, a map-unit ceiling, and a digest maximum document count exist and are enforced when configured | P1 | EP-6 |
+| FR-1 | The catalog carries a `Model.IsUserSelectable` flag, defaulting to `true`, that hides a row from the chat model picker without touching `DateDeactivated` | P0 | EP-1 |
+| FR-2 | A migration corrects the seeded summarizer row's `DeploymentName`, `ContextWindowSize`, and `MaxOutputTokens`, and sets its `IsUserSelectable` to `false` | P0 | EP-1 |
+| FR-3 | `GET api/models` (the chat picker's source) excludes non-user-selectable rows; `GET api/models/all` (the admin listing) is unaffected | P0 | EP-1 |
+| FR-4 | An administrator can toggle a model's picker visibility from the existing admin models screen | P2 | EP-1 |
+| FR-5 | A `Summarization` configuration section names the summarizer by an existing `Model.Id`, validated at startup against the database and against registered chat-client providers | P0 | EP-1 |
+| FR-6 | A summarization request against a summarizer catalog row whose `ContextWindowSize` is `<= 0` fails clearly rather than being treated as unbounded | P0 | EP-2 |
+| FR-7 | A document's text is reassembled from its existing chunk rows — never re-extracted from the blob — for both conversation and project document families, with the chunker's own overlap stripped at each seam | P0 | EP-2 |
+| FR-8 | Token counting for the fit decision uses the summarizer's own provider and deployment name, never the requesting conversation's selected chat model | P0 | EP-2 |
+| FR-9 | A document that fits the summarizer's budget is summarized in exactly one model call | P0 | EP-2 |
+| FR-10 | A document that does not fit is split into map units sized to the summarizer's own computed budget, not the 512-token retrieval chunk size | P0 | EP-2 |
+| FR-11 | Map-phase calls run under a bounded concurrency gate, a per-call timeout, and cooperative cancellation | P0 | EP-2 |
+| FR-12 | A collapse loop re-summarizes partial summaries that still exceed the budget until they fit, bounded by a maximum pass count | P0 | EP-2 |
+| FR-13 | Exactly one final reduce call produces a document's canonical summary text | P0 | EP-2 |
+| FR-14 | Every summarization prompt (single-pass, map, reduce) delimits the document or partial-summary text against instructions embedded inside it | P0 | EP-2 |
+| FR-15 | One canonical summary row is persisted per document, shared across every conversation that can read the document, and regenerable on demand | P0 | EP-3 |
+| FR-16 | A summary row is soft-deleted when its document, its parent conversation, or its parent project is soft-deleted | P0 | EP-3 |
+| FR-17 | A background job carrying a new `Summarizing` stage performs summarization work off the request path, reusing the existing job infrastructure | P0 | EP-3 |
+| FR-18 | `POST` a document's summary route returns `202` with a `JobDto` when generation is needed and `200` with the existing summary on a cache hit | P0 | EP-3 |
+| FR-19 | A regeneration request bypasses the cache and overwrites the canonical summary row in place | P1 | EP-3 |
+| FR-20 | `GET` a document's summary route returns the stored summary or `404`, for both document families | P1 | EP-3 |
+| FR-21 | `POST api/conversations/{id}/summary` computes a digest — synchronously when every document in scope already has a summary, asynchronously otherwise — and never persists the digest itself | P1 | EP-3 |
+| FR-22 | A summarization or digest job is visible through the existing upload-status polling route with no change to the polling mechanism itself | P0 | EP-3 |
+| FR-23 | Every summarization model call writes exactly one `ConversationUsage` row of kind `Summarization`, billed to the conversation that requested it — including a call made over a project document | P0 | EP-4 |
+| FR-24 | Conversation `InputTokens`/`OutputTokens` increment in the same transaction as each usage row; `ContextTokens` is never set by a summarization call | P0 | EP-4 |
+| FR-25 | A summary row persists the token totals and model-call count for the run that produced it | P1 | EP-4 |
+| FR-26 | Summarization call duration, outcome, and map-unit count emit through the existing `ChatMetrics` meter | P1 | EP-4 |
+| FR-27 | A cache-hit request writes zero usage rows and leaves every conversation counter unmoved | P0 | EP-4 |
+| FR-28 | A user can request a document's summary or a conversation's digest from the existing attachment surface | P0 | EP-5 |
+| FR-29 | Summarizing, summarized, failed, and not-yet-summarized states are each visually distinguishable | P1 | EP-5 |
+| FR-30 | Every new surface this feature adds is operable by keyboard and announced to assistive technology | P0 | EP-5 |
+| FR-31 | No component or store this feature adds reaches the initial bundle graph | P0 | EP-5 |
+| FR-32 | Summarization is gated on the existing `Upload File` permission grant, resolved through `IUserPermissionCache` | P0 | EP-6 |
+| FR-33 | The whole feature sits behind a configuration flag with a documented, no-redeploy rollback | P0 | EP-6 |
+| FR-34 | Per-user/per-conversation request bounds, a map-unit ceiling, and a digest maximum document count exist and are enforced when configured | P1 | EP-6 |
 
 ## 5. User experience
 
@@ -144,7 +142,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 
 **1. A `ContextWindowSize` of `<= 0` must mean *unconfigured, refuse* for this feature — the opposite of what the shared budget calculator already means by it.** `ContextBudgetCalculator.Apply` (`Enterprise.Gpt.Service/Tokenization/ContextBudgetCalculator.cs`) treats `contextWindowSize <= 0` as **unbounded** — "the seeded default for a catalog row nobody has filled in... treated as unbounded rather than as a budget of zero, because trimming every conversation to nothing over an unset catalog field would be a far worse failure than sending a prompt that might be rejected," per its own doc comment. That reading is correct for a chat turn, where the alternative is destroying a user's context. It is the wrong reading here: the seeded summarizer row is `ContextWindowSize = 0` today, and if the summarization engine inherited the shared calculator's convention, a mis-seeded or later mis-edited catalog row would make it attempt to send a multi-million-token document in a single call — a guaranteed provider rejection at best, an enormous bill at worst. `US-201` is this feature's own fit-decision entry point specifically so it can invert the convention.
 
-**2. `Model.MaxOutputTokens` never reaches the wire today, for any provider — this feature is the first to set it.** `ConversationService.CreateChatOptionsAsync` (~line 2107) sets `ChatOptions.ModelId` and, conditionally, `ChatOptions.Reasoning`; it never sets `ChatOptions.MaxOutputTokens`. The catalog value is read only as a *budget reservation* inside `ApplyContextBudget` (~line 1530). `Settings/AnthropicOptions.cs`'s own doc comment on `DefaultMaxOutputTokens` states the consequence outright: *"`ConversationService` does not put the catalog model's `MaxOutputTokens` on `ChatOptions`, for any provider, so nothing overrides it today... Wiring the catalog value through is what would make this a fallback rather than the operative limit."* An unbounded map call is unbounded output billed at the summarizer's rate on every one of potentially hundreds of calls a large document produces. `US-204`/`US-002` make this feature the first call site in the codebase to set `ChatOptions.MaxOutputTokens` explicitly from a catalog row.
+**2. `Model.MaxOutputTokens` never reaches the wire today, for any provider — this feature is the first to set it.** `ConversationService.CreateChatOptionsAsync` (~line 2107) sets `ChatOptions.ModelId` and, conditionally, `ChatOptions.Reasoning`; it never sets `ChatOptions.MaxOutputTokens`. The catalog value is read only as a *budget reservation* inside `ApplyContextBudget` (~line 1530). `Settings/AnthropicOptions.cs`'s own doc comment on `DefaultMaxOutputTokens` states the consequence outright: *"`ConversationService` does not put the catalog model's `MaxOutputTokens` on `ChatOptions`, for any provider, so nothing overrides it today... Wiring the catalog value through is what would make this a fallback rather than the operative limit."* An unbounded map call is unbounded output billed at the summarizer's rate on every one of potentially hundreds of calls a large document produces. `US-204` makes this feature the first call site in the codebase to set `ChatOptions.MaxOutputTokens` explicitly from a catalog row.
 
 **3. A summary must join the four existing soft-delete cascades.** `ConversationService.DeactivateConversationAsync` (~line 395), `DeactivateConversationsBulkAsync` (~line 448), and `ProjectService.DeactivateProjectAsync` (~line 359), `DeactivateProjectDocumentAsync` (~line 408) each run a sequence of `ExecuteUpdateAsync` statements that deactivate a document's chunk rows and then the document row itself. A summary table that does not join those four statements leaves a fully readable summary of a document — and everything it said — after the document it summarizes has been deleted. `US-302` extends all four.
 
@@ -221,38 +219,14 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 
 | ID | Epic | Goal | Priority | Estimate | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| EP-0 | Gate | Prove a near-window single-pass summarization call is accepted and its output cap honoured, before anything downstream is sized against it | P0 | S | — |
 | EP-1 | Catalog & configuration | The catalog can name a pinned, cheap summarizer model that is invisible to the chat picker | P0 | M | — |
-| EP-2 | Summarization engine | Any document, however large, reduces to one canonical summary within the summarizer's own budget | P0 | L | EP-0, EP-1 |
+| EP-2 | Summarization engine | Any document, however large, reduces to one canonical summary within the summarizer's own budget | P0 | L | EP-1 |
 | EP-3 | Persistence, job & API | A summary has a durable, cacheable identity and a route a client can call | P0 | L | EP-1, EP-2 |
 | EP-4 | Token accounting & telemetry | Every summarization call is billed to the conversation that asked for it, exactly once | P0 | M | EP-2, EP-3 |
 | EP-5 | Frontend surface | A user can request and read a summary and a digest | P0 | M | EP-3 |
 | EP-6 | Governance & rollout | The capability is bounded, flagged, and reversible without a redeploy | P0 | M | EP-3, EP-4 |
 
-EP-1 shares no code dependency with EP-0 beyond two of its five stories (`US-102`, `US-105`), so most of its schema and DTO work can start immediately, exactly as `image-input`'s own EP-1 ran alongside its gate. EP-2 carries the highest proportion of `[enabler]` stories in the document, because its whole shape — the fit decision, the map split, the collapse loop — has no user-visible surface until EP-3 persists what it produces and EP-5 renders it; each enabler names the story it unblocks, and none exceeds L.
-
-### EP-0: Gate
-
-#### US-001: `[enabler]` Confirm a near-window single-pass summarization call
-
-- **Story**: `[enabler]` Call the configured summarizer deployment (`rr-gpt5.6-luna`, Azure OpenAI) from a throwaway harness with a prompt sized close to its declared 1,000,000-token window, and record whether the request is accepted, its request-body size, the client timeout needed, and the observed latency. Unblocks US-102, US-105, and every EP-2 story that assumes a call at the edge of the window is feasible at all.
-- **Priority**: P0 · **Estimate**: S · **Depends on**: —
-- **Status**: Not started
-- **Acceptance criteria**:
-  - Given a synthetic document sized to roughly 95% of the summarizer's declared window, when it is sent as one chat completion, then the outcome records whether it is accepted, its measured latency, and its request-body size in bytes — the number `US-203`'s safety fraction is chosen against, not guessed.
-  - Given the harness's default `HttpClient` timeout, when the near-window call is made, then the outcome records whether it is sufficient or a longer timeout must be configured for the summarizer's resolved `IChatClient`, feeding `US-205`'s per-call timeout default.
-  - Given the call completes, when its response is inspected, then the outcome records the provider's reported input and output token counts against the local estimator's prediction, so the fit decision's error is measured, not assumed.
-  - Given the harness completes, when it is reviewed, then it is deleted or left under `tests/` as a skipped integration test; no spike code is merged into `Enterprise.Gpt.Api` or `Enterprise.Gpt.Service`.
-
-#### US-002: `[enabler]` Confirm the output cap is honoured
-
-- **Story**: `[enabler]` Send a chat completion to the summarizer with `ChatOptions.MaxOutputTokens` set to a small value and confirm the response is actually truncated to it — the first place in this codebase `MaxOutputTokens` would reach the wire for any provider (§6, invariant 2). Unblocks US-102, US-204.
-- **Priority**: P0 · **Estimate**: S · **Depends on**: US-001
-- **Status**: Not started
-- **Acceptance criteria**:
-  - Given a prompt whose unconstrained answer is long, when `ChatOptions.MaxOutputTokens` is set to a small value on a call to the summarizer's resolved `IChatClient`, then the response's output token count does not exceed it, confirming Azure OpenAI over the Responses API honours the option rather than treating it as advisory.
-  - Given the same deployment with `MaxOutputTokens` left unset, when a call is made, then the outcome records what it answers with by default, so `US-102`'s seed-fix migration picks a real value rather than an arbitrary one.
-  - Given the harness completes, when it is reviewed, then it is deleted or left under `tests/` as a skipped integration test.
+EP-1's five stories form a short internal chain with no external epic dependency at all — `US-101` is the wave's only story with no prerequisite, and every other EP-1 story waits on it directly or transitively, so the whole epic can start on day one. EP-2 carries the highest proportion of `[enabler]` stories in the document, because its whole shape — the fit decision, the map split, the collapse loop — has no user-visible surface until EP-3 persists what it produces and EP-5 renders it; each enabler names the story it unblocks, and none exceeds L.
 
 ### EP-1: Catalog & configuration
 
@@ -268,8 +242,8 @@ EP-1 shares no code dependency with EP-0 beyond two of its five stories (`US-102
 
 #### US-102: `[enabler]` Correct the seeded summarizer catalog row
 
-- **Story**: `[enabler]` Ship a migration updating the seeded `Core.Ref.Model` row (`c36e22ed-262a-47a1-b2ba-06a38355ae0f`) from `DeploymentName = "rr-gpt-5.6-luna"`, `ContextWindowSize = 0`, `MaxOutputTokens = 0` to `DeploymentName = "rr-gpt5.6-luna"`, `ContextWindowSize = 1000000`, and the `MaxOutputTokens` value `US-002` recorded, and sets `IsUserSelectable = false` on it. Unblocks US-103, US-105, US-201.
-- **Priority**: P0 · **Estimate**: S · **Depends on**: US-101, US-002
+- **Story**: `[enabler]` Ship a migration updating the seeded `Core.Ref.Model` row (`c36e22ed-262a-47a1-b2ba-06a38355ae0f`) from `DeploymentName = "rr-gpt-5.6-luna"`, `ContextWindowSize = 0`, `MaxOutputTokens = 0` to `DeploymentName = "rr-gpt5.6-luna"`, `ContextWindowSize = 1000000`, and `MaxOutputTokens` set to a **proposed constant, 16,384** — not a measured value; it joins §9's vetoable-numbers list — and sets `IsUserSelectable = false` on it. Unblocks US-103, US-105, US-201.
+- **Priority**: P0 · **Estimate**: S · **Depends on**: US-101
 - **Status**: Not started
 - **Acceptance criteria**:
   - Given the migration, when it runs against a database seeded from `InitialCreate`, then the row's `DeploymentName`, `ContextWindowSize`, `MaxOutputTokens` and `IsUserSelectable` all change and every other column — `Id`, `ProviderId`, `Name`, `Description` — is untouched.
@@ -349,7 +323,7 @@ EP-1 shares no code dependency with EP-0 beyond two of its five stories (`US-102
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-203, US-208
 - **Status**: Not started
 - **Acceptance criteria**:
-  - Given a document `US-203` reports as fitting, when it is summarized, then exactly one call is made to the summarizer's resolved `IChatClient`, with `ChatOptions.ModelId` set to its `DeploymentName` and `ChatOptions.MaxOutputTokens` set explicitly from the catalog row's `MaxOutputTokens` — the first call site in the codebase to set that option for any provider (§6, invariant 2; `US-002`).
+  - Given a document `US-203` reports as fitting, when it is summarized, then exactly one call is made to the summarizer's resolved `IChatClient`, with `ChatOptions.ModelId` set to its `DeploymentName` and `ChatOptions.MaxOutputTokens` set explicitly from the catalog row's `MaxOutputTokens` — the first call site in the codebase to set that option for any provider (§6, invariant 2).
   - Given the call completes, when its response is read, then the summary text, the provider-reported input/output token counts, and the call count (`1`) are captured for `US-301`'s persistence and `US-402`'s usage row.
   - Given the call fails (timeout, content filter, transient fault), when the failure is handled, then it surfaces as a job failure with a sanitized message, following the shape ingestion's own failures already use, and writes no summary row and no usage row.
   - Given a document with zero chunk rows (an empty or failed extraction), when summarization is requested, then it fails with a clear message rather than sending an empty prompt to the summarizer.
@@ -674,23 +648,22 @@ EP-1 shares no code dependency with EP-0 beyond two of its five stories (`US-102
 
 | Phase | Contents | Relative estimate |
 | --- | --- | --- |
-| **Wave 0 — the gate** | EP-0 in full (US-001, US-002). Nothing downstream is sized in detail until both close | ~0.5 week |
-| **Wave 1 — catalog & configuration** | EP-1 in full (US-101 … US-105); three of its five stories need nothing from the gate and can start immediately | ~1 week |
-| **Wave 2 — the engine** | EP-2 in full (US-201 … US-208); needs EP-1's corrected seed and EP-0's confirmed call shape | ~2.5 weeks |
+| **Wave 1 — catalog & configuration** | EP-1 in full (US-101 … US-105); `US-101` has no prerequisite at all, so the epic starts immediately | ~1 week |
+| **Wave 2 — the engine** | EP-2 in full (US-201 … US-208); needs EP-1's corrected seed | ~2.5 weeks |
 | **Wave 3 — persistence, job & API** | EP-3 in full (US-301 … US-309); needs EP-2's engine to persist the output of | ~2 weeks |
 | **Wave 4 — accounting & frontend, in parallel** | EP-4 in full (US-401 … US-406) and EP-5 in full (US-501 … US-507); neither depends on the other, both need EP-3's routes and job | ~1.5 weeks, overlapping |
 | **Wave 5 — hardening before switch-on** | EP-6 in full (US-601 … US-604) | ~1 week |
 
-**Critical path.** `US-001 → US-002 → US-102 → US-105 → US-201 → US-202 → US-203 → US-205 → US-206 → US-207 → US-301 → US-303 → US-309 → US-503 → US-501 → US-502 → US-507`, seventeen stories deep — verified programmatically (§ build-order companion), and notably ending inside EP-5 rather than EP-6: the governance epic's own four stories are all shallower in the dependency graph, but are still scheduled last, by policy, because none of them may be skipped before the feature is enabled for real users. EP-2 is the longest single stretch sitting on unproven ground — the fit decision, the map split, and the collapse loop are all new code with no precedent in the codebase to copy wholesale — so schedule pressure belongs there; EP-1 carries the least risk and is where anyone idle during the gate should work.
+**Critical path.** `US-101 → US-102 → US-105 → US-201 → US-202 → US-203 → US-205 → US-206 → US-207 → US-301 → US-303 → US-309 → US-503 → US-501 → US-502 → US-507`, sixteen stories deep — verified programmatically (§ build-order companion), and notably ending inside EP-5 rather than EP-6: the governance epic's own four stories are all shallower in the dependency graph, but are still scheduled last, by policy, because none of them may be skipped before the feature is enabled for real users. EP-2 is the longest single stretch sitting on unproven ground — the fit decision, the map split, and the collapse loop are all new code with no precedent in the codebase to copy wholesale — so schedule pressure belongs there; EP-1 carries the least risk and is a natural place for anyone with spare capacity early in the build to start, since three of its five stories need nothing but `US-101`.
 
 **Risks & mitigations.**
 
 | Risk | Mitigation |
 | --- | --- |
 | The summarizer's catalog `ContextWindowSize` reads as `0` (unconfigured) and, if handled the way the shared context-budget calculator handles it, would be read as *unbounded* rather than *broken* — sending a multi-million-token document in one call | `US-201` inverts the convention explicitly and ships with a dedicated unit test (§6, invariant 1); this is the single P0 story called out by name in this document |
-| `Model.MaxOutputTokens` has never reached the wire for any provider before this feature — a map phase running hundreds of calls with no output cap is unbounded output billed at the summarizer's rate | `US-002`/`US-204` make this feature the first call site to set `ChatOptions.MaxOutputTokens` explicitly, verified against a real deployment before any production code depends on it (§6, invariant 2) |
+| `Model.MaxOutputTokens` has never reached the wire for any provider before this feature — a map phase running hundreds of calls with no output cap is unbounded output billed at the summarizer's rate | **Accepted, not eliminated.** `US-204` sets `ChatOptions.MaxOutputTokens` explicitly from the catalog row — the first call site in the codebase to do so for any provider (§6, invariant 2) — but nothing in this cycle verifies against a live deployment that Azure OpenAI over the Responses API actually honours it before production code depends on it (§9 assumption). If it does not, an uncapped or mis-capped map phase is unbounded output billed per call, on every one of potentially hundreds of calls a large document produces, until the assumption is checked against a real deployment |
 | A summary table that does not join the four existing soft-delete cascades leaves a readable summary of a document that no longer exists | `US-302` extends all four in the same transaction, with an explicit integration test as the regression guard (§6, invariant 3) |
-| A flat per-map-unit token estimate, or the safety fraction applied to the fit decision, is wrong for the summarizer's real behavior | `US-001`'s near-window call and `US-203`'s error-tracking criterion measure the estimator against the provider's own reported usage before the fraction is locked in, the same `ProviderCalibration` mechanism the rest of the codebase already uses for text |
+| A flat per-map-unit token estimate, or the safety fraction applied to the fit decision, is wrong for the summarizer's real behavior | `US-203`'s error-tracking criterion measures the estimator against the provider's own reported usage before the fraction is locked in, the same `ProviderCalibration` mechanism the rest of the codebase already uses for text |
 | The collapse loop's algorithm is new code with no existing implementation in the codebase to model after | The evaluation benchmark (§6, AI system requirements) is run before `EP-2` is accepted, spanning single-pass, one-round, and collapse-requiring documents specifically |
 
 **Rollout & rollback.** One flag governs the whole feature end to end — the summarize/digest routes, the composer's "Summarize" action, and the background job's willingness to accept summarization work — defaulting **off** everywhere, including development. With it off, every summarize route behaves as if the feature does not exist, and `US-601` asserts that with a regression test. Rollback is a configuration change with no redeploy; a summary already generated before a rollback is untouched and is served immediately once the flag is re-enabled. `Summarization:ModelId`'s own startup validation (`US-105`) runs regardless of the flag, so a misconfigured summarizer is caught at deploy time even in an environment where the feature is off.
@@ -699,6 +672,8 @@ EP-1 shares no code dependency with EP-0 beyond two of its five stories (`US-102
 
 **Assumptions.** Each is a guess a reviewer can veto.
 
+- **A near-window single-pass call — a prompt sized close to the summarizer's declared 1,000,000-token window — is assumed feasible at all.** No harness call against the real deployment has verified that a request that large is accepted, what request-body size or client timeout it needs, or what its latency is; `US-203`'s single-pass path, and every EP-2 story built on it, assume the provider accepts a call at that scale rather than rejecting it outright. A reviewer who wants this proven before `US-204`/`US-205` start should say so — the cheapest way is a one-off manual or throwaway-integration-test call against the real deployment, not a new PRD story.
+- **Azure OpenAI over the Responses API is assumed to honour `ChatOptions.MaxOutputTokens` as a hard cap, not merely advisory.** This is the first call site in the codebase to set that option for any provider (§6, invariant 2), and nothing in this cycle verifies it against a live deployment before `US-204`'s single-pass path and every EP-2 map/collapse/reduce call depend on it. If the assumption is wrong, a map phase's per-call output is effectively unbounded, billed at the summarizer's rate on every call a large document produces (§8 risks, accepted). A reviewer who wants this proven before production code depends on it should say so before `US-204` starts.
 - **`BaseDocumentSummary` mirrors `BaseDocumentChunk`'s split** — an unmapped base plus `Core.ConversationDocumentSummary`/`Core.ProjectDocumentSummary`, each with a unique FK index enforcing exactly one summary row per document. A reviewer who prefers a single table with nullable FKs, or a different column set, should say so before `US-301` starts.
 - **A regeneration overwrites the existing summary row in place; there is no summary version history.** `BaseModifiedEntity`'s own `DateModified` serves as the generation timestamp rather than a duplicate column. A reviewer who wants to keep prior summaries (for audit, or for comparing regenerations) should say so before `US-301` starts, since the unique-FK schema assumes exactly one row per document.
 - **The reassembled document text is held only in memory for the duration of a run and never persisted a second time.** Only the resulting summary is written to disk.
@@ -709,12 +684,12 @@ EP-1 shares no code dependency with EP-0 beyond two of its five stories (`US-102
 - **Concurrent identical requests for the same not-yet-summarized document are not deduplicated in v1.** Two callers requesting the same document within the same window may each enqueue a job; the unique FK index still guarantees exactly one final row, but the second job's work is wasted. `UserPermissionCache`'s `Lazy<Task<T>>` single-flight pattern is a candidate follow-up if telemetry (`US-405`) shows this happening often.
 - **Summarization jobs share the ingestion pipeline's existing queue capacity and concurrency gate rather than a dedicated one.** `BackgroundJobQueue`'s capacity is derived as `Documents:MaxQueuedBytes ÷ Documents:MaxFileSizeBytes`, sized around a 50 MB upload; a summarization job carries no file bytes at all but still occupies a slot sized for one, and competes with uploads for the same `BackgroundJobs:MaxConcurrent` gate. This PRD proposes accepting that for v1 rather than building a second queue, reviewable if the two workloads start visibly contending in production.
 - **A summary renders as plain text in the client, not through the `ngx-markdown` pipeline.** A reviewer who wants summaries to support markdown formatting (headings, lists) should say so before `US-502` starts, since it changes which rendering path the panel uses.
-- **Numeric values proposed here for veto, not asserted as given**: the safety fraction applied to the computed budget (proposed **0.85**), the map-unit size (proposed **90% of the same per-call budget**, leaving headroom for the map prompt's own framing), the bounded map-phase concurrency degree (proposed **4** concurrent calls per document), the per-call timeout (to be set from `US-001`/`US-002`'s measured latency plus headroom; proposed **3 minutes** as a placeholder), the collapse loop's maximum pass count (proposed **5**), the map-unit ceiling (proposed **200** units per document), a per-user daily request bound (proposed **50** summarization requests/user/day), the digest's maximum document count (proposed **25**), and every phase duration in §8, which assumes no team size since none was specified.
+- **Numeric values proposed here for veto, not asserted as given**: `US-102`'s seeded `MaxOutputTokens` (proposed **16,384** — generous enough for a reduce call over many partial summaries, small enough relative to the 1,000,000-token context window to leave the fit decision's budget largely intact, and roughly half of `Anthropic:DefaultMaxOutputTokens`'s existing 32,768 precedent in this codebase, since a summary's job is compression rather than exhaustive generation), the safety fraction applied to the computed budget (proposed **0.85**), the map-unit size (proposed **90% of the same per-call budget**, leaving headroom for the map prompt's own framing), the bounded map-phase concurrency degree (proposed **4** concurrent calls per document), the per-call timeout (proposed **3 minutes** as a placeholder), the collapse loop's maximum pass count (proposed **5**), the map-unit ceiling (proposed **200** units per document), a per-user daily request bound (proposed **50** summarization requests/user/day), the digest's maximum document count (proposed **25**), and every phase duration in §8, which assumes no team size since none was specified.
 
 **Open questions.**
 
-- **The safety fraction and the map-unit sizing fraction.** Proposed `0.85` and `90%` respectively (above); both are read from `US-001`'s real latency/size numbers as a sanity check, not derived from them mathematically — *product owner with the backend engineer, before `US-203` starts*.
-- **The bounded map-phase concurrency degree and the per-call timeout.** Proposed `4` and `3 minutes`; the timeout specifically should be set from `US-001`/`US-002`'s measured p95 latency plus headroom once real numbers exist — *backend engineer, before `US-205` starts*.
+- **The safety fraction and the map-unit sizing fraction.** Proposed `0.85` and `90%` respectively (above); neither is derived from a measured latency/size baseline — this cycle scopes no pre-production measurement to check them against (§9 assumptions, above) — so both should be revisited once `US-405`'s telemetry shows real call sizes and outcomes in production — *product owner with the backend engineer, before `US-203` starts*.
+- **The bounded map-phase concurrency degree and the per-call timeout.** Proposed `4` and `3 minutes`; neither is set from a measured latency baseline — both are placeholders a reviewer can veto outright, and the timeout in particular should be revisited once `US-405`'s telemetry shows real call durations in production — *backend engineer, before `US-205` starts*.
 - **The map-unit ceiling and the per-user/per-conversation request-rate bounds.** Proposed `200` map units and `50` requests/user/day; no per-conversation bound is proposed at all — *product owner with the operator, before `US-602` starts*.
 - **The digest's maximum document count.** Proposed `25` — *product owner, before `US-603` starts*.
 - **Whether `US-604` (durable resume for a restarted run) ships in this cycle, or is accepted as a documented gap.** The mitigation either way is cheap: shipping it costs one `[enabler]` story with no other story depending on it; not shipping it costs nothing but an accepted limitation recorded in the rollout notes — *product owner with the operator, before wave 5 starts*.
