@@ -47,8 +47,9 @@ describe('McpServerFormDialog (US-1208)', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  function field(id: string): HTMLInputElement | HTMLSelectElement {
-    return host().querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement;
+  function field(id: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+    return host().querySelector(`#${id}`) as
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   }
 
   function submitButton(): HTMLButtonElement {
@@ -228,7 +229,7 @@ describe('McpServerFormDialog (US-1208)', () => {
     await fixture.whenStable();
   });
 
-  it('sends the six fields, with the auth type as the number the wire carries', async () => {
+  it('sends the seven fields, with the auth type as the number the wire carries', async () => {
     await openCreate();
     await fill();
     await choose('mcp-form-auth', ENTRA);
@@ -244,6 +245,7 @@ describe('McpServerFormDialog (US-1208)', () => {
       authType: 2,
       scope: 'api://sap/.default',
       iconKey: 'context7',
+      headers: null,
     });
 
     request.flush(mcpServerFixture(), { status: 201, statusText: 'Created' });
@@ -332,6 +334,70 @@ describe('McpServerFormDialog (US-1208)', () => {
     expect((field('mcp-form-auth') as HTMLSelectElement).value).toBe(ENTRA);
     expect((field('mcp-form-scope') as HTMLInputElement).value).toBe('api://sap/.default');
     expect(host().textContent).toContain('Edit MCP server');
+  });
+
+  it('refuses a header the API reserves, without sending it', async () => {
+    await openCreate();
+    await fill();
+    await type('mcp-form-headers', 'Authorization: Bearer x');
+    await blur('mcp-form-headers');
+
+    // The API refuses this name too; the point is that it never has to. `backend.verify()`
+    // proves the request never went out, and Save is disabled behind it.
+    expect(errors()).toContain(
+      'The “Authorization” header is set by the API and cannot be configured here.',
+    );
+    expect(submitButton().disabled).toBe(true);
+  });
+
+  it('seeds stored headers as Name: value lines and echoes them on the PUT', async () => {
+    await openEdit(
+      mcpServerFixture({
+        headers: { 'X-MCP-Readonly': 'true', 'X-MCP-Toolsets': 'repos,wit,wiki' },
+      }),
+    );
+
+    expect((field('mcp-form-headers') as HTMLTextAreaElement).value).toBe(
+      'X-MCP-Readonly: true\nX-MCP-Toolsets: repos,wit,wiki',
+    );
+
+    // The PUT is a full representation, so an untouched field still has to echo the set —
+    // omitting it would clear the headers and silently restore a read-only server's writes.
+    const request = await submit();
+    expect(request.request.body).toMatchObject({
+      headers: { 'X-MCP-Readonly': 'true', 'X-MCP-Toolsets': 'repos,wit,wiki' },
+    });
+
+    request.flush(mcpServerFixture());
+    await fixture.whenStable();
+  });
+
+  it('renders a Headers rejection at the field rather than only in the summary', async () => {
+    await openCreate();
+    await fill();
+    await type('mcp-form-headers', 'X-MCP-Toolsets: repos');
+
+    // The reachable divergence: the client's size estimate is looser than .NET's encoder,
+    // so a block this form accepts can still come back refused. This is the assertion the
+    // whole textarea design rests on — the API faults the set under one flat `Headers` key,
+    // which is what `serverMessagesFor` can match and `Headers[0].Name` could not.
+    (await submit()).flush(
+      {
+        ...PROBLEM_FIXTURES.validationError,
+        errors: {
+          Headers: ['The configured headers are too large; they must fit in 1024 characters.'],
+        },
+      },
+      BAD_REQUEST,
+    );
+    await fixture.whenStable();
+
+    expect(errors()).toContain(
+      'The configured headers are too large; they must fit in 1024 characters.',
+    );
+    // Reported once. A message the field carries must not also appear in the panel above it.
+    expect(summary()).toContain('The server rejected the headers.');
+    expect(summary()).not.toContain('must fit in 1024 characters');
   });
 
   it('renders the server’s message at its field, and clears it on the next edit', async () => {

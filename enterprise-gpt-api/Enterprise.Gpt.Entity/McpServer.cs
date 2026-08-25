@@ -40,6 +40,24 @@ namespace Enterprise.Gpt.Entity
         [StringLength(64)]
         public string? IconKey { get; set; }
 
+        /// <summary>
+        /// Extra request headers sent on every call to this server, such as the remote Azure
+        /// DevOps server's <c>X-MCP-Toolsets</c> and <c>X-MCP-Readonly</c>; <see langword="null"/>
+        /// when none are configured.
+        /// </summary>
+        /// <remarks>
+        /// Configuration, deliberately not credentials. The validators refuse
+        /// <c>Authorization</c> and the other headers the transport owns, and
+        /// <c>McpToolProvider</c> writes the on-behalf-of bearer last regardless, so a stored
+        /// header can never displace it. Values are persisted in plain text and are only ever
+        /// returned on the administrator-gated routes.
+        ///
+        /// Keyed <see cref="StringComparer.OrdinalIgnoreCase"/> everywhere it is constructed,
+        /// because HTTP header names are case-insensitive and two spellings of one header are
+        /// the same header.
+        /// </remarks>
+        public Dictionary<string, string>? Headers { get; set; }
+
         public ICollection<Permission> Permissions { get; set; } = [];
     }
 }

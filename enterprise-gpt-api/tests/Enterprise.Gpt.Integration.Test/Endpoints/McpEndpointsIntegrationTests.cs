@@ -134,6 +134,105 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         Assert.Null(permission.DateDeactivated);
     }
 
+    /// <summary>
+    /// The only place the real <c>nvarchar(1024)</c> column and the real EF projection run — the
+    /// unit tests use SQLite and compile the projection rather than translating it, so an
+    /// untranslatable value-converted property surfaces here or nowhere.
+    /// </summary>
+    [Fact]
+    public async Task CreateMcpServer_Headers_RoundTrip()
+    {
+        var request = CreateRequest(name: "it-mcp-headers") with
+        {
+            Headers = new Dictionary<string, string>
+            {
+                ["X-MCP-Readonly"] = "true",
+                ["X-MCP-Toolsets"] = "repos,wit,wiki"
+            }
+        };
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<McpServerDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(created);
+        Assert.Equal("true", Assert.Contains("X-MCP-Readonly", created.Headers!));
+
+        // `GET {id}` materializes the entity; `GET all` runs the LINQ projection. Both, because
+        // only the second proves EF can translate the property inside a `Select`.
+        var read = await client.GetFromJsonAsync<McpServerDto>(
+            $"api/mcps/{created.Id}", TestContext.Current.CancellationToken);
+        Assert.NotNull(read);
+        Assert.Equal("repos,wit,wiki", Assert.Contains("X-MCP-Toolsets", read.Headers!));
+
+        var all = await client.GetFromJsonAsync<List<McpServerDto>>(
+            "api/mcps/all", TestContext.Current.CancellationToken);
+        var projected = Assert.Single(all!, x => x.Id == created.Id);
+        Assert.Equal("repos,wit,wiki", Assert.Contains("X-MCP-Toolsets", projected.Headers!));
+    }
+
+    [Fact]
+    public async Task UpdateMcpServer_OmittedHeaders_ClearsThem()
+    {
+        using var client = _fixture.Factory.CreateAdminClient();
+        var response = await client.PostAsJsonAsync(
+            "api/mcps",
+            CreateRequest(name: "it-mcp-hdr-clear") with
+            {
+                Headers = new Dictionary<string, string> { ["X-MCP-Readonly"] = "true" }
+            },
+            TestContext.Current.CancellationToken);
+        var created = await response.Content.ReadFromJsonAsync<McpServerDto>(TestContext.Current.CancellationToken);
+
+        // The PUT is a full representation, the same rule `UpdateMcpServer_OmittedIconKey_ClearsIt`
+        // pins — and load-bearing here, since silently restoring a read-only server's write tools
+        // is what an omitted set costs.
+        var updated = await client.PutAsJsonAsync(
+            $"api/mcps/{created!.Id}",
+            UpdateRequest(name: "it-mcp-hdr-clear"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var result = await updated.Content.ReadFromJsonAsync<McpServerDto>(TestContext.Current.CancellationToken);
+        Assert.Null(result!.Headers);
+    }
+
+    [Fact]
+    public async Task CreateMcpServer_ReservedHeaderName_ReturnsBadRequest()
+    {
+        var request = CreateRequest(name: "it-mcp-hdr-auth") with
+        {
+            Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer nope" }
+        };
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains(nameof(CreateMcpServerActionDto.Headers), problem.Errors.Keys);
+    }
+
+    /// <summary>
+    /// Eight headers at the per-name and per-value caps overflow the column, so the serialized
+    /// budget has to refuse them before EF tries to write one — a truncation here would be a 500.
+    /// </summary>
+    [Fact]
+    public async Task CreateMcpServer_HeadersOverSerializedBudget_ReturnsBadRequest()
+    {
+        var request = CreateRequest(name: "it-mcp-hdr-big") with
+        {
+            Headers = Enumerable.Range(1, 8)
+                .ToDictionary(i => $"X-MCP-Header-{i}", _ => new string('v', 256))
+        };
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync("api/mcps", request, TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Contains(nameof(CreateMcpServerActionDto.Headers), problem.Errors.Keys);
+    }
+
     [Fact]
     public async Task CreateMcpServer_IconKey_RoundTrips()
     {

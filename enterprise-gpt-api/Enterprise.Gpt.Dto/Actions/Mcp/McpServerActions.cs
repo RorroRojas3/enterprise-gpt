@@ -16,6 +16,16 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
         public string? Scope { get; init; }
 
         public string? IconKey { get; init; }
+
+        /// <summary>
+        /// Extra request headers to send on every call to this server, such as the remote Azure
+        /// DevOps server's <c>X-MCP-Toolsets</c>; <see langword="null"/> or empty for none.
+        /// </summary>
+        /// <remarks>
+        /// Both verbs take a full representation, so an update that omits this clears the stored
+        /// set — the same rule every other field on this DTO follows.
+        /// </remarks>
+        public IReadOnlyDictionary<string, string>? Headers { get; init; }
     }
 
     public class CreateMcpServerActionDtoValidator : AbstractValidator<CreateMcpServerActionDto>
@@ -55,6 +65,17 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
                 .Matches(IconKeyPattern)
                 .When(x => x.IconKey is not null)
                 .WithMessage("IconKey must be a lowercase slug such as 'microsoft'.");
+            // Custom rather than a chain of Must rules: the rules are shared with the other
+            // validator and with the column width, and this reports every problem in the set on
+            // its own line under one `Headers` key instead of collapsing them into the first.
+            RuleFor(x => x.Headers)
+                .Custom((headers, context) =>
+                {
+                    foreach (var message in McpServerHeaderRules.Validate(headers))
+                    {
+                        context.AddFailure(message);
+                    }
+                });
         }
 
         private const string IconKeyPattern = "^[a-z0-9]+(-[a-z0-9]+)*$";
@@ -79,6 +100,16 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
         public string? Scope { get; init; }
 
         public string? IconKey { get; init; }
+
+        /// <summary>
+        /// Extra request headers to send on every call to this server, such as the remote Azure
+        /// DevOps server's <c>X-MCP-Toolsets</c>; <see langword="null"/> or empty for none.
+        /// </summary>
+        /// <remarks>
+        /// Both verbs take a full representation, so an update that omits this clears the stored
+        /// set — the same rule every other field on this DTO follows.
+        /// </remarks>
+        public IReadOnlyDictionary<string, string>? Headers { get; init; }
     }
 
     public class UpdateMcpServerActionDtoValidator : AbstractValidator<UpdateMcpServerActionDto>
@@ -118,6 +149,17 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
                 .Matches(IconKeyPattern)
                 .When(x => x.IconKey is not null)
                 .WithMessage("IconKey must be a lowercase slug such as 'microsoft'.");
+            // Custom rather than a chain of Must rules: the rules are shared with the other
+            // validator and with the column width, and this reports every problem in the set on
+            // its own line under one `Headers` key instead of collapsing them into the first.
+            RuleFor(x => x.Headers)
+                .Custom((headers, context) =>
+                {
+                    foreach (var message in McpServerHeaderRules.Validate(headers))
+                    {
+                        context.AddFailure(message);
+                    }
+                });
         }
 
         private const string IconKeyPattern = "^[a-z0-9]+(-[a-z0-9]+)*$";

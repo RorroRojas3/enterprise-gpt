@@ -8,6 +8,9 @@ import {
   authTypeError,
   authTypeLabel,
   describeRejectedFields,
+  formatHeaderLines,
+  headersError,
+  parseHeaderLines,
   requiresScope,
   scopeError,
   toMcpServerBody,
@@ -26,6 +29,7 @@ function formValue(overrides: Partial<McpServerFormValue> = {}): McpServerFormVa
     authType: NONE,
     scope: '',
     iconKey: '',
+    headers: '',
     ...overrides,
   };
 }
@@ -118,6 +122,7 @@ describe('MCP server form rules (US-1208)', () => {
         authType: NONE,
         scope: '',
         iconKey: '',
+        headers: '',
       });
     });
 
@@ -138,6 +143,7 @@ describe('MCP server form rules (US-1208)', () => {
         authType: ENTRA,
         scope: 'api://sap/.default',
         iconKey: 'microsoft',
+        headers: '',
       });
 
       expect(toMcpServerFormValue(mcpServerFixture({ scope: null })).scope).toBe('');
@@ -157,6 +163,7 @@ describe('MCP server form rules (US-1208)', () => {
         authType: MCP_AUTH_TYPE.entraIdOnBehalfOf,
         scope: 'api://sap/.default',
         iconKey: null,
+        headers: null,
       });
     });
 
@@ -213,6 +220,125 @@ describe('MCP server form rules (US-1208)', () => {
       // back to a generic line instead of pointing at a control that is not there.
       expect(describeRejectedFields([])).toBeNull();
       expect(describeRejectedFields(['Something'])).toBeNull();
+    });
+
+    it('names the headers field, which the API faults under one flat key', () => {
+      expect(describeRejectedFields(['Headers'])).toBe('The server rejected the headers.');
+    });
+  });
+
+  describe('parseHeaderLines', () => {
+    it('reads the remote Azure DevOps set', () => {
+      expect(parseHeaderLines('X-MCP-Readonly: true\nX-MCP-Toolsets: repos,wit,wiki')).toEqual({
+        headers: { 'X-MCP-Readonly': 'true', 'X-MCP-Toolsets': 'repos,wit,wiki' },
+        error: null,
+      });
+    });
+
+    it('accepts an empty block, and blank lines within one', () => {
+      expect(parseHeaderLines('')).toEqual({ headers: {}, error: null });
+      expect(parseHeaderLines('\n\n  \n')).toEqual({ headers: {}, error: null });
+    });
+
+    it('keeps colons in the value, splitting on the first only', () => {
+      // A URL in a header value is the case a naive `split(':')` gets wrong.
+      expect(parseHeaderLines('X-Origin: https://example.test:8443/a').headers).toEqual({
+        'X-Origin': 'https://example.test:8443/a',
+      });
+    });
+
+    it('absorbs the CR of a pasted CRLF block', () => {
+      expect(parseHeaderLines('X-MCP-Readonly: true\r\nX-MCP-Toolsets: repos').headers).toEqual({
+        'X-MCP-Readonly': 'true',
+        'X-MCP-Toolsets': 'repos',
+      });
+    });
+
+    it.each([
+      // The connection's own.
+      'Authorization',
+      'authorization',
+      'Cookie',
+      'Host',
+      // Transport control — accepted by HttpRequestHeaders, so they change the connection
+      // silently rather than failing loudly.
+      'Connection',
+      'Transfer-Encoding',
+      'Expect',
+      // The MCP protocol's — the SDK appends rather than replaces these.
+      'Mcp-Session-Id',
+      'mcp-session-id',
+      'MCP-Protocol-Version',
+      'Last-Event-ID',
+      // Content headers, which `HttpRequestHeaders` refuses outright.
+      'Content-Type',
+      'Content-Encoding',
+      'Expires',
+      'Allow',
+    ])('refuses %s, which something other than the registration owns', (name) => {
+      expect(headersError(`${name}: anything`)).not.toBeNull();
+    });
+
+    it('refuses a line with no colon', () => {
+      expect(headersError('X-MCP-Readonly true')).not.toBeNull();
+    });
+
+    it('refuses a malformed name', () => {
+      expect(headersError('X MCP Readonly: true')).not.toBeNull();
+      expect(headersError('X_MCP_Readonly: true')).not.toBeNull();
+      expect(headersError(`${'a'.repeat(65)}: true`)).not.toBeNull();
+      expect(headersError(`${'a'.repeat(64)}: true`)).toBeNull();
+    });
+
+    it('refuses one header spelled two ways', () => {
+      // Two entries here, one header on the wire — which survived would be an accident.
+      expect(headersError('X-MCP-Toolsets: repos\nx-mcp-toolsets: wit')).not.toBeNull();
+    });
+
+    it('refuses an empty or over-long value', () => {
+      expect(headersError('X-MCP-Toolsets:')).not.toBeNull();
+      expect(headersError(`X-MCP-Toolsets: ${'a'.repeat(257)}`)).not.toBeNull();
+      expect(headersError(`X-MCP-Toolsets: ${'a'.repeat(256)}`)).toBeNull();
+    });
+
+    it('refuses a value outside printable ASCII', () => {
+      expect(headersError('X-MCP-Toolsets: répos')).not.toBeNull();
+    });
+
+    it('refuses more than the maximum, and the maximum itself is fine', () => {
+      const line = (i: number) => `X-MCP-Header-${i}: v`;
+      expect(headersError([1, 2, 3, 4, 5, 6, 7, 8].map(line).join('\n'))).toBeNull();
+      expect(headersError([1, 2, 3, 4, 5, 6, 7, 8, 9].map(line).join('\n'))).not.toBeNull();
+    });
+
+    it('refuses a set that would not fit the column', () => {
+      const big = [1, 2, 3, 4, 5, 6, 7, 8]
+        .map((i) => `X-MCP-Header-${i}: ${'v'.repeat(256)}`)
+        .join('\n');
+      expect(headersError(big)).not.toBeNull();
+    });
+  });
+
+  describe('header seeding and body', () => {
+    it('round-trips stored headers through the field', () => {
+      const server = mcpServerFixture({
+        headers: { 'X-MCP-Readonly': 'true', 'X-MCP-Toolsets': 'repos' },
+      });
+
+      const seeded = toMcpServerFormValue(server);
+      expect(seeded.headers).toBe('X-MCP-Readonly: true\nX-MCP-Toolsets: repos');
+      expect(formatHeaderLines(server.headers)).toBe(seeded.headers);
+      expect(toMcpServerBody(seeded)?.headers).toEqual(server.headers);
+    });
+
+    it('sends null rather than an empty object when the field is blank', () => {
+      expect(toMcpServerBody(formValue({ headers: '' }))?.headers).toBeNull();
+      expect(toMcpServerBody(formValue({ headers: '\n  \n' }))?.headers).toBeNull();
+    });
+
+    it('refuses to build a body the API would reject', () => {
+      expect(toMcpServerBody(formValue({ headers: 'Authorization: Bearer x' }))).toBeNull();
+      expect(toMcpServerBody(formValue({ headers: 'no colon here' }))).toBeNull();
     });
   });
 });

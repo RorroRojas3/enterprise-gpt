@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Mcp;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service.Mappers;
@@ -117,6 +118,46 @@ public class McpServerMapperTests
         Assert.Equal(server.Name, dto.Name);
         Assert.Equal(server.Description, dto.Description);
         Assert.Equal(server.IconKey, dto.IconKey);
+
+        // `McpDto` carries no headers, for the reason it carries no url, auth type or scope:
+        // they are connection details, and this projection is the one non-administrators read.
+        // Asserted on the type rather than a value, so adding the property is what fails.
+        Assert.Null(typeof(McpDto).GetProperty(nameof(McpServerDto.Headers)));
+    }
+
+    [Fact]
+    public void MapToMcpServerDto_Headers_CrossToTheAdministrativeShape()
+    {
+        var server = CreateServer();
+        server.Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["X-MCP-Readonly"] = "true"
+        };
+
+        Assert.Equal("true", Assert.Contains("X-MCP-Readonly", server.MapToMcpServerDto().Headers!));
+        Assert.Equal(
+            "true",
+            Assert.Contains("X-MCP-Readonly", McpServerMapper.MapToMcpServerDtoExpression.Compile()(server).Headers!));
+    }
+
+    [Fact]
+    public void FromUpdateMcpServerActionDtoToMcpServer_OmittedHeaders_ClearsThem()
+    {
+        var server = CreateServer();
+        server.Headers = new Dictionary<string, string> { ["X-MCP-Readonly"] = "true" };
+
+        // The PUT is a full representation: every field is assigned unconditionally, so an
+        // omitted set clears rather than preserves.
+        new UpdateMcpServerActionDto
+        {
+            Name = server.Name,
+            Description = server.Description,
+            Url = server.Url,
+            AuthType = server.AuthType,
+            Scope = server.Scope
+        }.FromUpdateMcpServerActionDtoToMcpServer(server);
+
+        Assert.Null(server.Headers);
     }
 
     [Fact]

@@ -61,6 +61,7 @@ export function mcpServerFixture(overrides: Partial<McpServerDto> = {}): McpServ
     authType: MCP_AUTH_TYPE.none,
     scope: null,
     iconKey: null,
+    headers: null,
     permissionId: `${String(index).padStart(8, '0')}-3333-4444-8555-777777777777`,
     ...overrides,
   };

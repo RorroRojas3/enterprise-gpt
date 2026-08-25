@@ -54,9 +54,9 @@ Ten more shape the model catalog, and none of them is a preference:
 9. **`provider.ts` gained Azure AI Foundry.** `Providers.cs` seeds four and the client mirror had three; there is no `GET api/providers`, so the mirror is the only source (§10.7).
 10. **The `DEFAULT` pill renders in `--brand`, not frame `5e`'s `--accent`**, which measures 2.74:1 on light `--surface` — below AA, with the border in the same colour, so there is no second channel (§10.3).
 
-Ten shape the MCP server registry. It copies the catalog's shape and departs from it in exactly one place, which is the fourth below:
+Eleven shape the MCP server registry. It copies the catalog's shape and departs from it in exactly one place, which is the fourth below:
 
-1. **The form binds six fields, and it is still not frame `5h`'s six.** Five are the board's; the sixth is Icon, which the board predates (US-1210). The board's own sixth field, "Linked permission", is still absent, because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field — the server creates the gating permission itself, names it after the server and re-syncs that name on every rename. A note under the Name field states that rule instead, which is also the only way the name-collision 400 makes sense to a reader (§11.3).
+1. **The form binds seven fields, and it is still not frame `5h`'s six.** Five are the board's; the sixth is Icon (US-1210), and the seventh is Headers — a textarea of per-server request headers a remote server reads to configure itself (§11.3.2). The board's own sixth field, "Linked permission", is still absent, because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field — the server creates the gating permission itself, names it after the server and re-syncs that name on every rename. A note under the Name field states that rule instead, which is also the only way the name-collision 400 makes sense to a reader (§11.3).
 2. **Two auth types, not frame `5h`'s three, and they travel as numbers.** `McpAuthTypes` has `None = 1` and `EntraIdOnBehalfOf = 2`; "Header key" and "OAuth2" do not exist in this system. The API registers no `JsonStringEnumConverter`, and `IsInEnum` rejects the `0` an empty select parses to — which is why a create seeds `None` rather than a blank option (§11.3).
 3. **Scope is conditional in both directions, because the validator is**: required for `EntraIdOnBehalfOf`, refused outright for `None`. It is `hidden()` in the schema, guarded by an `@if`, **and** cleared by an effect, and `toMcpServerBody` normalizes it to `null` on top of all three (§11.3).
 4. **Every rejection kept on the dialog's own surface renders in the modal's `--fail` panel, a validation problem included.** This is the one place `ModelActionsStore`'s shape is deliberately not copied: the criterion asks for a panel that names the server on a 502 as well as on a 400, so a non-validation failure renders there rather than raising a toast (§11.4).
@@ -66,6 +66,7 @@ Ten shape the MCP server registry. It copies the catalog's shape and departs fro
 8. **The confirmation says what the cascade actually does.** `DeactivateMcpServerAsync` deactivates the server, its linked permission **and every grant of that permission** in one atomic save. No other delete in this application revokes other people's access, so it is on the `--warn` surface rather than an aside (§11.5).
 9. **The Auth column is 150px, not frame `5g`'s 90px.** "Entra ID (on behalf of)" is one of only two values it can hold, and a narrower grid track ellipsises it permanently (§11.2).
 10. **A key a newer client wrote is kept, not blanked, and Save stays enabled.** `IconKey` is validated for shape only, never against a list of known icons, so a row a future build registered can carry a key this one ships no artwork for. The `<select>` shows blank — `selectedIndex = -1` with no matching option — but the model keeps the value and the save sends it back unchanged; a `role="status"` note explains why, ungated by `touched`, the same shape as the unsupported-auth-type note (§11.3).
+11. **Headers is configuration, not a reopening of the refused "Header key" auth type — and three independent mechanisms keep it that way.** `McpServerHeaderRules` refuses `Authorization` and every other header the transport or the on-behalf-of exchange owns; `McpToolProvider` re-applies that same refusal when it builds the request rather than trusting what a row stored; and the on-behalf-of bearer is written **last**, so a stored `Authorization` can never displace it, even on a row written before the rule existed. Values round-trip in plain text to `GET api/mcps/all` and render unmasked in this dialog — nothing here is a secret store, which is also why `McpAuthTypes` still has exactly two members and the Auth type select still offers two options. And because the PUT is a full representation, an edit that omits `headers` **clears** the stored set — which for a server registered read-only would silently restore its write tools (§11.3.2).
 
 Ten shape the reports tab, and it took two releases, four days apart, to get there:
 
@@ -744,15 +745,15 @@ Seven more details are load-bearing:
 
 Two empty states, because they are two situations: nothing matched a term (**Clear search**, which returns focus to the field, since the button removes itself the moment rows come back), and a genuinely empty registry, whose message says what registering one achieves.
 
-### 11.3 The dialog binds six fields, still not the board's Linked permission
+### 11.3 The dialog binds seven fields, still not the board's Linked permission
 
-Five of the six are frame `5h`'s. The board's own sixth field, **Linked permission**, is still absent, and it is absent because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field. `McpServerService` creates the gating permission alongside the server, names it after the server, and re-syncs that name on every rename. Rendering the control disabled would be the shown-and-inert affordance US-203 rejected for the Admin entry itself — so the **rule is stated under the Name field** instead:
+Five of the seven are frame `5h`'s. The board's own sixth field, **Linked permission**, is still absent, and it is absent because there is nothing for it to bind: neither `CreateMcpServerActionDto` nor `UpdateMcpServerActionDto` carries a permission field. `McpServerService` creates the gating permission alongside the server, names it after the server, and re-syncs that name on every rename. Rendering the control disabled would be the shown-and-inert affordance US-203 rejected for the Admin entry itself — so the **rule is stated under the Name field** instead:
 
 > A permission with this name is created alongside the server, and renamed with it.
 
 That note is not a consolation prize. It is the only thing that makes a name-collision 400 comprehensible: the server and its permission share one uniqueness space, so a name can be refused for colliding with a permission nobody created by hand.
 
-The sixth field this dialog actually binds is **Icon** (US-1210), which the board predates.
+The sixth and seventh fields this dialog actually binds are **Icon** (US-1210) and **Headers** (§11.3.2), neither of which the board draws.
 
 | Field         | Notes                                                                                                                    |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -762,6 +763,7 @@ The sixth field this dialog actually binds is **Icon** (US-1210), which the boar
 | `authType`    | A select over `AUTH_TYPE_OPTIONS`. **Two entries**, and they submit as numbers                                           |
 | `scope`       | 512, mono, and **conditional in both directions**. Hidden, cleared and normalized on the `None` arm                      |
 | `iconKey`     | A select over `MCP_ICON_OPTIONS` plus "None", previewed live beside itself, sent as the stored slug or `null` (§11.3.1)  |
+| `headers`     | A textarea of `Name: value` lines, up to 8, mirroring `McpServerHeaderRules`; `''` is "no headers" (§11.3.2)             |
 
 Five decisions inside it outlive the story.
 
@@ -792,6 +794,18 @@ The server's own rule — `MaximumLength(64)` and a lowercase-slug pattern — v
 
 A full-representation PUT that omits `iconKey` clears the stored value, exactly as every other field on `McpServerMapper` behaves — so a client that does not know about icons yet cannot silently preserve one by omission.
 
+#### 11.3.2 Headers: a textarea, not a row editor, and why it can never become a secret store
+
+The motivating case is the [remote Azure DevOps MCP Server](../mcp/azure-devops-server.md): it takes no configuration of its own beyond the URL, and instead reads `X-MCP-Readonly` and `X-MCP-Toolsets` off every request to decide which of its roughly 45 tools to expose. Without this field there was no way to constrain such a server from this application at all — every registration got the server's full, unconfigurable default.
+
+**One textarea of `Name: value` lines, deliberately not a repeated-row editor.** Signal Forms' array support is `@experimental`, and an indexed editor would make the API key its rejections `Headers[0].Name` — which `serverMessagesFor` is documented not to match, being flat-keys-only by its own contract. The API validates the whole set in one `Custom` FluentValidation rule and faults it as a single `Headers` key, so a flat field is what actually matches the wire rather than a workaround for the form library's gap.
+
+`headersError` (`core/catalog/mcp-server-form.ts`) mirrors `McpServerHeaderRules` line for line — at most 8 headers, names of at most 64 characters of letters, digits and hyphens, values of 1–256 printable ASCII, the same reserved-name set matched case-insensitively — and reports the **first** problem it finds, naming the header at fault, the same shape `urlError` and `scopeError` already use. One check is deliberately an estimate rather than exact: the 1024-character serialized budget is measured with `JSON.stringify`, which escapes less than .NET's default encoder does — a value with several double quotes or `<`, `>`, `&` characters can pass this check and still be refused by the server. That disagreement always runs in the safe direction: the server is authoritative and its message renders on this same field, so a client under-estimate costs a round trip rather than a wrong answer reaching the user as a success.
+
+**The field always seeds from the row, never from empty.** `toMcpServerFormValue` renders a server's current headers back into `Name: value` lines through `formatHeaderLines`, exactly as every other field reseeds on open — so accidentally clearing a read-only server's restriction from this dialog takes deleting the textarea's contents, not merely opening and re-saving the form. The clearing behaviour that matters in practice is at the wire, for a caller that builds the PUT body itself: `POST`/`PUT api/mcps` both take a full representation, so a script that echoes back every field `GET api/mcps/{id}` returned except one it does not yet know about — `headers` — will silently widen that server's tool surface the next time it edits the row, with nothing in the response to say so.
+
+**Values render unmasked, and that is the point rather than an oversight.** This is not the board's refused "Header key" auth type reopened — that refusal was about an authentication *mechanism* whose value is a bearer-equivalent secret, and it still does not exist: the Auth type select still offers exactly two options. What this field carries is non-secret configuration a remote server reads to restrict itself, and masking it would misrepresent what it is.
+
 ### 11.4 One panel for every rejection this surface keeps
 
 This is the one place `ModelActionsStore`'s shape is deliberately not copied. The acceptance criterion asks for a `--fail` panel at the top of the modal that names the server **on a 502 as well as on a 400** — so a non-validation failure kept on this surface renders _there_ rather than raising a toast, because reporting the same fact twice is the defect the shape avoids. It falls back to a toast only once its surface is no longer the one on screen.
@@ -812,7 +826,7 @@ Everything else is §6.5's rule in a third store, over §10.5's three flags unch
 
 - **The flow identifies itself.** `rejectForm` takes `{ mode: 'create' }` or `{ mode: 'edit', id }`, carried through the request rather than read back off `formMode()`, and for an edit the target id is checked too.
 - **`formBusy` is set only by the dialog's own submit**, drives the fields, both buttons and `Modal`'s Escape/backdrop suppression, and is released in `finalize` — not in `cancelForm()`, because it tracks a request rather than a surface.
-- **No failure closes the dialog.** Six fields including a 1024-character description are behind it, and `retryInterceptor` retries neither a POST nor a PUT.
+- **No failure closes the dialog.** Seven fields including a 1024-character description are behind it, and `retryInterceptor` retries neither a POST nor a PUT.
 - **A row action's failure is always a toast**: no form produced it, so there is nowhere inline to put it.
 - The screen's constructor calls `cancelForm()` and `cancelDeactivate()`, because the store outlives the route and a dialog left open would otherwise re-mount `showModal()` on a surface the reader never asked for.
 
@@ -1020,6 +1034,13 @@ And US-1210's, the Icon field on the MCP form (§11.3.1):
 | The registry table   | `admin-mcps`                      | A row with a mark drawing it beside the name; a row with none drawing nothing rather than a placeholder logo |
 | Accessibility (US-1405) | `admin.a11y`, `chat.a11y` (2 new audits each) | The MCP form open, on a row carrying both a recognised and an unrecognised icon key; the composer's Tools picker open, on a mix of marked and unmarked rows — 50 audits total, up from 46 |
 
+And Headers' own landing, added to the MCP form to constrain a server that configures itself through request headers (§11.3.2):
+
+| Area                 | Spec                             | Notable cases                                                                                                                                                                                                                                     |
+| -------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The form dialog      | `mcp-server-form-dialog`          | **The seven fields the API now accepts, headers included**; a reserved-header rejection naming the header; the server's own `Headers` rejection cleared on the next edit; an edit that omits `headers` clearing the stored set on save |
+| The form's rules     | `mcp-server-form`                 | `parseHeaderLines` over count, name, value and the reserved set, each reporting the first problem found; `formatHeaderLines` round-tripping a stored set back into lines; a trailing `\r` from a pasted CRLF block absorbed by the per-line trim |
+
 ```bash
 # from enterprise-gpt-ui/
 npm test        # Vitest, single run
@@ -1057,7 +1078,7 @@ On the registry:
 | **Any sort control**                         | US-902's sibling                                                                            | Frame `5g` draws none. Like the catalog this set _is_ sortable — `name` and `url` are wired and `canSort()` is true — so closing it is a template change (§11.1)                                                        |
 | **Restore for a deactivated server**         | a backend enabler                                                                           | `DELETE` is a soft delete; `GET`, `PUT` and `DELETE` on `{id}` all 404 on a deactivated row, and there is no reactivate route. The kebab is therefore absent rather than disabled (§11.2)                                |
 | **A "Linked permission" select**             | —                                                                                           | Neither action DTO carries one. The server owns that permission's name, and a disabled select would be an affordance with nothing behind it (§11.3)                                                                     |
-| **Header key and OAuth2 auth types**         | —                                                                                           | `McpAuthTypes` has two members. Offering a third would be a select entry the wire refuses (§11.3)                                                                                                                       |
+| **Header key and OAuth2 auth types**         | —                                                                                           | `McpAuthTypes` has two members. Offering a third would be a select entry the wire refuses (§11.3). Not the **Headers** field below it in the same dialog — that carries non-secret per-server configuration, not a third authentication mechanism (§11.3.2) |
 | **More than one scope**                      | —                                                                                            | `McpServer.Scope` is a single `nvarchar(512)`. The form binds one field and says "One scope only." under it; a future `Scope` → `Scopes` rename would be a **breaking change to this client** and would have to carry it |
 | **Dry-run validation, a tool-surface view, a health signal** | —                                                                            | Frame-adjacent capability an administrator wants when registering a server, and nothing routes to `McpToolProvider` or `McpClientCache` over HTTP today; no work item currently tracks it                               |
 

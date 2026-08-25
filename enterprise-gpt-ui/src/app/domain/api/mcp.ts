@@ -39,6 +39,15 @@ export const MCP_AUTH_TYPE = {
 export type McpAuthType = (typeof MCP_AUTH_TYPE)[keyof typeof MCP_AUTH_TYPE];
 
 /**
+ * Extra request headers the API sends on every call to a server, keyed by header name.
+ *
+ * Configuration, never credentials: the API refuses `Authorization` and the other headers
+ * its transport owns, and re-applies that rule when it builds the request. Administrative
+ * only — the shape is absent from {@link McpDto} for the same reason `url` and `scope` are.
+ */
+export type McpServerHeaders = Readonly<Record<string, string>>;
+
+/**
  * An MCP server as `GET api/mcps/all` returns one — the administrative shape (US-1208).
  *
  * That route is Administrator-gated, unpaginated, ordered by name, and **returns
@@ -60,6 +69,8 @@ export interface McpServerDto {
   readonly scope: string | null;
   /** The brand mark's slug, or null for the generic glyph. */
   readonly iconKey: string | null;
+  /** Extra request headers sent to this server, or null for none. */
+  readonly headers: McpServerHeaders | null;
   /** Null once the server is retired — deactivation cascades to the permission. */
   readonly permissionId: string | null;
   /** Only populated by the administrative `GET api/mcps/all`. */
@@ -69,7 +80,7 @@ export interface McpServerDto {
 /**
  * The body `POST api/mcps` and `PUT api/mcps/{id}` both take.
  *
- * `CreateMcpServerActionDto` and `UpdateMcpServerActionDto` are the same six fields
+ * `CreateMcpServerActionDto` and `UpdateMcpServerActionDto` are the same seven fields
  * server-side, so one shape serves both. Neither carries a permission field: the
  * server creates and renames the linked permission itself, which is why frame `5h`'s
  * "Linked permission" select does not exist here.
@@ -86,6 +97,14 @@ export interface McpServerWriteBody {
   readonly authType: McpAuthType;
   readonly scope: string | null;
   readonly iconKey: string | null;
+  /**
+   * Extra request headers, or null for none.
+   *
+   * Subject to the full-representation rule above with real consequences: omitting this on
+   * an edit **clears** the stored headers, which for a server registered read-only would
+   * silently restore its write tools.
+   */
+  readonly headers: McpServerHeaders | null;
 }
 
 /**

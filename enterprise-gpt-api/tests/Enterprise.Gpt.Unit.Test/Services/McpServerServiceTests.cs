@@ -499,4 +499,137 @@ public sealed class McpServerServiceTests : IDisposable
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.DeactivateMcpServerAsync(server.Id, TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task CreateMcpServerAsync_WithHeaders_RoundTripsThroughTheJsonConverter()
+    {
+        var request = CreateRequest("aaa-headers") with
+        {
+            Headers = new Dictionary<string, string>
+            {
+                ["X-MCP-Readonly"] = "true",
+                ["X-MCP-Toolsets"] = "repos,wit,wiki"
+            }
+        };
+
+        var result = await _service.CreateMcpServerAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal("true", Assert.Contains("X-MCP-Readonly", result.Headers!));
+
+        // Read back through a fresh context so the value converter actually runs both ways
+        // rather than the tracked instance being handed straight back.
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.McpServers
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == result.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, persisted.Headers!.Count);
+        Assert.Equal("repos,wit,wiki", persisted.Headers["X-MCP-Toolsets"]);
+        // Keyed case-insensitively on the way out, because HTTP header names are.
+        Assert.Equal("true", persisted.Headers["x-mcp-readonly"]);
+    }
+
+    [Fact]
+    public async Task UpdateMcpServerAsync_HeadersOnlyChange_IsPersistedAndInvalidatesCache()
+    {
+        var created = await _service.CreateMcpServerAsync(
+            CreateRequest("aaa-hdr-edit") with
+            {
+                Headers = new Dictionary<string, string> { ["X-MCP-Toolsets"] = "repos" }
+            },
+            TestContext.Current.CancellationToken);
+
+        var request = UpdateRequest("aaa-hdr-edit") with
+        {
+            Headers = new Dictionary<string, string> { ["X-MCP-Toolsets"] = "repos,wit,wiki" }
+        };
+
+        await _service.UpdateMcpServerAsync(created.Id, request, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.McpServers
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == created.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("repos,wit,wiki", persisted.Headers!["X-MCP-Toolsets"]);
+
+        // Headers decide the tool list, so a cached client must not outlive them.
+        _mcpClientCache.Received(1).InvalidateServer(created.Id);
+    }
+
+    [Fact]
+    public async Task UpdateMcpServerAsync_HeadersOmitted_ClearsThem()
+    {
+        var created = await _service.CreateMcpServerAsync(
+            CreateRequest("aaa-hdr-clear") with
+            {
+                Headers = new Dictionary<string, string> { ["X-MCP-Readonly"] = "true" }
+            },
+            TestContext.Current.CancellationToken);
+
+        // The PUT is a full representation, so an omitted set clears rather than preserves —
+        // the shape `UpdateMcpServer_OmittedIconKey_ClearsIt` already pins for the icon. It is
+        // load-bearing here: silently restoring a read-only server's write tools is the risk.
+        await _service.UpdateMcpServerAsync(
+            created.Id, UpdateRequest("aaa-hdr-clear"), TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.McpServers
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == created.Id, TestContext.Current.CancellationToken);
+
+        Assert.Null(persisted.Headers);
+    }
+
+    /// <summary>
+    /// A mutation of the dictionary already on a tracked entity is saved, rather than being missed
+    /// because the reference did not change.
+    /// </summary>
+    /// <remarks>
+    /// This does <b>not</b> pin the explicit <c>ValueComparer</c>: EF Core 10 infers a structural,
+    /// deep-snapshotting comparer for a <c>Dictionary&lt;string, string&gt;</c> even behind a value
+    /// converter, so it passes with that argument deleted. The explicit comparer is kept for what
+    /// inference does not give — ordinal ordering in equality and hashing, so the result cannot
+    /// move with the ambient culture — and as insulation against that inference changing. What
+    /// this test pins is the behaviour, which is the thing that must not regress.
+    /// </remarks>
+    [Fact]
+    public async Task SaveChangesAsync_HeadersMutatedInPlace_IsDetectedAsAChange()
+    {
+        var created = await _service.CreateMcpServerAsync(
+            CreateRequest("aaa-hdr-inplace") with
+            {
+                Headers = new Dictionary<string, string> { ["X-MCP-Toolsets"] = "repos" }
+            },
+            TestContext.Current.CancellationToken);
+
+        using (var editContext = _fixture.CreateContext())
+        {
+            var tracked = await editContext.McpServers
+                .SingleAsync(x => x.Id == created.Id, TestContext.Current.CancellationToken);
+
+            tracked.Headers!["X-MCP-Toolsets"] = "repos,wit";
+
+            await editContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var readContext = _fixture.CreateContext();
+        var persisted = await readContext.McpServers
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == created.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("repos,wit", persisted.Headers!["X-MCP-Toolsets"]);
+    }
+
+    [Fact]
+    public async Task CreateMcpServerAsync_ReservedHeaderName_ThrowsValidationException()
+    {
+        var request = CreateRequest("aaa-hdr-reserved") with
+        {
+            Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer nope" }
+        };
+
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.CreateMcpServerAsync(request, TestContext.Current.CancellationToken));
+    }
 }

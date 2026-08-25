@@ -24,6 +24,7 @@ function formValue(overrides: Partial<McpServerFormValue> = {}): McpServerFormVa
     authType: String(MCP_AUTH_TYPE.entraIdOnBehalfOf),
     scope: 'api://sap/.default',
     iconKey: '',
+    headers: '',
     ...overrides,
   };
 }
@@ -83,7 +84,7 @@ describe('McpServerActionsStore (US-1208)', () => {
 
     const request = backend.expectOne(MCPS_URL);
     expect(request.request.method).toBe('POST');
-    // All six, and the auth type as the number the wire carries: the API registers no
+    // All seven, and the auth type as the number the wire carries: the API registers no
     // string enum converter, so `"EntraIdOnBehalfOf"` would fail `IsInEnum`.
     expect(request.request.body).toEqual({
       name: 'SAP Ledger',
@@ -92,6 +93,7 @@ describe('McpServerActionsStore (US-1208)', () => {
       authType: 2,
       scope: 'api://sap/.default',
       iconKey: null,
+      headers: null,
     });
 
     request.flush(mcpServerFixture({ name: 'SAP Ledger' }), { status: 201, statusText: 'Created' });
@@ -141,6 +143,7 @@ describe('McpServerActionsStore (US-1208)', () => {
     expect(Object.keys(request.request.body as object).sort()).toEqual([
       'authType',
       'description',
+      'headers',
       'iconKey',
       'name',
       'scope',

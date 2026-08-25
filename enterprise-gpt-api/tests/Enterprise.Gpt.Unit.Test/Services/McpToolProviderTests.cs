@@ -309,6 +309,109 @@ public sealed class McpToolProviderTests : IDisposable
         Assert.Equal(expected, McpToolProvider.SanitizeToolNamePrefix(serverName));
     }
 
+    /// <summary>
+    /// The single most important assertion in the headers feature: a stored <c>Authorization</c>
+    /// cannot displace the on-behalf-of bearer, in any casing.
+    /// </summary>
+    /// <remarks>
+    /// The validators refuse the name on write, so reaching this needs a row that predates those
+    /// rules or one written straight into SQL. Both are exactly the cases this guard exists for,
+    /// which is why it is asserted here rather than trusted from the validator tests.
+    /// </remarks>
+    [Theory]
+    [InlineData("Authorization")]
+    [InlineData("authorization")]
+    [InlineData("AUTHORIZATION")]
+    public void BuildTransportHeaders_StoredAuthorization_CannotDisplaceTheBearer(string name)
+    {
+        var headers = McpToolProvider.BuildTransportHeaders(
+            new Dictionary<string, string> { [name] = "Bearer attacker-token" },
+            accessToken: "real-token");
+
+        Assert.Equal("Bearer real-token", Assert.Contains("Authorization", headers));
+        Assert.Single(headers);
+    }
+
+    [Fact]
+    public void BuildTransportHeaders_ConfiguredHeaders_AreSentBesideTheBearer()
+    {
+        var headers = McpToolProvider.BuildTransportHeaders(
+            new Dictionary<string, string>
+            {
+                ["X-MCP-Readonly"] = "true",
+                ["X-MCP-Toolsets"] = "repos,wit,wiki"
+            },
+            accessToken: "real-token");
+
+        Assert.Equal("true", Assert.Contains("X-MCP-Readonly", headers));
+        Assert.Equal("repos,wit,wiki", Assert.Contains("X-MCP-Toolsets", headers));
+        Assert.Equal("Bearer real-token", Assert.Contains("Authorization", headers));
+    }
+
+    /// <summary>
+    /// The MCP protocol headers, which the "bearer written last" lock cannot defend.
+    /// </summary>
+    /// <remarks>
+    /// <c>CopyAdditionalHeaders</c> sets these on the request before copying ours, and
+    /// <c>TryAddWithoutValidation</c> appends rather than replaces — so the collision would happen
+    /// inside <c>HttpRequestHeaders</c>, past anything this dictionary can order. Dropping them
+    /// here is the only thing that stops a stored session id riding along on every user's request.
+    /// </remarks>
+    [Theory]
+    [InlineData("Mcp-Session-Id")]
+    [InlineData("mcp-session-id")]
+    [InlineData("MCP-Protocol-Version")]
+    [InlineData("Last-Event-ID")]
+    public void BuildTransportHeaders_McpProtocolHeader_IsDropped(string name)
+    {
+        var headers = McpToolProvider.BuildTransportHeaders(
+            new Dictionary<string, string> { [name] = "attacker-value" },
+            accessToken: "real-token");
+
+        Assert.DoesNotContain(name, headers);
+        Assert.Single(headers);
+        Assert.Equal("Bearer real-token", Assert.Contains("Authorization", headers));
+    }
+
+    [Theory]
+    // Reserved by a name other than Authorization.
+    [InlineData("Cookie", "session=1")]
+    // A content header: `HttpRequestHeaders.TryAddWithoutValidation` refuses these outright, and
+    // the SDK turns the refusal into a throw that would otherwise surface as an opaque 500.
+    [InlineData("Content-Encoding", "gzip")]
+    [InlineData("Expires", "0")]
+    // Malformed name.
+    [InlineData("X MCP Readonly", "true")]
+    // A value carrying the CRLF that would split one header into two.
+    [InlineData("X-MCP-Toolsets", "repos\r\nX-MCP-Readonly: false")]
+    public void BuildTransportHeaders_HeaderTheRulesRefuse_IsDropped(string name, string value)
+    {
+        var headers = McpToolProvider.BuildTransportHeaders(
+            new Dictionary<string, string> { [name] = value },
+            accessToken: null);
+
+        Assert.Empty(headers);
+    }
+
+    [Fact]
+    public void BuildTransportHeaders_NothingConfiguredAndNoToken_IsEmpty()
+    {
+        // Empty rather than a dictionary of nothing: `CreateEntrySourceAsync` leaves
+        // `AdditionalHeaders` unset on this arm, which is what it did before headers existed.
+        Assert.Empty(McpToolProvider.BuildTransportHeaders(null, accessToken: null));
+    }
+
+    [Fact]
+    public void BuildTransportHeaders_NoToken_StillCarriesConfiguredHeaders()
+    {
+        var headers = McpToolProvider.BuildTransportHeaders(
+            new Dictionary<string, string> { ["X-MCP-Readonly"] = "true" },
+            accessToken: null);
+
+        Assert.Equal("true", Assert.Contains("X-MCP-Readonly", headers));
+        Assert.DoesNotContain("Authorization", headers);
+    }
+
     private sealed class FakeTool : AITool
     {
     }

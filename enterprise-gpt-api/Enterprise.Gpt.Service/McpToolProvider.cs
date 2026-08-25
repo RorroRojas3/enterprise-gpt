@@ -8,6 +8,7 @@ using Microsoft.Identity.Web;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Mcp;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Caching;
@@ -196,6 +197,54 @@ namespace Enterprise.Gpt.Service
             }
         }
 
+        /// <summary>
+        /// Builds the request headers for one server: its configured headers, then the
+        /// on-behalf-of bearer.
+        /// </summary>
+        /// <param name="configured">The headers stored on the server row, if any.</param>
+        /// <param name="accessToken">The on-behalf-of token, or <see langword="null"/> for a server with no authentication.</param>
+        /// <returns>The headers to send, empty when there are none.</returns>
+        /// <remarks>
+        /// <see cref="McpServerHeaderRules"/> is applied again here rather than trusted from write
+        /// time. A row that predates a rule change, or one written straight into SQL by a DBA,
+        /// must not be able to set a header this application would refuse today — so a name that
+        /// is reserved or malformed, or a value that is not printable ASCII, is dropped silently
+        /// rather than sent.
+        ///
+        /// Ordinal-ignore-case, and the bearer written last: a stored `authorization` header
+        /// collapses onto the same slot and is overwritten whatever casing it was persisted under.
+        /// That is the lock that holds even if this filter is one day loosened.
+        ///
+        /// <c>internal</c> rather than <c>private</c> for the reason
+        /// <see cref="SanitizeToolNamePrefix"/> is: it is the only way to pin this behaviour in a
+        /// unit test.
+        /// </remarks>
+        internal static Dictionary<string, string> BuildTransportHeaders(
+            IReadOnlyDictionary<string, string>? configured, string? accessToken)
+        {
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (configured is not null)
+            {
+                foreach (var (name, value) in configured)
+                {
+                    if (McpServerHeaderRules.IsWellFormedName(name)
+                        && !McpServerHeaderRules.IsReserved(name)
+                        && McpServerHeaderRules.IsWellFormedValue(value))
+                    {
+                        headers[name] = value;
+                    }
+                }
+            }
+
+            if (accessToken is not null)
+            {
+                headers["Authorization"] = $"Bearer {accessToken}";
+            }
+
+            return headers;
+        }
+
         private async Task<McpCacheEntrySource> CreateEntrySourceAsync(
             McpServer server, string? accessToken, DateTimeOffset? tokenExpiresOn, CancellationToken cancellationToken)
         {
@@ -206,12 +255,11 @@ namespace Enterprise.Gpt.Service
                 Name = server.Name,
                 ConnectionTimeout = _options.ConnectionTimeout
             };
-            if (accessToken is not null)
+
+            var additionalHeaders = BuildTransportHeaders(server.Headers, accessToken);
+            if (additionalHeaders.Count > 0)
             {
-                transportOptions.AdditionalHeaders = new Dictionary<string, string>
-                {
-                    ["Authorization"] = $"Bearer {accessToken}"
-                };
+                transportOptions.AdditionalHeaders = additionalHeaders;
             }
 
             var transport = new HttpClientTransport(transportOptions, httpClient, _loggerFactory, ownsHttpClient: true);
@@ -261,7 +309,22 @@ namespace Enterprise.Gpt.Service
                     .. tools.Select(t => t.WithName($"{prefix}_{t.Name}").WithTracking(server.Name, enableProgress: true))
                 ];
 
-                _logger.LogInformation("Connected to MCP server {McpServerId} and listed {ToolCount} tools", server.Id, prefixedTools.Count);
+                // Header names, never values: a name is what tells an operator a restriction was
+                // actually applied, and is the only in-app signal that it was, since nothing
+                // surfaces a server's tool surface. Values are configuration but still the
+                // administrator's text, and have no place in a log.
+                // Joined here rather than passed as a sequence: this is a plain `ILogger`, whose
+                // default formatter would render an enumerable as its type name.
+                var headerNames = additionalHeaders.Keys
+                    .Where(k => !McpServerHeaderRules.IsReserved(k))
+                    .Order()
+                    .ToArray();
+
+                _logger.LogInformation(
+                    "Connected to MCP server {McpServerId} and listed {ToolCount} tools with headers {HeaderNames}",
+                    server.Id,
+                    prefixedTools.Count,
+                    headerNames.Length == 0 ? "none" : string.Join(", ", headerNames));
 
                 return new McpCacheEntrySource
                 {
@@ -294,6 +357,20 @@ namespace Enterprise.Gpt.Service
             {
                 OperationCanceledException => !cancellationToken.IsCancellationRequested,
                 HttpRequestException or McpException or TimeoutException or IOException or SocketException => true,
+                // The SDK's `CopyAdditionalHeaders` throws this when `HttpRequestHeaders` refuses a
+                // header name. `_reservedNames` now covers every name it refuses and
+                // `BuildTransportHeaders` drops them, so this is unreachable today — it is the net
+                // under a future loosening of that set, and the reason it is worth keeping is what
+                // happens without it: `GlobalExceptionHandler` maps a bare
+                // `InvalidOperationException` to 400 with `exception.Message`, and the SDK's
+                // message quotes the offending header's **value**. That would put a configured
+                // value on the wire, which is the one thing this feature promises it never does.
+                //
+                // `ObjectDisposedException` is excluded because it derives from this one and means
+                // something else entirely here: a disposed client or double-disposed transport is
+                // a lease-lifecycle bug of ours, and reporting it as 502 would hide a deterministic
+                // fault behind a Retry button and blame the third-party server for it.
+                InvalidOperationException and not ObjectDisposedException => true,
                 _ => false
             };
         }
