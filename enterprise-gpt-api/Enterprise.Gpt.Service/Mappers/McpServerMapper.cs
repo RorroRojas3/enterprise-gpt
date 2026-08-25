@@ -25,6 +25,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 AuthType = server.AuthType,
                 Scope = server.Scope,
                 IconKey = server.IconKey,
+                Headers = server.Headers,
                 PermissionId = permissionId,
                 DateDeactivated = server.DateDeactivated
             };
@@ -45,6 +46,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 AuthType = server.AuthType,
                 Scope = server.Scope,
                 IconKey = server.IconKey,
+                Headers = server.Headers,
                 PermissionId = server.Permissions
                     .Where(p => !p.DateDeactivated.HasValue)
                     .Select(p => (Guid?)p.Id)
@@ -81,7 +83,8 @@ namespace Enterprise.Gpt.Service.Mappers
                 Url = dto.Url,
                 AuthType = dto.AuthType,
                 Scope = dto.Scope,
-                IconKey = dto.IconKey
+                IconKey = dto.IconKey,
+                Headers = ToStoredHeaders(dto.Headers)
             };
         }
 
@@ -100,6 +103,28 @@ namespace Enterprise.Gpt.Service.Mappers
             server.AuthType = dto.AuthType;
             server.Scope = dto.Scope;
             server.IconKey = dto.IconKey;
+            server.Headers = ToStoredHeaders(dto.Headers);
+        }
+
+        /// <summary>
+        /// Copies configured headers into the case-insensitive dictionary the entity holds,
+        /// collapsing an empty set to <see langword="null"/>.
+        /// </summary>
+        /// <param name="headers">The headers as the action DTO carried them.</param>
+        /// <returns>The dictionary to store, or <see langword="null"/> for no headers.</returns>
+        /// <remarks>
+        /// One representation of "none", so `Headers IS NULL` and an empty set cannot disagree
+        /// about the same row — the reasoning `IconKey` records for its empty string.
+        ///
+        /// Case-insensitive because HTTP header names are, which also means this throws on a set
+        /// holding two spellings of one name. The validators refuse that set first, so reaching
+        /// it here would mean validation was bypassed.
+        /// </remarks>
+        private static Dictionary<string, string>? ToStoredHeaders(IReadOnlyDictionary<string, string>? headers)
+        {
+            return headers is null or { Count: 0 }
+                ? null
+                : new Dictionary<string, string>(headers, StringComparer.OrdinalIgnoreCase);
         }
     }
 }

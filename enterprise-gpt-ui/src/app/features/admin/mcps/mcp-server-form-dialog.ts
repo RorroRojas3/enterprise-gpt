@@ -19,9 +19,11 @@ import {
 import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
 import {
   AUTH_TYPE_OPTIONS,
+  MCP_HEADER_LIMITS,
   MCP_SERVER_FIELD_LENGTHS,
   McpServerFormValue,
   authTypeError,
+  headersError,
   requiresScope,
   scopeError,
   toMcpServerFormValue,
@@ -38,15 +40,23 @@ import { Modal } from '@shared/overlay/modal/modal';
  * **One component, two modes**, as `ModelFormDialog` and `ProjectFormDialog` are — every
  * invoker talks to `McpServerActionsStore` and none of them talks to this dialog.
  *
- * It binds **six** fields, five of them frame `5h`'s. The board's sixth is its
+ * It binds **seven** fields, five of them frame `5h`'s. The board's sixth is its
  * **Linked permission** select, and that one is absent because neither `CreateMcpServerActionDto`
  * nor `UpdateMcpServerActionDto` carries a permission field: `McpServerService` creates the
  * gating permission alongside the server, names it after the server and renames it in step.
  * There is nothing for such a control to bind, and rendering it disabled would be the
  * "shown and inert" affordance this codebase has refused twice already. The rule is stated
  * under the Name field instead, because it is *also* why a name can be refused for
- * colliding with a permission the administrator never created by hand. The sixth field
- * here is **Icon**, which the board predates (US-1210).
+ * colliding with a permission the administrator never created by hand. The last two fields
+ * here are **Icon**, which the board predates (US-1210), and **Headers**, which carries the
+ * per-server request headers some remote servers configure themselves through — the remote
+ * Azure DevOps server's `X-MCP-Readonly` and `X-MCP-Toolsets` are why it exists.
+ *
+ * Headers are **not** the board's refused "Header key" auth type. That was an authentication
+ * mechanism whose value is a bearer-equivalent secret, and it still does not exist: the Auth
+ * type select still offers exactly two options. This field carries non-secret configuration,
+ * the API refuses every header its transport owns, and the values render here in plain text
+ * rather than being masked — which is the point, and the reason it is not a secret store.
  *
  * The board's three auth types are two — `None` and `EntraIdOnBehalfOf` — for the same
  * reason: those are the only two `McpAuthTypes` has.
@@ -68,6 +78,7 @@ export class McpServerFormDialog {
   protected readonly lengths = MCP_SERVER_FIELD_LENGTHS;
   protected readonly authTypes = AUTH_TYPE_OPTIONS;
   protected readonly icons = MCP_ICON_OPTIONS;
+  protected readonly headerLimits = MCP_HEADER_LIMITS;
 
   /** The form's backing model, reseeded from the target each time the dialog opens. */
   private readonly model = signal<McpServerFormValue>(toMcpServerFormValue(null));
@@ -122,6 +133,11 @@ export class McpServerFormDialog {
     validate(path.scope, ({ value, valueOf }) =>
       clientError(scopeError(value(), valueOf(path.authType))),
     );
+
+    // No `maxLength`: the field's budget is the serialized JSON the API stores, not the
+    // characters typed, so the rule that owns it is the parser. It mirrors
+    // `McpServerHeaderRules` and reports the first problem, naming the header at fault.
+    validate(path.headers, ({ value }) => clientError(headersError(value())));
 
     // The server's verdict, per field, reported only while the field still holds the
     // exact value that was sent — which is what clears it on the next keystroke, since
@@ -224,7 +240,7 @@ export class McpServerFormDialog {
   });
 
   /**
-   * Messages the six fields cannot carry — object-level rules, and any property the
+   * Messages the seven fields cannot carry — object-level rules, and any property the
    * server faults that no control here renders.
    *
    * A server message the reader cannot see is a save that silently fails.
@@ -288,8 +304,22 @@ export class McpServerFormDialog {
   }
 }
 
-/** The six fields the server can key an `errors` entry to. */
-const SERVER_FIELDS = ['name', 'description', 'url', 'authType', 'scope', 'iconKey'] as const;
+/**
+ * The seven fields the server can key an `errors` entry to.
+ *
+ * `headers` is one key, not seven indexed ones: the API validates the whole set in a `Custom`
+ * rule and faults it as `Headers`, which is what keeps this within `serverMessagesFor`'s
+ * flat-keys-only contract.
+ */
+const SERVER_FIELDS = [
+  'name',
+  'description',
+  'url',
+  'authType',
+  'scope',
+  'iconKey',
+  'headers',
+] as const;
 
 type FieldName = (typeof SERVER_FIELDS)[number];
 

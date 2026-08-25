@@ -179,7 +179,12 @@ public sealed class BodyLoggingOptions
     private static readonly string[] _defaultRedactedPropertyNames =
     [
         "password", "token", "accessToken", "refreshToken", "idToken", "secret",
-        "apiKey", "clientSecret", "connectionString", "authorization", "downloadUrl"
+        "apiKey", "clientSecret", "connectionString", "authorization", "downloadUrl",
+        // The MCP registration's configured request headers, redacted wholesale as an object.
+        // They are validated as non-secret configuration and never logged by `McpToolProvider`,
+        // but they travel in the `api/mcps` request and response bodies — and this list is the
+        // only thing standing between an administrator's typo and a log line carrying it.
+        "headers"
     ];
 
     /// <summary>

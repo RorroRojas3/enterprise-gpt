@@ -226,6 +226,58 @@
           </p>
         </div>
       }
+
+      <!--
+        A textarea of `Name: value` lines, not a repeated-row editor. Signal Forms' array
+        support is `@experimental`, and an indexed editor would make the API key its
+        rejections `Headers[0].Name` — which `serverMessagesFor` is documented not to match.
+        The API faults the whole set as `Headers`, so this field behaves like the other six.
+
+        No literal `maxlength`: the budget is the serialized JSON the API stores, not the
+        characters typed, so `headersError` owns the constraint.
+      -->
+      <div class="mcp-form__field mcp-form__field--wide">
+        <label class="form-label" for="mcp-form-headers">Headers</label>
+        <textarea
+          id="mcp-form-headers"
+          class="form-control font-mono"
+          rows="3"
+          autocomplete="off"
+          spellcheck="false"
+          [formField]="f.headers"
+          [class.is-invalid]="fieldErrors().headers.show"
+          [attr.aria-describedby]="
+            fieldErrors().headers.show
+              ? 'mcp-form-headers-errors mcp-form-headers-note'
+              : 'mcp-form-headers-note'
+          "
+        ></textarea>
+        @if (fieldErrors().headers.show) {
+          <div class="mcp-form__errors" id="mcp-form-headers-errors" role="alert">
+            @for (message of fieldErrors().headers.messages; track $index) {
+              <p class="mcp-form__error">{{ message }}</p>
+            }
+          </div>
+        }
+        <!--
+          Only the normative sentence carries the id `aria-describedby` points at. The rationale
+          is a sibling outside that reference, because the whole block would otherwise be read
+          out in full every time focus entered the textarea — it is three times the length of the
+          scope note above, the longest one this dialog had.
+        -->
+        <p class="mcp-form__note" id="mcp-form-headers-note">
+          One per line, as <span class="font-mono">Name: value</span> — up to
+          {{ headerLimits.count }}. Configuration only: values are stored and shown in plain text.
+        </p>
+        <p class="mcp-form__note">
+          Sent on every call to this server, so they are how a server that configures itself through
+          headers is restricted — the remote Azure DevOps server reads
+          <span class="font-mono">X-MCP-Readonly</span> and
+          <span class="font-mono">X-MCP-Toolsets</span> this way. Headers the API or the MCP
+          transport set themselves, such as <span class="font-mono">Authorization</span>, are
+          refused here.
+        </p>
+      </div>
     </div>
   </form>
 
