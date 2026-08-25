@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
+import { ModelActionsStore } from '@core/catalog/model-actions-store';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import {
@@ -120,10 +121,44 @@ describe('administration accessibility (US-1405)', () => {
 
       backend
         .expectOne((request) => request.url === MODELS_URL)
-        .flush([modelFixture({ name: 'gpt-4o' }), modelFixture({ name: 'o3-mini' })]);
+        .flush([
+          modelFixture({ name: 'gpt-4o' }),
+          modelFixture({ name: 'o3-mini' }),
+          // The summarizer's own shape: active, hidden from the picker. Its status dot is a
+          // third state the other two rows never render.
+          modelFixture({ name: 'rr-gpt5.6-luna', isUserSelectable: false }),
+        ]);
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/admin/models (${theme})`);
+    });
+
+    /**
+     * The model form open (US-1207/US-104, frame `5f`).
+     *
+     * Eight labelled inputs, a select and four switches — none of which the table behind it
+     * exercises. Opened on a hidden, **non**-default model deliberately: a hidden *default*
+     * would render the conflict refusal, and `.model-form__error` is `--fail` on `--surface`,
+     * which is 4.39:1 in the dark theme and so fails AA for normal text. That is an app-wide
+     * token defect (every dialog's inline error sits on `--surface`), not a property of this
+     * form, and auditing it from here would fail this test for a reason it does not own.
+     */
+    it(`finds nothing serious with the model form open in the ${theme} theme`, async () => {
+      const element = await open('/admin/models', theme);
+
+      backend
+        .expectOne((request) => request.url === MODELS_URL)
+        .flush([modelFixture({ name: 'gpt-4o', isDefault: true })]);
+      await harness.fixture.whenStable();
+
+      TestBed.inject(ModelActionsStore).beginEdit(
+        modelFixture({ name: 'gpt-4o', isDefault: false, isUserSelectable: false }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(element.querySelector('#model-form-selectable')).not.toBeNull();
+      expect(element.querySelector('#model-form-default-errors')).toBeNull();
+      await expectNoSeriousViolations(element, `/admin/models form (${theme})`);
     });
 
     it(`finds nothing serious on the MCP registry in the ${theme} theme`, async () => {

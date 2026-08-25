@@ -8,7 +8,7 @@ A wave here is a **phase**, not a dependency depth: several waves contain intern
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 0 / 39 done.**
+**Progress: 5 / 39 done.**
 
 **Critical path.** `US-101` (add `Model.IsUserSelectable`) → `US-102` (correct the seeded catalog row) → `US-105` (configure and validate the summarizer) → `US-201` (refuse when the context window is unconfigured) → `US-202` (reassemble chunk text) → `US-203` (the fit decision) → `US-205` (split into map units) → `US-206` (the collapse loop) → `US-207` (the final reduce) → `US-301` (the summary tables) → `US-303` (the `Summarizing` job stage) → `US-309` (job-status polling) → `US-503` (the frontend polling store) → `US-501` (request a summary) → `US-502` (view a summary) → `US-507` (bundle-budget guard), sixteen stories deep. This is the longest chain by node count, verified by the same script that checked wave ordering, and it is one story shorter than before, not two: `US-102` still depends on `US-101`, so `US-101` now opens the chain directly rather than joining it partway through. It notably ends **inside EP-5**, not EP-6 — every EP-6 story is shallower in the dependency graph (deepest at 15), but EP-6 is still scheduled last, by policy stated in the PRD's §8, because none of its stories may be skipped before the feature reaches real users. `US-401` → `US-402` → `US-403` joins the graph from EP-4 at a comparable depth but terminates sooner, since nothing in EP-6 or elsewhere chains more than two stories deep off it. **Maximum useful concurrency is 7**, reached once, in wave 4 (`US-404`/`US-405`/`US-406`/`US-501`/`US-504`/`US-505`/`US-506`, none of which has a transitive edge to any other in that set) — unaffected by the earlier removal, since wave 4's own membership and internal edges never referenced it — against a build that now opens with a single story, `US-101`, that both `US-102` and `US-103` wait on before wave 1 broadens out, and closes wave 5 with four fully independent stories.
 
@@ -18,11 +18,11 @@ Single epic (EP-1, `US-101` … `US-105`); no lane split is needed. `US-101` is 
 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1 | US-101 `[enabler]` Add `Model.IsUserSelectable` and migrate existing rows to `true` | — | P0 | — | |
-| 1 | 2 | US-103 `[enabler]` Surface `IsUserSelectable` and exclude the summarizer from the chat picker | US-101 | P0 | US-102 | |
-| 1 | 3 | US-102 `[enabler]` Correct the seeded summarizer catalog row | US-101 | P0 | US-103, US-104 | |
-| 1 | 4 | US-104 Administrator can toggle whether a model is user-selectable | US-103 | P2 | US-102, US-105 | |
-| 1 | 5 | US-105 `[enabler]` Configure the summarizer model, validated at startup | US-102, US-103 | P0 | US-104 | |
+| 1 | 1 | US-101 `[enabler]` Add `Model.IsUserSelectable` and migrate existing rows to `true` | — | P0 | — | Done |
+| 1 | 2 | US-103 `[enabler]` Surface `IsUserSelectable` and exclude the summarizer from the chat picker | US-101 | P0 | US-102 | Done |
+| 1 | 3 | US-102 `[enabler]` Correct the seeded summarizer catalog row | US-101 | P0 | US-103, US-104 | Done |
+| 1 | 4 | US-104 Administrator can toggle whether a model is user-selectable | US-103 | P2 | US-102, US-105 | Done |
+| 1 | 5 | US-105 `[enabler]` Configure the summarizer model, validated at startup | US-102, US-103 | P0 | US-104 | Done |
 
 ## Wave 2 — the summarization engine
 

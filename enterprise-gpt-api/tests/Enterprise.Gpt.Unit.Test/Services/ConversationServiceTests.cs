@@ -590,7 +590,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         await _service.UpdateConversationNameAsync(conversation.Id, request, TestContext.Current.CancellationToken);
 
-        Assert.Equal("rr-gpt-5.6-luna", _chatClient.CapturedNamingOptions?.ModelId);
+        Assert.Equal("rr-gpt5.6-luna", _chatClient.CapturedNamingOptions?.ModelId);
         _chatClientResolver.Received(1).Resolve(KnownIds.SeedProviderId);
     }
 
@@ -2931,7 +2931,7 @@ public sealed class ConversationServiceTests : IDisposable
                 Id = KnownIds.SeedModelId,
                 ProviderId = KnownIds.SeedProviderId,
                 Name = "RR GPT 5.6 Luna",
-                DeploymentName = "rr-gpt-5.6-luna",
+                DeploymentName = "rr-gpt5.6-luna",
                 Description = "OpenAI's GPT-5.6 Luna model.",
                 IsToolEnabled = true
             });

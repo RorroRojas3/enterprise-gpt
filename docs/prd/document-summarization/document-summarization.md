@@ -234,7 +234,7 @@ EP-1's five stories form a short internal chain with no external epic dependency
 
 - **Story**: `[enabler]` Add a fourth capability-adjacent flag, `IsUserSelectable`, to `Model.cs`, defaulting to `true`, with a migration backfilling every existing row to `true`. Unblocks US-102, US-103.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: —
-- **Status**: Not started
+- **Status**: Done
 - **Acceptance criteria**:
   - Given `Model.cs`, when the property is added, then it sits beside `IsToolEnabled`, `IsReasoningEnabled` and `IsDefault`, is a plain `bool` defaulting to `true`, and its doc comment states it governs visibility on `GET api/models` (the chat picker's source) and not on `GET api/models/all` (the administrator's).
   - Given the migration, when it runs, then every pre-existing `Model` row reads back `IsUserSelectable = true` — this feature must never silently hide a model nobody asked to hide.
@@ -244,7 +244,7 @@ EP-1's five stories form a short internal chain with no external epic dependency
 
 - **Story**: `[enabler]` Ship a migration updating the seeded `Core.Ref.Model` row (`c36e22ed-262a-47a1-b2ba-06a38355ae0f`) from `DeploymentName = "rr-gpt-5.6-luna"`, `ContextWindowSize = 0`, `MaxOutputTokens = 0` to `DeploymentName = "rr-gpt5.6-luna"`, `ContextWindowSize = 1000000`, and `MaxOutputTokens` set to a **proposed constant, 16,384** — not a measured value; it joins §9's vetoable-numbers list — and sets `IsUserSelectable = false` on it. Unblocks US-103, US-105, US-201.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-101
-- **Status**: Not started
+- **Status**: Done
 - **Acceptance criteria**:
   - Given the migration, when it runs against a database seeded from `InitialCreate`, then the row's `DeploymentName`, `ContextWindowSize`, `MaxOutputTokens` and `IsUserSelectable` all change and every other column — `Id`, `ProviderId`, `Name`, `Description` — is untouched.
   - Given a database where an administrator already hand-edited any of these four columns, when the migration runs, then it overwrites the value anyway — a data-correction migration, not a conditional seed, following `ModelConfiguration`'s own `HasData` precedent of asserting the row's shape outright.
@@ -254,7 +254,7 @@ EP-1's five stories form a short internal chain with no external epic dependency
 
 - **Story**: `[enabler]` Add `IsUserSelectable` to `ModelDto` and wire both directions of `ModelMapper`, then add `&& x.IsUserSelectable` to `ModelService.GetModelsAsync`'s `Where` clause — the query both `GET api/models` and the composer's model menu read. Unblocks US-104, US-105, US-304.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-101
-- **Status**: Not started
+- **Status**: Done
 - **Acceptance criteria**:
   - Given `ModelDto` and `ModelMapper`, when the property is added, then entity-to-DTO, DTO-to-entity, and update mappings all carry `IsUserSelectable`, matching how `IsToolEnabled` and `IsReasoningEnabled` already round-trip.
   - Given `GetModelsAsync`, when it is called after `US-102`'s migration, then the summarizer row is absent from the response; `GetAllModelsAsync` still returns it, so an administrator can find and edit it.
@@ -265,7 +265,7 @@ EP-1's five stories form a short internal chain with no external epic dependency
 
 - **Story**: As an administrator, I want to mark a catalog model as hidden from the chat picker, so that an internal or special-purpose deployment like the summarizer never appears as something a user can pick to chat with.
 - **Priority**: P2 · **Estimate**: S · **Depends on**: US-103
-- **Status**: Not started
+- **Status**: Done
 - **Acceptance criteria**:
   - Given `features/admin/models/model-form-dialog.ts`, when the form opens for an existing or new model, then a "Visible in model picker" control renders beside the existing tool and reasoning toggles, defaulting on for a new model.
   - Given the toggle is turned off and saved, when `admin-models-store.ts` submits the change, then the persisted `Model.IsUserSelectable` reflects it and the row disappears from `GET api/models` on the next fetch.
@@ -275,7 +275,7 @@ EP-1's five stories form a short internal chain with no external epic dependency
 
 - **Story**: `[enabler]` Add a `Summarization` configuration section naming the summarizer's catalog `Model.Id` by `Guid` — nothing else about it — resolved and validated at startup against the database, so `ContextWindowSize`, `ProviderId`, `DeploymentName`, and both price columns are always read from that row at the moment of use. Unblocks US-201, US-601.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-102, US-103
-- **Status**: Not started
+- **Status**: Done
 - **Acceptance criteria**:
   - Given `Summarization:ModelId`, when it is read, then it is the only value this feature's own configuration carries about the summarizer — no `DeploymentName`, no `ContextWindowSize`, no price, all of which come from the `Model` row at request time, so an administrator editing the row's price or context window takes effect with no redeploy.
   - Given the configured id, when the app starts, then it queries `Core.Ref.Model` for an active (`DateDeactivated IS NULL`) row with that id and fails app start naming the missing or deactivated id if none is found — mirroring the existing chat-client registrations' own "fail fast on an unregistered provider id" precedent, rather than failing on the first summarization request.

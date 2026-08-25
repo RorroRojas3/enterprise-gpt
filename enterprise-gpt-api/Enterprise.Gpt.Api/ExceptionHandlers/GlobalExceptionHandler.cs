@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Diagnostics;
+﻿using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Enterprise.Gpt.Api.Problems;
 using Enterprise.Gpt.Service.Exceptions;
@@ -13,6 +13,8 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
     /// <see cref="McpServerUnavailableException"/>,
     /// <see cref="ProviderNotConfiguredException"/>,
+    /// <see cref="SummarizerNotConfiguredException"/>,
+    /// <see cref="SummarizerProtectedException"/>,
     /// <see cref="StorageNotConfiguredException"/>,
     /// <see cref="ExportRendererNotConfiguredException"/>) and any
     /// otherwise unhandled exception to an RFC 9457 <see cref="ProblemDetails"/> response.
@@ -112,6 +114,17 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 ProviderNotConfiguredException providerNotConfigured => WithExtension(
                     Create(StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ProviderNotConfigured),
                     "providerId", providerNotConfigured.ProviderId),
+                // Same reasoning again, for a summarizer whose catalog row has gone missing or been
+                // retired since start. It reuses provider-not-configured rather than adding an
+                // eleventh problem type, because to a caller the two are one condition: this
+                // deployment cannot serve the model. The message names only the configured id.
+                SummarizerNotConfiguredException => Create(
+                    StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ProviderNotConfigured),
+                // No domain type: a DELETE carries no body for a client to key an errors entry
+                // against, so Detail is the whole payload — and adding an eleventh problem type
+                // for one refusal would be a breaking contract change for every client.
+                SummarizerProtectedException => Create(
+                    StatusCodes.Status409Conflict, exception.Message),
                 // Same reasoning as above, for the download link storage could not sign. The message
                 // names no account, container or credential, so it is safe to pass through.
                 StorageNotConfiguredException => Create(

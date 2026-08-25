@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http.HttpResults;
+﻿using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Model;
@@ -47,7 +47,10 @@ namespace Enterprise.Gpt.Api.Endpoints
             group.MapDelete("{id:guid}", DeactivateModelAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                // The configured document summarizer is refused: the application will not start
+                // without its catalog row.
+                .ProducesProblem(StatusCodes.Status409Conflict);
 
             return app;
         }

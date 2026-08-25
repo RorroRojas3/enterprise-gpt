@@ -28,6 +28,7 @@ function formValue(overrides: Partial<ModelFormValue> = {}): ModelFormValue {
     outputPricePerMillionTokens: '15',
     isToolEnabled: true,
     isReasoningEnabled: true,
+    isUserSelectable: true,
     isDefault: false,
     ...overrides,
   };
@@ -88,7 +89,7 @@ describe('ModelActionsStore (US-1207)', () => {
 
     const request = backend.expectOne(MODELS_URL);
     expect(request.request.method).toBe('POST');
-    // All eleven, including the three frame `5f` does not draw: `ModelMapper` assigns
+    // All twelve, including the three frame `5f` does not draw: `ModelMapper` assigns
     // every one unconditionally.
     expect(request.request.body).toEqual({
       providerId: PROVIDER_ID.anthropic,
@@ -99,6 +100,7 @@ describe('ModelActionsStore (US-1207)', () => {
       maxOutputTokens: 64_000,
       isToolEnabled: true,
       isReasoningEnabled: true,
+      isUserSelectable: true,
       isDefault: false,
       inputPricePerMillionTokens: 3,
       outputPricePerMillionTokens: 15,
@@ -185,11 +187,14 @@ describe('ModelActionsStore (US-1207)', () => {
     expect(toasts.show).toHaveBeenCalledOnce();
   });
 
-  it('sets a model as default from the row, echoing the ten fields it does not change', () => {
+  it('sets a model as default from the row, echoing the eleven fields it does not change', () => {
     const target = modelFixture({
       name: 'GPT-5',
       isDefault: false,
       isReasoningEnabled: true,
+      // A hidden model promoted to default must stay hidden: the PUT is a full
+      // representation, so an omitted flag would put the summarizer back in the picker.
+      isUserSelectable: false,
       inputPricePerMillionTokens: 1.25,
       outputPricePerMillionTokens: 10,
     });
@@ -202,6 +207,7 @@ describe('ModelActionsStore (US-1207)', () => {
     expect(request.request.body).toMatchObject({
       isDefault: true,
       isReasoningEnabled: true,
+      isUserSelectable: false,
       inputPricePerMillionTokens: 1.25,
       outputPricePerMillionTokens: 10,
       deploymentName: target.deploymentName,
@@ -260,7 +266,7 @@ describe('ModelActionsStore (US-1207)', () => {
     expect(changed).toBe(2);
   });
 
-  it('keeps the dialog and its eleven fields when a save fails for any other reason', () => {
+  it('keeps the dialog and its twelve fields when a save fails for any other reason', () => {
     store.beginCreate();
     const value = formValue();
     store.submitForm(value);
@@ -269,7 +275,7 @@ describe('ModelActionsStore (US-1207)', () => {
     settle();
 
     // `retryInterceptor` retries GETs only, so a transient blip on Save is not retried —
-    // and closing would discard eleven fields, one of them 1024 characters, for good.
+    // and closing would discard twelve fields, one of them 1024 characters, for good.
     expect(store.formMode()).toBe('create');
     expect(toasts.fromError).toHaveBeenCalledOnce();
   });

@@ -45,6 +45,27 @@ namespace Enterprise.Gpt.Entity
         /// </remarks>
         public bool IsReasoningEnabled { get; set; } = false;
 
+        /// <summary>
+        /// Gets or sets a value indicating whether this deployment is offered in the chat model
+        /// picker.
+        /// </summary>
+        /// <remarks>
+        /// Governs <c>GET api/models</c>, the picker's source, and nothing else: the administrative
+        /// <c>GET api/models/all</c> ignores it, so a hidden row stays findable and editable — the
+        /// same two-routes-two-meanings split <c>DateDeactivated</c> already has.
+        /// <para>
+        /// Visibility, not authorization. A turn that names a hidden model by id is served
+        /// normally, because the model lookup a turn performs filters on <c>DateDeactivated</c>
+        /// alone. Hiding a purpose-built deployment — the pinned document summarizer — from the
+        /// picker is what this exists for; retiring one is <c>DateDeactivated</c>'s job.
+        /// </para>
+        /// <para>
+        /// Defaulted to <see langword="true"/> in the store as well as here, so a row written by
+        /// any path that does not mention the column is visible rather than silently hidden.
+        /// </para>
+        /// </remarks>
+        public bool IsUserSelectable { get; set; } = true;
+
         public bool IsDefault { get; set; } = false;
 
         /// <summary>

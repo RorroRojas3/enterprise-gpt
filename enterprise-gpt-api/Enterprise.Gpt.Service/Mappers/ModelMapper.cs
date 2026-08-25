@@ -25,6 +25,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 MaxOutputTokens = model.MaxOutputTokens,
                 IsToolEnabled = model.IsToolEnabled,
                 IsReasoningEnabled = model.IsReasoningEnabled,
+                IsUserSelectable = model.IsUserSelectable,
                 IsDefault = model.IsDefault,
                 InputPricePerMillionTokens = model.InputPricePerMillionTokens,
                 OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
@@ -48,6 +49,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 MaxOutputTokens = model.MaxOutputTokens,
                 IsToolEnabled = model.IsToolEnabled,
                 IsReasoningEnabled = model.IsReasoningEnabled,
+                IsUserSelectable = model.IsUserSelectable,
                 IsDefault = model.IsDefault,
                 InputPricePerMillionTokens = model.InputPricePerMillionTokens,
                 OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
@@ -73,6 +75,7 @@ namespace Enterprise.Gpt.Service.Mappers
                 MaxOutputTokens = dto.MaxOutputTokens,
                 IsToolEnabled = dto.IsToolEnabled,
                 IsReasoningEnabled = dto.IsReasoningEnabled,
+                IsUserSelectable = dto.IsUserSelectable,
                 IsDefault = dto.IsDefault,
                 InputPricePerMillionTokens = dto.InputPricePerMillionTokens,
                 OutputPricePerMillionTokens = dto.OutputPricePerMillionTokens
@@ -96,6 +99,7 @@ namespace Enterprise.Gpt.Service.Mappers
             model.MaxOutputTokens = dto.MaxOutputTokens;
             model.IsToolEnabled = dto.IsToolEnabled;
             model.IsReasoningEnabled = dto.IsReasoningEnabled;
+            model.IsUserSelectable = dto.IsUserSelectable;
             model.IsDefault = dto.IsDefault;
             // Assigned unconditionally, including when the request omits them: this is a full
             // representation, so an absent price clears the stored one rather than preserving it.

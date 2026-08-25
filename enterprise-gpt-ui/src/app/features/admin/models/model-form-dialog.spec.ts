@@ -72,6 +72,14 @@ describe('ModelFormDialog (US-1207)', () => {
     await fixture.whenStable();
   }
 
+  /** `input`, not `change`, for the reason `choose` gives below. */
+  async function check(id: string, checked: boolean): Promise<void> {
+    const control = field(id) as HTMLInputElement;
+    control.checked = checked;
+    control.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+  }
+
   async function choose(id: string, value: string): Promise<void> {
     const control = field(id) as HTMLSelectElement;
     control.value = value;
@@ -108,7 +116,7 @@ describe('ModelFormDialog (US-1207)', () => {
     return backend.expectOne((request) => request.url.startsWith(MODELS_URL));
   }
 
-  it('binds the eight fields frame `5f` draws, plus the three the wire needs', async () => {
+  it('binds the eight fields frame `5f` draws, plus the four the wire needs', async () => {
     await openCreate();
 
     for (const id of [
@@ -120,6 +128,7 @@ describe('ModelFormDialog (US-1207)', () => {
       'model-form-output',
       'model-form-tools',
       'model-form-default',
+      'model-form-selectable',
       // Not on the board, but on both request DTOs — and `ModelMapper` assigns them
       // unconditionally, so a form without them clears or falsifies stored values.
       'model-form-reasoning',
@@ -141,10 +150,15 @@ describe('ModelFormDialog (US-1207)', () => {
     expect(host().querySelector('input[type="password"]')).toBeNull();
   });
 
-  it('renders the three toggles as switches', async () => {
+  it('renders the four toggles as switches', async () => {
     await openCreate();
 
-    for (const id of ['model-form-tools', 'model-form-reasoning', 'model-form-default']) {
+    for (const id of [
+      'model-form-tools',
+      'model-form-reasoning',
+      'model-form-default',
+      'model-form-selectable',
+    ]) {
       expect(field(id).getAttribute('role'), id).toBe('switch');
       expect(field(id).getAttribute('type'), id).toBe('checkbox');
     }
@@ -232,6 +246,58 @@ describe('ModelFormDialog (US-1207)', () => {
     await fixture.whenStable();
   });
 
+  /**
+   * US-104's own acceptance criterion, and the only test that exercises the binding: the
+   * existence and role assertions above pass just as well against a switch wired to
+   * `isToolEnabled`, which also defaults on.
+   */
+  it('sends the picker toggle as the reader left it', async () => {
+    const target = modelFixture({ isUserSelectable: false });
+    await openEdit(target);
+
+    const toggle = field('model-form-selectable') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+
+    await check('model-form-selectable', true);
+    const request = await submit();
+
+    expect(request.request.body).toMatchObject({ isUserSelectable: true });
+    request.flush(target);
+    await fixture.whenStable();
+  });
+
+  it('hides a model the reader turns the picker toggle off for', async () => {
+    await openCreate();
+    await fill();
+    await check('model-form-selectable', false);
+
+    const request = await submit();
+
+    expect(request.request.body).toMatchObject({ isUserSelectable: false, isDefault: false });
+    request.flush(modelFixture({ isUserSelectable: false }));
+    await fixture.whenStable();
+  });
+
+  /**
+   * `GET api/models` filters a hidden row out, so a hidden default resolves to no default at
+   * all and every composer refuses to send. Both server validators refuse the combination;
+   * this keeps it from being a save that leaves and comes back as a banner.
+   */
+  it('refuses to save a default model that is hidden from the picker', async () => {
+    await openEdit(modelFixture({ isDefault: true, isUserSelectable: true }));
+    await check('model-form-selectable', false);
+
+    expect(host().textContent).toContain(
+      'A model hidden from the model picker cannot be the default model.',
+    );
+    expect(submitButton().disabled).toBe(true);
+
+    // Turning it back on clears the refusal rather than needing the other switch touched.
+    await check('model-form-selectable', true);
+    expect(submitButton().disabled).toBe(false);
+    backend.expectNone(() => true);
+  });
+
   it('seeds an unpriced model as blank fields rather than zeros', async () => {
     await openEdit(
       modelFixture({ inputPricePerMillionTokens: null, outputPricePerMillionTokens: null }),
@@ -307,7 +373,7 @@ describe('ModelFormDialog (US-1207)', () => {
     request.error(new ProgressEvent('error'));
     await fixture.whenStable();
 
-    // Eleven fields behind a dialog that used to close on any non-validation failure, and
+    // Twelve fields behind a dialog that used to close on any non-validation failure, and
     // `retryInterceptor` does not retry a POST. The reader keeps what they typed.
     expect(field('model-form-name').value).toBe('Claude Sonnet 4.5');
     expect(field('model-form-description').value).toBe('A description worth not retyping.');
@@ -327,8 +393,8 @@ describe('ModelFormDialog (US-1207)', () => {
     );
     await fixture.whenStable();
 
-    // The three toggles are bound but have no `validate` rule and no `fieldErrors()`
-    // entry, so treating them as "modelled" would mark this matched and render it nowhere.
+    // The four toggles are bound but have no `fieldErrors()` entry, so treating them as
+    // "modelled" would mark this matched and render it nowhere.
     expect(errors()).toContain('A default model must have tools enabled.');
   });
 
@@ -346,6 +412,8 @@ describe('ModelFormDialog (US-1207)', () => {
     expect(field('model-form-deployment').value).toBe('');
     // The column's own default: a model that cannot call tools is the exception.
     expect((field('model-form-tools') as HTMLInputElement).checked).toBe(true);
+    // Likewise: a new model has to be visible, or it is saved into nobody's picker.
+    expect((field('model-form-selectable') as HTMLInputElement).checked).toBe(true);
   });
 
   it('names the verb it is about to perform', async () => {

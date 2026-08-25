@@ -276,11 +276,31 @@
 
       <div class="model-form__switch form-check form-switch model-form__field--wide">
         <input
+          id="model-form-selectable"
+          class="form-check-input"
+          type="checkbox"
+          role="switch"
+          [formField]="f.isUserSelectable"
+        />
+        <label class="form-check-label" for="model-form-selectable">
+          Visible in model picker
+          <!-- Not the same as retiring it: a hidden model still serves a turn that names
+               it by id, which is how the pinned document summarizer works. -->
+          <span class="model-form__hint">
+            Turn this off for an internal deployment users should never pick to chat with.
+          </span>
+        </label>
+      </div>
+
+      <div class="model-form__switch form-check form-switch model-form__field--wide">
+        <input
           id="model-form-default"
           class="form-check-input"
           type="checkbox"
           role="switch"
           [formField]="f.isDefault"
+          [class.is-invalid]="!!defaultConflict()"
+          [attr.aria-describedby]="defaultConflict() ? 'model-form-default-errors' : null"
         />
         <label class="form-check-label" for="model-form-default">
           Default model
@@ -288,6 +308,14 @@
             Saving this replaces whichever model is the default today.
           </span>
         </label>
+        @if (defaultConflict(); as message) {
+          <!-- Its own alert rather than a `fieldErrors()` entry: `isDefault` is not a field
+               the server can fault per-field, so it has no entry there — and without this
+               the rule would disable Save while saying nothing. -->
+          <div class="model-form__errors" id="model-form-default-errors" role="alert">
+            <p class="model-form__error">{{ message }}</p>
+          </div>
+        }
       </div>
     </div>
   </form>

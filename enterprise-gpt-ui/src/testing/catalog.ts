@@ -19,6 +19,7 @@ export function modelFixture(overrides: Partial<ModelDto> = {}): ModelDto {
     maxOutputTokens: 16_384,
     isToolEnabled: true,
     isReasoningEnabled: false,
+    isUserSelectable: true,
     isDefault: false,
     // Unpriced by default, which is what a model created before US-1207 looks like.
     inputPricePerMillionTokens: null,

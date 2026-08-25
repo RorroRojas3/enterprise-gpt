@@ -168,6 +168,35 @@ describe('AdminModels (US-1207)', () => {
     expect(items).toEqual(['Edit', 'Delete']);
   });
 
+  /**
+   * Layer two of the guard: a hidden model made the default resolves to nothing on
+   * `GET api/models`, which leaves every composer with no model to start a turn on. The
+   * server refuses the combination; the menu must not offer it in the first place.
+   */
+  it('hides Set as default on a row that is hidden from the picker', async () => {
+    await open([modelFixture({ name: 'GPT-5', isDefault: false, isUserSelectable: false })]);
+
+    element().querySelector<HTMLButtonElement>('app-menu button')?.click();
+    await harness.fixture.whenStable();
+
+    const items = [...element().querySelectorAll('[appMenuItem]')].map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(items).toEqual(['Edit', 'Delete']);
+  });
+
+  it('names an active row that is hidden from the picker as its own state', async () => {
+    await open([
+      modelFixture({ name: 'GPT-5' }),
+      modelFixture({ name: 'Summarizer', isUserSelectable: false }),
+    ]);
+
+    // Not a shade of Active: the row still serves a turn that names it by id, and an
+    // administrator otherwise has to open Edit on every row to learn which are visible.
+    expect(rowText()).toContain('Hidden');
+    expect(rowText()).toContain('Active');
+  });
+
   it('filters on provider as well as name, without a second request', async () => {
     await open([
       modelFixture({ name: 'GPT-5 Enterprise', providerId: PROVIDER_ID.azureOpenAi }),

@@ -5,6 +5,7 @@ using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -12,9 +13,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Enterprise.Gpt.Repository.Migrations
 {
     [DbContext(typeof(EnterpriseGptDbContext))]
-    partial class EnterpriseGptDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825031549_AddModelIsUserSelectable")]
+    partial class AddModelIsUserSelectable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -709,17 +712,17 @@ namespace Enterprise.Gpt.Repository.Migrations
                         new
                         {
                             Id = new Guid("c36e22ed-262a-47a1-b2ba-06a38355ae0f"),
-                            ContextWindowSize = 1000000m,
+                            ContextWindowSize = 0m,
                             CreatedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
                             DateCreated = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             DateModified = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            DeploymentName = "rr-gpt5.6-luna",
+                            DeploymentName = "rr-gpt-5.6-luna",
                             Description = "OpenAI's GPT-5.6 Luna model.",
                             IsDefault = false,
                             IsReasoningEnabled = false,
                             IsToolEnabled = true,
-                            IsUserSelectable = false,
-                            MaxOutputTokens = 16384m,
+                            IsUserSelectable = true,
+                            MaxOutputTokens = 0m,
                             ModifiedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
                             Name = "RR GPT 5.6 Luna",
                             ProviderId = new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0")

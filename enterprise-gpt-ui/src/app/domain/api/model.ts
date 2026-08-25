@@ -19,6 +19,16 @@ export interface ModelDto {
   readonly isToolEnabled: boolean;
   /** Read only by the Azure AI Foundry chat client; no other provider consults it. */
   readonly isReasoningEnabled: boolean;
+  /**
+   * Whether the model is offered in the chat picker. Always `true` on `GET api/models`,
+   * which filters on it, so it is only ever meaningful on the administrative
+   * `GET api/models/all`.
+   *
+   * Visibility, not authorization: a turn naming a hidden model by id is still served.
+   * It is how the pinned document summarizer stays out of the picker without being
+   * retired, which `dateDeactivated` would do instead.
+   */
+  readonly isUserSelectable: boolean;
   readonly isDefault: boolean;
   /**
    * Null is **unpriced**, not free. A report that sums nulls as zero silently
@@ -34,7 +44,7 @@ export interface ModelDto {
 /**
  * The body `POST api/models` and `PUT api/models/{id}` both take.
  *
- * `CreateModelActionDto` and `UpdateModelActionDto` are the same eleven fields
+ * `CreateModelActionDto` and `UpdateModelActionDto` are the same twelve fields
  * server-side, so one shape serves both.
  *
  * **The PUT is a full representation, not a patch.** `ModelMapper` assigns every
@@ -51,6 +61,7 @@ export interface ModelWriteBody {
   readonly maxOutputTokens: number;
   readonly isToolEnabled: boolean;
   readonly isReasoningEnabled: boolean;
+  readonly isUserSelectable: boolean;
   readonly isDefault: boolean;
   readonly inputPricePerMillionTokens: number | null;
   readonly outputPricePerMillionTokens: number | null;
