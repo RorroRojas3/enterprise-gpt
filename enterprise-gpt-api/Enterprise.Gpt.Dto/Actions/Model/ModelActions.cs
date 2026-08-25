@@ -20,6 +20,23 @@ namespace Enterprise.Gpt.Dto.Actions.Model
 
         public bool IsReasoningEnabled { get; init; }
 
+        /// <summary>
+        /// Whether the deployment is offered in the chat model picker.
+        /// </summary>
+        /// <remarks>
+        /// Initialized to <see langword="true"/>, unlike its sibling flags: the rest of this
+        /// request is a full representation where an omitted field takes the CLR default, and the
+        /// CLR default here would hide a model nobody asked to hide. An absent property leaves the
+        /// initializer alone, so a client written before this field existed keeps its models visible.
+        /// <para>
+        /// The cost of that choice, stated plainly: a request that omits the property does not
+        /// preserve a hidden model's state, it reveals it. A partial payload against the summarizer
+        /// puts it back in every user's picker. That is the safer default for the catalog at large,
+        /// and it is why <c>ModelService</c> guards the summarizer row specifically.
+        /// </para>
+        /// </remarks>
+        public bool IsUserSelectable { get; init; } = true;
+
         public bool IsDefault { get; init; }
 
         /// <summary>
@@ -54,6 +71,16 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            // The default is the model a turn starts on, and the picker's own route hides a
+            // non-selectable row — so a hidden default resolves to nothing on every client and
+            // leaves the composer unable to send at all. Refused rather than silently corrected,
+            // because the request states two intentions and only the caller knows which to keep.
+            // DeactivateModelAsync enforces the same invariant from the other side by clearing
+            // IsDefault on the row it retires.
+            RuleFor(x => x.IsDefault)
+                .Equal(false)
+                .When(x => !x.IsUserSelectable)
+                .WithMessage("A model hidden from the model picker cannot be the default model.");
             // Zero is accepted where the sibling rules demand a positive value: a genuinely free
             // deployment exists, and omitting the price is how "unpriced" is expressed instead.
             RuleFor(x => x.InputPricePerMillionTokens)
@@ -82,6 +109,23 @@ namespace Enterprise.Gpt.Dto.Actions.Model
         public bool IsToolEnabled { get; init; }
 
         public bool IsReasoningEnabled { get; init; }
+
+        /// <summary>
+        /// Whether the deployment is offered in the chat model picker.
+        /// </summary>
+        /// <remarks>
+        /// Initialized to <see langword="true"/>, unlike its sibling flags: the rest of this
+        /// request is a full representation where an omitted field takes the CLR default, and the
+        /// CLR default here would hide a model nobody asked to hide. An absent property leaves the
+        /// initializer alone, so a client written before this field existed keeps its models visible.
+        /// <para>
+        /// The cost of that choice, stated plainly: a request that omits the property does not
+        /// preserve a hidden model's state, it reveals it. A partial payload against the summarizer
+        /// puts it back in every user's picker. That is the safer default for the catalog at large,
+        /// and it is why <c>ModelService</c> guards the summarizer row specifically.
+        /// </para>
+        /// </remarks>
+        public bool IsUserSelectable { get; init; } = true;
 
         public bool IsDefault { get; init; }
 
@@ -117,6 +161,16 @@ namespace Enterprise.Gpt.Dto.Actions.Model
                 .GreaterThan(0);
             RuleFor(x => x.MaxOutputTokens)
                 .GreaterThan(0);
+            // The default is the model a turn starts on, and the picker's own route hides a
+            // non-selectable row — so a hidden default resolves to nothing on every client and
+            // leaves the composer unable to send at all. Refused rather than silently corrected,
+            // because the request states two intentions and only the caller knows which to keep.
+            // DeactivateModelAsync enforces the same invariant from the other side by clearing
+            // IsDefault on the row it retires.
+            RuleFor(x => x.IsDefault)
+                .Equal(false)
+                .When(x => !x.IsUserSelectable)
+                .WithMessage("A model hidden from the model picker cannot be the default model.");
             // Zero is accepted where the sibling rules demand a positive value: a genuinely free
             // deployment exists, and omitting the price is how "unpriced" is expressed instead.
             RuleFor(x => x.InputPricePerMillionTokens)

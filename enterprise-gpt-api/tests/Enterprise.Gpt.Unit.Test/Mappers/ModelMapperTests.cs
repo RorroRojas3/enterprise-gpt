@@ -20,6 +20,7 @@ public class ModelMapperTests
             ContextWindowSize = 128000m,
             MaxOutputTokens = 16384m,
             IsToolEnabled = true,
+            IsUserSelectable = false,
             IsDefault = true,
             InputPricePerMillionTokens = 2.500000m,
             OutputPricePerMillionTokens = 10.000000m,
@@ -41,6 +42,7 @@ public class ModelMapperTests
         Assert.Equal(expected.ContextWindowSize, actual.ContextWindowSize);
         Assert.Equal(expected.MaxOutputTokens, actual.MaxOutputTokens);
         Assert.Equal(expected.IsToolEnabled, actual.IsToolEnabled);
+        Assert.Equal(expected.IsUserSelectable, actual.IsUserSelectable);
         Assert.Equal(expected.IsDefault, actual.IsDefault);
         // Asserted through the shared helper so it covers the materialized mapper and the LINQ
         // projection alike: the two are hand-duplicated, and a field added to one and not the other
@@ -96,6 +98,7 @@ public class ModelMapperTests
             ContextWindowSize = 200000m,
             MaxOutputTokens = 32768m,
             IsToolEnabled = false,
+            IsUserSelectable = false,
             IsDefault = true,
             InputPricePerMillionTokens = 1.250000m,
             OutputPricePerMillionTokens = 5m
@@ -110,6 +113,7 @@ public class ModelMapperTests
         Assert.Equal(request.ContextWindowSize, model.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, model.MaxOutputTokens);
         Assert.Equal(request.IsToolEnabled, model.IsToolEnabled);
+        Assert.Equal(request.IsUserSelectable, model.IsUserSelectable);
         Assert.Equal(request.IsDefault, model.IsDefault);
         Assert.Equal(request.InputPricePerMillionTokens, model.InputPricePerMillionTokens);
         Assert.Equal(request.OutputPricePerMillionTokens, model.OutputPricePerMillionTokens);
@@ -137,6 +141,7 @@ public class ModelMapperTests
             ContextWindowSize = 64000m,
             MaxOutputTokens = 8192m,
             IsToolEnabled = false,
+            IsUserSelectable = true,
             IsDefault = false
         };
 
@@ -149,6 +154,7 @@ public class ModelMapperTests
         Assert.Equal(request.ContextWindowSize, model.ContextWindowSize);
         Assert.Equal(request.MaxOutputTokens, model.MaxOutputTokens);
         Assert.Equal(request.IsToolEnabled, model.IsToolEnabled);
+        Assert.Equal(request.IsUserSelectable, model.IsUserSelectable);
         Assert.Equal(request.IsDefault, model.IsDefault);
         Assert.Equal(originalId, model.Id);
         Assert.Equal(originalDateCreated, model.DateCreated);
@@ -174,6 +180,7 @@ public class ModelMapperTests
             ContextWindowSize = model.ContextWindowSize,
             MaxOutputTokens = model.MaxOutputTokens,
             IsToolEnabled = model.IsToolEnabled,
+            IsUserSelectable = model.IsUserSelectable,
             IsDefault = model.IsDefault
         };
 
@@ -196,6 +203,7 @@ public class ModelMapperTests
             ContextWindowSize = model.ContextWindowSize,
             MaxOutputTokens = model.MaxOutputTokens,
             IsToolEnabled = model.IsToolEnabled,
+            IsUserSelectable = model.IsUserSelectable,
             IsDefault = model.IsDefault,
             InputPricePerMillionTokens = 0.150000m,
             OutputPricePerMillionTokens = 0.600000m

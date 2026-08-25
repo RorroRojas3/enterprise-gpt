@@ -24,6 +24,7 @@ function formValue(overrides: Partial<ModelFormValue> = {}): ModelFormValue {
     outputPricePerMillionTokens: '15',
     isToolEnabled: true,
     isReasoningEnabled: true,
+    isUserSelectable: true,
     isDefault: false,
     ...overrides,
   };
@@ -87,7 +88,17 @@ describe('toModelFormValue', () => {
     // the exception, so the toggle starts where most models end up.
     expect(value.isToolEnabled).toBe(true);
     expect(value.isReasoningEnabled).toBe(false);
+    // Also the column's default, and the one that matters: a model created hidden would
+    // be saved into nobody's picker.
+    expect(value.isUserSelectable).toBe(true);
     expect(value.isDefault).toBe(false);
+  });
+
+  it('carries a hidden model through unchanged', () => {
+    const value = toModelFormValue(modelFixture({ isUserSelectable: false }));
+
+    expect(value.isUserSelectable).toBe(false);
+    expect(toModelBody(value)?.isUserSelectable).toBe(false);
   });
 
   it('renders an unpriced model as blank fields, never as zero', () => {
@@ -119,6 +130,7 @@ describe('toModelFormValue', () => {
       outputPricePerMillionTokens: '15',
       isToolEnabled: model.isToolEnabled,
       isReasoningEnabled: true,
+      isUserSelectable: model.isUserSelectable,
       isDefault: model.isDefault,
     });
   });
@@ -135,6 +147,7 @@ describe('toModelBody', () => {
       maxOutputTokens: 64_000,
       isToolEnabled: true,
       isReasoningEnabled: true,
+      isUserSelectable: true,
       isDefault: false,
       inputPricePerMillionTokens: 3,
       outputPricePerMillionTokens: 15,
@@ -171,12 +184,13 @@ describe('toModelBody', () => {
     expect(toModelBody(formValue({ description: '' }))).toBeNull();
   });
 
-  it('carries the three fields frame `5f` does not draw', () => {
-    // `ModelMapper` assigns all three unconditionally, so a body without them clears the
-    // stored prices and reads `isReasoningEnabled` as false.
+  it('carries the four fields frame `5f` does not draw', () => {
+    // `ModelMapper` assigns all four unconditionally, so a body without them clears the
+    // stored prices, reads `isReasoningEnabled` as false, and reveals a hidden model.
     const body = toModelBody(formValue());
 
     expect(body).toHaveProperty('isReasoningEnabled', true);
+    expect(body).toHaveProperty('isUserSelectable', true);
     expect(body).toHaveProperty('inputPricePerMillionTokens', 3);
     expect(body).toHaveProperty('outputPricePerMillionTokens', 15);
   });

@@ -81,8 +81,10 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
 
         Assert.NotNull(models);
         Assert.Contains(models, x => x.Id == activeId);
-        Assert.Contains(models, x => x.Id == KnownIds.SeedModelId);
+        // The seeded row is the pinned summarizer, hidden from the picker by its own seed.
+        Assert.DoesNotContain(models, x => x.Id == KnownIds.SeedModelId);
         Assert.DoesNotContain(models, x => x.Id == deactivatedId);
+        Assert.All(models, x => Assert.True(x.IsUserSelectable));
         Assert.All(models, x => Assert.Null(x.DateDeactivated));
         Assert.Equal(models.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).Select(x => x.Id), models.Select(x => x.Id));
     }
@@ -123,8 +125,13 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         Assert.NotNull(model);
         Assert.Equal(KnownIds.SeedModelId, model.Id);
         Assert.Equal("RR GPT 5.6 Luna", model.Name);
-        Assert.Equal("rr-gpt-5.6-luna", model.DeploymentName);
+        Assert.Equal("rr-gpt5.6-luna", model.DeploymentName);
         Assert.Equal(KnownIds.SeedProviderId, model.ProviderId);
+        Assert.Equal(1_000_000m, model.ContextWindowSize);
+        Assert.Equal(16_384m, model.MaxOutputTokens);
+        // Hidden from the picker and still readable by id: the flag is visibility, not
+        // authorization, which is what lets a turn name the summarizer directly.
+        Assert.False(model.IsUserSelectable);
     }
 
     [Fact]
@@ -166,6 +173,92 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         // endpoint — hence the RFC 9110 title instead of a domain problem type.
         var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
         Assert.Equal("Not Found", problem.Title);
+    }
+
+    /// <summary>
+    /// The two routes disagree on purpose: the picker's source hides a non-selectable row and the
+    /// administrator's listing keeps it, so the model stays findable and editable after being hidden.
+    /// </summary>
+    [Fact]
+    public async Task CreateModel_NotUserSelectable_IsHiddenFromThePickerAndKeptByTheAdminListing()
+    {
+        var request = CreateRequest(name: "it-hidden") with { IsUserSelectable = false };
+        using var admin = _fixture.Factory.CreateAdminClient();
+
+        var response = await admin.PostAsJsonAsync("api/models", request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<ModelDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(created);
+        Assert.False(created.IsUserSelectable);
+
+        using var user = _fixture.Factory.CreateUserClient();
+        var picker = await user.GetFromJsonAsync<List<ModelDto>>("api/models", TestContext.Current.CancellationToken);
+        Assert.NotNull(picker);
+        Assert.DoesNotContain(picker, x => x.Id == created.Id);
+
+        var all = await admin.GetFromJsonAsync<List<ModelDto>>("api/models/all", TestContext.Current.CancellationToken);
+        Assert.NotNull(all);
+        Assert.Contains(all, x => x.Id == created.Id);
+
+        // Hidden is not withdrawn: the by-id route filters on DateDeactivated alone.
+        var byId = await user.GetFromJsonAsync<ModelDto>(
+            $"api/models/{created.Id}", TestContext.Current.CancellationToken);
+        Assert.NotNull(byId);
+        Assert.False(byId.IsUserSelectable);
+    }
+
+    /// <summary>
+    /// A body written before the field existed must not hide the model it updates, which is what
+    /// the DTO's own <see langword="true"/> initializer buys.
+    /// </summary>
+    [Fact]
+    public async Task UpdateModel_BodyOmittingIsUserSelectable_LeavesTheModelSelectable()
+    {
+        var id = await _fixture.AddModelAsync("it-omitted", cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateAdminClient();
+        using var content = JsonContent.Create(new
+        {
+            providerId = KnownIds.SeedProviderId,
+            name = "it-omitted",
+            deploymentName = "it-omitted-deployment",
+            description = "it-omitted description",
+            contextWindowSize = 64000m,
+            maxOutputTokens = 8192m,
+            isToolEnabled = true,
+            isReasoningEnabled = false,
+            isDefault = false
+        });
+
+        var response = await client.PutAsync($"api/models/{id}", content, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var updated = await response.Content.ReadFromJsonAsync<ModelDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(updated);
+        Assert.True(updated.IsUserSelectable);
+    }
+
+    /// <summary>
+    /// The whole chain for the guard that stops an administrator bricking the deployment: the
+    /// startup check treats a deactivated summarizer row as missing, and the seed-correcting
+    /// migration is already recorded, so retiring it would stop every instance booting.
+    /// </summary>
+    [Fact]
+    public async Task DeactivateModel_ConfiguredSummarizer_ReturnsConflictNamingTheSetting()
+    {
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var response = await client.DeleteAsync(
+            $"api/models/{KnownIds.SeedModelId}", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Conflict);
+        Assert.Contains("Summarization:ModelId", problem.Detail);
+
+        // Still readable, and still active.
+        var model = await client.GetFromJsonAsync<ModelDto>(
+            $"api/models/{KnownIds.SeedModelId}", TestContext.Current.CancellationToken);
+        Assert.NotNull(model);
+        Assert.Null(model.DateDeactivated);
     }
 
     [Fact]

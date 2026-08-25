@@ -44,7 +44,11 @@ html:has(dialog[open]) {
 // Hand-rolled in place of bootstrap/scss/forms/validation (6.9 kB). `applyServerErrors`
 // drives the class directly, and `.was-validated` is never used here.
 .form-control.is-invalid,
-.form-select.is-invalid {
+.form-select.is-invalid,
+// A switch can be faulted by a cross-field rule even though nothing types into it — the
+// model form's default-versus-hidden refusal is one. Border only: the track and knob carry
+// the state, and `--fail` clears the 3:1 a non-text indicator needs in both themes.
+.form-check-input.is-invalid {
   border-color: var(--fail);
 
   // Solid rather than the 18% wash it replaced, for the same reason as the valid

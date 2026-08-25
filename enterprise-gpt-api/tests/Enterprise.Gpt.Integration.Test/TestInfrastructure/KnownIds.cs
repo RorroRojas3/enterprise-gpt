@@ -23,7 +23,8 @@ public static class KnownIds
     public static readonly Guid SeedFoundryProviderId = Providers.AzureAIFoundry;
 
     /// <summary>
-    /// The "rr-gpt-5.6-luna" model seeded by <c>ModelConfiguration</c> (active, non-default).
+    /// The "rr-gpt5.6-luna" model seeded by <c>ModelConfiguration</c> — the pinned document
+    /// summarizer, and therefore active, non-default, and hidden from the chat model picker.
     /// </summary>
     public static readonly Guid SeedModelId = Guid.Parse("c36e22ed-262a-47a1-b2ba-06a38355ae0f");
 

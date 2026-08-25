@@ -26,9 +26,9 @@ import { Modal } from '@shared/overlay/modal/modal';
  * **One component, two modes**, as `ProjectFormDialog` is — every invoker talks to
  * `ModelActionsStore` and none of them talks to this dialog.
  *
- * It binds **eleven** fields where frame `5f` draws eight. The three extra —
- * `isReasoningEnabled` and the two prices — are on `CreateModelActionDto` and
- * `UpdateModelActionDto`, and `ModelMapper` assigns all three unconditionally: an edit
+ * It binds **twelve** fields where frame `5f` draws eight. The four extra —
+ * `isReasoningEnabled`, `isUserSelectable` and the two prices — are on `CreateModelActionDto` and
+ * `UpdateModelActionDto`, and `ModelMapper` assigns all four unconditionally: an edit
  * that omitted a price would silently clear a figure a report is built on, and this is
  * the only surface in the app that can set one. Frame `5f`'s caption rules out an API
  * key, an endpoint URL and an "available to" selector, and none of those exists here —
@@ -84,6 +84,16 @@ export class ModelFormDialog {
     validate(path.inputPricePerMillionTokens, ({ value }) => clientError(priceError(value())));
     validate(path.outputPricePerMillionTokens, ({ value }) => clientError(priceError(value())));
 
+    // A hidden model cannot be the default: `GET api/models` filters it out, so the
+    // catalog would resolve no default at all and every composer would refuse to send.
+    // Both server validators refuse this too; the rule here is what keeps it from being a
+    // save that leaves and comes back as a banner.
+    validate(path.isDefault, ({ value, valueOf }) =>
+      value() && !valueOf(path.isUserSelectable)
+        ? { kind: 'conflict', message: DEFAULT_CONFLICT_MESSAGE }
+        : null,
+    );
+
     // The server's verdict, per field, reported only while the field still holds the
     // exact value that was sent — which is what clears it on the next keystroke, since
     // Signal Forms has no `setErrors` for an imperative reset to clear.
@@ -108,6 +118,22 @@ export class ModelFormDialog {
   protected readonly submitLabel = computed(() => (this.isEdit() ? 'Save model' : 'Add model'));
 
   protected readonly canSubmit = computed(() => !this.f().invalid() && !this.actions.formBusy());
+
+  /**
+   * The default-versus-hidden conflict, read back off the field's own rule.
+   *
+   * `isDefault` is not in `SERVER_FIELDS` — a bool cannot be faulted per-field by the
+   * server — so it has no `fieldErrors()` entry, and without this the rule above would
+   * block Save while saying nothing. Shown as soon as it applies rather than on touch:
+   * the reader may have created it by toggling the *other* switch.
+   */
+  protected readonly defaultConflict = computed(() => {
+    const state = this.f.isDefault();
+
+    return state.invalid()
+      ? (state.errors().find((error) => error.kind === 'conflict')?.message ?? null)
+      : null;
+  });
 
   /**
    * Every field's messages and whether they are ready to show, in one computed.
@@ -144,9 +170,10 @@ export class ModelFormDialog {
    * the server faults that no control here *renders*. Rendered rather than dropped,
    * because a server message the reader cannot see is a save that silently fails.
    *
-   * `SERVER_FIELDS`, not every key the form models: the three toggles are bound but have
-   * no `validate` rule and no `fieldErrors()` entry, so passing them here would mark a
-   * message about one as "matched" and then show it nowhere.
+   * `SERVER_FIELDS`, not every key the form models: the four toggles are bound but carry
+   * no per-field server message and no `fieldErrors()` entry, so passing them here would
+   * mark a message about one as "matched" and then show it nowhere. `isDefault` does have
+   * a `validate` rule, rendered by `defaultConflict` rather than through that map.
    */
   protected readonly unmatched = computed(() =>
     unmatchedServerMessages(this.actions.formError(), SERVER_FIELDS),
@@ -222,6 +249,10 @@ interface FieldErrors {
   readonly show: boolean;
   readonly messages: readonly string[];
 }
+
+/** Worded for the reader, and matching what both server validators say. */
+const DEFAULT_CONFLICT_MESSAGE =
+  'A model hidden from the model picker cannot be the default model.';
 
 function clientError(message: string | null): { kind: string; message: string } | null {
   return message === null ? null : { kind: 'format', message };

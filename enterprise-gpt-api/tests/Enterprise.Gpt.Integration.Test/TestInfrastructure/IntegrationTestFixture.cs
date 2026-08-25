@@ -103,7 +103,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .Where(x => x.Id == KnownIds.SeedModelId)
             .ExecuteUpdateAsync(x => x
                 .SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null)
-                .SetProperty(p => p.IsDefault, false), cancellationToken);
+                .SetProperty(p => p.IsDefault, false)
+                // Its seeded state, so a class that made the summarizer selectable cannot leak
+                // that into the next class's picker assertions.
+                .SetProperty(p => p.IsUserSelectable, false), cancellationToken);
     }
 
     /// <summary>

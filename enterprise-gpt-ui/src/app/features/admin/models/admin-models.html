@@ -108,6 +108,11 @@
     <ng-template appTableCell="status" [appTableCellFor]="models.results()" let-row>
       @if (isRetired(row)) {
         <app-status-dot tone="muted" label="Retired" />
+      } @else if (!row.isUserSelectable) {
+        <!-- Active but out of the picker, which is a third state and not a shade of either:
+             the row still serves a turn that names it by id. Its own dot rather than a badge
+             beside "Active", so the column keeps saying exactly one thing per row. -->
+        <app-status-dot tone="warn" label="Hidden" />
       } @else {
         <app-status-dot tone="ok" label="Active" />
       }
@@ -127,7 +132,10 @@
           [panelWidth]="200"
         >
           <button appMenuItem type="button" (click)="actions.beginEdit(row)">Edit</button>
-          @if (!row.isDefault) {
+          <!-- A hidden model cannot be the default: the picker's own route filters it out,
+               so promoting it would leave every composer with no model to start a turn on.
+               The server refuses the combination; the menu simply does not offer it. -->
+          @if (!row.isDefault && row.isUserSelectable) {
             <button appMenuItem type="button" (click)="actions.setAsDefault(row)">
               Set as default
             </button>
@@ -164,7 +172,7 @@
         <app-empty-state
           heading="No models yet"
           [headingLevel]="2"
-          message="Add a model and it will appear here and in every user’s picker."
+          message="Add a model and it will appear here, and in every user’s picker unless you hide it."
         />
       }
     </div>

@@ -92,7 +92,10 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["Documents:EmbeddingBatchSize"] = "2",
             ["Documents:Chunking:MaxTokens"] = "64",
             ["Documents:Chunking:OverlapTokens"] = "16",
-            ["CorsOrigins:0"] = "https://localhost"
+            ["CorsOrigins:0"] = "https://localhost",
+            // appsettings.json already carries this, but the value is a startup requirement and an
+            // edit to that file should not be able to break the whole suite silently.
+            ["Summarization:ModelId"] = "c36e22ed-262a-47a1-b2ba-06a38355ae0f"
         };
         foreach (var (key, value) in settings)
         {

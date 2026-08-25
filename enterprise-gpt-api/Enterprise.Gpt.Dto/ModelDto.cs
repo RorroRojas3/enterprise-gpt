@@ -20,6 +20,13 @@ namespace Enterprise.Gpt.Dto
 
         public bool IsReasoningEnabled { get; init; }
 
+        /// <summary>
+        /// Whether the deployment is offered in the chat model picker. Always <see langword="true"/>
+        /// on <c>GET api/models</c>, which filters on it; meaningful only on the administrative
+        /// <c>GET api/models/all</c>, which does not.
+        /// </summary>
+        public bool IsUserSelectable { get; init; }
+
         public bool IsDefault { get; init; }
 
         /// <summary>

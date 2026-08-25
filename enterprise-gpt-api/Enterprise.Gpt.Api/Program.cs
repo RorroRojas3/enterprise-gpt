@@ -38,6 +38,7 @@ using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Reports;
 using Enterprise.Gpt.Service.Serialization;
 using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Summarization;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Service.Transcripts;
@@ -547,6 +548,15 @@ builder.Services.AddOptions<ReportOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+// Document summarization. The section names a catalog row and restates nothing about it, so the
+// only thing there is to validate here is that an id was supplied at all; that the id resolves to a
+// usable row is checked against the database after Migrate() runs, by SummarizerBootstrapper.
+builder.Services.AddOptions<SummarizationOptions>()
+    .Bind(builder.Configuration.GetSection(SummarizationOptions.SectionName))
+    .Validate(options => options.ModelId != Guid.Empty, "Summarization:ModelId is required.")
+    .ValidateOnStart();
+builder.Services.AddScoped<ISummarizerModelResolver, SummarizerModelResolver>();
+
 // Per-message token estimation. Validated at startup because a negative overhead term or a
 // nonsensical calibration multiplier silently corrupts every stored token count and, through the
 // context budget built on them, silently shrinks what is replayed to the model.
@@ -691,6 +701,21 @@ if (!app.Environment.IsEnvironment("Testing"))
     var cosmosClient = services.GetRequiredService<CosmosClient>();
     var cosmosOptions = services.GetRequiredService<IOptions<CosmosOptions>>().Value;
     await CosmosBootstrapper.EnsureProvisionedAsync(cosmosClient, cosmosOptions, app.Logger, CancellationToken.None);
+
+    // After Migrate(), so a deployment whose summarizer row this feature's own migration corrects
+    // is validated against the corrected row rather than the one it replaced.
+    try
+    {
+        await SummarizerBootstrapper.ValidateAsync(services, app.Logger, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        // Logged before rethrowing for the reason the migration block above does it: the runtime's
+        // unhandled-exception printer reaches stderr and nothing else, and this is the message an
+        // operator reads to find out which setting to fix.
+        app.Logger.LogError(ex, "The configured document summarizer could not be resolved");
+        throw;
+    }
 }
 
 // Configure the HTTP request pipeline.

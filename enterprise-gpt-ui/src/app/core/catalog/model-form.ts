@@ -52,6 +52,7 @@ export interface ModelFormValue {
   readonly outputPricePerMillionTokens: string;
   readonly isToolEnabled: boolean;
   readonly isReasoningEnabled: boolean;
+  readonly isUserSelectable: boolean;
   readonly isDefault: boolean;
 }
 
@@ -115,6 +116,9 @@ export function toModelFormValue(model: ModelDto | null): ModelFormValue {
       // The server's own column default. A model that cannot call tools is the
       // exception, so the toggle starts where most models end up.
       isToolEnabled: true,
+      // The server's column default too, and the one that matters: a model created with
+      // this off would be invisible in the picker the moment it was saved.
+      isUserSelectable: true,
       isReasoningEnabled: false,
       isDefault: false,
     };
@@ -131,6 +135,7 @@ export function toModelFormValue(model: ModelDto | null): ModelFormValue {
     outputPricePerMillionTokens: priceText(model.outputPricePerMillionTokens),
     isToolEnabled: model.isToolEnabled,
     isReasoningEnabled: model.isReasoningEnabled,
+    isUserSelectable: model.isUserSelectable,
     isDefault: model.isDefault,
   };
 }
@@ -141,7 +146,7 @@ export function toModelFormValue(model: ModelDto | null): ModelFormValue {
  * Both verbs go through here, so neither can drop a field on a full-representation PUT:
  * `ModelMapper` assigns every property unconditionally, so a body missing a price
  * **clears** the stored one and a body missing `isReasoningEnabled` reads as `false`.
- * The form binds all eleven precisely so that this function never has to guess at one.
+ * The form binds all twelve precisely so that this function never has to guess at one.
  */
 export function toModelBody(value: ModelFormValue): ModelWriteBody | null {
   if (tokenCountError(value.contextWindowSize) !== null) {
@@ -177,6 +182,7 @@ export function toModelBody(value: ModelFormValue): ModelWriteBody | null {
     maxOutputTokens: Number(value.maxOutputTokens.trim()),
     isToolEnabled: value.isToolEnabled,
     isReasoningEnabled: value.isReasoningEnabled,
+    isUserSelectable: value.isUserSelectable,
     isDefault: value.isDefault,
     inputPricePerMillionTokens: toPrice(value.inputPricePerMillionTokens),
     outputPricePerMillionTokens: toPrice(value.outputPricePerMillionTokens),

@@ -40,7 +40,7 @@ public sealed class ResponseBodyCaptureIntegrationTests(IntegrationTestFixture f
             builder.UseSetting("RequestLogging:Bodies:LogResponseBody", "true");
             builder.UseSetting("RequestLogging:Bodies:LogRequestBody", "true");
             // The default excludes every conversation and document route; this host needs a route it
-            // will actually capture, and api/models returns ordinary JSON with no user content in it.
+            // will actually capture, and api/models/all returns ordinary JSON with no user content in it.
             builder.UseSetting("RequestLogging:Bodies:ExcludedPaths:0", "/api/conversations");
         });
     }
@@ -58,7 +58,9 @@ public sealed class ResponseBodyCaptureIntegrationTests(IntegrationTestFixture f
     {
         using var client = CreateAdminClient();
 
-        var response = await client.GetAsync("api/models", TestContext.Current.CancellationToken);
+        // models/all rather than models: the seeded row is the summarizer, which the picker's
+        // own route now filters out, and this test needs a body with a known id in it.
+        var response = await client.GetAsync("api/models/all", TestContext.Current.CancellationToken);
         var models = await response.Content.ReadFromJsonAsync<List<ModelDto>>(TestContext.Current.CancellationToken);
 
         // The response the client received is the thing that matters; capture must be invisible to it.

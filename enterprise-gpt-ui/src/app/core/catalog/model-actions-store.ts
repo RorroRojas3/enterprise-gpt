@@ -139,7 +139,7 @@ export const ModelActionsStore = signalStore(
      * edit share one dialog and one store, and it can be force-closed mid-flight, so by
      * the time a response lands the *other* mode may be up — or a different row.
      *
-     * **Nothing here closes the dialog.** Eleven fields, one of them a 1024-character
+     * **Nothing here closes the dialog.** Twelve fields, one of them a 1024-character
      * description, are behind it; discarding them because a 502 came back would cost the
      * reader every one of them and `retryInterceptor` does not retry a POST or a PUT. The
      * failure is said, the values stay, and the reader decides whether to try again.
@@ -259,9 +259,10 @@ export const ModelActionsStore = signalStore(
         patchState(store, addPendingId(target.id));
         const url = store._api.build(`models/${ApiUrl.segment(target.id)}`);
 
-        // The row's own ten other fields, echoed unchanged. `ModelMapper` assigns every
-        // property on a PUT, so a body carrying only `isDefault` would clear the prices
-        // and read `isReasoningEnabled` as false.
+        // The row's own eleven other fields, echoed unchanged. `ModelMapper` assigns every
+        // property on a PUT, so a body carrying only `isDefault` would clear the prices,
+        // read `isReasoningEnabled` as false, and — for the pinned summarizer — put a
+        // deliberately hidden model back into every user's picker.
         const body: ModelWriteBody = {
           providerId: target.providerId,
           name: target.name,
@@ -271,6 +272,7 @@ export const ModelActionsStore = signalStore(
           maxOutputTokens: target.maxOutputTokens,
           isToolEnabled: target.isToolEnabled,
           isReasoningEnabled: target.isReasoningEnabled,
+          isUserSelectable: target.isUserSelectable,
           isDefault: true,
           inputPricePerMillionTokens: target.inputPricePerMillionTokens,
           outputPricePerMillionTokens: target.outputPricePerMillionTokens,
@@ -342,7 +344,7 @@ export const ModelActionsStore = signalStore(
        *
        * No fetch first, unlike `ProjectActionsStore.beginEdit`: `GET api/models/all`
        * returns the complete `ModelDto`, so the row already carries every one of the
-       * eleven fields the PUT has to send back.
+       * twelve fields the PUT has to send back.
        */
       beginEdit(model: ModelDto): void {
         // `formBusy` as well as the row's own request, for the reason `beginCreate`
