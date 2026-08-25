@@ -549,13 +549,19 @@ builder.Services.AddOptions<ReportOptions>()
     .ValidateOnStart();
 
 // Document summarization. The section names a catalog row and restates nothing about it, so the
-// only thing there is to validate here is that an id was supplied at all; that the id resolves to a
-// usable row is checked against the database after Migrate() runs, by SummarizerBootstrapper.
+// only thing there is to validate about the summarizer here is that an id was supplied at all; that
+// the id resolves to a usable row is checked against the database after Migrate() runs, by
+// SummarizerBootstrapper. The remaining keys tune the engine rather than describe the model, and
+// they are range-checked at start because a safety fraction above one, or a concurrency degree of
+// zero, produces a budget the fit decision would act on without ever looking wrong.
 builder.Services.AddOptions<SummarizationOptions>()
     .Bind(builder.Configuration.GetSection(SummarizationOptions.SectionName))
+    .ValidateDataAnnotations()
     .Validate(options => options.ModelId != Guid.Empty, "Summarization:ModelId is required.")
     .ValidateOnStart();
 builder.Services.AddScoped<ISummarizerModelResolver, SummarizerModelResolver>();
+builder.Services.AddScoped<IDocumentTextAssembler, DocumentTextAssembler>();
+builder.Services.AddScoped<IDocumentSummarizer, DocumentSummarizer>();
 
 // Per-message token estimation. Validated at startup because a negative overhead term or a
 // nonsensical calibration multiplier silently corrupts every stored token count and, through the

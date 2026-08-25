@@ -1,0 +1,162 @@
+using System.Globalization;
+using System.Text;
+
+namespace Enterprise.Gpt.Service.Prompts;
+
+/// <summary>
+/// One summarization call's prompt, split across the two places it is carried.
+/// </summary>
+/// <param name="Instructions">
+/// The framing, for <c>ChatOptions.Instructions</c>. Constant per stage, so its token cost can be
+/// counted once and charged to the budget as overhead.
+/// </param>
+/// <param name="UserMessage">
+/// The delimited content, for the single user message. This is what the budget measures.
+/// </param>
+public sealed record SummarizationPrompt(string Instructions, string UserMessage);
+
+/// <summary>
+/// Loads and parameterises the document summarization prompts from markdown templates shipped
+/// alongside the assembly under the <c>Prompts/</c> folder.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The framing rides <c>ChatOptions.Instructions</c> and the document text rides one user message,
+/// rather than both being interpolated into the instructions the way project instructions are. The
+/// budget arithmetic requires the split: the fit decision counts the framing as overhead and
+/// measures the document against what is left, which only balances if the document is the message
+/// being measured.
+/// </para>
+/// <para>
+/// No document name reaches any prompt. A file name is attacker-chosen text, and a project document
+/// is readable by every member of its project, so a name carried into the instructions would be a
+/// cross-user injection channel <em>inside</em> the frame, where the trust paragraph — which speaks
+/// only about the delimited body — would not cover it.
+/// </para>
+/// <para>
+/// Templates are read once at type initialisation. If a template file is missing, the type
+/// initialiser throws <see cref="FileNotFoundException"/>, surfaced to callers as
+/// <see cref="TypeInitializationException"/>.
+/// </para>
+/// </remarks>
+public static class SummarizationPrompts
+{
+    /// <summary>
+    /// Identifies the prompt generation a summary was produced under.
+    /// </summary>
+    /// <remarks>
+    /// Persisted on a summary row so that a summary generated before a template changed can be told
+    /// apart from one generated after, without comparing the text itself. Bump this whenever any of
+    /// the three templates changes in a way that would change what a model returns.
+    /// </remarks>
+    public const string PromptVersion = "1";
+
+    private static readonly string SinglePassTemplate =
+        PromptTemplateLoader.Load("document-summary-single-pass-prompt.md");
+
+    private static readonly string MapTemplate =
+        PromptTemplateLoader.Load("document-summary-map-prompt.md");
+
+    private static readonly string ReduceTemplate =
+        PromptTemplateLoader.Load("document-summary-reduce-prompt.md");
+
+    #region Public static methods
+
+    /// <summary>
+    /// Builds the prompt for a document that fits the summarizer's budget in one call.
+    /// </summary>
+    /// <param name="documentText">The document's reassembled text.</param>
+    /// <returns>The framing and the delimited document.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="documentText"/> is <see langword="null"/> or whitespace.</exception>
+    public static SummarizationPrompt BuildSinglePass(string documentText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentText);
+
+        var delimiter = CreateDelimiter();
+
+        return new SummarizationPrompt(
+            string.Format(CultureInfo.InvariantCulture, SinglePassTemplate, delimiter),
+            Fence(delimiter, documentText));
+    }
+
+    /// <summary>
+    /// Builds the prompt for one map unit of an oversized document.
+    /// </summary>
+    /// <param name="unitNumber">This unit's one-based position.</param>
+    /// <param name="unitCount">How many units the document was split into.</param>
+    /// <param name="unitText">This unit's text.</param>
+    /// <returns>The framing and the delimited unit.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="unitText"/> is <see langword="null"/> or whitespace.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="unitNumber"/> is not between one and <paramref name="unitCount"/>.
+    /// </exception>
+    public static SummarizationPrompt BuildMap(int unitNumber, int unitCount, string unitText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(unitText);
+        ArgumentOutOfRangeException.ThrowIfLessThan(unitNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(unitNumber, unitCount);
+
+        var delimiter = CreateDelimiter();
+
+        return new SummarizationPrompt(
+            string.Format(CultureInfo.InvariantCulture, MapTemplate, delimiter, unitNumber, unitCount),
+            Fence(delimiter, unitText));
+    }
+
+    /// <summary>
+    /// Builds the prompt that combines part summaries into one.
+    /// </summary>
+    /// <param name="partialSummaries">The part summaries, in document order.</param>
+    /// <returns>The framing and the delimited, numbered parts.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="partialSummaries"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="partialSummaries"/> is empty.</exception>
+    /// <remarks>
+    /// The parts are numbered inside one fenced block rather than fenced individually, so the model
+    /// sees a single trust boundary it was told about rather than a sequence of them.
+    /// </remarks>
+    public static SummarizationPrompt BuildReduce(IReadOnlyList<string> partialSummaries)
+    {
+        ArgumentNullException.ThrowIfNull(partialSummaries);
+
+        if (partialSummaries.Count == 0)
+        {
+            throw new ArgumentException(
+                "At least one part summary is required to reduce.", nameof(partialSummaries));
+        }
+
+        var delimiter = CreateDelimiter();
+        var body = new StringBuilder();
+
+        for (var i = 0; i < partialSummaries.Count; i++)
+        {
+            if (i > 0)
+            {
+                body.Append("\n\n");
+            }
+
+            body.Append(CultureInfo.InvariantCulture, $"Part {i + 1} of {partialSummaries.Count}:\n")
+                .Append(partialSummaries[i]);
+        }
+
+        return new SummarizationPrompt(
+            string.Format(CultureInfo.InvariantCulture, ReduceTemplate, delimiter),
+            Fence(delimiter, body.ToString()));
+    }
+
+    #endregion
+
+    #region Private methods
+
+    /// <remarks>
+    /// Unguessable per call rather than a fixed string, for the reason
+    /// <c>ConversationPrompts.BuildProjectInstructionsPrompt</c> gives: a fixed delimiter can be
+    /// reproduced inside the untrusted body, which lets the text appear to close its own block and
+    /// continue as if it were part of the frame.
+    /// </remarks>
+    private static string CreateDelimiter() => $"<<<document-text:{Guid.NewGuid():N}>>>";
+
+    private static string Fence(string delimiter, string content) =>
+        $"{delimiter}\n{content}\n{delimiter}";
+
+    #endregion
+}

@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Summarization;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,6 +51,13 @@ public static class SummarizerBootstrapper
         // here instead so an unregistered or switched-off provider is a deploy-time condition.
         // Discarded on purpose: the call is made for its throw, not its result.
         _ = services.GetRequiredService<IChatClientResolver>().Resolve(summarizer.ProviderId);
+
+        // Forces SummarizationPrompts' static initialiser, which reads the three markdown templates
+        // off disk. A template missing from the build output would otherwise surface as a
+        // TypeInitializationException on the first summarization request — reported to that user as
+        // a generic "try again", which would never come true. Also discarded for its throw alone;
+        // PromptVersion is a const, so naming it would not touch the initialiser.
+        _ = SummarizationPrompts.BuildReduce(["probe"]);
 
         logger.LogInformation(
             "Document summarization will use model {ModelId} ({DeploymentName}) on provider {ProviderId}.",

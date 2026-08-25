@@ -1,6 +1,6 @@
 # Document Summarizer Configuration
 
-Reference for the catalog and configuration foundation document summarization is built on: how the summarizer model is named, validated, and protected. Audience: operators deploying or upgrading this application, administrators managing the model catalog, and engineers building on `ISummarizerModelResolver`.
+Reference for the catalog and configuration foundation document summarization is built on: how the summarizer model is named, validated, and protected. Audience: operators deploying or upgrading this application, administrators managing the model catalog, and engineers building on `ISummarizerModelResolver`. For the algorithm that runs once this foundation resolves, see [Document Summarization Engine](summarization-engine.md).
 
 ## 1. What this is — and what it is not, yet
 
@@ -105,4 +105,6 @@ Two behaviors are worth stating plainly, because both are easy to mistake for bu
 
 ## 10. What's next
 
-Waves 2 through 6 of the PRD — the summarization engine (fit decision, map-reduce, collapse loop), summary persistence and the request/job API, token accounting and telemetry, the frontend surface, and the feature flag and rollout bounds — are not yet built. This document will grow with them; until then, the [PRD](../prd/document-summarization/document-summarization.md) is the authority for what is planned.
+**Wave 2 has since shipped** — the summarization engine itself (fit decision, map-reduce, the collapse loop) — documented separately in [Document Summarization Engine](summarization-engine.md), since it is a large enough concern to warrant its own document. It is still service-layer only: nothing in wave 2 added a route, persistence, usage rows, or a feature flag either.
+
+Waves 3 through 6 of the PRD — summary persistence and the request/job API, token accounting and telemetry, the frontend surface, and the feature flag and rollout bounds — are not yet built. This document, and its sibling above, will grow with them; until then, the [PRD](../prd/document-summarization/document-summarization.md) is the authority for what is planned.
