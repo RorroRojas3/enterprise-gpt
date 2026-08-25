@@ -123,17 +123,7 @@ namespace Enterprise.Gpt.Service.Prompts
 
         #region Private methods
 
-        private static string LoadTemplate(string fileName)
-        {
-            var path = Path.Combine(AppContext.BaseDirectory, "Prompts", fileName);
-            if (!File.Exists(path))
-            {
-                throw new FileNotFoundException(
-                    $"Conversation prompt template '{fileName}' not found at '{path}'.", path);
-            }
-
-            return File.ReadAllText(path);
-        }
+        private static string LoadTemplate(string fileName) => PromptTemplateLoader.Load(fileName);
 
         #endregion
     }

@@ -39,4 +39,14 @@
     <ProjectReference Include="..\..\Enterprise.Gpt.Entity\Enterprise.Gpt.Entity.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The real shipped configuration, so a test that checks the committed values binds the file
+         instead of a copy of it. A hand-maintained duplicate would pass while the host refused to
+         start, which is the exact failure the test exists to catch. Linked flat and renamed, so it
+         cannot be mistaken for this test project's own settings. -->
+    <None Include="..\..\Enterprise.Gpt.Api\appsettings.json"
+          Link="api-appsettings.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
