@@ -1,4 +1,4 @@
-# Document Summarization: Tool, Persistence and Billing
+﻿# Document Summarization: Tool, Persistence and Billing
 
 Reference for how [the summarization engine](summarization-engine.md) becomes something a conversation can actually use: the `document_summarize` tool the model calls mid-turn, the two tables that turn a run's output into one canonical, shared summary, and the billing seam that charges every run to the conversation that asked for it — and to that conversation alone, even when the run was made from inside an already-billed turn. Audience: engineers extending the tool or the billing seam, and reviewers evaluating this feature's cost-containment claims.
 
@@ -216,7 +216,7 @@ A cache hit records with `deploymentName: null` (tagged `unknown` — nothing ac
 
 ## 7. Governance and the known gap
 
-`Summarization:Enabled` (default `false`, everywhere, development included) is the entire rollback path: with it off, the tool is never attached to any turn, so the model cannot discover or call it, and nothing costs anything. A summary already generated before a rollback is untouched in the database and is served immediately, at no cost, the moment the flag is switched back on. `Summarization:ModelId`'s own startup validation ([model-configuration.md §4](model-configuration.md#4-startup-validation)) runs regardless of this flag — it is a deploy-time check, not a feature gate.
+`Summarization:Enabled` is the entire rollback path. The property defaults to `false`, so an environment that sets nothing gets nothing; the committed `appsettings.json` sets it to `true` for development, which is an explicit choice rather than a default and should be made per environment rather than inherited. With it off, the tool is never attached to any turn, so the model cannot discover or call it, and nothing costs anything. A summary already generated before a rollback is untouched in the database and is served immediately, at no cost, the moment the flag is switched back on. `Summarization:ModelId`'s own startup validation ([model-configuration.md §4](model-configuration.md#4-startup-validation)) runs regardless of this flag — it is a deploy-time check, not a feature gate.
 
 Two ceilings are enforced **unconditionally**, because both guard against one pathological request rather than a tunable usage pattern an operator might legitimately want off:
 

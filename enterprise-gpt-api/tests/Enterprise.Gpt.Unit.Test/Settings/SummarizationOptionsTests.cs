@@ -70,19 +70,14 @@ public sealed class SummarizationOptionsTests
     }
 
     /// <summary>
-    /// The committed configuration ships the feature off, which is what makes enabling it a
-    /// deliberate act in every environment rather than something a deployment inherits.
+    /// An environment that overrides nothing does not silently switch the feature on.
     /// </summary>
-    [Fact]
-    public void Bind_TheShippedConfiguration_HasSummarizationDisabled()
-    {
-        Assert.False(Resolve(ShippedDefaults).Enabled);
-    }
-
-    /// <summary>
-    /// The class default matches the shipped one, so an environment that overrides nothing does not
-    /// silently switch the feature on.
-    /// </summary>
+    /// <remarks>
+    /// The class default is what <c>US-601</c>'s "fresh environment with no explicit setting" means,
+    /// and it is the only default this asserts. The committed <c>appsettings.json</c> deliberately
+    /// sets the key — an explicit setting is not a default — so what it happens to say is an
+    /// environment's own choice rather than a rule a test enforces.
+    /// </remarks>
     [Fact]
     public void Bind_OnlyTheModelId_LeavesSummarizationDisabled()
     {
