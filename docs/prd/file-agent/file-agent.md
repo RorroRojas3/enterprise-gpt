@@ -287,13 +287,15 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 #### US-003: `[enabler]` Establish and publish the supported conversion matrix
 
-- **Story**: `[enabler]` Attempt every conversion pair proposed in §6's matrix against the real sandbox — including at least one deliberately-refused pair, to confirm the refusal is warranted rather than assumed — and publish the confirmed matrix as the authoritative source `FileAgentOptions`/the `document-conversion` skill reference against. Unblocks US-406 and US-407.
+- **Story**: `[enabler]` Attempt every conversion pair proposed in §6's matrix against the real sandbox — **assigning each a confirmed fidelity tier (`✓` faithful / `◐` structural / `refused`) rather than a yes-or-no**, and attempting every proposed `refused` pair anyway so the refusal is evidence rather than inheritance — and publish the confirmed matrix as the authoritative source `FileAgentOptions`/the `document-conversion` skill reference against. Unblocks US-406 and US-407.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-002
 - **Status**: Not started
 - **Acceptance criteria**:
-  - Given each `✓` cell in §6's proposed matrix, when the pair is attempted with a real sample file, then it either succeeds and is confirmed, or fails and is moved to refused with the reason recorded.
-  - Given each `refused` cell, when the pair is attempted anyway as a check, then the attempt is recorded — confirming the refusal is evidence-based, not merely copied from documentation about a different environment.
-  - Given the confirmed matrix, when it is published, then it lives in a form `document-conversion`'s `SKILL.md` and `FileAgentOptions`' own validation can both reference without disagreeing — a single source, not two hand-copied tables.
+  - Given each `✓` cell in §6's proposed matrix, when the pair is attempted with a real sample file, then it either succeeds and is confirmed, or is demoted to `◐` or `refused` with the reason recorded.
+  - Given each proposed `◐` cell — every Office → `pdf` pair and `pdf` → `docx` among them — when the pair is attempted, then the structural path is confirmed to produce an openable target carrying the source's content, or the cell is demoted with the reason recorded. A `◐` cell that is quietly refused instead of attempted fails this story.
+  - Given the shell probe from US-002, when a `soffice`/`libreoffice` binary is found, then every Office → `pdf` cell is re-attempted through it and promoted to `✓` if it renders faithfully — the one finding that most widens what EP-4 can promise.
+  - Given each proposed `refused` cell, when the pair is attempted anyway as a check, then the attempt is recorded — confirming the refusal is evidence-based, not merely copied from documentation about a different environment.
+  - Given the confirmed matrix, when it is published, then it lives in a form `document-conversion`'s `SKILL.md` and `FileAgentOptions`' own validation can both reference without disagreeing — a single source, not two hand-copied tables, and it carries the tier per cell, not just membership.
   - Given a pair not in the proposed matrix at all, when it is discovered to be trivially achievable during this spike, then it is added with its own evidence rather than left implicit.
 
 ### EP-1: Generated-file contract
@@ -538,7 +540,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
   - Given a request for a PDF, when the agent runs, then it produces one entirely inside the sandbox using only fonts and libraries confirmed present by EP-0 — no web font or external renderer is fetched, because the sandbox has no outbound network access.
   - Given the produced PDF, when it is verified per US-402, then its page count is asserted against the requested shape and it opens in a standard reader.
   - Given the fidelity limitation, when the agent returns, then the answer states plainly that the PDF uses the sandbox's own fonts and will not match a Word-exported document's typography.
-  - Given a request that is really "convert this document to PDF" for a pair the matrix refuses, when it is made, then it is refused per US-407 rather than attempted as a lossy re-render.
+  - Given a request that is really "convert this document to PDF", when it is made, then it routes through US-406's conversion path at the tier the confirmed matrix records — a `◐` structural render is served with its caveat, never refused as though the conversion were impossible.
 
 #### US-404: Edit an existing conversation document
 
@@ -568,7 +570,9 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-402, US-003
 - **Status**: Not started
 - **Acceptance criteria**:
-  - Given a source document and a requested target format that appear as a `✓` in US-003's confirmed matrix, when the agent runs, then it produces the converted file and verifies it per US-402.
+  - Given a source document and a requested target format that appear as either `✓` or `◐` in US-003's confirmed matrix, when the agent runs, then it produces the converted file and verifies it per US-402 — a `◐` tier is a conversion to be served, not a reason to decline.
+  - Given a pair confirmed at the `◐` structural tier — every Office → `pdf` conversion when no `soffice` binary is present, and `pdf` → `docx` — when it completes, then the answer names what did not survive (exact pagination, typography, vendor-specific layout) in one sentence, without turning it into a standing disclaimer on every future answer.
+  - Given the same `◐` conversion, when the artifact is verified per US-402, then verification asserts the target's own shape — page count for `pdf`, openable document with the source's heading and table count for `docx` — so "structural" is a measured claim rather than a hedge.
   - Given a conversion that is inherently lossy — a text-extraction target like `md`/`txt` from a richly formatted source — when it completes, then the answer states plainly what was lost (formatting, images, layout).
   - Given the confirmed matrix, when the `document-conversion` skill is loaded, then its `SKILL.md` names exactly the same pairs as the published matrix — a test asserts the two never disagree.
 
@@ -578,7 +582,8 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-406
 - **Status**: Not started
 - **Acceptance criteria**:
-  - Given a requested pair marked `refused` in US-003's matrix, when the agent is asked for it, then it refuses before any sandbox run starts, naming the pair and the reason (no LibreOffice/Word-equivalent renderer in this sandbox), and suggests a supported alternative when one exists.
+  - Given a requested pair confirmed `refused` in US-003's matrix — `pdf` → `pptx` being the only one proposed — when the agent is asked for it, then it refuses before any sandbox run starts, naming the pair and why the result would not be worth handing over (a slide deck rebuilt from rendered pages is images with no editable content), and suggests a supported alternative when one exists.
+  - Given a pair confirmed at the `◐` structural tier, when it is requested, then it is **served, not refused** — a refusal here is a defect against the conversion-fidelity-honesty criterion, since a fidelity caveat is not a reason to withhold the file.
   - Given an ambiguous document name matching more than one document in scope, when the agent is asked to act on it, then it asks which one rather than guessing, at zero sandbox cost.
   - Given a document name matching zero documents in scope, when the agent is asked to act on it, then it says so and names what is available, at zero sandbox cost.
   - Given any of these refusals, when telemetry is emitted, then the outcome is tagged distinctly from a verification failure or a "no file produced" run — the conversion-honesty success criterion needs a source that does not conflate the three.
@@ -815,5 +820,5 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 - **Does v1 need a per-user or per-conversation cost ceiling, or is telemetry-only acceptable at launch?** US-506 implements whichever answer comes back and is P1 rather than P0 precisely because the answer is not yet given — *product owner, before Wave 3*.
 - **Is `AllowedResourceExtensions = [".md"]` sufficient, or should a skill ever ship a non-markdown reference (a JSON schema, a sample file)?** The current proposal keeps every skill resource as markdown; a skill needing a structured sample file would need this reopened — *backend engineer, during US-306*.
 - **Should a failed verification retain the failing artifact for diagnosis?** This draft discards it: no row, no blob, no chip. Keeping it would help debug a systematic failure and would also persist a file the platform knows is broken — *backend engineer with the operator, during US-402*.
-- **Does the sandbox's real image (post-EP-0) support any renderer capable of a faithful `docx`/`xlsx`/`pptx` → `pdf` conversion after all?** The proposed matrix refuses these pairs based on general knowledge of hosted Code Interpreter images, not this specific one — *resolved by US-003 itself, but flagged here since it is the single biggest swing in what EP-4 can promise*.
+- **Does the sandbox's real image (post-EP-0) carry a `soffice`/`libreoffice` binary?** The matrix proposes every Office → `pdf` pair at the `◐` structural tier, achievable with `weasyprint`/`reportlab` alone; a `soffice` binary would promote all of them to `✓` faithful. Either way the conversion is **served, not refused** — *resolved by US-003, but flagged here since it is the single biggest swing in the quality, not the existence, of what EP-4 promises*.
 - **Should the File Agent ever be offered as an explicit, user-selectable tool (like an MCP server a user opts into) rather than purely implicit?** This draft treats it exactly like document retrieval — always attached when eligible, never toggled per turn. A product decision to make it explicit would change US-303's and US-408's stand-down behavior — *product owner, if usage data suggests users want to disable it selectively without revoking the permission entirely*.
