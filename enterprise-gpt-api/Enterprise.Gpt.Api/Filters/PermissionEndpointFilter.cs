@@ -1,8 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Mvc;
 using Enterprise.Gpt.Api.Problems;
 using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Caching;
 
@@ -74,17 +72,14 @@ namespace Enterprise.Gpt.Api.Filters
             {
                 var services = context.HttpContext.RequestServices;
                 var tokenService = services.GetRequiredService<ITokenService>();
-                var permissionCache = services.GetRequiredService<IUserPermissionCache>();
+                var grantReader = services.GetRequiredService<IUserGrantReader>();
 
-                var oid = tokenService.GetOid();
-                var cancellationToken = context.HttpContext.RequestAborted;
-
-                // The DbContext is resolved inside the loader, so a cache hit — the normal case,
-                // since signing in populates the entry — constructs no EF context here at all.
-                var granted = await permissionCache.GetOrLoadAsync(
-                    oid,
-                    token => LoadGrantsAsync(services, oid, token),
-                    cancellationToken);
+                // Shared with the services that also have to ask this question, so the two never
+                // drift into disagreeing about what a grant is. The reader resolves its own
+                // DbContext inside the loader, so a cache hit — the normal case, since signing in
+                // populates the entry — constructs no EF context here at all.
+                var granted = await grantReader.GetGrantsAsync(
+                    tokenService.GetOid(), context.HttpContext.RequestAborted);
 
                 foreach (var permissionId in required)
                 {
@@ -114,26 +109,6 @@ namespace Enterprise.Gpt.Api.Filters
 
                 return await next(context);
             };
-        }
-
-        /// <summary>
-        /// Reads the caller's full active grant set on a cache miss. Deliberately unfiltered by
-        /// permission id: one query serves every filter the request passes through, and the entry is
-        /// reused for the caller's whole session.
-        /// </summary>
-        private static async Task<IReadOnlyCollection<Guid>> LoadGrantsAsync(
-            IServiceProvider services,
-            Guid oid,
-            CancellationToken cancellationToken)
-        {
-            var ctx = services.GetRequiredService<EnterpriseGptDbContext>();
-
-            // User.Id is the Entra object id, so the grant table is queried directly with no join.
-            return await ctx.UserPermissions
-                .AsNoTracking()
-                .Where(up => up.UserId == oid && !up.DateDeactivated.HasValue)
-                .Select(up => up.PermissionId)
-                .ToListAsync(cancellationToken);
         }
 
         private static string DescribeRequirement(string[] names)

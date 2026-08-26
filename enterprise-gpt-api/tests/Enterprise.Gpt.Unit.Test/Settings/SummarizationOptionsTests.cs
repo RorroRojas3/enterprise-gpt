@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using Enterprise.Gpt.Service.Settings;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -64,6 +64,29 @@ public sealed class SummarizationOptionsTests
         Assert.Equal(180, options.CallTimeoutSeconds);
         Assert.Equal(5, options.MaxCollapsePasses);
         Assert.Equal(2, options.MaxCallRetries);
+        Assert.Equal(300, options.ToolTimeoutSeconds);
+        Assert.Equal(40, options.MaxMapUnits);
+        Assert.Equal(25, options.MaxDigestDocuments);
+    }
+
+    /// <summary>
+    /// An environment that overrides nothing does not silently switch the feature on.
+    /// </summary>
+    /// <remarks>
+    /// The class default is what <c>US-601</c>'s "fresh environment with no explicit setting" means,
+    /// and it is the only default this asserts. The committed <c>appsettings.json</c> deliberately
+    /// sets the key — an explicit setting is not a default — so what it happens to say is an
+    /// environment's own choice rather than a rule a test enforces.
+    /// </remarks>
+    [Fact]
+    public void Bind_OnlyTheModelId_LeavesSummarizationDisabled()
+    {
+        var options = Resolve(new Dictionary<string, string?>
+        {
+            ["Summarization:ModelId"] = "c36e22ed-262a-47a1-b2ba-06a38355ae0f"
+        });
+
+        Assert.False(options.Enabled);
     }
 
     /// <summary>
@@ -96,6 +119,9 @@ public sealed class SummarizationOptionsTests
     [InlineData("Summarization:CallTimeoutSeconds", "0")]
     [InlineData("Summarization:MaxCollapsePasses", "0")]
     [InlineData("Summarization:MaxCallRetries", "-1")]
+    [InlineData("Summarization:ToolTimeoutSeconds", "0")]
+    [InlineData("Summarization:MaxMapUnits", "0")]
+    [InlineData("Summarization:MaxDigestDocuments", "0")]
     public void Bind_ValueOutsideItsRange_IsRejected(string key, string value)
     {
         var settings = new Dictionary<string, string?>(ShippedDefaults) { [key] = value };
@@ -124,15 +150,19 @@ public sealed class SummarizationOptionsTests
     }
 
     /// <summary>
-    /// Every settable property carries a range, so a nonsensical value is a startup failure rather
-    /// than a budget the fit decision silently acts on.
+    /// Every numeric tuning property carries a range, so a nonsensical value is a startup failure
+    /// rather than a budget the fit decision silently acts on.
     /// </summary>
+    /// <remarks>
+    /// Booleans are excluded, not overlooked: a switch has exactly two valid values and a range
+    /// over them would assert nothing. Adding a numeric knob without a range is still a failure.
+    /// </remarks>
     [Fact]
     public void Options_EverySettableTuningProperty_CarriesARange()
     {
         var unranged = typeof(SummarizationOptions)
             .GetProperties()
-            .Where(p => p.CanWrite && p.PropertyType != typeof(Guid))
+            .Where(p => p.CanWrite && p.PropertyType != typeof(Guid) && p.PropertyType != typeof(bool))
             .Where(p => p.PropertyType.IsPrimitive || p.PropertyType == typeof(decimal))
             .Where(p => p.GetCustomAttributes(typeof(RangeAttribute), inherit: false).Length == 0)
             .Select(p => p.Name);

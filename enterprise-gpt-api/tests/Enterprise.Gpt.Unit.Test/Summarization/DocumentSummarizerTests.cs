@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service.Chat;
@@ -148,6 +148,43 @@ public sealed class DocumentSummarizerTests
         Assert.True(run.MapUnitCount > 1);
         Assert.Equal(run.MapUnitCount + 1, run.ModelCallCount);
         Assert.Equal(0, run.CollapsePasses);
+    }
+
+    /// <summary>
+    /// Checked before the map phase dispatches anything, so a document too large to summarize costs
+    /// nothing at all rather than running to the ceiling and stopping with a truncated result.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDocumentAsync_SplitExceedsTheMapUnitCeiling_FailsBeforeAnyCall()
+    {
+        SetSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 0m);
+        SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
+
+        var summarizer = CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxMapUnits = 2 });
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => summarizer.SummarizeDocumentAsync(
+            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+
+        Assert.Contains("too large to summarize", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("the limit is 2", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, _chatClient.CallCount);
+    }
+
+    /// <summary>
+    /// A ceiling the split stays under changes nothing, so the guard cannot quietly narrow what the
+    /// engine already handled.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDocumentAsync_SplitWithinTheMapUnitCeiling_RunsNormally()
+    {
+        SetSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 0m);
+        SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
+
+        var run = await CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxMapUnits = 1_000 })
+            .SummarizeDocumentAsync(DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.True(run.MapUnitCount > 1);
+        Assert.Equal(run.MapUnitCount + 1, run.ModelCallCount);
     }
 
     /// <summary>

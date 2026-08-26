@@ -25,6 +25,9 @@ namespace Enterprise.Gpt.Service.Prompts
         private static readonly string DocumentRetrievalPromptTemplate =
             LoadTemplate("document-retrieval-prompt.md");
 
+        private static readonly string DocumentSummaryToolPromptTemplate =
+            LoadTemplate("document-summary-tool-prompt.md");
+
         #region Public static methods
 
         /// <summary>
@@ -117,6 +120,38 @@ namespace Enterprise.Gpt.Service.Prompts
             var list = string.Join("\n", documentNames.Select(name => $"- {name}"));
 
             return string.Format(CultureInfo.InvariantCulture, DocumentRetrievalPromptTemplate, toolName, list);
+        }
+
+        /// <summary>
+        /// Builds the prompt describing the summarization tool and when to prefer it over retrieval.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Separate from <see cref="BuildDocumentRetrievalPrompt"/> rather than folded into it,
+        /// because the two tools are attached under different conditions: retrieval needs only
+        /// documents, summarization needs the feature switched on and the caller's own grant. A
+        /// combined prompt would describe a tool that is not on the request whenever they diverge,
+        /// which is the one thing a tool prompt must never do.
+        /// </para>
+        /// <para>
+        /// <c>document-summary-tool-prompt.md</c> is a composite format string: <c>{0}</c> is the
+        /// summarization tool's name and <c>{1}</c> the retrieval tool's. Any literal brace added to
+        /// that file must be doubled. No document name reaches it — the retrieval prompt already
+        /// lists them, and repeating them would double an attacker-influenced string's presence in
+        /// the instructions for no benefit.
+        /// </para>
+        /// </remarks>
+        /// <param name="summaryToolName">The name the summarization tool is registered under.</param>
+        /// <param name="retrievalToolName">The name the retrieval tool is registered under.</param>
+        /// <returns>The system prompt text describing the summarization tool.</returns>
+        /// <exception cref="ArgumentException">Either name is <see langword="null"/> or whitespace.</exception>
+        public static string BuildDocumentSummaryToolPrompt(string summaryToolName, string retrievalToolName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(summaryToolName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(retrievalToolName);
+
+            return string.Format(
+                CultureInfo.InvariantCulture, DocumentSummaryToolPromptTemplate, summaryToolName, retrievalToolName);
         }
 
         #endregion

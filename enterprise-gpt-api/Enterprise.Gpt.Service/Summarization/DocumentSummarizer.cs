@@ -1,4 +1,4 @@
-using Andes.Extensions.AI;
+﻿using Andes.Extensions.AI;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
@@ -226,6 +226,16 @@ public sealed class DocumentSummarizer(
         if (units.Count == 0)
         {
             throw Invalid("summary", "This document has no text to summarize.");
+        }
+
+        // Checked here, before the map phase dispatches anything, so an oversized document costs
+        // nothing at all rather than running to the ceiling and stopping with a partial result.
+        if (units.Count > _options.MaxMapUnits)
+        {
+            throw Invalid(
+                "summary",
+                $"This document is too large to summarize: it would need {units.Count} passes and "
+                    + $"the limit is {_options.MaxMapUnits}.");
         }
 
         _logger.LogInformation(

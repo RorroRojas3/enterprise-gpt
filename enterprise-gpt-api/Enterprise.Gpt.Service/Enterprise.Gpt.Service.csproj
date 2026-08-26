@@ -85,6 +85,9 @@
     <None Update="Prompts\project-instructions-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Prompts\document-summary-tool-prompt.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Prompts\document-summary-single-pass-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

@@ -105,6 +105,6 @@ Two behaviors are worth stating plainly, because both are easy to mistake for bu
 
 ## 10. What's next
 
-**Wave 2 has since shipped** — the summarization engine itself (fit decision, map-reduce, the collapse loop) — documented separately in [Document Summarization Engine](summarization-engine.md), since it is a large enough concern to warrant its own document. It is still service-layer only: nothing in wave 2 added a route, persistence, usage rows, or a feature flag either.
+**Wave 2 has since shipped** — the summarization engine itself (fit decision, map-reduce, the collapse loop) — documented separately in [Document Summarization Engine](summarization-engine.md), since it is a large enough concern to warrant its own document.
 
-Waves 3 through 6 of the PRD — summary persistence and the request/job API, token accounting and telemetry, the frontend surface, and the feature flag and rollout bounds — are not yet built. This document, and its sibling above, will grow with them; until then, the [PRD](../prd/document-summarization/document-summarization.md) is the authority for what is planned.
+**Waves 3 through 5 have since shipped too, in one later pass** — summary persistence, token accounting and telemetry, and a real caller. The caller is not the request/job API this section originally pointed at: that design was reversed before it was built, in favor of a tool the model calls mid-turn, with no route, no job, and no frontend surface at all. See [Document Summarization: Tool, Persistence and Billing](tool-integration.md) for all of it. The one piece of wave 6 (governance) not yet built is a per-user/per-conversation request-rate bound (`US-602`); the feature flag and the unconditional per-request ceilings are in place.

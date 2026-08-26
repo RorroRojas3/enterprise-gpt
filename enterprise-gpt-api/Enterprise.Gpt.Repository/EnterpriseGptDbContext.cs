@@ -25,11 +25,15 @@ namespace Enterprise.Gpt.Repository
 
         public DbSet<ConversationDocumentChunk> ConversationDocumentChunks { get; set; }
 
+        public DbSet<ConversationDocumentSummary> ConversationDocumentSummaries { get; set; }
+
         public DbSet<Project> Projects { get; set; }
 
         public DbSet<ProjectDocument> ProjectDocuments { get; set; }
 
         public DbSet<ProjectDocumentChunk> ProjectDocumentChunks { get; set; }
+
+        public DbSet<ProjectDocumentSummary> ProjectDocumentSummaries { get; set; }
 
         public DbSet<User> Users { get; set; }
 
@@ -57,9 +61,11 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new ConversationUsageTurnConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationDocumentConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationDocumentChunkConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationDocumentSummaryConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentChunkConfiguration());
+            modelBuilder.ApplyConfiguration(new ProjectDocumentSummaryConfiguration());
             modelBuilder.ApplyConfiguration(new MessageFeedbackConfiguration());
 
             // Configure global delete behavior
