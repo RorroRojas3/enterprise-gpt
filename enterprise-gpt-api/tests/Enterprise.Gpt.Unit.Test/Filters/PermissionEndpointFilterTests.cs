@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,6 +48,12 @@ public sealed class PermissionEndpointFilterTests : IDisposable
         var services = new ServiceCollection();
         services.AddSingleton(tokenService);
         services.AddSingleton(cache);
+
+        // The real reader over the substituted cache: the filter now asks the same question through
+        // the same type the services do, so a test that stubbed the reader would stop covering the
+        // loader the filter actually runs on a miss.
+        services.AddScoped<IUserGrantReader, UserGrantReader>();
+
         if (ctx is not null)
         {
             services.AddSingleton(ctx);

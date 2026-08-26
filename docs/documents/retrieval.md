@@ -252,6 +252,8 @@ The query-length cap exists because the query is model-supplied and goes straigh
 
 Silently returning no results for a near-miss on a file name reads to the model as "the documents do not say", which is a worse failure than a wider search with an explanation attached.
 
+The matcher itself — `DocumentRetrievalService.MatchByName` — is `internal static` and shared with `document_summarize` (see [Document Summarization: Tool, Persistence and Billing](../summarization/tool-integration.md#2-the-tool-document_summarize)), so both tools that take a document name agree on what a name means. The two tools take the *opposite* decision on the same match set: search widens because a wider search is cheap, while summarizing refuses outright because summarizing the wrong document is not.
+
 ## 6. When the tool is attached — and when it is not
 
 Attachment happens in `ConversationService.CreateChatOptionsAsync`, and there are four ways it does not happen.
@@ -468,6 +470,7 @@ dotnet test                                    # everything; Docker must be runn
 | Options | [`Enterprise.Gpt.Service/Settings/DocumentRetrievalOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/DocumentRetrievalOptions.cs) |
 | Model-facing prompt | [`Enterprise.Gpt.Service/Prompts/document-retrieval-prompt.md`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/document-retrieval-prompt.md), [`ConversationPrompts.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/ConversationPrompts.cs) |
 | Attachment per turn | [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) — `CreateChatOptionsAsync` |
+| The sibling tool that shares this scope and name matcher | [Document Summarization: Tool, Persistence and Billing](../summarization/tool-integration.md) — `document_summarize` |
 | Tokenizer (query budget) | [`Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs) |
 | Entities | [`BaseDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/BaseDocumentChunk.cs), [`ConversationDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationDocumentChunk.cs), [`ProjectDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ProjectDocumentChunk.cs) |
 | DI + options validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |

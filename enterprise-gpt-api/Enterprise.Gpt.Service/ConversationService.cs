@@ -1,4 +1,4 @@
-using Andes.Extensions.AI;
+﻿using Andes.Extensions.AI;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +19,7 @@ using System.Text;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Mappers;
@@ -27,6 +28,7 @@ using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Sorting;
+using Enterprise.Gpt.Service.Summarization;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Service.Transcripts;
@@ -186,6 +188,9 @@ namespace Enterprise.Gpt.Service
         IValidator<UpdateConversationActionDto> updateSessionValidator,
         IValidator<SetMessageFeedbackActionDto> setMessageFeedbackValidator,
         IOptions<WeatherToolOptions> weatherToolOptions,
+        IDocumentSummaryService documentSummaryService,
+        IUserGrantReader userGrantReader,
+        IOptions<SummarizationOptions> summarizationOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
@@ -209,6 +214,9 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
         private readonly IValidator<SetMessageFeedbackActionDto> _setMessageFeedbackValidator = setMessageFeedbackValidator;
         private readonly WeatherToolOptions _weatherToolOptions = weatherToolOptions.Value;
+        private readonly IDocumentSummaryService _documentSummaryService = documentSummaryService;
+        private readonly IUserGrantReader _userGrantReader = userGrantReader;
+        private readonly SummarizationOptions _summarizationOptions = summarizationOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
         // The synthetic pair every turn's stream opens with, ahead of the first model event.
@@ -392,6 +400,16 @@ namespace Enterprise.Gpt.Service
                 PatchOperation.Set("/dateDeactivated", date),
             ], cancellationToken);
 
+            // Ahead of the chunks and the document itself, so a summary never outlives what it
+            // summarizes: a live summary row under a deleted document is a fully readable account of
+            // everything that document said.
+            await _ctx.ConversationDocumentSummaries
+                .Where(s => s.ConversationDocument.ConversationId == id && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
             await _ctx.ConversationDocumentChunks
                 .Where(c => c.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
                 .ExecuteUpdateAsync(c => c
@@ -444,6 +462,13 @@ namespace Enterprise.Gpt.Service
                     PatchOperation.Set("/dateDeactivated", date),
                 ], cancellationToken);
             }
+
+            await _ctx.ConversationDocumentSummaries
+                .Where(s => conversationIds.Contains(s.ConversationDocument.ConversationId) && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
 
             await _ctx.ConversationDocumentChunks
                 .Where(c => conversationIds.Contains(c.ConversationDocument.ConversationId) && !c.DateDeactivated.HasValue)
@@ -2182,6 +2207,33 @@ namespace Enterprise.Gpt.Service
                 attachDocumentTool = false;
             }
 
+            // Deliberately gated on more than retrieval is, and resolved here so the whole decision
+            // sits beside the one it mirrors. A grant read is a cache hit in the normal case — the
+            // entry is written at sign-in — so this costs nothing on a turn that is not the user's
+            // first.
+            var attachSummaryTool = _summarizationOptions.Enabled && documentScope?.HasDocuments is true;
+
+            if (attachSummaryTool && !model.IsToolEnabled)
+            {
+                _logger.LogWarning(
+                    "Conversation {ConversationId} has documents but model {ModelId} does not support tools; document summarization is unavailable for this turn.",
+                    sessionId, model.Id);
+
+                attachSummaryTool = false;
+            }
+
+            if (attachSummaryTool)
+            {
+                var granted = await _userGrantReader
+                    .GetGrantsAsync(_tokenService.GetOid(), cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!granted.Contains(PermissionIds.UploadFile))
+                {
+                    attachSummaryTool = false;
+                }
+            }
+
             var selectedServerIds = mcps.Select(m => m.Id).Distinct().ToArray();
             if (selectedServerIds.Length > 0 && !model.IsToolEnabled)
             {
@@ -2223,6 +2275,45 @@ namespace Enterprise.Gpt.Service
                 {
                     tools.Add(DocumentTool.Create(documentScope!, _documentRetrievalService, _logger));
                     instructions.Add(ConversationPrompts.BuildDocumentRetrievalPrompt(DocumentTool.ToolName, documentScope!.DocumentNames));
+                }
+
+                // Attached under strictly narrower conditions than retrieval: the feature has to be
+                // switched on, and the caller has to hold the same grant that adding a document
+                // needs. Reading a document back costs nothing and is gated on ownership alone;
+                // summarizing spends money on a cache miss, so it is gated the way adding one is.
+                if (attachSummaryTool
+                    && tools.Any(t => string.Equals(t.Name, DocumentSummaryTool.ToolName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogWarning(
+                        "An MCP tool selected for conversation {ConversationId} is already named '{ToolName}'; document summarization is unavailable for this turn.",
+                        sessionId, DocumentSummaryTool.ToolName);
+
+                    attachSummaryTool = false;
+                }
+
+                // Checked after retrieval has settled, not beside the flag: retrieval stands down on
+                // its own name collision, and a summarization prompt that tells the model to prefer
+                // a tool which is not on the request is the one thing a tool prompt must never do.
+                if (attachSummaryTool && !attachDocumentTool)
+                {
+                    _logger.LogWarning(
+                        "Document retrieval is unavailable for conversation {ConversationId}; document summarization stands down with it.",
+                        sessionId);
+
+                    attachSummaryTool = false;
+                }
+
+                if (attachSummaryTool)
+                {
+                    tools.Add(DocumentSummaryTool.Create(
+                        documentScope!,
+                        sessionId,
+                        _documentSummaryService,
+                        _summarizationOptions.ToolTimeoutSeconds,
+                        _logger));
+
+                    instructions.Add(ConversationPrompts.BuildDocumentSummaryToolPrompt(
+                        DocumentSummaryTool.ToolName, DocumentTool.ToolName));
                 }
 
                 // A fabricated tool, off in every environment that has not asked for it. It exists so the

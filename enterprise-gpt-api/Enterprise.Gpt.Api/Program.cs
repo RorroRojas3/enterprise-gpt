@@ -539,6 +539,7 @@ builder.Services.AddOptions<UserPermissionCacheOptions>()
         "Permissions:Cache:EntryLifetime must be greater than zero.")
     .ValidateOnStart();
 builder.Services.AddSingleton<IUserPermissionCache, UserPermissionCache>();
+builder.Services.AddScoped<IUserGrantReader, UserGrantReader>();
 
 // Usage reporting. Both bounds are refusals rather than clamps, so they are validated at startup:
 // a MaxRangeDays of zero would reject every window with a message naming a limit no caller could
@@ -558,10 +559,17 @@ builder.Services.AddOptions<SummarizationOptions>()
     .Bind(builder.Configuration.GetSection(SummarizationOptions.SectionName))
     .ValidateDataAnnotations()
     .Validate(options => options.ModelId != Guid.Empty, "Summarization:ModelId is required.")
+    // In range and still nonsense: a run deadline below one call's own timeout means every run dies
+    // on the deadline before its first call can come back, which reads as a broken summarizer rather
+    // than a misconfigured one.
+    .Validate(
+        options => options.ToolTimeoutSeconds >= options.CallTimeoutSeconds,
+        "Summarization:ToolTimeoutSeconds must be at least Summarization:CallTimeoutSeconds.")
     .ValidateOnStart();
 builder.Services.AddScoped<ISummarizerModelResolver, SummarizerModelResolver>();
 builder.Services.AddScoped<IDocumentTextAssembler, DocumentTextAssembler>();
 builder.Services.AddScoped<IDocumentSummarizer, DocumentSummarizer>();
+builder.Services.AddScoped<IDocumentSummaryService, DocumentSummaryService>();
 
 // Per-message token estimation. Validated at startup because a negative overhead term or a
 // nonsensical calibration multiplier silently corrupts every stored token count and, through the

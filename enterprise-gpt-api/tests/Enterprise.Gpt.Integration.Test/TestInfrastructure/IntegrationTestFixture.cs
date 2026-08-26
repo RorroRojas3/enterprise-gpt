@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Entity.Transcripts;
+﻿using Enterprise.Gpt.Entity.Transcripts;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +9,8 @@ using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Tool;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -82,6 +84,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
         await ClearConversationUsageAsync(ctx, cancellationToken);
+
+        // Summaries name the model that produced them, and that FK is required, so the rows have to
+        // go for the same reason the usage rows above do. Any future table with a required FK to
+        // Core.Ref.Model belongs here too.
+        await ClearDocumentSummariesAsync(ctx, cancellationToken);
 
         // Conversations reference a model too, and that reference has to be released before the
         // delete below or it trips FK_Conversation_Model_ModelId. Released rather than deleted,
@@ -521,6 +528,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
+        // Ahead of the documents they hang off, on the same terms as the chunks: the summary tables
+        // carry a foreign key to their document with no cascade behind it.
+        await ClearDocumentSummariesAsync(ctx, cancellationToken);
+
         await ctx.ProjectDocumentChunks.ExecuteDeleteAsync(cancellationToken);
         await ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
@@ -540,6 +551,20 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         Factory.Transcripts.Reset();
         ClearPermissionCache();
 
+    }
+
+    /// <summary>
+    /// Removes every document summary. Called from every reset that deletes a table they reference —
+    /// the documents they hang off and the models that produced them alike — because both foreign
+    /// keys are required and neither has a cascade behind it.
+    /// </summary>
+    /// <param name="ctx">The context to delete through.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    private static async Task ClearDocumentSummariesAsync(
+        EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
+    {
+        await ctx.ProjectDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>
@@ -1207,5 +1232,70 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         });
 
         await ctx.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Inserts a document summary directly into the database, for arranging the soft-delete cascade
+    /// scenarios without running a real summarization.
+    /// </summary>
+    /// <param name="documentId">The document the summary belongs to.</param>
+    /// <param name="source">Which document family <paramref name="documentId"/> belongs to.</param>
+    /// <param name="modelId">The catalog model recorded as having produced it.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted summary.</returns>
+    public async Task<Guid> AddDocumentSummaryAsync(
+        Guid documentId, DocumentSource source, Guid modelId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+
+        BaseDocumentSummary summary = source switch
+        {
+            DocumentSource.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
+            DocumentSource.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
+            _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
+        };
+
+        summary.Id = Guid.NewGuid();
+        summary.Text = "An integration-test summary.";
+        summary.ModelId = modelId;
+        summary.DeploymentName = "rr-gpt5.6-luna";
+        summary.PromptVersion = SummarizationPrompts.PromptVersion;
+        summary.InputTokens = 900;
+        summary.OutputTokens = 120;
+        summary.ModelCallCount = 1;
+        summary.DateCreated = date;
+        summary.DateModified = date;
+
+        ctx.Add(summary);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return summary.Id;
+    }
+
+    /// <summary>
+    /// Reads a document summary straight from the database for state assertions the API does not
+    /// expose — the soft-delete timestamp above all.
+    /// </summary>
+    /// <param name="id">The summary id.</param>
+    /// <param name="source">Which table to read from.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
+    public async Task<BaseDocumentSummary?> FindDocumentSummaryAsync(
+        Guid id, DocumentSource source, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return source switch
+        {
+            DocumentSource.Conversation => await ctx.ConversationDocumentSummaries
+                .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken),
+            DocumentSource.Project => await ctx.ProjectDocumentSummaries
+                .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
+        };
     }
 }

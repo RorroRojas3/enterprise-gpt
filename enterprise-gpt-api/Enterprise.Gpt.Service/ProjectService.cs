@@ -1,4 +1,4 @@
-using FluentValidation;
+﻿using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -351,10 +351,19 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var date = DateTimeOffset.UtcNow;
 
-        // Four separate ExecuteUpdate statements, so they need a transaction to be all-or-nothing:
+        // Five separate ExecuteUpdate statements, so they need a transaction to be all-or-nothing:
         // a partial failure would otherwise leave conversations pointing at a deleted project, or
         // chunks alive under a deleted document.
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
+
+        // Ahead of the chunks and the document itself, so a summary never outlives what it
+        // summarizes.
+        await _ctx.ProjectDocumentSummaries
+            .Where(s => s.ProjectDocument.ProjectId == id && !s.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.DateDeactivated, date)
+                .SetProperty(x => x.DateModified, date),
+                cancellationToken);
 
         await _ctx.ProjectDocumentChunks
             .Where(c => c.ProjectDocument.ProjectId == id && !c.DateDeactivated.HasValue)
@@ -423,6 +432,13 @@ public class ProjectService(ILogger<ProjectService> logger,
         var date = DateTimeOffset.UtcNow;
 
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
+
+        await _ctx.ProjectDocumentSummaries
+            .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.DateDeactivated, date)
+                .SetProperty(x => x.DateModified, date),
+                cancellationToken);
 
         await _ctx.ProjectDocumentChunks
             .Where(c => c.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)

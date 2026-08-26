@@ -1,4 +1,4 @@
-using Andes.Extensions.AI;
+﻿using Andes.Extensions.AI;
 using FluentValidation;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -13,8 +13,11 @@ using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
+using Enterprise.Gpt.Service.Summarization;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tokenization;
 using Enterprise.Gpt.Service.Transcripts;
@@ -44,6 +47,8 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly ITranscriptStore _transcriptStore = Substitute.For<ITranscriptStore>();
     private readonly ITokenEstimatorResolver _tokenEstimatorResolver = Substitute.For<ITokenEstimatorResolver>();
     private readonly IMarkdownRenderer _markdownRenderer = Substitute.For<IMarkdownRenderer>();
+    private readonly IDocumentSummaryService _documentSummaryService = Substitute.For<IDocumentSummaryService>();
+    private readonly IUserGrantReader _userGrantReader = Substitute.For<IUserGrantReader>();
     private readonly FakeChatClient _chatClient = new();
     private readonly IChatClient _trackedChatClient;
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
@@ -87,6 +92,12 @@ public sealed class ConversationServiceTests : IDisposable
             .GetScopeAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => new DocumentRetrievalScope(callInfo.ArgAt<Guid>(0), null, []));
 
+        // Granted by default, so a test that switches summarization on is testing the switch rather
+        // than the grant. The tests that care about the grant arrange it themselves.
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid> { PermissionIds.UploadFile });
+
         _service = new ConversationService(
             NullLogger<ConversationService>.Instance,
             _modelService,
@@ -105,6 +116,9 @@ public sealed class ConversationServiceTests : IDisposable
             new UpdateConversationActionDtoValidator(),
             new SetMessageFeedbackActionDtoValidator(),
             Options.Create(new WeatherToolOptions()),
+            _documentSummaryService,
+            _userGrantReader,
+            Options.Create(new SummarizationOptions()),
             _fixture.Context);
     }
 
@@ -132,6 +146,37 @@ public sealed class ConversationServiceTests : IDisposable
             new UpdateConversationActionDtoValidator(),
             new SetMessageFeedbackActionDtoValidator(),
             Options.Create(new WeatherToolOptions { Enabled = true, DelayMilliseconds = 0 }),
+            _documentSummaryService,
+            _userGrantReader,
+            Options.Create(new SummarizationOptions()),
+            _fixture.Context);
+
+    /// <summary>
+    /// Builds a service with document summarization switched on. Options are captured at
+    /// construction, so a test that wants the tool cannot reuse the shared instance.
+    /// </summary>
+    private ConversationService CreateServiceWithSummaryTool(
+        SummarizationOptions? options = null, IDocumentSummaryService? summaryService = null) =>
+        new(NullLogger<ConversationService>.Instance,
+            _modelService,
+            _chatClientResolver,
+            _mcpToolProvider,
+            _documentRetrievalService,
+            _lockService,
+            _tokenService,
+            _transcriptStore,
+            _tokenEstimatorResolver,
+            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            _markdownRenderer,
+            new CreateConversationActionDtoValidator(),
+            new CreateConversationStreamActionDtoValidator(),
+            new DeactivateConversationsBulkActionDtoValidator(),
+            new UpdateConversationActionDtoValidator(),
+            new SetMessageFeedbackActionDtoValidator(),
+            Options.Create(new WeatherToolOptions()),
+            summaryService ?? _documentSummaryService,
+            _userGrantReader,
+            Options.Create(options ?? new SummarizationOptions { Enabled = true }),
             _fixture.Context);
 
     public void Dispose()
@@ -958,6 +1003,254 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 
+    #endregion
+
+    #region Document summarization tool
+    [Fact]
+    public async Task StreamConversationAsync_SummarizationEnabled_AttachesTheSummaryToolBesideRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Contains(tools, t => t.Name == DocumentSummaryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SummarizationEnabled_TellsTheModelWhenToPreferItOverSearch()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
+
+        // Two tools over the same corpus with no guidance is a model that summarizes a whole
+        // document to answer a question one passage would have answered.
+        var instructions = _chatClient.CapturedOptions?.Instructions;
+        Assert.NotNull(instructions);
+        Assert.Contains(DocumentSummaryTool.ToolName, instructions, StringComparison.Ordinal);
+        Assert.Contains(DocumentTool.ToolName, instructions, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The rollback: with the flag off the model cannot call the tool, so the feature costs nothing
+    /// whatever a user asks for.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_SummarizationDisabled_AttachesOnlyRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamToEndAsync(conversation.Id, request);
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == DocumentSummaryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    /// <summary>
+    /// Gated more tightly than retrieval on purpose: reading a document back costs nothing and is
+    /// gated on ownership alone, while summarizing spends money on a cache miss.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_CallerWithoutTheUploadGrant_AttachesOnlyRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>());
+
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == DocumentSummaryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SummarizationEnabledWithNoDocuments_AttachesNothing()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
+
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SummarizationOnANonToolModel_RunsTheTurnWithoutIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: false);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        // It stands down for the same reason retrieval does: nothing about it is worth failing a
+        // turn over.
+        var events = await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
+
+        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    /// <summary>
+    /// The accounting invariant this whole design rests on. The summarizer resolves its client
+    /// through the same <see cref="IChatClientResolver"/> the turn does, so its calls run on the
+    /// fully decorated pipeline — tool tracking included — from inside an already-tracked tool
+    /// invocation, and the tracker's ambient scope would otherwise claim them.
+    /// </summary>
+    /// <remarks>
+    /// Left attributed, those tokens land in <see cref="ConversationUsage.ToolInputTokens"/>, where
+    /// <see cref="ConversationUsage.EstimatedCost"/> prices them at the <em>driving</em> model's
+    /// rate and <c>ConversationUsageToolCall.ModelId</c> is hard-null — so a summarization run would
+    /// be billed as if the conversation's own chat model had made it, and billed a second time by
+    /// the row the summary service writes. This runs the real service over a substituted engine
+    /// precisely so the detach is exercised rather than stubbed past.
+    /// </remarks>
+    [Fact]
+    public async Task StreamConversationAsync_SummaryToolMakesItsOwnModelCall_DoesNotBillItToTheTurn()
+    {
+        const long SummarizerInputTokens = 900_000;
+
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        var document = await AddConversationDocumentAsync(conversation);
+        _documentRetrievalService
+            .GetScopeAsync(conversation.Id, Arg.Any<CancellationToken>())
+            .Returns(new DocumentRetrievalScope(
+                conversation.Id,
+                null,
+                [new RetrievableDocument(document.Id, DocumentSource.Conversation, document.Name)]));
+
+        // Stands in for the summarizer's own call: non-streaming, on the same decorated client,
+        // reaching it from inside the tool's invocation, reporting a run-sized prompt.
+        _chatClient.NamingResponse = "A summary.";
+        _chatClient.NamingUsage = new UsageDetails
+        {
+            InputTokenCount = SummarizerInputTokens,
+            OutputTokenCount = 2_000,
+            TotalTokenCount = SummarizerInputTokens + 2_000
+        };
+
+        var summarizer = Substitute.For<IDocumentSummarizer>();
+        summarizer
+            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                await _trackedChatClient.GetResponseAsync(
+                    [new ChatMessage(ChatRole.User, "Summarize this.")],
+                    new ChatOptions { ModelId = "rr-gpt5.6-luna" },
+                    callInfo.ArgAt<CancellationToken>(2));
+
+                return new SummarizationRun(
+                    "A summary.",
+                    SummarizerInputTokens,
+                    OutputTokens: 2_000,
+                    ModelCallCount: 1,
+                    MapUnitCount: 0,
+                    CollapsePasses: 0,
+                    KnownIds.SeedModelId,
+                    "rr-gpt5.6-luna",
+                    SummarizationPrompts.PromptVersion);
+            });
+
+        var summaryService = new DocumentSummaryService(
+            summarizer,
+            _fixture.Context,
+            _fixture.ScopeFactory,
+            Options.Create(new SummarizationOptions { Enabled = true, ModelId = KnownIds.SeedModelId }),
+            NullLogger<DocumentSummaryService>.Instance);
+
+        _chatClient.ToolCallName = DocumentSummaryTool.ToolName;
+        _chatClient.ToolTurnUsage = new UsageDetails { InputTokenCount = 40, OutputTokenCount = 10, TotalTokenCount = 50 };
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 60, OutputTokenCount = 20, TotalTokenCount = 80 };
+
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Summarize handbook.pdf",
+            ModelId = model.Id,
+            McpServers = []
+        };
+
+        await StreamEventsToEndAsync(
+            conversation.Id, request, service: CreateServiceWithSummaryTool(summaryService: summaryService));
+
+        var usage = await ReadUsageAsync(conversation.Id);
+
+        var turn = Assert.Single(usage, u => u.Kind == ConversationUsageKinds.Chat);
+        Assert.True(
+            turn.ToolInputTokens < SummarizerInputTokens,
+            $"The summarizer's {SummarizerInputTokens} input tokens reached the turn's own usage row "
+                + $"as {turn.ToolInputTokens} tool input tokens, where they would be priced at the chat "
+                + "model's rate and double-counted against the Summarization row.");
+
+        // Billed exactly once, on its own row, at the summarizer's own deployment.
+        var summary = Assert.Single(usage, u => u.Kind == ConversationUsageKinds.Summarization);
+        Assert.Equal(SummarizerInputTokens, summary.InputTokens);
+        Assert.Equal("rr-gpt5.6-luna", summary.DeploymentName);
+        Assert.Equal(KnownIds.SeedModelId, summary.ModelId);
+    }
+
+    /// <summary>
+    /// Two identically named functions on one request are rejected outright by OpenAI-shaped
+    /// providers. The user's explicit MCP selection wins; summarization is the implicit one.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_McpToolNamedLikeTheSummaryTool_StandsTheSummaryToolDown()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+
+        var server = await AddMcpServerAsync("Document");
+        SetUpLeaseSet(new FakeNamedTool(DocumentSummaryTool.ToolName), server);
+
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = server.Id }]
+        };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Single(tools, t => t.Name == DocumentSummaryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+    #endregion
+
+    #region Reasoning
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

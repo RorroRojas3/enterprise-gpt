@@ -8,15 +8,15 @@ This document assumes [Document Summarizer Configuration](model-configuration.md
 
 This is **wave 2** of the [PRD](../prd/document-summarization/document-summarization.md) — `EP-2`, the summarization engine. It gives the platform a working `IDocumentSummarizer` that reduces a document's already-ingested text to one summary, in a single call when the document fits the pinned summarizer's budget, or by hierarchical map-reduce with a collapse loop when it does not.
 
-**Wave 2 is service-layer only.** There is:
+**Wave 2 was service-layer only, and this document still describes exactly that layer.** At the time it shipped there was:
 
 - **no HTTP endpoint** — nothing in `Enterprise.Gpt.Api/Endpoints/` calls `IDocumentSummarizer`;
-- **no persistence** — a summary is computed and returned in memory; nothing is written to `Core.ConversationDocumentSummary` or `Core.ProjectDocumentSummary`, because those tables do not exist yet (`US-301`, wave 3);
-- **no usage rows** — no `ConversationUsage` row of `Kind = Summarization` is ever written (`US-402`, wave 4);
-- **no metrics** — `ChatMetrics` gains nothing from this wave (`US-405`, wave 4); and
-- **no feature flag** — there is nothing to flag off yet, because there is no way to reach this code from a request.
+- **no persistence** — a summary was computed and returned in memory; nothing was written to `Core.ConversationDocumentSummary` or `Core.ProjectDocumentSummary`, because those tables did not exist yet (`US-301`, wave 3);
+- **no usage rows** — no `ConversationUsage` row of `Kind = Summarization` was ever written (`US-402`, wave 4);
+- **no metrics** — `ChatMetrics` gained nothing from this wave (`US-405`, wave 4); and
+- **no feature flag** — there was nothing to flag off yet, because there was no way to reach this code from a request.
 
-If you are looking for a route to call, a job status to poll, or a summary that survives a restart, none of that exists yet. What exists is the algorithm and its tests, ready for wave 3 to wire a job and a route around it, and for `SummarizeTextAsync` to serve as the seam a conversation-level digest (`US-207`'s reduce, run one layer up) reduces through.
+**Waves 3 through 5 have since shipped** — persistence, billing and telemetry, and a real caller. There was never a route or a job to wire around the engine; instead the model calls a tool, `document_summarize`, mid-turn. See [Document Summarization: Tool, Persistence and Billing](tool-integration.md) for all of it, including `SummarizeTextAsync` (§7) serving as the seam a conversation-level digest reduces through, exactly as anticipated below.
 
 ## 2. Why hierarchical map-reduce
 
@@ -205,7 +205,7 @@ Six new test files, roughly 90 `[Fact]`/`[Theory]` cases in total, under `tests/
 | `Summarization/SummarizationPromptsTests.cs` | Every template loads; the delimiter is fresh per call; text that imitates a delimiter or reads like an instruction stays fenced as data. |
 | `Summarization/DocumentSummarizerTests.cs` | The full pipeline — single-pass vs. map-reduce routing, bounded concurrency, the collapse loop (including the pass-limit failure), retry scope (`TimeoutException`/`EmptyCompletionException` retried, everything else not), provider messages never leaking to the caller, cancellation semantics, and the `MaxOutputTokens` cap. |
 
-The full unit test suite passes at **1,590 tests**, up from the count before this wave.
+The full unit test suite passed at **1,590 tests** when this wave shipped — since grown further by waves 3 through 5's own tests (see [tool-integration.md §10](tool-integration.md#10-testing)).
 
 ## 13. Key files
 
@@ -224,11 +224,11 @@ The full unit test suite passes at **1,590 tests**, up from the count before thi
 
 ## 14. What's next
 
-Waves 3 through 6 of the PRD are not yet built:
+**This section is now historical.** At the time wave 2 shipped, `IDocumentSummarizer` had no caller anywhere in the running application — the PRD's plan at that point was a background job and an HTTP route, and the frontend chip surface below was still in scope. Both were reversed before they were built: there is no job and no route, and the frontend was cut entirely. What actually shipped, in one later pass, was:
 
-- **Wave 3 (`EP-3`)** — the two summary tables, their soft-delete cascades, the background job's new `Summarizing` stage, and the HTTP routes a client actually calls.
-- **Wave 4 (`EP-4`)** — a `ConversationUsageKinds.Summarization` usage row per call, conversation token counters, and the `ChatMetrics` telemetry.
-- **Wave 5 (`EP-5`)** — the frontend surface: the "Summarize" action on the attachment chip, the summary panel, the digest action.
-- **Wave 6 (`EP-6`)** — the feature flag, the rollout bounds (map-unit ceiling, per-user/per-conversation request limits, digest document cap), and the documented rollback.
+- **Persistence (`EP-3`)** — the two summary tables and their soft-delete cascades.
+- **Token accounting & telemetry (`EP-4`)** — `ConversationUsageKinds.Summarization`, one usage row per *run*, and the `ChatMetrics` telemetry.
+- **Tool integration (`EP-5`, new)** — the model calls `document_summarize` mid-turn, the same way it already calls `document_search`. No frontend surface exists or is planned; `enterprise-gpt-ui/` is untouched.
+- **Governance (`EP-6`, mostly)** — the feature flag and the unconditional map-unit/digest ceilings; a per-user/per-conversation request-rate bound (`US-602`) remains unbuilt.
 
-Until those land, `IDocumentSummarizer` has no caller anywhere in the running application — it exists, is fully tested, and produces nothing a user can see. The [PRD](../prd/document-summarization/document-summarization.md) remains the authority for what each of those waves will do.
+See [Document Summarization: Tool, Persistence and Billing](tool-integration.md) for all of it. The [PRD](../prd/document-summarization/document-summarization.md) §9 records why the plan changed.

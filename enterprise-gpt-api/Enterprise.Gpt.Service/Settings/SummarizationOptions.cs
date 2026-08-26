@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace Enterprise.Gpt.Service.Settings;
 
@@ -27,6 +27,19 @@ public sealed class SummarizationOptions
     /// The configuration section this type binds from.
     /// </summary>
     public const string SectionName = "Summarization";
+
+    /// <summary>
+    /// Gets or sets whether the summarization tool is offered to the model at all.
+    /// Default: <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// The feature's whole rollback: with it off the tool is simply not attached to any turn, so
+    /// the model cannot call it and nothing costs anything. Summaries already generated are
+    /// untouched and are served again the moment it is switched back on. Defaults off everywhere,
+    /// development included, because a capability that spends money should be opted into rather
+    /// than discovered. Startup validation of the summarizer runs regardless of this flag.
+    /// </remarks>
+    public bool Enabled { get; set; }
 
     /// <summary>
     /// Gets or sets the <c>Core.Ref.Model</c> identifier of the model that performs every
@@ -106,4 +119,43 @@ public sealed class SummarizationOptions
     /// </remarks>
     [Range(0, 5)]
     public int MaxCallRetries { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets how long one whole tool invocation — every call a run makes, plus the database
+    /// work around it — may take before it is abandoned, in seconds. Default: <c>300</c>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CallTimeoutSeconds"/> bounds one call; this bounds the run. It exists because the
+    /// tool runs inline on a chat turn holding the conversation's lock and an open SSE stream, so a
+    /// run with no ceiling of its own is a turn that never ends. A breach is reported to the model
+    /// as a message it can relay, not as a failed turn.
+    /// </remarks>
+    [Range(30, 1800)]
+    public int ToolTimeoutSeconds { get; set; } = 300;
+
+    /// <summary>
+    /// Gets or sets the largest number of map units a single document may split into before it is
+    /// refused. Default: <c>40</c>.
+    /// </summary>
+    /// <remarks>
+    /// Checked before the first map call, so an oversized document costs nothing rather than
+    /// running to the ceiling and stopping with a truncated result. Close to inert against the
+    /// pinned summarizer's million-token window, where a map unit is already hundreds of thousands
+    /// of tokens; it earns its place if the summarizer is ever repointed at a small-window model,
+    /// which is exactly when the ceiling stops being theoretical.
+    /// </remarks>
+    [Range(1, 1000)]
+    public int MaxMapUnits { get; set; } = 40;
+
+    /// <summary>
+    /// Gets or sets how many documents one digest may reduce over before it is refused.
+    /// Default: <c>25</c>.
+    /// </summary>
+    /// <remarks>
+    /// A digest summarizes every document in the conversation's scope that has no summary yet, so
+    /// an unusually large scope turns one request into an unbounded number of runs. Refusing names
+    /// the limit and points at summarizing individual documents instead.
+    /// </remarks>
+    [Range(1, 200)]
+    public int MaxDigestDocuments { get; set; } = 25;
 }

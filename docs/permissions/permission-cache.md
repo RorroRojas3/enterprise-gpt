@@ -70,10 +70,13 @@ The map covers exactly the ids usable in a filter. MCP-derived permissions are c
 
 ```
 Client ──► RequireAuthorization (JWT) ──► PermissionEndpointFilter.Require(ids)
+       ──► IUserGrantReader.GetGrantsAsync(oid)
        ──► IUserPermissionCache.GetOrLoadAsync(oid)
               hit  ──► compare ids in memory ──► handler   (no DbContext, no query)
               miss ──► load every active grant for the oid ──► cache ──► compare
 ```
+
+**`IUserGrantReader` (`Service/Caching/UserGrantReader.cs`) is the one seam every caller goes through**, endpoint filter or not. It exists because a permission check stopped being only an endpoint concern once document summarization needed to ask "does this user hold `Upload File`" from inside `ConversationService.CreateChatOptionsAsync` — service code with no `HttpContext` or endpoint filter to sit in. `PermissionEndpointFilter` used to carry its own private grant-loading query in parallel with whatever a service might need; that duplication is gone, and the filter now resolves `IUserGrantReader` and calls it like everything else. There is exactly one grant-loading query in the codebase. See [Document Summarization: Tool, Persistence and Billing §8](../summarization/tool-integration.md#8-the-shared-permission-grant-reader) for why the consolidation also closed a latent scope-lifetime bug, not just a style one.
 
 The mental model is one entry per signed-in user, holding the **complete** set of permission ids they actively hold:
 
@@ -152,7 +155,15 @@ Both of these look like obvious candidates for the cache. Both were left alone o
 
 The rule this encodes: cache the authorization check when the alternative is a query you would not otherwise run, and skip it when the query is already on the path or when the blast radius of stale access reaches outside the application.
 
-## 7. API reference — `IUserPermissionCache`
+## 7. API reference
+
+### `IUserGrantReader`
+
+| Member | Purpose |
+|---|---|
+| `Task<IReadOnlySet<Guid>> GetGrantsAsync(Guid userId, CancellationToken)` | Returns the user's active permission ids — a real, empty set for a user with no grants, never a miss. Backed by `IUserPermissionCache.GetOrLoadAsync` below, with its own loader that opens a fresh `IServiceScopeFactory` scope on a miss rather than closing over the caller's own scoped `EnterpriseGptDbContext`. |
+
+### `IUserPermissionCache`
 
 | Member | Purpose |
 |---|---|
@@ -183,6 +194,7 @@ The cache takes an injected `TimeProvider`, so TTL behaviour is tested by advanc
 | Concern | File |
 |---|---|
 | Cache interface + implementation | [`Enterprise.Gpt.Service/Caching/UserPermissionCache.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs) |
+| Shared grant reader (the seam every caller uses) | [`Enterprise.Gpt.Service/Caching/UserGrantReader.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserGrantReader.cs) |
 | Options | [`Enterprise.Gpt.Service/Settings/UserPermissionCacheOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/UserPermissionCacheOptions.cs) |
 | Endpoint filter | [`Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs) |
 | Built-in ids + display names | [`Enterprise.Gpt.Dto/Enums/PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs) |

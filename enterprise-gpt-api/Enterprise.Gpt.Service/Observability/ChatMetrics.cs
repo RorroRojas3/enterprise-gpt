@@ -1,4 +1,4 @@
-using System.Diagnostics.Metrics;
+﻿using System.Diagnostics.Metrics;
 using Enterprise.Gpt.Common.Observability;
 
 namespace Enterprise.Gpt.Service.Observability;
@@ -55,6 +55,26 @@ public static class ChatMetrics
         description: "Estimated tokens held by messages trimmed from replayed history.");
 
     /// <summary>
+    /// How long a whole summarization run took, tagged by the path it took and how it ended.
+    /// </summary>
+    /// <remarks>
+    /// A run, not a call: the map, collapse and reduce calls of one document roll into one
+    /// measurement, which is the grain a caller waiting on the tool actually experiences.
+    /// </remarks>
+    private static readonly Histogram<double> SummaryRunDuration = Meter.CreateHistogram<double>(
+        "enterprise_gpt.document_summary.run.duration",
+        unit: "s",
+        description: "Duration of a document summarization run, by path and outcome.");
+
+    /// <summary>
+    /// How many window-sized map units a run split its document into. Zero on the single-pass path.
+    /// </summary>
+    private static readonly Histogram<int> SummaryRunMapUnits = Meter.CreateHistogram<int>(
+        "enterprise_gpt.document_summary.run.map_units",
+        unit: "{unit}",
+        description: "Map units one summarization run split its document into.");
+
+    /// <summary>
     /// Records how far the local estimate was from what the provider reported.
     /// </summary>
     /// <param name="providerId">The provider that served the turn.</param>
@@ -97,5 +117,31 @@ public static class ChatMetrics
 
         BudgetDroppedMessages.Add(droppedMessages, deployment);
         BudgetDroppedTokens.Add(droppedTokens, deployment);
+    }
+
+    /// <summary>
+    /// Records a completed or failed summarization run.
+    /// </summary>
+    /// <param name="deploymentName">The summarizer deployment that served the run.</param>
+    /// <param name="path">Which route the run took: <c>cache-hit</c>, <c>single-pass</c>, <c>map-reduce</c> or <c>digest</c>.</param>
+    /// <param name="outcome">How it ended: <c>success</c>, <c>failure</c> or <c>cancelled</c>.</param>
+    /// <param name="elapsed">Wall-clock duration of the whole run.</param>
+    /// <param name="mapUnits">Map units the run produced, or <see langword="null"/> when it never split.</param>
+    public static void RecordSummaryRun(
+        string? deploymentName, string path, string outcome, TimeSpan elapsed, int? mapUnits)
+    {
+        KeyValuePair<string, object?>[] tags =
+        [
+            new("deployment.name", deploymentName ?? "unknown"),
+            new("summary.path", path),
+            new("summary.outcome", outcome)
+        ];
+
+        SummaryRunDuration.Record(elapsed.TotalSeconds, tags);
+
+        if (mapUnits is int units)
+        {
+            SummaryRunMapUnits.Record(units, tags);
+        }
     }
 }

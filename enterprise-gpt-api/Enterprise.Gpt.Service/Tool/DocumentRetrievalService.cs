@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Repository;
+﻿using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Settings;
 using Microsoft.Data.SqlClient;
@@ -346,26 +346,26 @@ public sealed class DocumentRetrievalService(
     }
 
     /// <summary>
-    /// Maps a caller-supplied document name onto a document in scope.
+    /// Finds the documents in scope whose name matches <paramref name="wanted"/>, widening the
+    /// comparison only as far as it has to.
     /// </summary>
+    /// <param name="scope">The documents to match against.</param>
+    /// <param name="wanted">The name to match, already trimmed.</param>
     /// <returns>
-    /// The document to restrict to and a note for the model, either of which may be
-    /// <see langword="null"/>. An unknown or ambiguous name searches everything rather than nothing:
-    /// silently returning no results for a near-miss on a file name reads to the model as "the documents
-    /// do not say", which is a worse failure than a wider search with an explanation attached.
+    /// Every match at the narrowest rung that produced any: an exact name, else a prefix, else a
+    /// substring. Empty when nothing matches at all.
     /// </returns>
-    private static (Guid? DocumentId, string? Note) ResolveDocumentFilter(DocumentRetrievalScope scope, string? documentName)
+    /// <remarks>
+    /// Shared rather than duplicated because the two tools that take a document name must agree on
+    /// what a name means; they deliberately disagree on what to do about an ambiguous one, which is
+    /// why this returns the matches instead of a decision.
+    /// </remarks>
+    internal static IReadOnlyList<RetrievableDocument> MatchByName(DocumentRetrievalScope scope, string wanted)
     {
-        if (string.IsNullOrWhiteSpace(documentName))
-        {
-            return (null, null);
-        }
+        ArgumentNullException.ThrowIfNull(scope);
 
-        var wanted = documentName.Trim();
-
-        var matches = scope.Documents
-            .Where(d => string.Equals(d.Name, wanted, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        List<RetrievableDocument> matches =
+            [.. scope.Documents.Where(d => string.Equals(d.Name, wanted, StringComparison.OrdinalIgnoreCase))];
 
         if (matches.Count == 0)
         {
@@ -376,6 +376,30 @@ public sealed class DocumentRetrievalService(
         {
             matches = [.. scope.Documents.Where(d => d.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase))];
         }
+
+        return matches;
+    }
+
+    /// <summary>
+    /// Maps a caller-supplied document name onto a document to restrict a <em>search</em> to.
+    /// </summary>
+    /// <returns>
+    /// The document to restrict to and a note for the model, either of which may be
+    /// <see langword="null"/>. An unknown or ambiguous name searches everything rather than nothing:
+    /// silently returning no results for a near-miss on a file name reads to the model as "the documents
+    /// do not say", which is a worse failure than a wider search with an explanation attached. Summarizing
+    /// takes the opposite decision on the same matches, because a wider search is cheap and summarizing
+    /// the wrong document is not.
+    /// </returns>
+    private static (Guid? DocumentId, string? Note) ResolveDocumentFilter(DocumentRetrievalScope scope, string? documentName)
+    {
+        if (string.IsNullOrWhiteSpace(documentName))
+        {
+            return (null, null);
+        }
+
+        var wanted = documentName.Trim();
+        var matches = MatchByName(scope, wanted);
 
         return matches.Count switch
         {
