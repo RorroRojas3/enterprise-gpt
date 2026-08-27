@@ -19,10 +19,11 @@ public sealed class UploadedFileValidatorTests
     private static UploadedFileValidator CreateValidator(long maxFileSizeBytes = 50L * 1024 * 1024)
     {
         var factory = Substitute.For<IDocumentTextExtractorFactory>();
-        factory.SupportedExtensionNames.Returns([".pdf", ".doc", ".docx", ".pptx", ".md", ".txt"]);
+        factory.SupportedExtensionNames.Returns([".csv", ".doc", ".docx", ".md", ".pdf", ".pptx", ".txt", ".xlsx"]);
         factory.IsSupported(Arg.Any<FileExtensions>()).Returns(call =>
-            call.Arg<FileExtensions>() is FileExtensions.Pdf or FileExtensions.Doc or FileExtensions.Docx
-                or FileExtensions.Pptx or FileExtensions.Md or FileExtensions.Txt);
+            call.Arg<FileExtensions>() is FileExtensions.Csv or FileExtensions.Pdf or FileExtensions.Doc
+                or FileExtensions.Docx or FileExtensions.Pptx or FileExtensions.Md or FileExtensions.Txt
+                or FileExtensions.Xlsx);
 
         var options = Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes });
 
@@ -45,6 +46,7 @@ public sealed class UploadedFileValidatorTests
     [Theory]
     [InlineData("report.docx")]
     [InlineData("deck.pptx")]
+    [InlineData("budget.xlsx")]
     public void Validate_OoxmlWithMatchingSignature_IsValid(string fileName)
     {
         Assert.True(CreateValidator().Validate(File(fileName, _ooxmlBytes)).IsValid);
@@ -59,6 +61,7 @@ public sealed class UploadedFileValidatorTests
     [Theory]
     [InlineData("notes.txt")]
     [InlineData("readme.md")]
+    [InlineData("orders.csv")]
     public void Validate_TextFile_IsValid(string fileName)
     {
         Assert.True(CreateValidator().Validate(File(fileName, Encoding.UTF8.GetBytes("hello"))).IsValid);
@@ -87,7 +90,8 @@ public sealed class UploadedFileValidatorTests
 
     [Theory]
     [InlineData("book.epub")]
-    [InlineData("sheet.xlsx")]
+    [InlineData("macros.xlsm")]
+    [InlineData("legacy.xls")]
     [InlineData("archive.zip")]
     public void Validate_UnsupportedExtension_IsRejectedAndListsWhatIsSupported(string fileName)
     {
@@ -119,6 +123,7 @@ public sealed class UploadedFileValidatorTests
     [InlineData("report.pdf")]
     [InlineData("report.docx")]
     [InlineData("deck.pptx")]
+    [InlineData("budget.xlsx")]
     [InlineData("report.doc")]
     public void Validate_ContentNotMatchingTheClaimedExtension_IsRejected(string fileName)
     {
@@ -140,6 +145,15 @@ public sealed class UploadedFileValidatorTests
 
     [Theory]
     [MemberData(nameof(TextEncodings))]
+    public void Validate_CsvInAnyEncodingTheExtractorReads_IsAccepted(string encodingName, byte[] content)
+    {
+        var result = CreateValidator().Validate(File("orders.csv", content));
+
+        Assert.True(result.IsValid, $"{encodingName} content was rejected: {string.Join("; ", result.Errors.Select(e => e.ErrorMessage))}");
+    }
+
+    [Theory]
+    [MemberData(nameof(TextEncodings))]
     public void Validate_TextInAnyEncodingThePlainTextExtractorReads_IsAccepted(string encodingName, byte[] content)
     {
         // UTF-16 and UTF-32 carry a NUL in most bytes, so a naive "contains NUL means binary" probe would
@@ -149,12 +163,14 @@ public sealed class UploadedFileValidatorTests
         Assert.True(result.IsValid, $"{encodingName} content was rejected: {string.Join("; ", result.Errors.Select(e => e.ErrorMessage))}");
     }
 
-    [Fact]
-    public void Validate_BinaryContentRenamedAsText_IsRejected()
+    [Theory]
+    [InlineData("payload.txt")]
+    [InlineData("payload.csv")]
+    public void Validate_BinaryContentRenamedAsText_IsRejected(string fileName)
     {
         var content = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x00, 0x1A, 0x0A };
 
-        var result = CreateValidator().Validate(File("payload.txt", content));
+        var result = CreateValidator().Validate(File(fileName, content));
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("do not match its extension"));

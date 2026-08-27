@@ -29,7 +29,7 @@ namespace Enterprise.Gpt.Service.Validators
         private const int TextProbeLength = 8192;
 
         private static readonly byte[] _pdfSignature = "%PDF"u8.ToArray();
-        private static readonly byte[] _zipSignature = [0x50, 0x4B];                                     // PK — OOXML (.docx, .pptx)
+        private static readonly byte[] _zipSignature = [0x50, 0x4B];                                     // PK — OOXML (.docx, .pptx, .xlsx)
         private static readonly byte[] _ole2Signature = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]; // legacy Office (.doc)
 
         // The UTF-16 LE mark is also the prefix of the UTF-32 LE mark, so three cover all four encodings.
@@ -103,11 +103,11 @@ namespace Enterprise.Gpt.Service.Validators
             return extension switch
             {
                 FileExtensions.Pdf => StartsWith(content, _pdfSignature),
-                FileExtensions.Docx or FileExtensions.Pptx => StartsWith(content, _zipSignature),
+                FileExtensions.Docx or FileExtensions.Pptx or FileExtensions.Xlsx => StartsWith(content, _zipSignature),
                 FileExtensions.Doc => StartsWith(content, _ole2Signature),
                 // Text formats have no signature; rejecting embedded NUL bytes is what separates real text
                 // from a binary file wearing a .txt extension.
-                FileExtensions.Md or FileExtensions.Txt => !LooksBinary(content),
+                FileExtensions.Csv or FileExtensions.Md or FileExtensions.Txt => !LooksBinary(content),
                 _ => true,
             };
         }

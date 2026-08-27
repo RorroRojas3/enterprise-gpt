@@ -130,7 +130,7 @@ Elena is a finance analyst with a project that already holds a dozen PDFs. She u
 | The template to copy for `.xlsx` | `Enterprise.Gpt.Service/Extraction/PresentationTextExtractor.cs` — local OpenXml parse under a named exception filter (`OpenXmlPackageException`, `FileFormatException`, `InvalidDataException`, `XmlException`, `ArgumentOutOfRangeException`, `KeyNotFoundException`) → `ValidationException` → 400; `new MemoryStream(file.Content, writable: false)`; ordering from the document's own ordered list (`SlideIdList`, not part order — the workbook analogue is `WorkbookPart.Workbook.Sheets`, not `WorksheetParts`); one `progress?.Report` per unit |
 | The template to copy for BOM/encoding handling | `Enterprise.Gpt.Service/Extraction/PlainTextExtractor.cs` — `StreamReader` with `detectEncodingFromByteOrderMarks: true`, UTF-8 fallback, `ReplaceLineEndings("\n")` |
 | The package `.xlsx` needs — already referenced | `Enterprise.Gpt.Service/Enterprise.Gpt.Service.csproj:26` — `DocumentFormat.OpenXml` 3.5.1; its comment ("PowerPoint (.pptx) text extraction") is updated to also name spreadsheet extraction |
-| The package `.csv` needs — new dependency, decided | `Sylvan.Data.Csv` (MIT-licensed, zero dependencies, ~1.4.x latest at time of writing) rather than a hand-rolled RFC 4180 reader — a correct reader has to handle quoted multi-line fields, escaped quotes, and mixed encodings, and getting any of those wrong would silently corrupt data `sheet_query`'s aggregates depend on being right, for something the library already solves and tests |
+| The package `.csv` needs — new dependency, shipped | `CsvHelper` 33.1.0 (MS-PL/Apache-2.0 dual, zero package dependencies on net8.0+) rather than a hand-rolled RFC 4180 reader — a correct reader has to handle quoted multi-line fields, escaped quotes, and mixed encodings, and getting any of those wrong would silently corrupt data `sheet_query`'s aggregates depend on being right, for something the library already solves and tests. **One constraint this shipped with, worth carrying forward rather than re-deriving:** CsvHelper's own delimiter detector (`ConfigurationFunctions.GetDelimiter`) prefers the culture's list separator over the strongest candidate, so a semicolon-delimited European export whose decimal commas appear on every line would resolve to a comma and split silently into the wrong columns. `CsvTextExtractor` therefore resolves the delimiter itself across `,`, `;`, and tab, ranking candidates by the number of lines each is present on, then by total count |
 | The validator, and the exact arms to extend | `Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs:96-111` — `HasContentMatchingExtension`'s `switch`; `.Docx or .Pptx => StartsWith(content, _zipSignature)` gains `.Xlsx`, and `.Md or .Txt => !LooksBinary(content)` gains `.Csv`. The `_ => true` default is why this is load-bearing, not cosmetic — without the extension, either format would pass unvalidated |
 | Content-type map to extend | `Enterprise.Gpt.Service/DocumentService.cs:591-598` — the six-entry `FrozenDictionary` `_contentTypes`; `download-workflow.md` §4.3 states it "covers the six formats ingestion accepts," which becomes false once this ships (a documentation update for the technical-writer flow, not this PRD) |
 | Segment and chunk vocabulary | `Enterprise.Gpt.Dto/DocumentSegmentDto.cs` — *"a page for PDF and Word, a slide for PowerPoint, the whole file for plain text and Markdown"*; this PRD adds "a row window or a schema card, for a sheet." `TextChunkDto` (`Enterprise.Gpt.Dto/TextChunkDto.cs`) is unchanged |
@@ -171,6 +171,7 @@ Elena is a finance analyst with a project that already holds a dozen PDFs. She u
 **Scalability & performance.**
 
 - **Ingest-time ceilings are the real operational bound, not SQL Server's own hard caps.** `Sheets:MaxRowsPerSheet` (default 20,000) and `Sheets:MaxColumnsPerSheet` (default 200) are enforced by the extractor before any row is returned for persistence — refused outright, at zero storage cost, rather than truncated silently (a truncated sheet would make `sheet_query`'s aggregates quietly wrong).
+- **A third ceiling, `Sheets:MaxCharactersPerUpload` (default 8,000,000), shipped with US-501 and bounds what the row/column ceilings do not.** It caps the total cell text one upload may yield, shared-string table included, and at ×32 (floored at 256 KB) it also fixes how far a `.xlsx` package may inflate before it is opened at all — a workbook is a deflate archive, so `Documents:MaxFileSizeBytes` bounds nothing about what it expands into. This closed three reproducible unbounded-allocation vectors a code review found during Wave 1: a single row of 1,000,000 cells (239 MB peak heap → refused in 41 ms), a shared-string table of 5,000,000 entries (430 MB → refused), and a single 400,000,000-character element (unbounded → refused in 17 ms), plus the CSV equivalent of a 5,000,000-field row (1,411 MB → refused in 29 ms). US-201/US-202 must preserve this ceiling when they add row-window chunking on top of the same extractors.
 - **`sheet_query` costs no embedding call and no chat-model call of its own** — it is deterministic SQL executed synchronously inside the tool invocation, tracked as an ordinary `Function`-kind tool call exactly as `document_search` already is; no new `ConversationUsageKinds` value or billing mechanism is needed.
 - **A large row table (up to 20,000 rows × 200 columns) is scanned, not indexed, for an aggregate** — acceptable at this ceiling for the same reason `DocumentRetrievalSql`'s exact kNN scan is acceptable at its own scale (§8.1 of `retrieval.md`): the candidate set is always narrowed to one sheet, within one conversation or project, before any computation runs.
 - **`MaxDistance`'s single global threshold (`retrieval.md` §11.2) is a genuine risk, not a settled one.** Header-repeated row-window chunks change a corpus's distance profile relative to the prose the default was tuned against; EP-5's `US-502` re-validates rather than assumes the existing 0.62 default still holds.
@@ -199,7 +200,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Add `SpreadsheetTextExtractor` (`Enterprise.Gpt.Service/Extraction/SpreadsheetTextExtractor.cs`), registered as an `AddSingleton<IDocumentTextExtractor, SpreadsheetTextExtractor>()` beside the existing three in `Program.cs`, reading `.xlsx` locally with `DocumentFormat.OpenXml` and emitting one segment family per sheet ordered from `WorkbookPart.Workbook.Sheets` (not `WorksheetParts`). Extends `UploadedFileValidator`'s `_zipSignature` arm to cover `FileExtensions.Xlsx`. Unblocks US-102, US-103, US-201.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given the extractor is registered, when `GET api/documents/file-extensions` is called, then it reports `.xlsx` among its extensions, derived from the factory rather than hand-edited.
   - Given a multi-sheet workbook, when it is uploaded, then each sheet's `SourceNumber` in its produced segments is its 1-based ordinal position from `WorkbookPart.Workbook.Sheets`, mirroring how `PresentationTextExtractor` numbers slides from `SlideIdList`.
@@ -209,9 +210,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 #### US-102: `[enabler]` Register the `.csv` extractor
 
-- **Story**: `[enabler]` Add `CsvTextExtractor` (`Enterprise.Gpt.Service/Extraction/CsvTextExtractor.cs`), reading `.csv` via `Sylvan.Data.Csv`, with BOM detection matching `PlainTextExtractor`'s pattern and delimiter sniffing across comma, semicolon, and tab. Extends `UploadedFileValidator`'s `.Md or .Txt` no-NULs arm to also cover `FileExtensions.Csv`. Unblocks US-103, US-202.
+- **Story**: `[enabler]` Add `CsvTextExtractor` (`Enterprise.Gpt.Service/Extraction/CsvTextExtractor.cs`), reading `.csv` via `CsvHelper`, with BOM detection matching `PlainTextExtractor`'s pattern and delimiter sniffing across comma, semicolon, and tab. Extends `UploadedFileValidator`'s `.Md or .Txt` no-NULs arm to also cover `FileExtensions.Csv`. Unblocks US-103, US-202.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given the extractor is registered, when `GET api/documents/file-extensions` is called, then it reports `.csv` among its extensions.
   - Given a semicolon- or tab-delimited file with a `.csv` extension, when it is extracted, then its columns are recognized correctly rather than collapsed into one column.
@@ -223,11 +224,11 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Wrap both new extractors' parse logic in `PresentationTextExtractor`'s named exception-filter pattern (`OpenXmlPackageException`, `FileFormatException`, `InvalidDataException`, `XmlException`, `ArgumentOutOfRangeException`, `KeyNotFoundException` for `.xlsx`; a malformed-CSV equivalent for `.csv`), converting to a `ValidationException` → 400 rather than an opaque 500. Unblocks US-101 and US-102's own corrupt-input test cases.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-101, US-102
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given a truncated or corrupt `.xlsx` (built with a `WorkbookBuilder` test fixture mirroring `PresentationBuilder`), when it is uploaded, then extraction fails as a `ValidationException` naming the file as unreadable, not an unhandled exception.
   - Given a password-protected `.xlsx`, when it is uploaded, then it fails the same way rather than hanging or throwing an unfiltered exception.
-  - Given a `.csv` with malformed quoting Sylvan's reader rejects, when it is uploaded, then it fails as a `ValidationException` with the same shape.
+  - **Shipped behaviour differs from what this criterion originally asked for, deliberately — a policy change, not a gap.** It was written around `Sylvan.Data.Csv`'s rejection semantics for malformed quoting; `CsvHelper`'s equivalent default (`BadDataFound`) refuses the same stray quote in an unquoted field — `5" pipe`, `Bob "Bo" Smith` — which is ordinary in real-world exported CSVs, not a corrupt file. `CsvTextExtractor` clears `BadDataFound` so that cell keeps its raw text instead of failing the whole upload. The criterion as shipped: given a `.csv` containing an unquoted field with a stray quote, when it is uploaded, then extraction succeeds and the cell's raw text is preserved verbatim, rather than the upload being refused. A `.csv` that is genuinely unparseable (CsvHelper throws `CsvHelperException` for reasons other than `BadDataFound`, e.g. a malformed field count CsvHelper cannot recover from) still fails as a `ValidationException` with the same shape as the `.xlsx` cases above.
   - Given `DocumentService.ResolveContentType`, when its map is read after this story, then it also covers `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) and `.csv` (`text/csv`) alongside the six extensions it covers today.
 
 ### EP-2: Structure-aware chunking
@@ -382,13 +383,22 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-501: `[enabler]` Cap rows and columns accepted per sheet
 
 - **Story**: `[enabler]` Enforce `Sheets:MaxRowsPerSheet` (default 20,000) and `Sheets:MaxColumnsPerSheet` (default 200) inside both new extractors, refusing a sheet that exceeds either as a `ValidationException` before any row is returned for chunking or persistence. Unblocks nothing further, but must land before this feature is enabled for real users.
+  **Shipped with a third ceiling this PRD did not originally scope: `Sheets:MaxCharactersPerUpload` (default 8,000,000)** — the total cell text one upload may yield, shared-string table included — because a code review during implementation measured three reproducible unbounded-allocation vectors that the row and column ceilings do not close on their own: a workbook is a deflate archive, so `Documents:MaxFileSizeBytes` bounds nothing about what it expands into. At ×32 (floored at 256 KB) this same setting also bounds how far a package may inflate before it is opened at all, closing a decompression-bomb exposure. Measured peak managed heap, before → after:
+  - a 132 KB workbook holding one row of 1,000,000 cells: 239 MB → 0.0 MB, refused in 41 ms
+  - a 594 KB workbook holding 5,000,000 shared strings: 430 MB → 16.6 MB, refused
+  - a 382 KB workbook holding one 400,000,000-character element: unbounded → 0.0 MB, refused in 17 ms
+  - a 4.9 MB CSV holding 5,000,000 fields: 1,411 MB → 0.0 MB, refused in 29 ms
+
+  This landed against the Wave 1 extractor shape (`SpreadsheetTextExtractor`/`CsvTextExtractor`, no row windows yet) — **US-201/US-202 must preserve this ceiling** when they add row-window chunking on top of the same extractors, rather than re-deriving it.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given a sheet with exactly `MaxRowsPerSheet` rows, when it is uploaded, then it succeeds.
   - Given a sheet with `MaxRowsPerSheet + 1` rows, when it is uploaded, then the upload is refused with a message naming the limit, before any bytes are persisted for that sheet.
   - Given a sheet with more than `MaxColumnsPerSheet` columns, when it is uploaded, then it is refused the same way.
   - Given a workbook where only one of several sheets exceeds a ceiling, when it is uploaded, then the whole upload is refused rather than silently dropping the offending sheet — a partially ingested workbook would make `sheet_query`'s "what's in this workbook" answer wrong.
+  - Given an upload whose total cell text (`.xlsx` cells plus its shared-string table, or a `.csv`'s fields) exceeds `Sheets:MaxCharactersPerUpload`, when it is uploaded, then it is refused with a message naming the limit, before the excess text is materialized.
+  - Given a `.xlsx` package whose compressed entries would inflate past `Sheets:MaxCharactersPerUpload × 32` (floored at 256 KB), when it is uploaded, then it is refused before the Open XML SDK opens the package at all.
 
 #### US-502: Re-tune retrieval defaults for row-window corpora
 
@@ -424,12 +434,12 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 **Phases**, derived from the epic dependency graph.
 
-| Phase | Contents | Relative estimate |
-| --- | --- | --- |
-| **Phase 1 — the format exists** | EP-1 in full (US-101–US-103) | ~1 week |
-| **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks |
-| **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks |
-| **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week |
+| Phase | Contents | Relative estimate | Status |
+| --- | --- | --- | --- |
+| **Phase 1 — the format exists** | EP-1 in full (US-101–US-103) | ~1 week | ✅ Done (2026-08-26) |
+| **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks | Not started |
+| **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks | Not started |
+| **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week | US-501 done (2026-08-26, pulled forward into Phase 1 — see risks below); US-502–US-504 not started |
 
 **Risks & mitigations.**
 
@@ -439,7 +449,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 | The header-repetition chunking strategy degrades under the chunker's own overlap/fallback mechanics for an oversized window | §6 finding 2 states the limitation explicitly; US-201/US-202's 95%-threshold acceptance criteria measure it rather than assume perfection |
 | `MaxDistance`'s single global threshold no longer fits once row-window corpora exist | US-502 validates before this ships broadly, rather than discovering the regression in production |
 | `sheet_query` becomes a raw-SQL-injection surface through careless implementation | US-402's acceptance criteria are enforced by a pinned test (`SheetQuerySqlTests`) mirroring `DocumentRetrievalSqlTests`' own "no literal values" assertion — a build-breaking regression guard, not a one-time review |
-| A pathologically large workbook is uploaded before ceilings ship | US-501 lands in the same phase EP-3's persistence path lands, not deferred to the end |
+| A pathologically large workbook is uploaded before ceilings ship | **Closed 2026-08-26.** US-501 was pulled forward into Wave 1 rather than waiting for its originally scheduled phase, specifically because a code review measured reproducible unbounded-allocation vectors (up to 1.4 GB peak heap from a few-MB file) that the row/column ceilings alone did not close; `Sheets:MaxCharactersPerUpload` shipped alongside the Wave 1 extractors, before this feature has any real users |
 | SQLite cannot load the `json` column at all, blocking every other unit test in the suite | US-303 is scheduled immediately after the row table exists, before EP-4 needs to write any unit test against it |
 
 **Rollout & rollback.** Upload, extraction, chunking, and storage for `.xlsx`/`.csv` ship unflagged once accepted — the same posture `document_search` itself has always had, and consistent with there being no client-side kill switch needed (§6 finding 1). `sheet_query`'s own tool attachment sits behind `SheetQuery:Enabled`, defaulting off, exercised as a real rollback rehearsal in US-504 before general availability. The one schema change this PRD ships — the fifteenth migration, adding six additive tables — means rolling the **code** back leaves the database readable; nothing here alters or drops an existing table.
@@ -448,7 +458,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 **Assumptions.** Each is a guess a reviewer can veto.
 
-- `Sylvan.Data.Csv` is the chosen CSV dependency over a hand-rolled RFC 4180 reader, on correctness grounds (§6, "The package `.csv` needs"). A reviewer preferring CsvHelper or a different library should say so before US-102 starts; the acceptance criteria do not name the library, only its observable behavior.
+- **Resolved 2026-08-26.** This PRD originally proposed `Sylvan.Data.Csv` as the CSV dependency over a hand-rolled RFC 4180 reader, on correctness grounds (§6, "The package `.csv` needs"), and named that choice as vetoable before US-102 started. The reviewer exercised that veto and chose **CsvHelper 33.1.0** instead; the correctness rationale for taking *a* well-tested library over a hand-rolled reader is unchanged, only the library is. One consequence of the switch is not cosmetic: CsvHelper's default `BadDataFound` behavior rejects a stray quote in an unquoted field, which is ordinary in real exported CSVs — see US-103's rewritten third acceptance criterion for the resulting, deliberate policy change.
 - Row-window sizing targets 75% of the chunker's `MaxTokens` (`Sheets:RowWindow:TargetTokenFraction`) and caps at 50 rows (`Sheets:RowWindow:MaxRows`) — both are proposed defaults, not measured against a real corpus; US-502's benchmark is the first real validation either number gets.
 - `Sheets:MaxRowsPerSheet` (20,000) and `:MaxColumnsPerSheet` (200) are proposed operational ceilings, chosen to sit comfortably under every SQL Server JSON cap while still covering the overwhelming majority of real-world business spreadsheets — not derived from a usage study, since none exists yet for a feature that has not shipped.
 - `SheetQuery:MaxResultRows` (50), `:MaxGroups` (200), `:MaxFilters` (5), and `:TimeoutSeconds` (10) are proposed defaults mirroring the scale of `DocumentRetrievalSql`'s own caps (`MaxResults` 8, `CandidateCount` 40) scaled up for a tool that returns structured rows rather than prose passages, not measured against production load.

@@ -28,7 +28,7 @@ const FALLBACK: FileGlyph = { icon: 'bi-file-earmark', tone: 'muted' };
 /**
  * The glyph and tint for a file name's extension.
  *
- * Wider than the six formats the API accepts, because the same chip renders a file the
+ * Wider than the eight formats the API accepts, because the same chip renders a file the
  * user picked before anything validated it — a `.xlsx` refused as unsupported should
  * still look like a spreadsheet while it says so.
  *

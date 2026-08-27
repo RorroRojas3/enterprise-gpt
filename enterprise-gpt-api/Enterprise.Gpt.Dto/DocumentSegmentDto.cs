@@ -5,8 +5,9 @@ namespace Enterprise.Gpt.Dto
     /// </summary>
     /// <remarks>
     /// A segment is whatever natural division the source format offers — a page for PDF and Word, a slide
-    /// for PowerPoint, the whole file for plain text and Markdown. Segments are <em>not</em> the retrieval
-    /// unit; the chunker repacks them into token-sized chunks. Their only lasting role is provenance.
+    /// for PowerPoint, a worksheet for a spreadsheet, the whole file for plain text, Markdown and CSV.
+    /// Segments are <em>not</em> the retrieval unit; the chunker repacks them into token-sized chunks.
+    /// Their only lasting role is provenance.
     /// </remarks>
     public class DocumentSegmentDto
     {

@@ -419,6 +419,13 @@ builder.Services.AddOptions<DocumentOptions>()
         "Documents:Chunking:OverlapTokens must be smaller than Documents:Chunking:MaxTokens.")
     .ValidateOnStart();
 
+// Spreadsheet ingest ceilings. A workbook is a compressed archive, so these — not the upload size
+// limit — are what bound the text one upload can expand into.
+builder.Services.AddOptions<SheetOptions>()
+    .Bind(builder.Configuration.GetSection(SheetOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // Document retrieval (RAG) tuning. Over-fetching is what gives rank fusion and the per-document cap
 // something to choose between, so a candidate count at or below the result count is a configuration
 // error rather than a conservative setting.
@@ -667,6 +674,8 @@ builder.Services.AddSingleton<ILegacyWordConverter, DocSharpLegacyWordConverter>
 builder.Services.AddSingleton<IDocumentTextExtractor, DocumentIntelligenceTextExtractor>();
 builder.Services.AddSingleton<IDocumentTextExtractor, PresentationTextExtractor>();
 builder.Services.AddSingleton<IDocumentTextExtractor, PlainTextExtractor>();
+builder.Services.AddSingleton<IDocumentTextExtractor, SpreadsheetTextExtractor>();
+builder.Services.AddSingleton<IDocumentTextExtractor, CsvTextExtractor>();
 builder.Services.AddSingleton<IDocumentTextExtractorFactory, DocumentTextExtractorFactory>();
 builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
 

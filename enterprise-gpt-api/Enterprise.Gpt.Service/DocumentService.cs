@@ -590,12 +590,14 @@ namespace Enterprise.Gpt.Service
 
         private static readonly FrozenDictionary<string, string> _contentTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
+            [".csv"] = "text/csv",
             [".doc"] = "application/msword",
             [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             [".md"] = "text/markdown",
             [".pdf"] = "application/pdf",
             [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            [".txt"] = "text/plain"
+            [".txt"] = "text/plain",
+            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>

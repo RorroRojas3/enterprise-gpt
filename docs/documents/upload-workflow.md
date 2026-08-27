@@ -20,7 +20,7 @@ Reading the original file back out is a much shorter path — one request, a sho
 |---|---|
 | `DocumentsController` (MVC) | [`DocumentEndpoints`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/DocumentEndpoints.cs) minimal-API group, gated by the `Upload File` permission |
 | One embedding per **page** (`ConversationDocumentPage`) | One embedding per **chunk** (`ConversationDocumentChunk`), 512 tokens with 128 tokens of overlap |
-| Extension `switch` inside `DocumentService` over ~25 extensions | Registered [`IDocumentTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/IDocumentTextExtractor.cs) implementations; six formats, one source of truth |
+| Extension `switch` inside `DocumentService` over ~25 extensions | Registered [`IDocumentTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/IDocumentTextExtractor.cs) implementations; eight formats, one source of truth |
 | Bad files accepted with a 202, failing minutes later | Validated on the request thread, rejected with 400 |
 | Four coarse progress checkpoints (25/50/75/100) | Six stages with per-batch progress and a user-facing message |
 | Unbounded queue | Queue bounded by a memory budget (`Documents:MaxQueuedBytes`) that applies backpressure |
@@ -65,7 +65,7 @@ sequenceDiagram
         P->>SVC: CreateConversationDocumentAsync
         SVC->>AZ: Upload userId/conversationId/documentId.ext
         SVC->>ST: Uploading, 0 then 10
-        SVC->>AZ: Extract text, segments per page or slide
+        SVC->>AZ: Extract text, segments per page, slide or sheet
         SVC->>ST: Extracting, 10 to 45
         SVC->>SVC: Chunk into 512-token spans
         SVC->>ST: Chunking, 45 then 50
@@ -78,24 +78,30 @@ sequenceDiagram
 
 ## 2. Supported formats
 
-Six extensions are accepted. The set is **derived from the registered extractors**, not configured: [`DocumentTextExtractorFactory`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/IDocumentTextExtractorFactory.cs) builds a map from every `IDocumentTextExtractor` in DI, and both the upload validator and `GET /api/documents/file-extensions` read that map. Configuration therefore cannot advertise a format nothing can read, and two extractors claiming the same extension fail at startup rather than silently picking a winner.
+Eight extensions are accepted. The set is **derived from the registered extractors**, not configured: [`DocumentTextExtractorFactory`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/IDocumentTextExtractorFactory.cs) builds a map from every `IDocumentTextExtractor` in DI, and both the upload validator and `GET /api/documents/file-extensions` read that map. Configuration therefore cannot advertise a format nothing can read, and two extractors claiming the same extension fail at startup rather than silently picking a winner.
 
 | Extension | Extractor | Reader | Segment | `SourceNumber` | Why this reader |
 |---|---|---|---|---|---|
-| `.pdf` | [`DocumentIntelligenceTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/DocumentIntelligenceTextExtractor.cs) | Azure AI Document Intelligence, `prebuilt-read` | page | page number | A PDF can be pure images; OCR is the only thing that reads a scan |
-| `.docx` | `DocumentIntelligenceTextExtractor` | Azure AI Document Intelligence | page, or the whole document | page number when the service paginates, else `null` | Document Intelligence accepts OOXML Word directly |
+| `.csv` | [`CsvTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/CsvTextExtractor.cs) | `CsvHelper` | whole file, as a single-sheet workbook | `1` | A CSV is already delimited text; the file name stands in for a sheet name |
 | `.doc` | `DocumentIntelligenceTextExtractor`, after [`DocSharpLegacyWordConverter`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Converters/DocSharpLegacyWordConverter.cs) | DocSharp (managed b2xtranslator fork) → Document Intelligence | whole document in practice | `null` | **Document Intelligence does not accept the binary `.doc` (OLE2) container.** Converting to `.docx` in memory keeps one OCR-backed route for every Word file instead of a second, lower-fidelity one |
-| `.pptx` | [`PresentationTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/PresentationTextExtractor.cs) | `DocumentFormat.OpenXml` | slide, plus speaker notes | slide number | A `.pptx` **already stores its text as text**. Parsing locally is free and lossless, gives a real slide number for provenance, and picks up speaker notes — none of which a rasterizing OCR pass would give |
+| `.docx` | `DocumentIntelligenceTextExtractor` | Azure AI Document Intelligence | page, or the whole document | page number when the service paginates, else `null` | Document Intelligence accepts OOXML Word directly |
 | `.md` | [`PlainTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/PlainTextExtractor.cs) | `StreamReader` | whole file | `null` | Already text. Markdown is embedded **as written**: headings, lists and code fences are real structure that helps the embedding |
+| `.pdf` | [`DocumentIntelligenceTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/DocumentIntelligenceTextExtractor.cs) | Azure AI Document Intelligence, `prebuilt-read` | page | page number | A PDF can be pure images; OCR is the only thing that reads a scan |
+| `.pptx` | [`PresentationTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/PresentationTextExtractor.cs) | `DocumentFormat.OpenXml` | slide, plus speaker notes | slide number | A `.pptx` **already stores its text as text**. Parsing locally is free and lossless, gives a real slide number for provenance, and picks up speaker notes — none of which a rasterizing OCR pass would give |
 | `.txt` | `PlainTextExtractor` | `StreamReader` | whole file | `null` | Already text |
+| `.xlsx` | [`SpreadsheetTextExtractor`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/SpreadsheetTextExtractor.cs) | `DocumentFormat.OpenXml` | worksheet | the sheet's 1-based ordinal | A `.xlsx` **already stores its cells as text**. Reading it locally is free, needs no OCR spend, and gives a real sheet number for provenance |
 
 Notes that matter in practice:
 
 - **`.doc` conversion is in memory.** `DocSharpLegacyWordConverter` reads the OLE2 structured storage and writes a `.docx` package to a `MemoryStream`; nothing touches the host's disk. Malformed input surfaces from the reader as a wide, undocumented range of exception types, so the catch is deliberately broad and every one of them becomes the same 400-class `ValidationException`.
-- **Encoding.** `PlainTextExtractor` honours a UTF-16/UTF-32 byte-order mark and falls back to UTF-8, then normalises line endings to `\n` so chunk boundaries and token counts do not depend on the authoring OS.
+- **Encoding.** `PlainTextExtractor` honours a UTF-16/UTF-32 byte-order mark and falls back to UTF-8, then normalises line endings to `\n` so chunk boundaries and token counts do not depend on the authoring OS. `CsvTextExtractor` does the same BOM detection for the same reason.
 - **Slides are read through `SlideIdList`**, not `PresentationPart.SlideParts` — only the former is in presentation order. The slide-number placeholder inside a notes slide is skipped, because its text is just the slide number and would otherwise be embedded as content.
-- **Empty segments are dropped.** Every extractor omits whitespace-only pages/slides, so a document with no readable text returns zero segments and the job fails with an explanation (§4.2).
+- **Sheets are read through the workbook's own `Sheets` list**, not `WorkbookPart.WorksheetParts` — only the former is in workbook order. Hidden sheets are extracted like any other; a chart or dialog sheet has no cell table and is skipped, but it still consumes its ordinal, so a later sheet's `SourceNumber` always matches its position in Excel's own tab strip.
+- **A worksheet segment renders as `Sheet: {name}` followed by one line per row, cells joined with `" | "`.** `SpreadsheetTextExtractor` resolves shared strings, inline strings, booleans (`TRUE`/`FALSE`), a formula's cached text result, and error literals such as `#DIV/0!` to their display text; a date-styled cell renders as `yyyy-MM-dd`, or `yyyy-MM-dd HH:mm:ss` when it carries a time, honouring both the 1900 and 1904 workbook date systems and Excel's own phantom 29 February 1900. [`SheetSegmentBuilder`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/SheetSegmentBuilder.cs) shares this shaping — and its refusal messages — between `.xlsx` and `.csv`, so the two produce byte-identical text for the same grid of cells. A cell's own line break or tab folds to a single space, because one line is one row for the chunker.
+- **CSV delimiter resolution is in-house, not CsvHelper's own detector.** `CsvTextExtractor` ranks `,`, `;` and tab by how many of the file's opening lines contain each, because CsvHelper's detector prefers the culture's list separator and would otherwise mis-resolve a semicolon-delimited European export whose decimal commas appear on every line. A stray quote in an unquoted field (`5" pipe`, `Bob "Bo" Smith`) keeps its raw text rather than refusing the whole file.
+- **Empty segments are dropped.** Every extractor omits whitespace-only pages/slides/sheets, so a document with no readable text returns zero segments and the job fails with an explanation (§4.2).
 - Document Intelligence has one fallback: if `result.Pages` yields nothing but `result.Content` is non-empty, a single segment with `SourceNumber = null` is emitted. This is what keeps a Word document from silently producing zero chunks.
+- **`.xls` and `.xlsm` are not accepted.** Neither the legacy binary workbook format nor the macro-enabled one is supported; only `.xlsx` and `.csv` are.
 
 ## 3. API surface
 
@@ -105,7 +111,7 @@ All three routes live in the `api/documents` group with `RequireAuthorization()`
 |---|---|---|---|---|
 | POST | `/api/documents/conversations/{conversationId:guid}` | authenticated **+ `Upload File` permission** | `202 Accepted`, `Location: /api/documents/upload-status/{jobId}`, body `JobDto { id }` | 400 validation, 403 missing permission, 404 conversation unknown / not owned / deactivated |
 | GET | `/api/documents/upload-status/{jobId}` | the user who queued the job | `200 JobStatusDto` | 404 unknown, evicted, or queued by someone else |
-| GET | `/api/documents/file-extensions` | any authenticated | `200 string[]` — e.g. `[".doc", ".docx", ".md", ".pdf", ".pptx", ".txt"]` | — |
+| GET | `/api/documents/file-extensions` | any authenticated | `200 string[]` — e.g. `[".csv", ".doc", ".docx", ".md", ".pdf", ".pptx", ".txt", ".xlsx"]` | — |
 
 Error bodies are **RFC 9457 Problem Details**, served as `application/problem+json`. The `type` URIs come from [`ProblemTypes`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemTypes.cs) and are opaque identifiers to match verbatim, not links to follow:
 
@@ -170,7 +176,7 @@ Synchronous, from [`UploadedFileValidator`](../../enterprise-gpt-api/Enterprise.
 | `Content-Length` larger than `Documents:MaxFileSizeBytes` | 400 | `MaxUploadSizeEndpointFilter`, before the body is buffered |
 | Body larger than `Documents:MaxFileSizeBytes` despite its declared length | 400 | validator |
 | Extension not backed by a registered extractor (or absent) | 400 | validator, and the message lists what *is* supported |
-| Leading bytes do not match the extension — `%PDF`, `PK` for OOXML, the OLE2 signature for `.doc`, no NUL bytes in the first 8 KB for text | 400 | validator |
+| Leading bytes do not match the extension — `%PDF`, `PK` for OOXML (`.docx`, `.pptx`, `.xlsx`), the OLE2 signature for `.doc`, no NUL bytes in the first 8 KB for text (`.md`, `.txt`, `.csv`) | 400 | validator |
 | Conversation does not exist, belongs to another user, or is deactivated | 404 | `NotFoundException` |
 
 The magic-byte check is a security control, not politeness: extensions are attacker-controlled, and every downstream reader assumes a particular container. Handing a renamed file to the Open XML or OLE2 reader turns a user mistake into a parser fault, and handing one to Document Intelligence spends money to learn the same thing.
@@ -184,6 +190,9 @@ Asynchronous, surfaced only through the status endpoint as `status: "Failed"` wi
 | Document Intelligence rejects the document (HTTP 400/415 — corrupt, password-protected, unsupported variant) | "The document could not be read. It may be corrupt, password-protected, or an unsupported variant of the format." |
 | `.doc` conversion fails | "…try saving it as .docx and uploading again." |
 | `.pptx` cannot be opened | "The presentation could not be read. It may be corrupt or password-protected." |
+| `.xlsx` cannot be opened — corrupt, truncated, malformed part XML, a dangling sheet relationship, or password-protected (which Excel writes as an OLE2 file rather than a zip, so the package never opens at all) | "The workbook could not be read. It may be corrupt or password-protected." |
+| `.csv` cannot be parsed — malformed quoting or row structure that defeats even the lenient reader (§2) | "The file could not be read as CSV. Its quoting or row structure may be malformed." |
+| A sheet or upload exceeds a `Sheets:*` ceiling (§4.2.1) — rows, columns, total characters, or how far a workbook may inflate when decompressed | Names the limit and what to do, e.g. "Sheet 'Transactions' has more than the 20,000 rows a spreadsheet upload accepts. Split it into smaller files and try again." |
 | Extraction or chunking yields nothing | "No readable text was found in the document, so there is nothing to index." |
 | Blob, embedding, database or any other unexpected fault | "Processing failed because of an unexpected error. Please try again, or contact support if the problem persists." |
 | Host shut down mid-job | "Job cancelled during host shutdown." / "Host shutdown before job could start." |
@@ -209,6 +218,22 @@ The factory resolves the extractor for the file's extension and the extractor re
 Progress here has a wrinkle worth understanding. `DocumentExtractionProgress.Fraction` is **nullable**: a remote OCR call is opaque until it returns, so it cannot report a percentage. A `null` fraction pins the reported percentage at the band's floor and refreshes only the *message* and the timestamp — the status feed still shows the job is alive without claiming progress it cannot know. `DocumentIntelligenceService` polls the long-running operation itself (`WaitUntil.Started`, then a 2-second poll loop) purely so the extractor can emit "Recognizing text (37s elapsed)" heartbeats.
 
 Reports are delivered through a private `InlineProgress<T>` rather than `System.Progress<T>`. `Progress<T>` posts each callback to the thread pool, which lets reports arrive out of order and land after the stage that raised them has finished, so a stale message could overwrite a newer one. The callback only touches a concurrent dictionary, so there is nothing to offload.
+
+#### 4.2.1 Spreadsheet ingest ceilings (`Sheets:*`)
+
+A `.xlsx` workbook is a deflate archive: a few kilobytes of compressed markup can expand to hundreds of megabytes once opened, so `Documents:MaxFileSizeBytes` — which bounds the **uploaded** bytes — bounds nothing about what a workbook costs to read. Three configuration keys under `Sheets` (§9) put a ceiling on that instead, checked while streaming rather than after the fact:
+
+| Key | Default | What it bounds |
+|---|---|---|
+| `Sheets:MaxRowsPerSheet` | 20,000 | Populated rows accepted from one sheet |
+| `Sheets:MaxColumnsPerSheet` | 200 | Columns accepted from one sheet |
+| `Sheets:MaxCharactersPerUpload` | 8,000,000 | Total cell text from one upload, shared strings included |
+
+`SpreadsheetTextExtractor` and `CsvTextExtractor` share these ceilings and share their refusal wording ([`SheetSegmentBuilder`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/SheetSegmentBuilder.cs)). A sheet or upload that crosses any of them is **refused outright, before anything is persisted — never silently truncated.** A shortened sheet would still look complete to a later reader, and every answer drawn from it would be quietly wrong; refusing tells the user to split the file instead.
+
+**The character ceiling also bounds how far a `.xlsx` package may inflate before it is opened at all.** Before `SpreadsheetDocument.Open` ever runs, `SpreadsheetTextExtractor` inflates every entry of the zip archive itself and counts the real decompressed bytes — a zip's declared entry length is attacker-controlled and is never verified while inflating, so the count has to come from the bytes themselves. The budget is `MaxCharactersPerUpload × 32` (element names, cell references and style attributes routinely cost more markup than the text they carry), floored at 256 KB so the package's own boilerplate — content types, relationships, the workbook part — never itself trips the limit. Measured against the shipped defaults: a 132 KB workbook holding one row of 1,000,000 cells, and a 382 KB workbook holding a single 400-million-character shared string, are both refused in tens of milliseconds at roughly zero megabytes of peak managed heap.
+
+Cells are read one at a time rather than a row at a time, so the column ceiling can refuse a row before every cell in it is materialized, and rows are counted only once a row closes — a self-closing row costs nothing twice. `.csv` enforces the same three ceilings directly against the decoded text stream; it has no package to inflate, so only `.xlsx` needs the archive-level guard.
 
 ### 4.3 Chunk, embed, persist
 
@@ -254,6 +279,8 @@ A chunk's `SourceNumber` is **the source number of the first unit it contains** 
 |---|---|
 | `.pdf` | 1-based page number |
 | `.pptx` | 1-based slide number |
+| `.xlsx` | the sheet's 1-based ordinal in the workbook's own tab order |
+| `.csv` | `1` — a CSV is one segment, one sheet |
 | `.docx` | page number when Document Intelligence paginates the document, otherwise `null` |
 | `.doc`, `.md`, `.txt` | `null` — the format offers no such division (a converted `.doc` comes back as flat content, and a text file is one segment) |
 
@@ -406,6 +433,22 @@ The `Documents` section binds to [`DocumentOptions`](../../enterprise-gpt-api/En
 | `BackgroundJobs:MaxConcurrent` | `0` | — | Concurrent jobs; `<= 0` means `Environment.ProcessorCount * 2` |
 | `BackgroundJobs:RetentionMinutes` | `60` | — | How long terminal snapshots stay pollable |
 
+The `Sheets` section binds to [`SheetOptions`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/SheetOptions.cs), validated at startup the same way, and is what bounds spreadsheet ingestion (§4.2.1):
+
+```json
+"Sheets": {
+  "MaxRowsPerSheet": 20000,
+  "MaxColumnsPerSheet": 200,
+  "MaxCharactersPerUpload": 8000000
+}
+```
+
+| Key | Default | Range | Meaning |
+|---|---|---|---|
+| `Sheets:MaxRowsPerSheet` | `20000` | 1 … 1,048,576 | Populated rows accepted from one sheet. The range ceiling is Excel's own grid limit |
+| `Sheets:MaxColumnsPerSheet` | `200` | 1 … 16,384 | Columns accepted from one sheet. The range ceiling is Excel's own grid limit |
+| `Sheets:MaxCharactersPerUpload` | `8000000` | 1,024 … 512,000,000 | Total cell text accepted from one upload, shared strings included; also fixes how far a `.xlsx` package may inflate before it is opened (§4.2.1) |
+
 Keys outside the `Documents` section that ingestion depends on — none of them validated at startup, so a wrong value fails inside the job or at the first Azure call:
 
 | Key | Consumed by | Notes |
@@ -518,18 +561,18 @@ Unit tests ([`tests/Enterprise.Gpt.Unit.Test`](../../enterprise-gpt-api/tests/En
 |---|---|
 | [`Services/DocumentServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/DocumentServiceTests.cs) | Queue path (ownership, deactivated/unknown conversation, validation before touching the queue, a failed enqueue marking the registered job `Failed`) and the ingestion path (persists document + chunks, blob keyed by document id, every stage reported then completed, per-batch embedding progress, batch sizing, misaligned vector counts, nothing persisted when extraction fails). Uses a real `InlineValidator` rather than a substitute, because `ValidateAndThrowAsync` only throws through `AbstractValidator`'s throw-on-failure strategy |
 | [`Chunking/TokenTextChunkerTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chunking/TokenTextChunkerTests.cs) | No chunk exceeds `MaxTokens` (theory over several configurations), reported token counts match the tokenizer, dense ordered indices, overlap present/absent, unbroken runs split rather than loop forever, non-Latin text stays within limit, `SourceNumber` carry-over, overlap clamping, tokenizer fallback |
-| [`Extraction/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Extraction) | Factory resolution, duplicate-extension failure at construction, supported-name rendering; plain text (BOM handling, line-ending normalisation, Markdown preserved, whitespace-only file); PowerPoint (slide order, speaker notes, slide-number placeholder excluded, empty slides omitted, per-slide progress, non-presentation content) |
-| [`Validators/UploadedFileValidatorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Validators/UploadedFileValidatorTests.cs) | Every signature check, size limit, missing/unsupported extension, missing file name, binary content renamed as text, content shorter than the expected signature |
+| [`Extraction/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Extraction) | Factory resolution, duplicate-extension failure at construction, supported-name rendering; plain text (BOM handling, line-ending normalisation, Markdown preserved, whitespace-only file); PowerPoint (slide order, speaker notes, slide-number placeholder excluded, empty slides omitted, per-slide progress, non-presentation content); [`SpreadsheetTextExtractorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Extraction/SpreadsheetTextExtractorTests.cs) (sheet order and numbering, hidden sheets extracted, a chart sheet keeping the workbook ordinal without emitting a segment, empty/gap rows, missing and trailing cells, every cell data type's display text, the 1900/1904 date systems and the pre-March-1900 phantom day, custom date and number formats, row/column/character ceilings at and past the limit, the package-inflation guard, five distinct malformed-package shapes each surfacing as `ValidationException`, cancellation); [`CsvTextExtractorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Extraction/CsvTextExtractorTests.cs) (comma/semicolon/tab delimiter resolution including a decimal-comma false positive, quoted fields spanning lines or containing the delimiter or escaped quotes, ragged rows, BOM handling, row/column/character ceilings, a stray unquoted quote and an unterminated quote both read rather than refusing the file, cancellation) |
+| [`Validators/UploadedFileValidatorTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Validators/UploadedFileValidatorTests.cs) | Every signature check, size limit, missing/unsupported extension (including `.xls` and `.xlsm`, deliberately unsupported), missing file name, binary content renamed as text (`.txt` and `.csv`), content shorter than the expected signature |
 | [`BackgroundJobs/JobStatusStoreTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/BackgroundJobs/JobStatusStoreTests.cs) | Register/Report/Complete/Fail semantics, monotonic progress, clamping, message retention, snapshots created for unknown jobs, concurrent reports never losing the highest progress |
 | [`Endpoints/DocumentEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/DocumentEndpointsTests.cs) | `202` + job id, the buffered file reaching the service, full snapshot projection, error surfacing, the `JobStatus` → `state` mapping as a theory, and `file-extensions` reflecting the registered extractors |
 | [`Filters/MaxUploadSizeEndpointFilterTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Filters/MaxUploadSizeEndpointFilterTests.cs) | Bodies within, exactly at, and over the limit; short-circuiting without invoking the endpoint; the server body limit being lowered when no `Content-Length` is declared; read-only and absent size features tolerated; a non-positive limit rejected at construction |
 | [`Converters/DocSharpLegacyWordConverterTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Converters/DocSharpLegacyWordConverterTests.cs) | Malformed, truncated and empty input surfacing as a caller-fixable `ValidationException` rather than a `500`, and cancellation staying an `OperationCanceledException`. The **success** path is deliberately uncovered — a valid Word 97–2003 file is an OLE2 compound document that cannot be synthesized, and a committed binary fixture would be opaque |
 
-Integration tests ([`Endpoints/DocumentEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/DocumentEndpointsIntegrationTests.cs), `[Trait("Category", "Integration")]`, needs Docker) run the **real pipeline** against `WebApplicationFactory<Program>` plus a Testcontainers **SQL Server 2025** instance. `FakeBlobStorageService` records paths, `FakeEmbeddingGenerator` returns deterministic **1536-dimension** vectors (any other width and SQL Server would reject the insert), and `PresentationFixture` builds a genuine `.pptx`. The test host shrinks the knobs so a modest fixture still spans several chunks and batches: `MaxFileSizeBytes` 64 KB, `EmbeddingBatchSize` 2, `MaxTokens` 64, `OverlapTokens` 16.
+Integration tests ([`Endpoints/DocumentEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/DocumentEndpointsIntegrationTests.cs), `[Trait("Category", "Integration")]`, needs Docker) run the **real pipeline** against `WebApplicationFactory<Program>` plus a Testcontainers **SQL Server 2025** instance. `FakeBlobStorageService` records paths, `FakeEmbeddingGenerator` returns deterministic **1536-dimension** vectors (any other width and SQL Server would reject the insert), `PresentationFixture` builds a genuine `.pptx`, and [`SpreadsheetFixture`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/SpreadsheetFixture.cs) builds a genuine multi-sheet `.xlsx` workbook and an equivalent `.csv`. The test host shrinks the knobs so a modest fixture still spans several chunks and batches: `MaxFileSizeBytes` 64 KB, `EmbeddingBatchSize` 2, `MaxTokens` 64, `OverlapTokens` 16.
 
-They cover: 401 anonymous; 403 after revoking `Upload File`; 400 for unsupported extension, content/extension mismatch, empty file and oversize file; 404 for unknown, foreign and deactivated conversations; the full `.txt` pipeline through to persisted chunks with dense indices, bounded token counts and `null` `SourceNumber`; the document-id-keyed blob path; two uploads of the same file name; `.md`; `.pptx` with real slide numbers; a whitespace-only file failing the job with an explanation; `404` for an unknown job id; the legacy status fields; and the advertised format list.
+They cover: 401 anonymous; 403 after revoking `Upload File`; 400 for unsupported extension (including `.xls` and `.xlsm`, since only `.xlsx` and `.csv` are accepted), content/extension mismatch, empty file and oversize file; 404 for unknown, foreign and deactivated conversations; the full `.txt` pipeline through to persisted chunks with dense indices, bounded token counts and `null` `SourceNumber`; the document-id-keyed blob path; two uploads of the same file name; `.md`; `.pptx` with real slide numbers; a multi-sheet `.xlsx` workbook ingested with chunks carrying their sheet's `SourceNumber`; a `.csv` file ingested as a single sheet with `SourceNumber` `1`; a whitespace-only file failing the job with an explanation; `404` for an unknown job id; the legacy status fields; and the advertised eight-extension format list.
 
-Not covered end-to-end: the `.pdf`, `.doc` and `.docx` routes (they need Azure Document Intelligence), a **successful** `.doc` conversion (see the note above — verify this one by uploading a real `.doc` manually), and `BackgroundJobProcessor`'s throttling and shutdown behaviour.
+Not covered end-to-end: the `.pdf`, `.doc` and `.docx` routes (they need Azure Document Intelligence), a **successful** `.doc` conversion (see the note above — verify this one by uploading a real `.doc` manually), `BackgroundJobProcessor`'s throttling and shutdown behaviour, and a malformed/password-protected `.xlsx` or `.csv` and a `Sheets:*` ceiling being crossed reaching the job-Failed state through the real endpoint rather than through the extractor directly (both are unit-tested against `SpreadsheetTextExtractor`/`CsvTextExtractor` in isolation).
 
 ```bash
 # from enterprise-gpt-api/
@@ -546,12 +589,12 @@ dotnet test                                    # everything; Docker must be runn
 | Cached grant sets ([reference](../permissions/permission-cache.md)) | [`Enterprise.Gpt.Service/Caching/UserPermissionCache.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs) |
 | Orchestration | [`Enterprise.Gpt.Service/DocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs) |
 | Upload validation | [`Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs) |
-| Text extraction | [`Enterprise.Gpt.Service/Extraction/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction) |
+| Text extraction | [`Enterprise.Gpt.Service/Extraction/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction), notably [`SpreadsheetTextExtractor.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/SpreadsheetTextExtractor.cs), [`CsvTextExtractor.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/CsvTextExtractor.cs) and the shared [`SheetSegmentBuilder.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/SheetSegmentBuilder.cs) |
 | Legacy `.doc` conversion | [`Enterprise.Gpt.Service/Converters/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Converters) |
 | OCR client | [`Enterprise.Gpt.Service/DocumentIntelligenceService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentIntelligenceService.cs) |
 | Chunking | [`Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs) |
 | Background jobs | [`Enterprise.Gpt.Service/BackgroundJobs/`](../../enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs) |
-| Options | [`Enterprise.Gpt.Service/Settings/DocumentOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/DocumentOptions.cs) |
+| Options | [`Enterprise.Gpt.Service/Settings/DocumentOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/DocumentOptions.cs), [`SheetOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/SheetOptions.cs) |
 | Entities | [`BaseDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/BaseDocumentChunk.cs), [`ConversationDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationDocumentChunk.cs), [`ConversationDocument.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationDocument.cs) |
 | EF configuration | [`ConversationDocumentChunkConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationDocumentChunkConfiguration.cs), [`ConversationDocumentConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationDocumentConfiguration.cs) |
 | DTOs | [`JobDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/JobDto.cs), [`JobStatusDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/JobStatusDto.cs), [`DocumentSegmentDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/DocumentSegmentDto.cs), [`TextChunkDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/TextChunkDto.cs), [`FileDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/FileDto.cs) |
