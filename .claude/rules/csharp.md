@@ -11,6 +11,8 @@ paths:
 - Make only high confidence suggestions when reviewing code changes.
 - Write maintainable code; handle edge cases with clear exception handling.
 - Comment only what code cannot say: why-decisions, constraints, non-obvious invariants. Never restate what the code does or narrate a change.
+- Keep a comment to one or two lines; three needs a reason, and past six the content belongs in `docs/`. Write for an engineer who knows C# — never explain the language, the framework, or an API.
+- Never name a PRD story, epic, requirement id, or design frame in source (`US-1402`, `FR-11`, "frame `2f`"). Traceability belongs in the PR description and `docs/`. Full standard: `.claude/CLAUDE.md` §"Communication & comments".
 - Web/API-specific standards (auth, validation, versioning, performance, deployment) live in `aspnet-rest-apis.md`.
 
 ## Naming Conventions
@@ -47,7 +49,9 @@ paths:
 - Ensure that the final return statement of a method is on its own line.
 - Use pattern matching and switch expressions wherever possible.
 - Use `nameof` instead of string literals when referring to member names.
-- Ensure that XML doc comments are created for any public APIs. When applicable, include `<example>` and `<code>` documentation in the comments.
+- Give public APIs a one-sentence `<summary>`; implementations use `/// <inheritdoc />`. Add `<param>`, `<returns>`, `<remarks>`, or `<example>` only where they carry what the signature does not.
+- `<remarks>` is a caveat a caller must know, two sentences at most — not rationale, history, or alternatives weighed. `internal` and test types are not API surface: document them only where a *why* exists.
+- Where this conflicts with the `csharp-docs` skill, this wins: the skill describes .NET's framework-reference house style, not this codebase's.
 
 ## Project Structure
 
@@ -78,5 +82,6 @@ paths:
 
 - Always include test cases for critical paths of the application.
 - Do not emit "Act", "Arrange" or "Assert" comments.
+- Never name a PRD story or epic in a test name, comment, or `DisplayName`; the name states the behaviour under test.
 - Copy existing style in nearby files for test method names and capitalization.
 - Mock dependencies for isolated unit tests.

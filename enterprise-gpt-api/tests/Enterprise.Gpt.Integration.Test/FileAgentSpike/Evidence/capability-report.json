@@ -1,0 +1,56 @@
+{
+  "recordedUtc": "2026-08-27T01:37:28.2033615+00:00",
+  "deployment": "rr-gpt-5.6-luna",
+  "findings": [
+    {
+      "question": "Can the sandbox author a sample of every format the matrix converts between?",
+      "outcome": "7 of 7",
+      "detail": "docx 37053 bytes, xlsx 5605 bytes, pptx 30122 bytes, pdf 2128 bytes, csv 79 bytes, md 512 bytes, txt 438 bytes."
+    },
+    {
+      "question": "Which conversions from docx does this sandbox serve?",
+      "outcome": "pdf=structural, md=faithful, txt=faithful",
+      "detail": "pdf: sandbox: pages=1 characters=361 | host: verified on the host: A complete PDF of 1778 bytes carrying roughly 1 page object(s). | md: sandbox: characters=440 | host: verified on the host: 440 characters over 17 line(s). | txt: sandbox: characters=440 | host: verified on the host: 440 characters over 17 line(s)."
+    },
+    {
+      "question": "Does a DataContent input reach the sandbox?",
+      "outcome": "no, silently dropped",
+      "detail": "Supplied as raw bytes on HostedCodeInterpreterTool.Inputs. The request was accepted without error. The sandbox listed the mount and found no file carrying the marker. Dropped silently, so anything built on raw-byte inputs cannot work and must upload through the Files API instead."
+    },
+    {
+      "question": "Does the Responses-route client carry HostedCodeInterpreterTool in this tenant?",
+      "outcome": "yes",
+      "detail": "Deployment rr-gpt-5.6-luna. Artifact channels: AIContent.Annotations/CitationAnnotation. Container: cntr_6a8f9412dc9c81908479fbce55a65c6701e386a1d49e66fd. Conversation: resp_0fe2f42c5a84068a006a8f9489259c8195918b36ae5a814401. Content shapes observed: AIContent.Annotations/CitationAnnotation(ContainerFileCitationMessageAnnotation), CodeInterpreterToolCallContent, CodeInterpreterToolResultContent(CodeInterpreterCallResponseItem), TextContent(InternalItemContentOutputText), TextReasoningContent(ReasoningResponseItem)."
+    },
+    {
+      "question": "Can a produced artifact be read back by the API?",
+      "outcome": "an artifact was surfaced",
+      "detail": "Channel AIContent.Annotations/CitationAnnotation, file cfile_6a8f948d17e08190a7f336b685bec866, container scope cntr_6a8f9412dc9c81908479fbce55a65c6701e386a1d49e66fd."
+    },
+    {
+      "question": "Does the container-scoped download route answer under this deployment\u0027s api-key auth?",
+      "outcome": "yes",
+      "detail": "Downloaded 29 bytes for cfile_6a8f948d17e08190a7f336b685bec866 through IHostedFileClient.DownloadAsync with Scope set to the container id, which resolves to GET {endpoint}/openai/v1/containers/{container}/files/{file}/content."
+    },
+    {
+      "question": "Does a HostedFileContent input reach the sandbox?",
+      "outcome": "yes",
+      "detail": "Uploaded as file assistant-WpF8wET7mQVM1YYgLatViP with purpose assistants, then supplied on HostedCodeInterpreterTool.Inputs. The sandbox found the marker in assistant-WpF8wET7mQVM1YYgLatViP-ep0-hosted-input.txt. A hosted file reference is the input path that works; raw bytes are not."
+    },
+    {
+      "question": "Is the sandbox denied outbound network access in this deployment?",
+      "outcome": "yes, on every path probed",
+      "detail": "https request blocked: True. Raw socket blocked: True. pip install blocked: True. A reachable package index would mean the library inventory is not a fixed fact, and a skill could install its way around it."
+    },
+    {
+      "question": "Which of the libraries the skills would name does the sandbox actually carry?",
+      "outcome": "16 of 17 import",
+      "detail": "Python 3.11.15. Present: python-docx 1.2.0, openpyxl 3.1.5, python-pptx 1.0.2, pandas 1.5.3, reportlab 4.4.5, fpdf / fpdf2 2.8.3, pypdf 6.3.0, PyPDF2 3.0.1, pdfplumber 0.6.2, PyMuPDF 1.26.6, weasyprint 53.3, Pillow 9.1.0, tabulate 0.9.0, beautifulsoup4 4.14.3, lxml 6.1.1, matplotlib 3.6.3. Absent: markdown."
+    },
+    {
+      "question": "Is a headless office suite available for Office to PDF conversion?",
+      "outcome": "no",
+      "detail": "No soffice, libreoffice or lowriter binary is on PATH, so every Office to PDF cell stays at the structural tier and the answer must say the typography is the sandbox\u0027s."
+    }
+  ]
+}

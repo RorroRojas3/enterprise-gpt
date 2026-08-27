@@ -1,0 +1,113 @@
+{
+  "recordedUtc": "2026-08-27T01:34:26.1041628+00:00",
+  "pythonVersion": "3.11.15",
+  "libraries": [
+    {
+      "module": "docx",
+      "package": "python-docx",
+      "importable": true,
+      "version": "1.2.0"
+    },
+    {
+      "module": "openpyxl",
+      "package": "openpyxl",
+      "importable": true,
+      "version": "3.1.5"
+    },
+    {
+      "module": "pptx",
+      "package": "python-pptx",
+      "importable": true,
+      "version": "1.0.2"
+    },
+    {
+      "module": "pandas",
+      "package": "pandas",
+      "importable": true,
+      "version": "1.5.3"
+    },
+    {
+      "module": "reportlab",
+      "package": "reportlab",
+      "importable": true,
+      "version": "4.4.5"
+    },
+    {
+      "module": "fpdf",
+      "package": "fpdf / fpdf2",
+      "importable": true,
+      "version": "2.8.3"
+    },
+    {
+      "module": "pypdf",
+      "package": "pypdf",
+      "importable": true,
+      "version": "6.3.0"
+    },
+    {
+      "module": "PyPDF2",
+      "package": "PyPDF2",
+      "importable": true,
+      "version": "3.0.1"
+    },
+    {
+      "module": "pdfplumber",
+      "package": "pdfplumber",
+      "importable": true,
+      "version": "0.6.2"
+    },
+    {
+      "module": "fitz",
+      "package": "PyMuPDF",
+      "importable": true,
+      "version": "1.26.6"
+    },
+    {
+      "module": "weasyprint",
+      "package": "weasyprint",
+      "importable": true,
+      "version": "53.3"
+    },
+    {
+      "module": "PIL",
+      "package": "Pillow",
+      "importable": true,
+      "version": "9.1.0"
+    },
+    {
+      "module": "markdown",
+      "package": "markdown",
+      "importable": false,
+      "version": null
+    },
+    {
+      "module": "tabulate",
+      "package": "tabulate",
+      "importable": true,
+      "version": "0.9.0"
+    },
+    {
+      "module": "bs4",
+      "package": "beautifulsoup4",
+      "importable": true,
+      "version": "4.14.3"
+    },
+    {
+      "module": "lxml",
+      "package": "lxml",
+      "importable": true,
+      "version": "6.1.1"
+    },
+    {
+      "module": "matplotlib",
+      "package": "matplotlib",
+      "importable": true,
+      "version": "3.6.3"
+    }
+  ],
+  "officeConverter": {
+    "present": false,
+    "path": null,
+    "version": null
+  }
+}

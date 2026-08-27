@@ -17,6 +17,12 @@
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
+    <!-- The EP-0 capability spike reads the API project's own user-secrets store, which is the only
+         place on a developer machine that already holds a working Azure OpenAI endpoint, key and
+         deployment. Nothing else in this project reads configuration from outside the test host. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <!-- Overrides the transitive 2025.1.0 that Testcontainers 4.13.0 brings, which has a known high
          severity vulnerability (GHSA-q939-rpr3-3284 / CVE-2026-48798, arbitrary file write from a
@@ -36,6 +42,19 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Enterprise.Gpt.Api\Enterprise.Gpt.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The EP-0 probe programs and the evidence they diff against, laid down beside the assembly so
+         a probe can be edited in place and re-run against a live sandbox without a rebuild. Always,
+         not PreserveNewest: a recording run rewrites the evidence in the source tree, and a stale
+         output copy would have the next run diff against the wrong thing. -->
+    <None Update="FileAgentSpike\Scripts\*.py">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="FileAgentSpike\Evidence\*.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

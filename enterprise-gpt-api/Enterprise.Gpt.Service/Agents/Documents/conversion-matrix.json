@@ -1,0 +1,1094 @@
+{
+  "schemaVersion": 1,
+  "status": "confirmed",
+  "recordedUtc": "2026-08-27T01:29:10.8115799+00:00",
+  "deployment": "rr-gpt-5.6-luna",
+  "officeConverterPresent": false,
+  "formats": [
+    "docx",
+    "xlsx",
+    "pptx",
+    "pdf",
+    "csv",
+    "md",
+    "txt"
+  ],
+  "tierGlyphs": {
+    "faithful": "\u2713",
+    "structural": "\u25D0",
+    "refused": "refused",
+    "notOffered": "n/a"
+  },
+  "cells": [
+    {
+      "from": "docx",
+      "to": "xlsx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "docx",
+      "to": "pptx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "docx",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:26:42.2689505+00:00",
+        "engine": "reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1778,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=361 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "docx",
+      "to": "csv",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "docx",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-docx",
+      "note": "Paragraph, heading and table text; a Word document holds little that markdown cannot.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:26:42.2693144+00:00",
+        "engine": "python-docx",
+        "produced": true,
+        "bytes": 440,
+        "verified": true,
+        "detail": "sandbox: characters=440 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "docx",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-docx",
+      "note": "Text only, which is all the target format can hold.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:26:42.2693198+00:00",
+        "engine": "python-docx",
+        "produced": true,
+        "bytes": 440,
+        "verified": true,
+        "detail": "sandbox: characters=440 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "docx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "xlsx",
+      "to": "pptx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "xlsx",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.1812118+00:00",
+        "engine": "reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1534,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=74 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "csv",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "One sheet per file; a multi-sheet workbook needs the sheet named in the request.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.1812568+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 74,
+        "verified": true,
+        "detail": "sandbox: rows=5 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "Cell values as a markdown table; formulas resolve to their computed values.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.1812647+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 133,
+        "verified": true,
+        "detail": "sandbox: characters=133 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "Cell values as aligned text.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.181266+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 119,
+        "verified": true,
+        "detail": "sandbox: characters=119 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pptx",
+      "to": "docx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "pptx",
+      "to": "xlsx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "pptx",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "refused",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:34.8013235+00:00",
+        "engine": null,
+        "produced": false,
+        "bytes": 0,
+        "verified": false,
+        "detail": "ValueError: too many values to unpack (expected 2) | sandbox: nothing was produced | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pptx",
+      "to": "csv",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "pptx",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-pptx",
+      "note": "Slide text in order, one section per slide; speaker notes only when asked for.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:34.8014578+00:00",
+        "engine": "python-pptx",
+        "produced": true,
+        "bytes": 372,
+        "verified": true,
+        "detail": "sandbox: characters=372 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pptx",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-pptx",
+      "note": "Slide text in order.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:34.8014627+00:00",
+        "engine": "python-pptx",
+        "produced": true,
+        "bytes": 362,
+        "verified": true,
+        "detail": "sandbox: characters=362 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "docx",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "PyMuPDF \u002B python-docx",
+      "note": "Recovers text, heading structure, tables and embedded images. An editable document carrying the source\u0027s content, not a reconstruction of its layout, and the answer must say so.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812728+00:00",
+        "engine": "PyMuPDF \u002B python-docx",
+        "produced": true,
+        "bytes": 36850,
+        "verified": true,
+        "detail": "sandbox: paragraphs=21 tables=0 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "xlsx",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "pdfplumber",
+      "note": "Tables only. Dependable for ruled tables, unreliable for whitespace-aligned ones; the answer reports how many tables were found.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812938+00:00",
+        "engine": "pdfplumber",
+        "produced": true,
+        "bytes": 4941,
+        "verified": true,
+        "detail": "sandbox: sheets=Sheet | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "pptx",
+      "proposedTier": "refused",
+      "tier": "refused",
+      "confirmed": true,
+      "engine": "PyMuPDF \u002B python-pptx",
+      "note": "Reconstructing a deck from rendered pages yields one image per slide with no editable content - worse than useless, so refused by name before any run starts.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812957+00:00",
+        "engine": "PyMuPDF \u002B python-pptx",
+        "produced": true,
+        "bytes": 58506,
+        "verified": true,
+        "detail": "sandbox: slides=1 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "csv",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "pdfplumber",
+      "note": "Tables only, same caveat as pdf to xlsx; the answer reports how many tables were found.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812974+00:00",
+        "engine": "pdfplumber",
+        "produced": true,
+        "bytes": 79,
+        "verified": true,
+        "detail": "sandbox: rows=5 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "md",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "PyMuPDF",
+      "note": "Text extraction. Legible for a text-based PDF, not guaranteed for a scanned one, and the answer says which it got.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4813004+00:00",
+        "engine": "PyMuPDF",
+        "produced": true,
+        "bytes": 409,
+        "verified": true,
+        "detail": "sandbox: characters=409 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "txt",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "PyMuPDF",
+      "note": "Text extraction, same caveat as pdf to md.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4813019+00:00",
+        "engine": "PyMuPDF",
+        "produced": true,
+        "bytes": 409,
+        "verified": true,
+        "detail": "sandbox: characters=409 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "docx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas \u002B python-docx",
+      "note": "The rows as a Word table.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.309745+00:00",
+        "engine": "pandas \u002B python-docx",
+        "produced": true,
+        "bytes": 36783,
+        "verified": true,
+        "detail": "sandbox: paragraphs=0 tables=1 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "xlsx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas \u002B openpyxl",
+      "note": "One sheet, header row preserved.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097548+00:00",
+        "engine": "pandas \u002B openpyxl",
+        "produced": true,
+        "bytes": 5498,
+        "verified": true,
+        "detail": "sandbox: sheets=Sheet1 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "pptx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "csv",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097569+00:00",
+        "engine": "reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1534,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=74 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "The rows as a markdown table.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097609+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 133,
+        "verified": true,
+        "detail": "sandbox: characters=133 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "The rows as aligned text.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097616+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 119,
+        "verified": true,
+        "detail": "sandbox: characters=119 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "md",
+      "to": "docx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B python-docx",
+      "note": "Headings, paragraphs, lists and tables.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:49.5090298+00:00",
+        "engine": "stdlib \u002B python-docx",
+        "produced": true,
+        "bytes": 36880,
+        "verified": true,
+        "detail": "sandbox: paragraphs=12 tables=0 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "md",
+      "to": "xlsx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "md",
+      "to": "pptx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "md",
+      "to": "pdf",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+      "note": "Markdown declares no typography of its own, so the sandbox choosing it loses nothing the source expressed.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:49.5090348+00:00",
+        "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1940,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=507 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "md",
+      "to": "csv",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "md",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib",
+      "note": "Markup retained as literal text.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:49.5090399+00:00",
+        "engine": "stdlib",
+        "produced": true,
+        "bytes": 512,
+        "verified": true,
+        "detail": "sandbox: characters=512 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "txt",
+      "to": "docx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B python-docx",
+      "note": "One paragraph per line.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:29:10.8113167+00:00",
+        "engine": "stdlib \u002B python-docx",
+        "produced": true,
+        "bytes": 36866,
+        "verified": true,
+        "detail": "sandbox: paragraphs=11 tables=0 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "txt",
+      "to": "xlsx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "txt",
+      "to": "pptx",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "txt",
+      "to": "pdf",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+      "note": "Plain text declares no typography of its own, so the sandbox choosing it loses nothing the source expressed.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:29:10.8113215+00:00",
+        "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1886,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=435 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "txt",
+      "to": "csv",
+      "proposedTier": "notOffered",
+      "tier": "notOffered",
+      "confirmed": false,
+      "engine": null,
+      "note": "Not proposed for v1: no natural request maps to this pair. Not a refusal - simply not offered, and addable with its own evidence if one turns up.",
+      "evidence": null
+    },
+    {
+      "from": "txt",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib",
+      "note": "Text retained; no markup is inferred.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:29:10.811323+00:00",
+        "engine": "stdlib",
+        "produced": true,
+        "bytes": 438,
+        "verified": true,
+        "detail": "sandbox: characters=438 | host: no artifact reached the API"
+      }
+    }
+  ],
+  "offeredCells": [
+    {
+      "from": "docx",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:26:42.2689505+00:00",
+        "engine": "reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1778,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=361 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "docx",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-docx",
+      "note": "Paragraph, heading and table text; a Word document holds little that markdown cannot.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:26:42.2693144+00:00",
+        "engine": "python-docx",
+        "produced": true,
+        "bytes": 440,
+        "verified": true,
+        "detail": "sandbox: characters=440 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "docx",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-docx",
+      "note": "Text only, which is all the target format can hold.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:26:42.2693198+00:00",
+        "engine": "python-docx",
+        "produced": true,
+        "bytes": 440,
+        "verified": true,
+        "detail": "sandbox: characters=440 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.1812118+00:00",
+        "engine": "reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1534,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=74 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "csv",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "One sheet per file; a multi-sheet workbook needs the sheet named in the request.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.1812568+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 74,
+        "verified": true,
+        "detail": "sandbox: rows=5 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "Cell values as a markdown table; formulas resolve to their computed values.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.1812647+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 133,
+        "verified": true,
+        "detail": "sandbox: characters=133 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "xlsx",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "Cell values as aligned text.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:10.181266+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 119,
+        "verified": true,
+        "detail": "sandbox: characters=119 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pptx",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "refused",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:34.8013235+00:00",
+        "engine": null,
+        "produced": false,
+        "bytes": 0,
+        "verified": false,
+        "detail": "ValueError: too many values to unpack (expected 2) | sandbox: nothing was produced | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pptx",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-pptx",
+      "note": "Slide text in order, one section per slide; speaker notes only when asked for.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:34.8014578+00:00",
+        "engine": "python-pptx",
+        "produced": true,
+        "bytes": 372,
+        "verified": true,
+        "detail": "sandbox: characters=372 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pptx",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "python-pptx",
+      "note": "Slide text in order.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:27:34.8014627+00:00",
+        "engine": "python-pptx",
+        "produced": true,
+        "bytes": 362,
+        "verified": true,
+        "detail": "sandbox: characters=362 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "docx",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "PyMuPDF \u002B python-docx",
+      "note": "Recovers text, heading structure, tables and embedded images. An editable document carrying the source\u0027s content, not a reconstruction of its layout, and the answer must say so.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812728+00:00",
+        "engine": "PyMuPDF \u002B python-docx",
+        "produced": true,
+        "bytes": 36850,
+        "verified": true,
+        "detail": "sandbox: paragraphs=21 tables=0 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "xlsx",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "pdfplumber",
+      "note": "Tables only. Dependable for ruled tables, unreliable for whitespace-aligned ones; the answer reports how many tables were found.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812938+00:00",
+        "engine": "pdfplumber",
+        "produced": true,
+        "bytes": 4941,
+        "verified": true,
+        "detail": "sandbox: sheets=Sheet | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "pptx",
+      "proposedTier": "refused",
+      "tier": "refused",
+      "confirmed": true,
+      "engine": "PyMuPDF \u002B python-pptx",
+      "note": "Reconstructing a deck from rendered pages yields one image per slide with no editable content - worse than useless, so refused by name before any run starts.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812957+00:00",
+        "engine": "PyMuPDF \u002B python-pptx",
+        "produced": true,
+        "bytes": 58506,
+        "verified": true,
+        "detail": "sandbox: slides=1 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "csv",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "pdfplumber",
+      "note": "Tables only, same caveat as pdf to xlsx; the answer reports how many tables were found.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4812974+00:00",
+        "engine": "pdfplumber",
+        "produced": true,
+        "bytes": 79,
+        "verified": true,
+        "detail": "sandbox: rows=5 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "md",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "PyMuPDF",
+      "note": "Text extraction. Legible for a text-based PDF, not guaranteed for a scanned one, and the answer says which it got.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4813004+00:00",
+        "engine": "PyMuPDF",
+        "produced": true,
+        "bytes": 409,
+        "verified": true,
+        "detail": "sandbox: characters=409 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "pdf",
+      "to": "txt",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "PyMuPDF",
+      "note": "Text extraction, same caveat as pdf to md.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:06.4813019+00:00",
+        "engine": "PyMuPDF",
+        "produced": true,
+        "bytes": 409,
+        "verified": true,
+        "detail": "sandbox: characters=409 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "docx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas \u002B python-docx",
+      "note": "The rows as a Word table.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.309745+00:00",
+        "engine": "pandas \u002B python-docx",
+        "produced": true,
+        "bytes": 36783,
+        "verified": true,
+        "detail": "sandbox: paragraphs=0 tables=1 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "xlsx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas \u002B openpyxl",
+      "note": "One sheet, header row preserved.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097548+00:00",
+        "engine": "pandas \u002B openpyxl",
+        "produced": true,
+        "bytes": 5498,
+        "verified": true,
+        "detail": "sandbox: sheets=Sheet1 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "pdf",
+      "proposedTier": "structural",
+      "tier": "structural",
+      "confirmed": true,
+      "engine": "reportlab (weasyprint failed: AttributeError)",
+      "note": "A pixel-faithful render needs LibreOffice or Word. Absent a soffice binary the structural path still carries the content, and the answer must say the typography is the sandbox\u0027s rather than the source\u0027s. Promoted to faithful only if soffice is found and renders faithfully.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097569+00:00",
+        "engine": "reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1534,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=74 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "The rows as a markdown table.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097609+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 133,
+        "verified": true,
+        "detail": "sandbox: characters=133 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "csv",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "pandas",
+      "note": "The rows as aligned text.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:27.3097616+00:00",
+        "engine": "pandas",
+        "produced": true,
+        "bytes": 119,
+        "verified": true,
+        "detail": "sandbox: characters=119 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "md",
+      "to": "docx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B python-docx",
+      "note": "Headings, paragraphs, lists and tables.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:49.5090298+00:00",
+        "engine": "stdlib \u002B python-docx",
+        "produced": true,
+        "bytes": 36880,
+        "verified": true,
+        "detail": "sandbox: paragraphs=12 tables=0 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "md",
+      "to": "pdf",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+      "note": "Markdown declares no typography of its own, so the sandbox choosing it loses nothing the source expressed.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:49.5090348+00:00",
+        "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1940,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=507 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "md",
+      "to": "txt",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib",
+      "note": "Markup retained as literal text.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:28:49.5090399+00:00",
+        "engine": "stdlib",
+        "produced": true,
+        "bytes": 512,
+        "verified": true,
+        "detail": "sandbox: characters=512 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "txt",
+      "to": "docx",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B python-docx",
+      "note": "One paragraph per line.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:29:10.8113167+00:00",
+        "engine": "stdlib \u002B python-docx",
+        "produced": true,
+        "bytes": 36866,
+        "verified": true,
+        "detail": "sandbox: paragraphs=11 tables=0 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "txt",
+      "to": "pdf",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+      "note": "Plain text declares no typography of its own, so the sandbox choosing it loses nothing the source expressed.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:29:10.8113215+00:00",
+        "engine": "stdlib \u002B reportlab (weasyprint failed: AttributeError)",
+        "produced": true,
+        "bytes": 1886,
+        "verified": true,
+        "detail": "sandbox: pages=1 characters=435 | host: no artifact reached the API"
+      }
+    },
+    {
+      "from": "txt",
+      "to": "md",
+      "proposedTier": "faithful",
+      "tier": "faithful",
+      "confirmed": true,
+      "engine": "stdlib",
+      "note": "Text retained; no markup is inferred.",
+      "evidence": {
+        "recordedUtc": "2026-08-27T01:29:10.811323+00:00",
+        "engine": "stdlib",
+        "produced": true,
+        "bytes": 438,
+        "verified": true,
+        "detail": "sandbox: characters=438 | host: no artifact reached the API"
+      }
+    }
+  ]
+}

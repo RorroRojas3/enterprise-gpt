@@ -49,9 +49,28 @@ Feature designs: `documents/upload-workflow.md`, `models/model-management.md`, `
 
 **Code comments**
 
-- Comment only what code cannot say: why a decision was made, constraints, non-obvious invariants, workarounds with links.
-- Never narrate what code does. No per-function comment quota. No change-narration comments ("added X", "now uses Y").
-- XML doc comments on public APIs are API documentation, not comments — that standard stands.
+Write for a senior engineer who knows the language and can read the code. A comment supplies what the code cannot — nothing else.
+
+- **Default to no comment.** Add one only where a competent reader would still ask _why_. No per-function or per-member quota.
+- **One or two lines.** Three needs a reason; past six the content belongs in `docs/` with a one-line pointer from the code.
+- **Never reference PRD story ids, epics, or design frames** — no `US-1402`, no `FR-11`, no "PRD decision 1", no "frame `2f`". Traceability belongs in the PR description and `docs/`; in source it goes stale and says nothing about the code in front of the reader. Test names describe behaviour, not story ids.
+- **Never explain the language, framework, or API** — not what `linkedSignal` is for, not how `dragleave` fires, not what a primary constructor does.
+- **Never narrate.** No "added X", "now uses Y". No restating the statement below it.
+- **Do write**: why the non-obvious choice beat the obvious one, an invariant a caller must hold, a workaround with its link or issue, a spec or vendor constraint. State the cause once — not the argument, the alternatives weighed, or the history.
+- **Compress rather than delete.** A real _why_ buried in a paragraph becomes one sentence; it does not disappear.
+
+```ts
+// Bad — narrates, teaches the platform, cites a story
+/**
+ * US-204 asks for two different things and they need two different mechanisms. "No
+ * attach control renders" is `@if` in the template — the same answer US-203 gave the
+ * Admin nav entry, and it stays that way. "Drag-and-drop is inert" cannot be: the
+ * prompt box still has to render, it just must not react. That is this directive.
+ */
+
+// Good — the one thing the code cannot say
+/** Depth, not a flag: `dragleave` fires on every child crossing. */
+```
 
 ## C# coding standards (always)
 
@@ -64,7 +83,7 @@ Full standards live in `.claude/rules/csharp.md` (auto-applies to `*.cs`). The a
 - Declare variables non-nullable; validate `null` at entry points only; use `is null` / `is not null` — **never** `== null` / `!= null`.
 - Suffix async methods with `Async`; **never** block with `.Result`, `.Wait()`, or `.GetAwaiter().GetResult()`; no `async void` outside event handlers; flow a `CancellationToken` through long-running operations (see the `csharp-async` skill). `ConfigureAwait(false)` is applied in hosted-service, cache, lock, and MCP-client paths — follow the surrounding file.
 - **Never log PII or secrets**; prefer `DefaultAzureCredential` + Azure Key Vault / Managed Identity over secrets in code or config.
-- XML doc comments on all public APIs; interfaces carry the docs and implementations use `/// <inheritdoc />` (see the `csharp-docs` skill).
+- **XML docs** — a one-sentence `<summary>` on public API surface; interfaces carry the docs and implementations use `/// <inheritdoc />`. `<param>`/`<returns>` only where they add what the signature does not (never "The resource API key" on `ApiKey`). `<remarks>` is for a caveat a caller must know, two sentences at most — not rationale, not history, not alternatives weighed. `<example>`/`<code>` only where correct usage is genuinely non-obvious. `internal` and test types are not API surface: comment them only where a _why_ exists. **This overrides the `csharp-docs` skill wherever the two disagree** — the skill describes .NET's framework-reference house style, which is not this codebase's.
 - xUnit **v3** tests under `enterprise-gpt-api/tests/` in `Enterprise.Gpt.Unit.Test` and `Enterprise.Gpt.Integration.Test`, named `MethodName_Scenario_ExpectedBehavior`; Arrange-Act-Assert structure but **no** `// Arrange` / `// Act` / `// Assert` comments; plain xUnit `Assert` (no FluentAssertions — v8+ is commercially licensed); isolate with **NSubstitute** (see the `csharp-xunit` skill).
 - Unit tests: services taking `EnterpriseGptDbContext` run on SQLite in-memory via `SqliteDbContextFixture` (a model customizer neutralizes the rowversion and vector columns SQLite cannot handle); each test class news up its own fixture rather than using `IClassFixture`. Integration tests: `WebApplicationFactory<Program>` + Testcontainers **SQL Server 2025** (`CustomWebApplicationFactory` + `TestAuthHandler`, header `X-Test-User`); they need Docker and carry both `[Collection("Integration")]` and `[Trait("Category", "Integration")]`.
 - When reviewing, make only **high-confidence** suggestions; comment on _why_ a non-obvious design decision was made.
@@ -93,6 +112,7 @@ The rules files set the target. These are the places the code has not migrated y
 - Use `rxMethod` (not `signalMethod`) whenever requests can overlap — `switchMap` is what prevents a stale response overwriting a fresh one. One store per entity type; `withEntities` for keyed collections.
 - This is **not** classic NgRx: no actions, reducers, or effects unless the Events plugin is a deliberate choice.
 - **Forms are Signal Forms** (`@angular/forms/signals`): `form()` over a `signal(model)`, schema rules (`required`, `maxLength`, `validate`, …), `[formField]` bindings — a product-owner decision (2026-08-11, first applied in US-304). Never introduce `ReactiveFormsModule`/`FormsModule` in new code. The API is `@experimental` in Angular 21.2, so re-check it against the installed types on every Angular upgrade; `@angular/forms/signals/compat` is the bridge if an integration ever demands an `AbstractControl`. Server validation maps through `serverMessagesFor` (`core/errors/`) fed to a declarative `validate` rule — `applyServerErrors` is the `AbstractControl` counterpart and gains no new call sites.
+- **TSDoc** follows the comment standard above: a one-line `/** */` where the exported name is not enough, and nothing on a symbol the name already explains. No multi-paragraph headers on components, directives, or stores — the design rationale for a screen belongs in `docs/`, not in its class doc.
 - For Angular questions that are not about state, use the `angular-developer` skill and the `angular-cli` MCP server instead of relying on memory. Some code comments say "Angular 19 pattern" — they are stale; the app is on Angular 21.
 
 ## Skills
