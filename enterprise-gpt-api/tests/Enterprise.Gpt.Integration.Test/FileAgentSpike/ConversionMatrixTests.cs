@@ -292,6 +292,9 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
             attempt.GetProperty("bytes").GetInt64(),
             openable,
             (error is { Length: > 0 } ? $"{error} | " : string.Empty)
+            + (attempt.TryGetProperty("traceback", out var trace) && trace.GetString() is { Length: > 0 } text
+                ? $"traceback: {text.ReplaceLineEndings(" ")} | "
+                : string.Empty)
             + (degraded.Count > 0 ? $"degraded: {string.Join("; ", degraded)} | " : string.Empty)
             + $"sandbox: {detail} | host: {hostSideVerification}");
 

@@ -1,51 +1,16 @@
 {
-  "recordedUtc": "2026-08-27T01:30:39.4502064+00:00",
+  "recordedUtc": "2026-08-27T01:37:28.2033615+00:00",
   "deployment": "rr-gpt-5.6-luna",
   "findings": [
     {
       "question": "Can the sandbox author a sample of every format the matrix converts between?",
       "outcome": "7 of 7",
-      "detail": "docx 37053 bytes, xlsx 5604 bytes, pptx 30122 bytes, pdf 2128 bytes, csv 79 bytes, md 512 bytes, txt 438 bytes."
+      "detail": "docx 37053 bytes, xlsx 5605 bytes, pptx 30122 bytes, pdf 2128 bytes, csv 79 bytes, md 512 bytes, txt 438 bytes."
     },
     {
       "question": "Which conversions from docx does this sandbox serve?",
       "outcome": "pdf=structural, md=faithful, txt=faithful",
-      "detail": "pdf: sandbox: pages=1 characters=361 | host: no artifact reached the API | md: sandbox: characters=440 | host: no artifact reached the API | txt: sandbox: characters=440 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversions from xlsx does this sandbox serve?",
-      "outcome": "pdf=structural, csv=faithful, md=faithful, txt=faithful",
-      "detail": "pdf: sandbox: pages=1 characters=74 | host: no artifact reached the API | csv: sandbox: rows=5 | host: no artifact reached the API | md: sandbox: characters=133 | host: no artifact reached the API | txt: sandbox: characters=119 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversions from pptx does this sandbox serve?",
-      "outcome": "pdf=refused, md=faithful, txt=faithful",
-      "detail": "pdf: ValueError: too many values to unpack (expected 2) | sandbox: nothing was produced | host: no artifact reached the API | md: sandbox: characters=372 | host: no artifact reached the API | txt: sandbox: characters=362 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversions from pdf does this sandbox serve?",
-      "outcome": "docx=structural, xlsx=structural, pptx=refused, csv=structural, md=structural, txt=structural",
-      "detail": "docx: sandbox: paragraphs=21 tables=0 | host: no artifact reached the API | xlsx: sandbox: sheets=Sheet | host: no artifact reached the API | pptx: sandbox: slides=1 | host: no artifact reached the API | csv: sandbox: rows=5 | host: no artifact reached the API | md: sandbox: characters=409 | host: no artifact reached the API | txt: sandbox: characters=409 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversions from csv does this sandbox serve?",
-      "outcome": "docx=faithful, xlsx=faithful, pdf=structural, md=faithful, txt=faithful",
-      "detail": "docx: sandbox: paragraphs=0 tables=1 | host: no artifact reached the API | xlsx: sandbox: sheets=Sheet1 | host: no artifact reached the API | pdf: sandbox: pages=1 characters=74 | host: no artifact reached the API | md: sandbox: characters=133 | host: no artifact reached the API | txt: sandbox: characters=119 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversions from md does this sandbox serve?",
-      "outcome": "docx=faithful, pdf=faithful, txt=faithful",
-      "detail": "docx: sandbox: paragraphs=12 tables=0 | host: no artifact reached the API | pdf: sandbox: pages=1 characters=507 | host: no artifact reached the API | txt: sandbox: characters=512 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversions from txt does this sandbox serve?",
-      "outcome": "docx=faithful, pdf=faithful, md=faithful",
-      "detail": "docx: sandbox: paragraphs=11 tables=0 | host: no artifact reached the API | pdf: sandbox: pages=1 characters=435 | host: no artifact reached the API | md: sandbox: characters=438 | host: no artifact reached the API"
-    },
-    {
-      "question": "Which conversion pairs does this sandbox actually serve, and at what fidelity?",
-      "outcome": "25 served, 2 refused",
-      "detail": "Office converter present: False. Cells that moved from their proposal: pptx to pdf was structural, now refused. The container was lost and the sample corpus re-authored 0 time(s) during the pass, which is the measure of whether a container survives a run of this length."
+      "detail": "pdf: sandbox: pages=1 characters=361 | host: verified on the host: A complete PDF of 1778 bytes carrying roughly 1 page object(s). | md: sandbox: characters=440 | host: verified on the host: 440 characters over 17 line(s). | txt: sandbox: characters=440 | host: verified on the host: 440 characters over 17 line(s)."
     },
     {
       "question": "Does a DataContent input reach the sandbox?",
@@ -55,22 +20,22 @@
     {
       "question": "Does the Responses-route client carry HostedCodeInterpreterTool in this tenant?",
       "outcome": "yes",
-      "detail": "Deployment rr-gpt-5.6-luna. Artifact channels: AIContent.Annotations/CitationAnnotation. Container: cntr_6a8f92162dc88190b32119231700dad5070cb9859dced0b1. Conversation: resp_038dc2fd2ca832b3006a8f92ec17488194a82e263eceb1f3b0. Content shapes observed: AIContent.Annotations/CitationAnnotation(ContainerFileCitationMessageAnnotation), CodeInterpreterToolCallContent, CodeInterpreterToolResultContent(CodeInterpreterCallResponseItem), TextContent(InternalItemContentOutputText), TextReasoningContent(ReasoningResponseItem)."
+      "detail": "Deployment rr-gpt-5.6-luna. Artifact channels: AIContent.Annotations/CitationAnnotation. Container: cntr_6a8f9412dc9c81908479fbce55a65c6701e386a1d49e66fd. Conversation: resp_0fe2f42c5a84068a006a8f9489259c8195918b36ae5a814401. Content shapes observed: AIContent.Annotations/CitationAnnotation(ContainerFileCitationMessageAnnotation), CodeInterpreterToolCallContent, CodeInterpreterToolResultContent(CodeInterpreterCallResponseItem), TextContent(InternalItemContentOutputText), TextReasoningContent(ReasoningResponseItem)."
     },
     {
       "question": "Can a produced artifact be read back by the API?",
       "outcome": "an artifact was surfaced",
-      "detail": "Channel AIContent.Annotations/CitationAnnotation, file cfile_6a8f92eed69c819099394aa7a950ba7e, container scope cntr_6a8f92162dc88190b32119231700dad5070cb9859dced0b1."
+      "detail": "Channel AIContent.Annotations/CitationAnnotation, file cfile_6a8f948d17e08190a7f336b685bec866, container scope cntr_6a8f9412dc9c81908479fbce55a65c6701e386a1d49e66fd."
     },
     {
       "question": "Does the container-scoped download route answer under this deployment\u0027s api-key auth?",
       "outcome": "yes",
-      "detail": "Downloaded 29 bytes for cfile_6a8f92eed69c819099394aa7a950ba7e through IHostedFileClient.DownloadAsync with Scope set to the container id, which resolves to GET {endpoint}/openai/v1/containers/{container}/files/{file}/content."
+      "detail": "Downloaded 29 bytes for cfile_6a8f948d17e08190a7f336b685bec866 through IHostedFileClient.DownloadAsync with Scope set to the container id, which resolves to GET {endpoint}/openai/v1/containers/{container}/files/{file}/content."
     },
     {
       "question": "Does a HostedFileContent input reach the sandbox?",
       "outcome": "yes",
-      "detail": "Uploaded as file assistant-KC2ZaujxYwquaddWxTetoK with purpose assistants, then supplied on HostedCodeInterpreterTool.Inputs. The sandbox found the marker in assistant-KC2ZaujxYwquaddWxTetoK-ep0-hosted-input.txt. A hosted file reference is the input path that works; raw bytes are not."
+      "detail": "Uploaded as file assistant-WpF8wET7mQVM1YYgLatViP with purpose assistants, then supplied on HostedCodeInterpreterTool.Inputs. The sandbox found the marker in assistant-WpF8wET7mQVM1YYgLatViP-ep0-hosted-input.txt. A hosted file reference is the input path that works; raw bytes are not."
     },
     {
       "question": "Is the sandbox denied outbound network access in this deployment?",
