@@ -3,6 +3,7 @@ using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Project;
 using Enterprise.Gpt.Entity;
@@ -84,7 +85,22 @@ public sealed class ProjectServiceTests : IDisposable
                 Embedding = new SqlVector<float>(new float[] { 0.1f, 0.2f }),
                 DateCreated = date,
                 DateModified = date
-            })]
+            })],
+            Sheets =
+            [
+                new ProjectDocumentSheet
+                {
+                    Id = Guid.NewGuid(),
+                    SheetIndex = 1,
+                    SheetName = "Regional Revenue",
+                    RowCount = 1,
+                    ColumnCount = 1,
+                    DateCreated = date,
+                    DateModified = date,
+                    Columns = [new ProjectDocumentSheetColumn { ColumnIndex = 0, ColumnName = "SKU", InferredType = SheetColumnType.Text, DateCreated = date, DateModified = date }],
+                    Rows = [new ProjectDocumentSheetRow { RowIndex = 0, Cells = """{"SKU":"W-1"}""", DateCreated = date, DateModified = date }]
+                }
+            ]
         };
 
         using var ctx = _fixture.CreateContext();
@@ -92,6 +108,26 @@ public sealed class ProjectServiceTests : IDisposable
         await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return document;
+    }
+
+    /// <summary>
+    /// Whether every sheet, column and row of a document is soft-deleted.
+    /// </summary>
+    private async Task<bool> SheetsAreDeactivatedAsync(Guid documentId)
+    {
+        using var ctx = _fixture.CreateContext();
+
+        var sheets = await ctx.ProjectDocumentSheets
+            .AsNoTracking()
+            .Include(x => x.Columns)
+            .Include(x => x.Rows)
+            .Where(x => x.ProjectDocumentId == documentId)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        return sheets.Count > 0
+            && sheets.All(sheet => sheet.DateDeactivated.HasValue
+                && sheet.Columns.All(column => column.DateDeactivated.HasValue)
+                && sheet.Rows.All(row => row.DateDeactivated.HasValue));
     }
 
     private async Task<Conversation> AddConversationAsync(Guid? projectId = null, Guid? userId = null)
@@ -759,6 +795,7 @@ public sealed class ProjectServiceTests : IDisposable
         Assert.All(
             await ctx.ProjectDocumentChunks.AsNoTracking().Where(x => x.ProjectDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
             chunk => Assert.NotNull(chunk.DateDeactivated));
+        Assert.True(await SheetsAreDeactivatedAsync(document.Id));
     }
 
     [Fact]
@@ -871,6 +908,7 @@ public sealed class ProjectServiceTests : IDisposable
         Assert.All(
             await ctx.ProjectDocumentChunks.AsNoTracking().ToListAsync(TestContext.Current.CancellationToken),
             chunk => Assert.NotNull(chunk.DateDeactivated));
+        Assert.True(await SheetsAreDeactivatedAsync(document.Id));
         // The project itself is untouched.
         Assert.Null((await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
     }

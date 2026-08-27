@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
@@ -1267,6 +1268,161 @@ public sealed class DocumentServiceTests : IDisposable
 
         Assert.Single(result.Items);
         Assert.InRange(result.PageSize, 1, 100);
+    }
+    #endregion
+
+    #region Sheet ingestion
+    [Fact]
+    public async Task CreateConversationDocumentAsync_Spreadsheet_PersistsItsSheetsColumnsAndRows()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpSheetPipeline();
+
+        var result = await _service.CreateConversationDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var sheet = await ctx.ConversationDocumentSheets
+            .AsNoTracking()
+            .Include(s => s.Columns)
+            .Include(s => s.Rows)
+            .SingleAsync(s => s.ConversationDocumentId == result.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, sheet.SheetIndex);
+        Assert.Equal("Regional Revenue", sheet.SheetName);
+        Assert.Equal(2, sheet.RowCount);
+        Assert.Equal(2, sheet.ColumnCount);
+        Assert.Equal(["SKU", "Revenue"], sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.ColumnName));
+        Assert.Equal([SheetColumnType.Text, SheetColumnType.Number], sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.InferredType));
+        Assert.Equal(
+            ["""{"SKU":"W-1","Revenue":"1200"}""", """{"SKU":"W-2","Revenue":"800"}"""],
+            sheet.Rows.OrderBy(r => r.RowIndex).Select(r => r.Cells));
+    }
+
+    [Fact]
+    public async Task CreateConversationDocumentAsync_Spreadsheet_CommitsTheSheetsInTheSameSaveAsTheChunks()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpSheetPipeline();
+
+        var saves = 0;
+        _fixture.Context.SavedChanges += (_, _) => saves++;
+
+        await _service.CreateConversationDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, saves);
+    }
+
+    [Fact]
+    public async Task CreateConversationDocumentAsync_ConversationDeactivatedDuringIngestion_DeactivatesTheSheetsToo()
+    {
+        var conversation = await AddConversationAsync(deactivated: DateTimeOffset.UtcNow);
+        SetUpSheetPipeline();
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateConversationDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
+
+        using var ctx = _fixture.CreateContext();
+        var sheet = await ctx.ConversationDocumentSheets
+            .AsNoTracking()
+            .Include(s => s.Columns)
+            .Include(s => s.Rows)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(sheet.DateDeactivated);
+        Assert.All(sheet.Columns, column => Assert.NotNull(column.DateDeactivated));
+        Assert.All(sheet.Rows, row => Assert.NotNull(row.DateDeactivated));
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_Spreadsheet_PersistsItsSheetsColumnsAndRows()
+    {
+        var project = await AddProjectAsync();
+        SetUpSheetPipeline();
+
+        var result = await _service.CreateProjectDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var sheet = await ctx.ProjectDocumentSheets
+            .AsNoTracking()
+            .Include(s => s.Columns)
+            .Include(s => s.Rows)
+            .SingleAsync(s => s.ProjectDocumentId == result.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, sheet.Columns.Count);
+        Assert.Equal(2, sheet.Rows.Count);
+        Assert.Empty(await ctx.ConversationDocumentSheets.AsNoTracking().ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateProjectDocumentAsync_ProjectDeactivatedDuringIngestion_DeactivatesTheSheetsToo()
+    {
+        var project = await AddProjectAsync(deactivated: DateTimeOffset.UtcNow);
+        SetUpSheetPipeline();
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateProjectDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
+
+        using var ctx = _fixture.CreateContext();
+        var sheet = await ctx.ProjectDocumentSheets
+            .AsNoTracking()
+            .Include(s => s.Columns)
+            .Include(s => s.Rows)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(sheet.DateDeactivated);
+        Assert.All(sheet.Columns, column => Assert.NotNull(column.DateDeactivated));
+        Assert.All(sheet.Rows, row => Assert.NotNull(row.DateDeactivated));
+    }
+
+    [Fact]
+    public async Task CreateConversationDocumentAsync_ExtractorWithoutSheets_PersistsNoSheets()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpPipeline(chunkCount: 2);
+
+        var result = await _service.CreateConversationDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+
+        Assert.Empty(await ctx.ConversationDocumentSheets
+            .AsNoTracking()
+            .Where(s => s.ConversationDocumentId == result.Id)
+            .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// Points the factory at an extractor that also reports a grid, which is the only way the sheet
+    /// path is reached — every other extractor fails the type check the ingestion path makes.
+    /// </summary>
+    private void SetUpSheetPipeline()
+    {
+        SetUpPipeline(chunkCount: 2);
+
+        var sheetExtractor = Substitute.For<ISheetStructureExtractor>();
+        _extractorFactory.Resolve(Arg.Any<FileExtensions>()).Returns(sheetExtractor);
+
+        SheetStructureDto[] sheets =
+        [
+            new SheetStructureDto(1, "Regional Revenue", 2, 2,
+            [
+                new SheetColumnDto(0, "SKU", SheetColumnType.Text),
+                new SheetColumnDto(1, "Revenue", SheetColumnType.Number)
+            ],
+            [
+                new SheetRowDto(0, """{"SKU":"W-1","Revenue":"1200"}"""),
+                new SheetRowDto(1, """{"SKU":"W-2","Revenue":"800"}""")
+            ])
+        ];
+
+        sheetExtractor
+            .ExtractSheetsAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(new SheetExtractionResult(
+                [new DocumentSegmentDto { SourceNumber = 1, Text = "Sheet: Regional Revenue\nSKU | Revenue" }],
+                sheets));
     }
     #endregion
 }

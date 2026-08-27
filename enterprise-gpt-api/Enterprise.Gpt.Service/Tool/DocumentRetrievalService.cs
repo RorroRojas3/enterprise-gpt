@@ -1,4 +1,6 @@
-﻿using Enterprise.Gpt.Repository;
+﻿using Enterprise.Gpt.Common.Extensions;
+using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Settings;
 using Microsoft.Data.SqlClient;
@@ -112,6 +114,19 @@ public sealed class DocumentRetrievalService(
         "why", "will", "with", "would", "you", "your"
     }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Formats whose chunks carry a sheet ordinal rather than a page number.
+    /// </summary>
+    /// <remarks>
+    /// Held here rather than derived from the extractors so citation stays off their construction
+    /// path; <c>DocumentRetrievalServiceTests</c> fails when an extractor reports sheets and its
+    /// extension is missing from this set.
+    /// </remarks>
+    private static readonly FileExtensions[] _sheetFormats = [FileExtensions.Xlsx, FileExtensions.Csv];
+
+    internal static readonly FrozenSet<string> SpreadsheetExtensions =
+        _sheetFormats.Select(x => x.GetDescription()).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     private readonly ILogger<DocumentRetrievalService> _logger = logger;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator = embeddingGenerator;
     private readonly ITextChunker _textChunker = textChunker;
@@ -213,7 +228,8 @@ public sealed class DocumentRetrievalService(
         }
 
         var chunks = await FetchChunksAsync(scope, ExpandToNeighbours(selected), queryVector, cancellationToken).ConfigureAwait(false);
-        var passages = BuildPassages(scope, selected, chunks);
+        var sheetNames = await ResolveSheetNamesAsync(scope, chunks, cancellationToken).ConfigureAwait(false);
+        var passages = BuildPassages(scope, selected, chunks, sheetNames);
         var (budgeted, truncated) = ApplyTokenBudget(passages);
 
         _logger.LogInformation(
@@ -524,6 +540,7 @@ public sealed class DocumentRetrievalService(
     /// <param name="scope">The corpus, used to resolve document names for citations.</param>
     /// <param name="hits">The chunks that actually matched, which is what a passage is scored on.</param>
     /// <param name="chunks">The chunks read back, matches and neighbours together.</param>
+    /// <param name="sheetNames">Sheet names by document and ordinal, for spreadsheet citations.</param>
     /// <returns>The passages, most relevant first.</returns>
     /// <remarks>
     /// Ordered by the fused rank-fusion score, not by cosine distance. Ordering by distance would put
@@ -534,7 +551,8 @@ public sealed class DocumentRetrievalService(
     internal IReadOnlyList<RetrievedPassage> BuildPassages(
         DocumentRetrievalScope scope,
         IReadOnlyList<ScoredChunk> hits,
-        IReadOnlyList<ChunkText> chunks)
+        IReadOnlyList<ChunkText> chunks,
+        IReadOnlyDictionary<(Guid DocumentId, int SheetIndex), string>? sheetNames = null)
     {
         var names = scope.Documents.ToDictionary(d => d.Id, d => d.Name);
 
@@ -605,11 +623,14 @@ public sealed class DocumentRetrievalService(
                     .FirstOrDefault(p => p.HasValue)
                     ?? members.Select(m => m.SourceNumber).FirstOrDefault(p => p.HasValue);
 
+                var sheetName = page is { } sheetIndex && sheetNames is not null
+                    && sheetNames.TryGetValue((group.Key.DocumentId, sheetIndex), out var resolved)
+                        ? resolved
+                        : null;
+
                 passages.Add((relevance, distance, new RetrievedPassage
                 {
-                    Citation = page.HasValue
-                        ? string.Create(CultureInfo.InvariantCulture, $"{documentName} p.{page.Value}")
-                        : documentName,
+                    Citation = BuildCitation(documentName, page, sheetName),
                     DocumentName = documentName,
                     Page = page,
                     Score = Math.Round(Math.Clamp(1.0 - distance, 0.0, 1.0), 3),
@@ -625,6 +646,111 @@ public sealed class DocumentRetrievalService(
                 .ThenBy(p => p.Distance)
                 .Select(p => p.Passage)
         ];
+    }
+
+    /// <summary>
+    /// Builds the reference the model is told to quote verbatim.
+    /// </summary>
+    /// <remarks>
+    /// A spreadsheet chunk's source number is a sheet ordinal, so rendering it as <c>p.3</c> would cite
+    /// a page the file does not have; the file name alone is the fallback when the sheet cannot be named,
+    /// which is what a document ingested before sheets were stored gets.
+    /// </remarks>
+    private static string BuildCitation(string documentName, int? page, string? sheetName)
+    {
+        if (!IsSpreadsheet(documentName))
+        {
+            return page is { } number
+                ? string.Create(CultureInfo.InvariantCulture, $"{documentName} p.{number}")
+                : documentName;
+        }
+
+        return sheetName is null
+            ? documentName
+            : string.Create(CultureInfo.InvariantCulture, $"{documentName} — {sheetName}");
+    }
+
+    /// <summary>
+    /// Reads the sheet names behind the matched chunks of any spreadsheet in the result.
+    /// </summary>
+    /// <returns>Sheet names by document and ordinal, or <see langword="null"/> when none apply.</returns>
+    /// <remarks>
+    /// Kept out of the retrieval statements and off the scope: a corpus with no spreadsheet in it never
+    /// reaches the database for this at all.
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<(Guid DocumentId, int SheetIndex), string>?> ResolveSheetNamesAsync(
+        DocumentRetrievalScope scope,
+        IReadOnlyList<ChunkText> chunks,
+        CancellationToken cancellationToken)
+    {
+        var spreadsheets = scope.Documents
+            .Where(d => IsSpreadsheet(d.Name))
+            .Select(d => d.Id)
+            .ToHashSet();
+
+        if (spreadsheets.Count == 0)
+        {
+            return null;
+        }
+
+        HashSet<Guid> conversationDocumentIds = [];
+        HashSet<Guid> projectDocumentIds = [];
+
+        foreach (var chunk in chunks)
+        {
+            if (!spreadsheets.Contains(chunk.Key.DocumentId))
+            {
+                continue;
+            }
+
+            if (chunk.Key.Source == DocumentSource.Conversation)
+            {
+                conversationDocumentIds.Add(chunk.Key.DocumentId);
+            }
+            else
+            {
+                projectDocumentIds.Add(chunk.Key.DocumentId);
+            }
+        }
+
+        var names = new Dictionary<(Guid DocumentId, int SheetIndex), string>();
+
+        if (conversationDocumentIds.Count > 0)
+        {
+            var sheets = await _ctx.ConversationDocumentSheets
+                .AsNoTracking()
+                .Where(s => conversationDocumentIds.Contains(s.ConversationDocumentId) && !s.DateDeactivated.HasValue)
+                .Select(s => new { s.ConversationDocumentId, s.SheetIndex, s.SheetName })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var sheet in sheets)
+            {
+                names[(sheet.ConversationDocumentId, sheet.SheetIndex)] = sheet.SheetName;
+            }
+        }
+
+        if (projectDocumentIds.Count > 0)
+        {
+            var sheets = await _ctx.ProjectDocumentSheets
+                .AsNoTracking()
+                .Where(s => projectDocumentIds.Contains(s.ProjectDocumentId) && !s.DateDeactivated.HasValue)
+                .Select(s => new { s.ProjectDocumentId, s.SheetIndex, s.SheetName })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var sheet in sheets)
+            {
+                names[(sheet.ProjectDocumentId, sheet.SheetIndex)] = sheet.SheetName;
+            }
+        }
+
+        return names.Count == 0 ? null : names;
+    }
+
+    private static bool IsSpreadsheet(string documentName)
+    {
+        return SpreadsheetExtensions.Contains(Path.GetExtension(documentName));
     }
 
     /// <summary>

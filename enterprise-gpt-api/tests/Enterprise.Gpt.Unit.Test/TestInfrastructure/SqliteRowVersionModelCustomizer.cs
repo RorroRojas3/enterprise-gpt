@@ -57,6 +57,8 @@ public class SqliteRowVersionModelCustomizer(ModelCustomizerDependencies depende
         {
             foreach (var property in entityType.GetDeclaredProperties())
             {
+                // Enough on its own for SQL Server 2025's json type as well as nvarchar(max): the CLR type
+                // stays string and SQLite derives TEXT, so a json column needs no removal arm.
                 property.SetColumnType(null);
 
                 if (property.ClrType == typeof(DateTimeOffset))

@@ -14,13 +14,37 @@ internal static class SheetSegmentBuilder
 {
     // Pipes rather than tabs because the only consumer of this text is a model reading a retrieved
     // passage; nothing parses it back, so legibility is the whole criterion.
+    internal const string SheetPrefix = "Sheet: ";
+
+    /// <summary>
+    /// Longest sheet or column name persisted, matching the column both are stored in.
+    /// </summary>
+    public const int MaxNameLength = 256;
+
     private const string CellSeparator = " | ";
 
     private static readonly SearchValues<char> _cellBreaks = SearchValues.Create("\r\n\t");
 
-    public static StringBuilder StartSheet(string sheetName)
+    public static void AppendSheetName(StringBuilder builder, string sheetName)
     {
-        return new StringBuilder().Append("Sheet: ").Append(sheetName).Append('\n');
+        builder.Append(SheetPrefix).Append(sheetName).Append('\n');
+    }
+
+    /// <summary>
+    /// Cuts a sheet or column name to what its column holds, never inside a surrogate pair.
+    /// </summary>
+    /// <remarks>
+    /// A workbook's own sheet names are attacker-controlled — Excel caps them at 31 characters but
+    /// the format does not — and an over-long one would fail at the insert rather than on read.
+    /// </remarks>
+    public static string TruncateName(string value, int length = MaxNameLength)
+    {
+        if (value.Length <= length)
+        {
+            return value;
+        }
+
+        return value[..(char.IsHighSurrogate(value[length - 1]) ? length - 1 : length)];
     }
 
     /// <summary>
@@ -55,6 +79,29 @@ internal static class SheetSegmentBuilder
     }
 
     /// <summary>
+    /// Rendered length of a row, matching what <see cref="AppendRow"/> writes for the same cells.
+    /// </summary>
+    public static int RowLength(IReadOnlyList<string> cells, int lastIndex)
+    {
+        var length = 1;
+
+        for (var i = 0; i <= lastIndex; i++)
+        {
+            length += cells[i].Length;
+        }
+
+        return length + (lastIndex * CellSeparator.Length);
+    }
+
+    /// <summary>
+    /// Rendered length of the line <see cref="AppendSheetName"/> writes.
+    /// </summary>
+    public static int SheetHeaderLength(string sheetName)
+    {
+        return SheetPrefix.Length + sheetName.Length + 1;
+    }
+
+    /// <summary>
     /// Trims a cell and folds any line break or tab inside it into a single space.
     /// </summary>
     /// <remarks>
@@ -81,6 +128,16 @@ internal static class SheetSegmentBuilder
     public static ValidationException ColumnLimitExceeded(string sheetName, int maxColumns)
     {
         return Refuse($"Sheet '{sheetName}' has more than the {maxColumns:N0} columns a spreadsheet upload accepts. Remove the extra columns and try again.");
+    }
+
+    public static ValidationException CellLimitExceeded(int maxCharacters)
+    {
+        return Refuse($"The spreadsheet's cells expand to more than the {maxCharacters:N0} characters an upload accepts once stored under their column names. Split it into smaller files and try again.");
+    }
+
+    public static ValidationException UploadRowLimitExceeded(int maxRows)
+    {
+        return Refuse($"The spreadsheet holds more than the {maxRows:N0} rows an upload accepts across all of its sheets. Split it into smaller files and try again.");
     }
 
     public static ValidationException TextLimitExceeded(int maxCharacters)

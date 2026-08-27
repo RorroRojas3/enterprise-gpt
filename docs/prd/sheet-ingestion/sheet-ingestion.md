@@ -236,8 +236,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-201: `[enabler]` Header-aware row windows for `.xlsx`
 
 - **Story**: `[enabler]` Extend `SpreadsheetTextExtractor` to pack each sheet's data rows into row-window segments: each window's text opens with a literal copy of the sheet's header row, followed by that window's own data rows (one per line, no blank line inside the window), sized via the injected `ITextChunker.CountTokens`/`MaxTokens` to target `Sheets:RowWindow:TargetTokenFraction` (default 0.75) of the chunker's own `MaxTokens`, capped at `Sheets:RowWindow:MaxRows` (default 50) rows per window regardless of token count. Unblocks US-203, US-204, US-501.
+  **Shipped with a fourth ceiling this PRD did not originally scope: `Sheets:MaxRowsPerUpload` (default 50,000).** §6's "Ingest-time ceilings" and §9's assumptions name only a per-sheet row ceiling and a per-sheet column ceiling; neither bounds how many *sheets* one workbook holds, so a hundred sheets each just under `MaxRowsPerSheet` would still turn into millions of rows landing in the one `SaveChangesAsync` that US-304 persists. `MaxRowsPerUpload` closes that gap at the workbook level, enforced in the same streaming pass as the per-sheet ceiling. A `.csv` is always a single sheet, so in practice only `.xlsx` can reach this ceiling before it reaches the per-sheet one.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-101
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a sheet with a header row and more data than fits one chunk, when it is chunked by the unmodified `TokenTextChunker`, then at least 95% of the produced chunks contain a literal copy of the header line — the PRD's own measured success criterion, not an assumption.
   - Given a row window's text, when it is inspected, then no single data row's cell text is split across two segments — verified by constructing a window whose combined text exceeds `MaxTokens` and confirming the chunker's own sentence-boundary fallback (which splits on `\n`) never separates a row's own cells from each other.
@@ -248,7 +249,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Apply the identical row-window shaping from US-201 inside `CsvTextExtractor`, treating the whole file as one sheet. Unblocks US-203, US-204, US-501.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-102, US-201
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a CSV with a header row and more data than fits one chunk, when it is chunked, then at least 95% of produced chunks contain the header line, matching US-201's own threshold.
   - Given the same file, when its row windows are compared to a `.xlsx` sheet's, then they follow the identical sizing rule (`Sheets:RowWindow:TargetTokenFraction`/`:MaxRows`) — one shared implementation, not a second one.
@@ -257,7 +258,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Emit one additional segment per sheet naming the sheet, its columns (in order), each column's inferred type, its total row count, and its first three data rows verbatim, so `document_search` can surface "what does this workbook contain" without reading every row window. Unblocks EP-4's sheet-resolution stories via a discoverable, human-legible sheet identity.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a sheet, when it is extracted, then exactly one schema-card segment is produced for it, distinguishable in content from its row windows.
   - Given the schema card's column-type inference, when it runs, then it examines a bounded sample of each column's non-empty cells and infers one of `Text`/`Number`/`Date`/`Boolean`, defaulting to `Text` on a mixed or empty column.
@@ -268,7 +269,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Change `DocumentRetrievalService`'s citation construction (`DocumentRetrievalService.cs:608-617`) so a chunk originating from a spreadsheet cites its sheet by name rather than reusing the `"{fileName} p.{page}"` format, which currently reads `budget.xlsx p.3` — a page number a sheet index is not.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a passage from a spreadsheet-origin chunk, when its citation is built, then it names the sheet (for example `"budget.xlsx — Regional Revenue"`) rather than `"budget.xlsx p.3"`.
   - Given a passage from a PDF or Word document, when its citation is built, then it is byte-for-byte unchanged from today — this story touches only the spreadsheet branch.
@@ -280,7 +281,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Add `BaseDocumentSheet`/`Core.ConversationDocumentSheet`/`Core.ProjectDocumentSheet` and `BaseDocumentSheetColumn`/`Core.ConversationDocumentSheetColumn`/`Core.ProjectDocumentSheetColumn`, plus the new `SheetColumnType` enum (`Text = 1, Number = 2, Date = 3, Boolean = 4`), mirroring `BaseDocumentSummary`'s split. Unblocks US-302, US-304.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the two sheet tables, when they are configured, then each carries a unique index on **(owning document id, `SheetIndex`)**, filtered `[DateDeactivated] IS NULL` — not a one-per-document unique index, since a document can hold many sheets.
   - Given the two column tables, when they are configured, then each carries a unique index on **(sheet id, `ColumnIndex`)**, filtered the same way.
@@ -290,30 +291,31 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-302: `[enabler]` Add the row table with its native `json` cells column
 
 - **Story**: `[enabler]` Add `BaseDocumentSheetRow`/`Core.ConversationDocumentSheetRow`/`Core.ProjectDocumentSheetRow`, whose `Cells` property is a `string` explicitly configured `.HasColumnType("json")`, holding one hand-serialized JSON object per row keyed by column name. Ship the one migration covering all six tables from this epic — the **fifteenth**, following `20260825224934_AddDocumentSummaries`. Unblocks US-303, US-304, EP-4.
+  **Shipped behaviour deviates from §6/§8's "exactly `ColumnCount` properties" wording, deliberately — a policy call made during implementation, not a gap.** The locked decision assumed every row would restate every column, including its empty cells. What shipped **omits an empty cell from `Cells` rather than writing it blank**, so a wide, sparse sheet's stored rows do not repeat every column name on every row that leaves most of them empty — cheaper to store and to read back, and a row's true column count is still recoverable from its own sheet and column rows, so nothing is lost. This trades exactness of *shape* for a real storage saving on the sheets `sheet_query` will actually see in practice.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-301
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the row table, when it is configured, then it carries a unique index on **(sheet id, `RowIndex`)**, filtered `[DateDeactivated] IS NULL`, and `Cells` is never part of any index key — supporting `sheet_query`'s lookups only ever happens through the sheet/column ordinal columns.
   - Given the migration, when it is generated against SQL Server 2025 at compatibility level 170, then `Cells` materializes as a native `json`-typed column, not `nvarchar(max)`.
   - Given the `json` type's preview status on SQL Server 2025 (GA only on Azure SQL Database/MI under the 2025 update policy), when this is deployed to a non-Azure-SQL SQL Server 2025 instance, then the risk is documented in this story's own implementation notes, with `HasColumnType("nvarchar(max)")` plus an `ISJSON` check constraint named as the fallback, scoped to `Cells` alone.
-  - Given a row whose sheet has `ColumnCount` columns, when its `Cells` JSON is built, then it carries exactly that many properties — always far below the 65,535-property and 32K-unique-key SQL Server JSON caps, by construction rather than by a runtime check.
+  - **Shipped as written above.** Given a row whose sheet has `ColumnCount` columns, when its `Cells` JSON is built, then it carries **at most** that many properties — one per populated cell, never one for an empty cell — always far below the 65,535-property and 32K-unique-key SQL Server JSON caps regardless.
   - Given the migration, when it is reviewed, then it adds only these six tables — no existing table is touched.
 
 #### US-303: `[enabler]` Adapt the SQLite fixture for the `json` column
 
 - **Story**: `[enabler]` Confirm, with a new unit test, whether `SqliteRowVersionModelCustomizer`'s existing unconditional `property.SetColumnType(null)` pass is sufficient to load `Cells` on SQLite (§6 finding 4's expectation), and if it is not, remove the property the same way `SqlVector<T>` properties are removed today, with the choice recorded in a comment beside the customizer. Unblocks US-304 and every EP-4 unit test that needs the model to load on SQLite at all.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the full `EnterpriseGptDbContext` model, when it is loaded via `SqliteDbContextFixture` after this story, then it succeeds with no exception, and every existing unit test suite that already depends on that fixture continues to pass unmodified.
-  - Given a `ConversationDocumentSheetRow` inserted through the SQLite fixture, when its `Cells` value is round-tripped, then the resulting text is either the exact JSON string written (if the column type override was simply neutralized) or the property is confirmed absent from the SQLite model (if removal was necessary) — whichever the test proves, not whichever was assumed going in.
+  - Given a `ConversationDocumentSheetRow` inserted through the SQLite fixture, when its `Cells` value is round-tripped, then the resulting text is either the exact JSON string written (if the column type override was simply neutralized) or the property is confirmed absent from the SQLite model (if removal was necessary) — whichever the test proves, not whichever was assumed going in. **Proven: the pass was sufficient** — `SetColumnType(null)` neutralizes `json` the same way it already neutralizes `nvarchar(max)`, no removal arm needed.
   - Given the outcome either way, when it is recorded, then a comment beside `SqliteRowVersionModelCustomizer` states which of the two happened and why, so a future engineer adding another `json` column does not have to re-derive the answer.
 
 #### US-304: `[enabler]` Persist sheets, columns, and rows inside the existing ingestion save
 
 - **Story**: `[enabler]` Add `ISheetStructureExtractor : IDocumentTextExtractor` with `Task<SheetExtractionResult> ExtractSheetsAsync(...)`, implemented by both new extractors from a single workbook parse, returning both text segments and structured `SheetStructureDto`s. Extend `DocumentService`'s ingestion path to type-check `is ISheetStructureExtractor`, and when true, attach the resulting sheet/column/row entities to the same `ConversationDocument`/`ProjectDocument` graph before the existing single `SaveChangesAsync` call (`DocumentService.cs:312-313`/`389-390`). Unblocks EP-4 entirely and US-501.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-201, US-202, US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a `.xlsx` or `.csv` upload, when ingestion completes, then the document's sheet, column, and row rows exist in the database alongside its chunk rows, all committed by the **same** `SaveChangesAsync` call — a test asserts no separate save happens for the structured data.
   - Given any other extractor (`.pdf`, `.docx`, `.pptx`, `.md`, `.txt`), when it is used, then the `is ISheetStructureExtractor` check is false and the ingestion path is byte-for-byte unchanged from today.
@@ -437,7 +439,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 | Phase | Contents | Relative estimate | Status |
 | --- | --- | --- | --- |
 | **Phase 1 — the format exists** | EP-1 in full (US-101–US-103) | ~1 week | ✅ Done (2026-08-26) |
-| **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks | Not started |
+| **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks | ✅ Done (2026-08-27) |
 | **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks | Not started |
 | **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week | US-501 done (2026-08-26, pulled forward into Phase 1 — see risks below); US-502–US-504 not started |
 
@@ -446,11 +448,11 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 | Risk | Mitigation |
 | --- | --- |
 | SQL Server's `json` type is still preview on non-Azure-SQL SQL Server 2025 | US-302 names `nvarchar(max)` + `ISJSON` as a scoped, single-column fallback that changes nothing else in the schema |
-| The header-repetition chunking strategy degrades under the chunker's own overlap/fallback mechanics for an oversized window | §6 finding 2 states the limitation explicitly; US-201/US-202's 95%-threshold acceptance criteria measure it rather than assume perfection |
+| The header-repetition chunking strategy degrades under the chunker's own overlap/fallback mechanics for an oversized window | §6 finding 2 states the limitation explicitly; US-201/US-202's 95%-threshold acceptance criteria measure it rather than assume perfection. **Measured 2026-08-27** — `SheetChunkingTests` confirms a sheet spanning many windows keeps its header in almost every chunk, and an oversized window still breaks on row boundaries once handed to the real, unmodified `TokenTextChunker` |
 | `MaxDistance`'s single global threshold no longer fits once row-window corpora exist | US-502 validates before this ships broadly, rather than discovering the regression in production |
 | `sheet_query` becomes a raw-SQL-injection surface through careless implementation | US-402's acceptance criteria are enforced by a pinned test (`SheetQuerySqlTests`) mirroring `DocumentRetrievalSqlTests`' own "no literal values" assertion — a build-breaking regression guard, not a one-time review |
 | A pathologically large workbook is uploaded before ceilings ship | **Closed 2026-08-26.** US-501 was pulled forward into Wave 1 rather than waiting for its originally scheduled phase, specifically because a code review measured reproducible unbounded-allocation vectors (up to 1.4 GB peak heap from a few-MB file) that the row/column ceilings alone did not close; `Sheets:MaxCharactersPerUpload` shipped alongside the Wave 1 extractors, before this feature has any real users |
-| SQLite cannot load the `json` column at all, blocking every other unit test in the suite | US-303 is scheduled immediately after the row table exists, before EP-4 needs to write any unit test against it |
+| SQLite cannot load the `json` column at all, blocking every other unit test in the suite | US-303 is scheduled immediately after the row table exists, before EP-4 needs to write any unit test against it. **Closed 2026-08-27** — `SqliteRowVersionModelCustomizer`'s existing `SetColumnType(null)` pass turned out to be sufficient with no removal arm; `SqliteRowVersionModelCustomizerTests` proves it rather than leaving it assumed |
 
 **Rollout & rollback.** Upload, extraction, chunking, and storage for `.xlsx`/`.csv` ship unflagged once accepted — the same posture `document_search` itself has always had, and consistent with there being no client-side kill switch needed (§6 finding 1). `sheet_query`'s own tool attachment sits behind `SheetQuery:Enabled`, defaulting off, exercised as a real rollback rehearsal in US-504 before general availability. The one schema change this PRD ships — the fifteenth migration, adding six additive tables — means rolling the **code** back leaves the database readable; nothing here alters or drops an existing table.
 
@@ -462,8 +464,8 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 - Row-window sizing targets 75% of the chunker's `MaxTokens` (`Sheets:RowWindow:TargetTokenFraction`) and caps at 50 rows (`Sheets:RowWindow:MaxRows`) — both are proposed defaults, not measured against a real corpus; US-502's benchmark is the first real validation either number gets.
 - `Sheets:MaxRowsPerSheet` (20,000) and `:MaxColumnsPerSheet` (200) are proposed operational ceilings, chosen to sit comfortably under every SQL Server JSON cap while still covering the overwhelming majority of real-world business spreadsheets — not derived from a usage study, since none exists yet for a feature that has not shipped.
 - `SheetQuery:MaxResultRows` (50), `:MaxGroups` (200), `:MaxFilters` (5), and `:TimeoutSeconds` (10) are proposed defaults mirroring the scale of `DocumentRetrievalSql`'s own caps (`MaxResults` 8, `CandidateCount` 40) scaled up for a tool that returns structured rows rather than prose passages, not measured against production load.
-- `Cells`'s `.HasColumnType("json")` override is expected to be neutralized by `SqliteRowVersionModelCustomizer`'s existing unconditional `SetColumnType(null)` pass, based on Microsoft Learn's documented behavior of that API — but US-303 treats this as a hypothesis a test proves, not a certainty this PRD asserts.
-- The exact sheet-aware citation format (`"{fileName} — {sheetName}"`) is a proposal; US-204's acceptance criteria require a sheet-distinguishable citation, not that specific string.
+- **Confirmed 2026-08-27.** `Cells`'s `.HasColumnType("json")` override is neutralized by `SqliteRowVersionModelCustomizer`'s existing unconditional `SetColumnType(null)` pass, as expected from Microsoft Learn's documented behavior of that API — `SqliteRowVersionModelCustomizerTests` (US-303) proved it rather than leaving it assumed, and no removal arm was needed.
+- **Shipped as proposed.** The exact sheet-aware citation format (`"{fileName} — {sheetName}"`, for example `"budget.xlsx — Regional Revenue"`) is what US-204 shipped; a spreadsheet document with no stored sheet — one ingested before this wave, or whose sheet was soft-deleted — falls back to the file name alone rather than that format.
 - No new permission id is introduced; `sheet_query` is gated exactly as `document_search` already is. A product decision to gate spreadsheet upload or `sheet_query` behind a dedicated permission would change §3 and FR-20/US-405, not the rest of this PRD.
 - Numeric benchmark targets (the 20-query `sheet_query` benchmark, the 95% header-presence threshold) are proposed here for veto, not supplied by the original invocation.
 

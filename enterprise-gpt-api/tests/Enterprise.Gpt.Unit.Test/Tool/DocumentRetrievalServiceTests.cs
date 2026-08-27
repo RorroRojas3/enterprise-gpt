@@ -1,5 +1,6 @@
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service.Chunking;
+using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
@@ -633,6 +634,65 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         // wrong page reference in front of the user.
         Assert.Equal(5, passage.Page);
         Assert.Equal("handbook.pdf p.5", passage.Citation);
+    }
+
+    [Fact]
+    public void SpreadsheetExtensions_NameEveryExtractorThatReportsSheets()
+    {
+        // Citation reads the extension, not the extractor, so a third sheet-reporting format would
+        // silently keep citing its sheet ordinals as page numbers.
+        var implementations = typeof(ISheetStructureExtractor).Assembly
+            .GetTypes()
+            .Where(t => t is { IsClass: true, IsAbstract: false } && t.IsAssignableTo(typeof(ISheetStructureExtractor)))
+            .Select(t => t.Name)
+            .Order();
+
+        Assert.Equal([nameof(CsvTextExtractor), nameof(SpreadsheetTextExtractor)], implementations);
+        Assert.Equal([".csv", ".xlsx"], DocumentRetrievalService.SpreadsheetExtensions.Order());
+    }
+
+    [Fact]
+    public void BuildPassages_SpreadsheetChunk_CitesItsSheetByName()
+    {
+        var documentId = Guid.NewGuid();
+        var scope = ScopeWith(documentId, "budget.xlsx");
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var chunks = new[] { Chunk(documentId, 0, "SKU | Region\nW-1 | East", page: 3, distance: 0.2) };
+        var sheetNames = new Dictionary<(Guid DocumentId, int SheetIndex), string> { [(documentId, 3)] = "Regional Revenue" };
+
+        var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks, sheetNames));
+
+        Assert.Equal("budget.xlsx — Regional Revenue", passage.Citation);
+        Assert.Equal(3, passage.Page);
+    }
+
+    [Fact]
+    public void BuildPassages_SpreadsheetChunkWithNoStoredSheet_CitesTheFileNameRatherThanAPage()
+    {
+        // A sheet ordinal is not a page, so a document ingested before sheets were stored has to lose
+        // the reference rather than claim one the file does not have.
+        var documentId = Guid.NewGuid();
+        var scope = ScopeWith(documentId, "orders.csv");
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var chunks = new[] { Chunk(documentId, 0, "SKU | Region", page: 1, distance: 0.2) };
+
+        var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks));
+
+        Assert.Equal("orders.csv", passage.Citation);
+    }
+
+    [Fact]
+    public void BuildPassages_ProseDocument_IsUnaffectedByASheetNameLookup()
+    {
+        var documentId = Guid.NewGuid();
+        var scope = ScopeWith(documentId, "handbook.pdf");
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var chunks = new[] { Chunk(documentId, 0, "Refunds are issued within 30 days.", page: 12, distance: 0.2) };
+        var sheetNames = new Dictionary<(Guid DocumentId, int SheetIndex), string> { [(documentId, 12)] = "Never Used" };
+
+        var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks, sheetNames));
+
+        Assert.Equal("handbook.pdf p.12", passage.Citation);
     }
 
     [Fact]

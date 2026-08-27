@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Settings;
 using System.Globalization;
 using System.Text;
@@ -17,13 +18,14 @@ namespace Enterprise.Gpt.Service.Extraction;
 /// Reads delimited text (<c>.csv</c>) files locally, as a single-sheet workbook.
 /// </summary>
 /// <remarks>
-/// Rows are read through <see cref="CsvParser"/> rather than a record reader, so no line is consumed as
-/// a header and every row reaches the segment: which line is a header is a retrieval decision, not an
-/// extraction one.
+/// Rows are read through <see cref="CsvParser"/> rather than a record reader, so every line reaches
+/// the grid intact and which one is a header is decided once, by
+/// <see cref="SheetAssembler"/>, on the same terms as a worksheet's.
 /// </remarks>
 public sealed class CsvTextExtractor(
     ILogger<CsvTextExtractor> logger,
-    IOptions<SheetOptions> options) : IDocumentTextExtractor
+    IOptions<SheetOptions> options,
+    ITextChunker textChunker) : ISheetStructureExtractor
 {
     private const char Quote = '"';
 
@@ -33,8 +35,14 @@ public sealed class CsvTextExtractor(
     // walking a large file twice.
     private const int DelimiterSampleLength = 64 * 1024;
 
+    // What the same cells cost once stored: every populated one repeats its column's name, plus JSON
+    // punctuation. Eight times the text budget leaves an ordinary wide export room and still refuses a
+    // sheet whose headings alone would outweigh its data.
+    private const int CellCharactersPerTextCharacter = 8;
+
     private readonly ILogger<CsvTextExtractor> _logger = logger;
     private readonly SheetOptions _options = options.Value;
+    private readonly ITextChunker _textChunker = textChunker;
 
     /// <inheritdoc />
     public IReadOnlyCollection<FileExtensions> SupportedExtensions { get; } = [FileExtensions.Csv];
@@ -47,6 +55,25 @@ public sealed class CsvTextExtractor(
     {
         ArgumentNullException.ThrowIfNull(file);
 
+        return Task.FromResult(Read(file, progress, cancellationToken).Segments);
+    }
+
+    /// <inheritdoc />
+    public Task<SheetExtractionResult> ExtractSheetsAsync(
+        FileDto file,
+        IProgress<DocumentExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return Task.FromResult(Read(file, progress, cancellationToken));
+    }
+
+    private SheetExtractionResult Read(
+        FileDto file,
+        IProgress<DocumentExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         try
         {
             return ExtractRows(file, progress, cancellationToken);
@@ -62,7 +89,7 @@ public sealed class CsvTextExtractor(
         }
     }
 
-    private Task<IReadOnlyList<DocumentSegmentDto>> ExtractRows(
+    private SheetExtractionResult ExtractRows(
         FileDto file,
         IProgress<DocumentExtractionProgress>? progress,
         CancellationToken cancellationToken)
@@ -81,9 +108,9 @@ public sealed class CsvTextExtractor(
         using var reader = new StringReader(text);
         using var parser = new CsvParser(reader, BuildConfiguration(delimiter));
 
-        var builder = SheetSegmentBuilder.StartSheet(sheetName);
+        var rows = new List<string[]>();
         var cells = new List<string>();
-        var rowCount = 0;
+        var characters = SheetSegmentBuilder.SheetHeaderLength(sheetName);
 
         while (parser.Read())
         {
@@ -107,28 +134,46 @@ public sealed class CsvTextExtractor(
                 continue;
             }
 
-            if (rowCount == _options.MaxRowsPerSheet)
+            // The whole file is one sheet, and the upload ceiling is never below the per-sheet one,
+            // so this is the only row ceiling a CSV can reach.
+            if (rows.Count == _options.MaxRowsPerSheet)
             {
                 throw SheetSegmentBuilder.RowLimitExceeded(sheetName, _options.MaxRowsPerSheet);
             }
 
-            SheetSegmentBuilder.AppendRow(builder, cells, lastIndex);
-            rowCount++;
+            var row = new string[lastIndex + 1];
+            cells.CopyTo(0, row, 0, row.Length);
+            rows.Add(row);
 
-            if (builder.Length > _options.MaxCharactersPerUpload)
+            characters += SheetSegmentBuilder.RowLength(row, lastIndex);
+
+            if (characters > _options.MaxCharactersPerUpload)
             {
                 throw SheetSegmentBuilder.TextLimitExceeded(_options.MaxCharactersPerUpload);
             }
         }
 
-        List<DocumentSegmentDto> segments = rowCount == 0
-            ? []
-            : [new DocumentSegmentDto { SourceNumber = 1, Text = builder.ToString().TrimEnd() }];
+        progress?.Report(new DocumentExtractionProgress(1d, $"Read {rows.Count} row(s)"));
+        _logger.LogInformation("Extracted {RowCount} row(s) from a CSV file", rows.Count);
 
-        progress?.Report(new DocumentExtractionProgress(1d, $"Read {rowCount} row(s)"));
-        _logger.LogInformation("Extracted {RowCount} row(s) from a CSV file", rowCount);
+        if (rows.Count == 0)
+        {
+            return new SheetExtractionResult([], []);
+        }
 
-        return Task.FromResult<IReadOnlyList<DocumentSegmentDto>>(segments);
+        var assembly = SheetAssembler.Assemble(
+            sheetName, 1, rows, _options.RowWindow, _textChunker,
+            CellBudget(), cancellationToken);
+
+        return new SheetExtractionResult(assembly.Segments, [assembly.Structure]);
+    }
+
+    /// <summary>
+    /// Serialized cell characters one upload may materialize, derived from its text budget.
+    /// </summary>
+    private int CellBudget()
+    {
+        return (int)Math.Min(int.MaxValue, (long)_options.MaxCharactersPerUpload * CellCharactersPerTextCharacter);
     }
 
     private static string DecodeText(byte[] content)
@@ -319,6 +364,8 @@ public sealed class CsvTextExtractor(
     {
         var name = Path.GetFileNameWithoutExtension(fileName);
 
-        return string.IsNullOrWhiteSpace(name) ? "Sheet1" : SheetSegmentBuilder.NormalizeCell(name);
+        return string.IsNullOrWhiteSpace(name)
+            ? "Sheet1"
+            : SheetSegmentBuilder.TruncateName(SheetSegmentBuilder.NormalizeCell(name));
     }
 }

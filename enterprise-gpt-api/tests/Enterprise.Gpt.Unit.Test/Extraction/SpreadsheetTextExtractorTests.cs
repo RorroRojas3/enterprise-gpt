@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Service.Extraction;
@@ -14,16 +15,23 @@ public sealed class SpreadsheetTextExtractorTests
 {
     private readonly SpreadsheetTextExtractor _extractor = Create();
 
-    private static SpreadsheetTextExtractor Create(int maxRows = 20_000, int maxColumns = 200, int maxCharacters = 8_000_000)
+    private static SpreadsheetTextExtractor Create(
+        int maxRows = 20_000,
+        int maxColumns = 200,
+        int maxCharacters = 8_000_000,
+        int maxRowsPerUpload = 50_000,
+        RowWindowOptions? rowWindow = null)
     {
         var options = Options.Create(new SheetOptions
         {
             MaxRowsPerSheet = maxRows,
+            MaxRowsPerUpload = maxRowsPerUpload,
             MaxColumnsPerSheet = maxColumns,
-            MaxCharactersPerUpload = maxCharacters
+            MaxCharactersPerUpload = maxCharacters,
+            RowWindow = rowWindow ?? new RowWindowOptions()
         });
 
-        return new SpreadsheetTextExtractor(NullLogger<SpreadsheetTextExtractor>.Instance, options);
+        return new SpreadsheetTextExtractor(NullLogger<SpreadsheetTextExtractor>.Instance, options, TestChunker.Default);
     }
 
     private static FileDto File(byte[] content, string fileName = "budget.xlsx")
@@ -45,6 +53,32 @@ public sealed class SpreadsheetTextExtractorTests
         return extractor.ExtractAsync(File(content), progress, TestContext.Current.CancellationToken);
     }
 
+    private static Task<SheetExtractionResult> ExtractSheetsAsync(SpreadsheetTextExtractor extractor, byte[] content)
+    {
+        return extractor.ExtractSheetsAsync(File(content), progress: null, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A schema card is the segment whose second line describes the columns; a sheet's other segments
+    /// are its row windows.
+    /// </summary>
+    private static bool IsSchemaCard(DocumentSegmentDto segment)
+    {
+        var lines = segment.Text.Split('\n');
+
+        return lines.Length > 1 && lines[1].StartsWith("Columns: ", StringComparison.Ordinal);
+    }
+
+    private static List<DocumentSegmentDto> Windows(IReadOnlyList<DocumentSegmentDto> segments)
+    {
+        return [.. segments.Where(segment => !IsSchemaCard(segment))];
+    }
+
+    private static string WindowText(IReadOnlyList<DocumentSegmentDto> segments)
+    {
+        return Assert.Single(Windows(segments)).Text;
+    }
+
     [Fact]
     public void SupportedExtensions_ContainsOnlyXlsx()
     {
@@ -52,7 +86,7 @@ public sealed class SpreadsheetTextExtractorTests
     }
 
     [Fact]
-    public async Task ExtractAsync_MultiSheetWorkbook_ReturnsOneSegmentPerSheetInWorkbookOrder()
+    public async Task ExtractAsync_MultiSheetWorkbook_ReturnsSegmentsPerSheetInWorkbookOrder()
     {
         var content = WorkbookBuilder.Create(
         [
@@ -62,12 +96,143 @@ public sealed class SpreadsheetTextExtractorTests
         ]);
 
         var segments = await ExtractAsync(_extractor, content);
+        var windows = Windows(segments);
 
-        Assert.Equal(3, segments.Count);
-        Assert.Equal([1, 2, 3], segments.Select(s => s.SourceNumber));
-        Assert.Equal("Sheet: Regional Revenue\nSKU | Region\nW-1 | East", segments[0].Text);
-        Assert.Equal("Sheet: Headcount\nTeam | People\nPlatform | 12", segments[1].Text);
-        Assert.Equal("Sheet: Notes\nReviewed by finance", segments[2].Text);
+        Assert.Equal([1, 2, 3], segments.Select(s => s.SourceNumber).Distinct());
+        Assert.Equal("Sheet: Regional Revenue\nSKU | Region\nW-1 | East", windows[0].Text);
+        Assert.Equal("Sheet: Headcount\nTeam | People\nPlatform | 12", windows[1].Text);
+        Assert.Equal("Sheet: Notes\nReviewed by finance", windows[2].Text);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_Sheet_EmitsOneSchemaCardAheadOfItsRowWindows()
+    {
+        var content = WorkbookBuilder.Create(
+            [new SheetSpec("Regional Revenue", [["SKU", "Revenue"], ["W-1", 1200d], ["W-2", 800d]])]);
+
+        var segments = await ExtractAsync(_extractor, content);
+
+        Assert.Equal(2, segments.Count);
+        Assert.True(IsSchemaCard(segments[0]));
+        Assert.Equal(
+            "Sheet: Regional Revenue\nColumns: SKU (text), Revenue (number)\nRows: 2\nSample rows:\nSKU | Revenue\nW-1 | 1200\nW-2 | 800",
+            segments[0].Text);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_SheetWithFewerThanThreeDataRows_CardCarriesOnlyTheRowsThatExist()
+    {
+        var content = WorkbookBuilder.Create([new SheetSpec("Small", [["Name"], ["only"]])]);
+
+        var card = Assert.Single(await ExtractAsync(_extractor, content), IsSchemaCard);
+
+        Assert.Equal("Sheet: Small\nColumns: Name (text)\nRows: 1\nSample rows:\nName\nonly", card.Text);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_SheetSpanningSeveralWindows_RepeatsTheHeaderInEveryOne()
+    {
+        var content = WorkbookBuilder.Create([new SheetSpec("Revenue", BuildHeaderedRows(200))]);
+
+        var windows = Windows(await ExtractAsync(_extractor, content));
+
+        Assert.True(windows.Count > 1);
+        Assert.All(windows, window => Assert.StartsWith("Sheet: Revenue\nSKU | Region\n", window.Text, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ExtractAsync_ShortRows_AreCappedByTheWindowRowLimitRatherThanTheTokenBudget()
+    {
+        var content = WorkbookBuilder.Create([new SheetSpec("Revenue", BuildHeaderedRows(25))]);
+
+        var windows = Windows(await ExtractAsync(Create(rowWindow: new RowWindowOptions { MaxRows = 10 }), content));
+
+        Assert.Equal(3, windows.Count);
+        Assert.Equal([12, 12, 7], windows.Select(w => w.Text.Split('\n').Length));
+    }
+
+    [Fact]
+    public async Task ExtractAsync_SheetWithNoDiscernibleHeader_EmitsWindowsWithNoHeaderLine()
+    {
+        var content = WorkbookBuilder.Create([new SheetSpec("Dump", [[1d, 2d], [3d, 4d]])]);
+
+        Assert.Equal("Sheet: Dump\n1 | 2\n3 | 4", WindowText(await ExtractAsync(_extractor, content)));
+    }
+
+    [Fact]
+    public async Task ExtractSheetsAsync_Sheet_ReportsItsColumnsRowsAndInferredTypes()
+    {
+        var content = WorkbookBuilder.Create(
+            [new SheetSpec("Regional Revenue", [["SKU", "Revenue"], ["W-1", 1200d], ["W-2", 800d]])]);
+
+        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
+
+        Assert.Equal(1, sheet.SheetIndex);
+        Assert.Equal("Regional Revenue", sheet.SheetName);
+        Assert.Equal(2, sheet.RowCount);
+        Assert.Equal(2, sheet.ColumnCount);
+        Assert.Equal(["SKU", "Revenue"], sheet.Columns.Select(c => c.ColumnName));
+        Assert.Equal([SheetColumnType.Text, SheetColumnType.Number], sheet.Columns.Select(c => c.InferredType));
+        Assert.Equal([0, 1], sheet.Rows.Select(r => r.RowIndex));
+        Assert.Equal("""{"SKU":"W-1","Revenue":"1200"}""", sheet.Rows[0].Cells);
+    }
+
+    [Fact]
+    public async Task ExtractSheetsAsync_SheetWithoutAHeader_NamesItsColumnsByPosition()
+    {
+        var content = WorkbookBuilder.Create([new SheetSpec("Dump", [[1d, 2d], [3d, 4d]])]);
+
+        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
+
+        Assert.Equal(["Column1", "Column2"], sheet.Columns.Select(c => c.ColumnName));
+        Assert.All(sheet.Columns, column => Assert.Equal(SheetColumnType.Number, column.InferredType));
+        Assert.Equal(2, sheet.RowCount);
+    }
+
+    [Fact]
+    public async Task ExtractSheetsAsync_SheetNameLongerThanItsColumn_IsTruncatedRatherThanFailingTheInsert()
+    {
+        // Excel caps a sheet name at 31 characters; the file format does not, and the name is stored.
+        var content = WorkbookBuilder.Create([new SheetSpec(new string('s', 400), [["Value"]])]);
+
+        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
+
+        Assert.Equal(256, sheet.SheetName.Length);
+    }
+
+    [Fact]
+    public async Task ExtractSheetsAsync_RepeatedHeading_IsMadeUniqueSoAColumnNameResolvesToOneColumn()
+    {
+        var content = WorkbookBuilder.Create([new SheetSpec("Repeats", [["Total", "Total"], ["one", "two"]])]);
+
+        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
+
+        Assert.Equal(["Total", "Total (2)"], sheet.Columns.Select(c => c.ColumnName));
+    }
+
+    [Fact]
+    public async Task ExtractSheetsAsync_EmptyCell_IsOmittedFromTheRowRatherThanStoredBlank()
+    {
+        var content = WorkbookBuilder.Create(
+            [new SheetSpec("Gaps", [["A", "B", "C"], ["one", null, "three"]])]);
+
+        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
+
+        Assert.Equal("""{"A":"one","C":"three"}""", Assert.Single(sheet.Rows).Cells);
+    }
+
+    [Fact]
+    public async Task ExtractSheetsAsync_SheetWithNoRows_ReportsNoSheetForIt()
+    {
+        var content = WorkbookBuilder.Create(
+        [
+            new SheetSpec("Populated", [["Value"]]),
+            new SheetSpec("Empty", [])
+        ]);
+
+        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
+
+        Assert.Equal("Populated", sheet.SheetName);
     }
 
     [Fact]
@@ -82,8 +247,7 @@ public sealed class SpreadsheetTextExtractorTests
 
         var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal(2, segments.Count);
-        Assert.Equal([1, 3], segments.Select(s => s.SourceNumber));
+        Assert.Equal([1, 3], segments.Select(s => s.SourceNumber).Distinct());
     }
 
     [Fact]
@@ -93,9 +257,9 @@ public sealed class SpreadsheetTextExtractorTests
         // clear the previous row's cells and flush nothing of its own.
         var content = WorkbookBuilder.Create([new SheetSpec("Gaps", [["a"], [], ["b"]])]);
 
-        var segment = Assert.Single(await ExtractAsync(Create(maxRows: 2), content));
+        var segments = await ExtractAsync(Create(maxRows: 2), content);
 
-        Assert.Equal("Sheet: Gaps\na\nb", segment.Text);
+        Assert.Equal("Sheet: Gaps\na\nb", WindowText(segments));
     }
 
     [Fact]
@@ -116,9 +280,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Dates", [[new WorkbookBuilder.RawAttributes("N/A", Reference: "A1", StyleIndex: "1")]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Dates\nN/A", segment.Text);
+        Assert.Equal("Sheet: Dates\nN/A", WindowText(segments));
     }
 
     [Fact]
@@ -134,8 +298,8 @@ public sealed class SpreadsheetTextExtractorTests
 
         var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal(2, segments.Count);
-        Assert.Contains("Sheet: Lookup", segments[1].Text);
+        Assert.Equal([1, 2], segments.Select(s => s.SourceNumber).Distinct());
+        Assert.Contains(segments, segment => segment.Text.StartsWith("Sheet: Lookup", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -143,10 +307,10 @@ public sealed class SpreadsheetTextExtractorTests
     {
         var content = WorkbookBuilder.CreateWithChartSheetBefore(new SheetSpec("Data", [["Value", 1d]]));
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal(2, segment.SourceNumber);
-        Assert.Contains("Sheet: Data", segment.Text);
+        Assert.All(segments, segment => Assert.Equal(2, segment.SourceNumber));
+        Assert.Contains("Sheet: Data", WindowText(segments), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -155,9 +319,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Gaps", [["A", "B", "C"], ["one", null, "three"], [null, null, "only"]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Gaps\nA | B | C\none |  | three\n |  | only", segment.Text);
+        Assert.Equal("Sheet: Gaps\nA | B | C\none |  | three\n |  | only", WindowText(segments));
     }
 
     [Fact]
@@ -165,9 +329,9 @@ public sealed class SpreadsheetTextExtractorTests
     {
         var content = WorkbookBuilder.Create([new SheetSpec("Trailing", [["A", "B", "C"], ["one", null, null]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Trailing\nA | B | C\none", segment.Text);
+        Assert.Equal("Sheet: Trailing\nA | B | C\none", WindowText(segments));
     }
 
     [Fact]
@@ -189,9 +353,9 @@ public sealed class SpreadsheetTextExtractorTests
             ])
         ]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Types\nInline | TRUE | FALSE | #DIV/0! | 42 | Joined | 1234.56", segment.Text);
+        Assert.Equal("Sheet: Types\nInline | TRUE | FALSE | #DIV/0! | 42 | Joined | 1234.56", WindowText(segments));
     }
 
     [Fact]
@@ -200,9 +364,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Dates", [[new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Unspecified)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Dates\n2026-03-14", segment.Text);
+        Assert.Equal("Sheet: Dates\n2026-03-14", WindowText(segments));
     }
 
     [Fact]
@@ -211,9 +375,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Dates", [[new DateTime(2026, 3, 14, 9, 30, 0, DateTimeKind.Unspecified)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Dates\n2026-03-14 09:30:00", segment.Text);
+        Assert.Equal("Sheet: Dates\n2026-03-14 09:30:00", WindowText(segments));
     }
 
     [Fact]
@@ -224,9 +388,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Custom", [[new WorkbookBuilder.Styled(serial, WorkbookBuilder.CustomDateStyle)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Custom\n2026-03-14", segment.Text);
+        Assert.Equal("Sheet: Custom\n2026-03-14", WindowText(segments));
     }
 
     [Fact]
@@ -235,9 +399,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Custom", [[new WorkbookBuilder.Styled(45730d, WorkbookBuilder.CustomNumberStyle)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Custom\n45730", segment.Text);
+        Assert.Equal("Sheet: Custom\n45730", WindowText(segments));
     }
 
     [Theory]
@@ -251,9 +415,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Dates", [[new WorkbookBuilder.Styled(serial, WorkbookBuilder.BuiltInDateStyle)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal($"Sheet: Dates\n{expected}", segment.Text);
+        Assert.Equal($"Sheet: Dates\n{expected}", WindowText(segments));
     }
 
     [Fact]
@@ -262,9 +426,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Times", [[new WorkbookBuilder.Styled(0.5d, WorkbookBuilder.BuiltInDateStyle)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Times\n12:00:00", segment.Text);
+        Assert.Equal("Sheet: Times\n12:00:00", WindowText(segments));
     }
 
     [Fact]
@@ -275,9 +439,9 @@ public sealed class SpreadsheetTextExtractorTests
             [new SheetSpec("Dates", [[new WorkbookBuilder.Styled(0d, WorkbookBuilder.BuiltInDateStyle)]])],
             use1904: true);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Dates\n1904-01-01", segment.Text);
+        Assert.Equal("Sheet: Dates\n1904-01-01", WindowText(segments));
     }
 
     [Fact]
@@ -286,9 +450,9 @@ public sealed class SpreadsheetTextExtractorTests
         // One line is one row for everything downstream, so a cell's own newline must not create a row.
         var content = WorkbookBuilder.Create([new SheetSpec("Notes", [["first\nsecond", "after"]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Notes\nfirst second | after", segment.Text);
+        Assert.Equal("Sheet: Notes\nfirst second | after", WindowText(segments));
     }
 
     [Fact]
@@ -296,9 +460,9 @@ public sealed class SpreadsheetTextExtractorTests
     {
         var content = WorkbookBuilder.Create([new SheetSpec(string.Empty, [["Value"]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.StartsWith("Sheet: Sheet1\n", segment.Text, StringComparison.Ordinal);
+        Assert.All(segments, segment => Assert.StartsWith("Sheet: Sheet1\n", segment.Text, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -324,9 +488,9 @@ public sealed class SpreadsheetTextExtractorTests
     {
         var content = WorkbookBuilder.Create([new SheetSpec("Big", BuildRows(4))]);
 
-        var segment = Assert.Single(await ExtractAsync(Create(maxRows: 4), content));
+        var segments = await ExtractAsync(Create(maxRows: 4), content);
 
-        Assert.Equal(5, segment.Text.Split('\n').Length);
+        Assert.Equal(5, WindowText(segments).Split('\n').Length);
     }
 
     [Fact]
@@ -341,11 +505,44 @@ public sealed class SpreadsheetTextExtractorTests
     }
 
     [Fact]
+    public async Task ExtractAsync_WorkbookAtTheUploadRowCeiling_IsAccepted()
+    {
+        var content = WorkbookBuilder.Create(
+        [
+            new SheetSpec("One", BuildRows(3)),
+            new SheetSpec("Two", BuildRows(3))
+        ]);
+
+        var segments = await ExtractAsync(Create(maxRowsPerUpload: 6), content);
+
+        Assert.Equal([1, 2], segments.Select(s => s.SourceNumber).Distinct());
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WorkbookOneRowPastTheUploadCeiling_IsRefusedNamingTheLimit()
+    {
+        // The per-sheet ceiling bounds a sheet, not a workbook, so a hundred narrow sheets would
+        // otherwise pass every other limit.
+        var content = WorkbookBuilder.Create(
+        [
+            new SheetSpec("One", BuildRows(3)),
+            new SheetSpec("Two", BuildRows(3))
+        ]);
+
+        var exception = await Assert.ThrowsAsync<FluentValidation.ValidationException>(
+            () => ExtractAsync(Create(maxRowsPerUpload: 5), content));
+
+        Assert.Contains("5", Assert.Single(exception.Errors).ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExtractAsync_SheetAtTheColumnCeiling_IsAccepted()
     {
         var content = WorkbookBuilder.Create([new SheetSpec("Wide", [BuildColumns(3)])]);
 
-        Assert.Single(await ExtractAsync(Create(maxColumns: 3), content));
+        var segments = await ExtractAsync(Create(maxColumns: 3), content);
+
+        Assert.Equal("Sheet: Wide\ncolumn 1 | column 2 | column 3", WindowText(segments));
     }
 
     [Fact]
@@ -460,9 +657,9 @@ public sealed class SpreadsheetTextExtractorTests
             ])
         ]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Positional\nfirst |  | third", segment.Text);
+        Assert.Equal("Sheet: Positional\nfirst |  | third", WindowText(segments));
     }
 
     [Theory]
@@ -474,9 +671,9 @@ public sealed class SpreadsheetTextExtractorTests
         var content = WorkbookBuilder.Create(
             [new SheetSpec("Data", [["real", new WorkbookBuilder.RawSharedString(index)]])]);
 
-        var segment = Assert.Single(await ExtractAsync(_extractor, content));
+        var segments = await ExtractAsync(_extractor, content);
 
-        Assert.Equal("Sheet: Data\nreal", segment.Text);
+        Assert.Equal("Sheet: Data\nreal", WindowText(segments));
     }
 
     [Fact]
@@ -503,9 +700,9 @@ public sealed class SpreadsheetTextExtractorTests
             ])
         ]);
 
-        var segment = Assert.Single(await ExtractAsync(Create(maxColumns: 10), content));
+        var segments = await ExtractAsync(Create(maxColumns: 10), content);
 
-        Assert.Equal("Sheet: Formatted\nvalue", segment.Text);
+        Assert.Equal("Sheet: Formatted\nvalue", WindowText(segments));
     }
 
     [Fact]
@@ -537,9 +734,27 @@ public sealed class SpreadsheetTextExtractorTests
             () => _extractor.ExtractAsync(null!, progress: null, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task ExtractSheetsAsync_NullFile_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => _extractor.ExtractSheetsAsync(null!, progress: null, TestContext.Current.CancellationToken));
+    }
+
     private static List<object?[]> BuildRows(int count)
     {
         return [.. Enumerable.Range(1, count).Select(i => new object?[] { $"row {i}", (double)i })];
+    }
+
+    /// <summary>
+    /// A sheet whose first row reads as headings, so the header-aware paths are actually exercised.
+    /// </summary>
+    private static List<object?[]> BuildHeaderedRows(int dataRows)
+    {
+        List<object?[]> rows = [["SKU", "Region"]];
+        rows.AddRange(Enumerable.Range(1, dataRows).Select(i => new object?[] { $"SKU-{i:0000}", "East" }));
+
+        return rows;
     }
 
     private static object?[] BuildColumns(int count)

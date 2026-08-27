@@ -179,6 +179,8 @@ A passage cites the page of its best-matching chunk, not of its first member. A 
 
 `Page` is `null` for formats with no such division (`.doc`, `.md`, `.txt`, and `.docx` when Document Intelligence does not paginate it); the citation is then the file name alone. `null` is a first-class value here, exactly as it is in ingestion ([Upload §5.3](upload-workflow.md#53-sourcenumber-provenance)).
 
+**For a spreadsheet, that same field holds a sheet ordinal, not a page — and the citation is built to say so.** `Page` still carries the sheet's 1-based position (§5.3 of the same reference), because that is what `BaseDocumentChunk.SourceNumber` always holds and nothing here widens that column. But `"{fileName} p.{page}"` would misread a sheet index as a page number — `budget.xlsx p.3` claims a page the file does not have — so `BuildCitation` (`DocumentRetrievalService.cs`) checks the document's own extension first: for `.xlsx`/`.csv` it looks up the matching chunk's `(documentId, sheetIndex)` against `Core.{Conversation,Project}DocumentSheet` and cites `"{fileName} — {sheetName}"` (for example `budget.xlsx — Regional Revenue`) instead. A spreadsheet document ingested before sheets were stored — or a sheet that was itself soft-deleted — has nothing to resolve, and falls back to the file name alone, the same as a `null` page does for a prose format. The lookup runs only when the scope actually contains a spreadsheet, so a search over prose-only documents never touches these tables.
+
 ### 4.4 The token budget
 
 Passages are taken in order until `MaxResultTokens` (default 3000) is exhausted, counted with the **ingestion tokenizer** so the budget is measured the way the chunks were. The stored `TokenCount` is deliberately not reused: merging strips overlap, so a passage is shorter than the sum of its parts.
@@ -192,7 +194,7 @@ The tool returns [`DocumentSearchResult`](../../enterprise-gpt-api/Enterprise.Gp
 ```json
 {
   "query": "refund window for damaged goods",
-  "resultCount": 2,
+  "resultCount": 3,
   "truncated": false,
   "results": [
     {
@@ -208,6 +210,13 @@ The tool returns [`DocumentSearchResult`](../../enterprise-gpt-api/Enterprise.Gp
       "page": null,
       "score": 0.741,
       "text": "Damaged goods are exempt from the restocking fee…"
+    },
+    {
+      "citation": "budget.xlsx — Regional Revenue",
+      "documentName": "budget.xlsx",
+      "page": 3,
+      "score": 0.588,
+      "text": "SKU | Region | Revenue\nW-1 | East | 1200…"
     }
   ]
 }
@@ -219,9 +228,9 @@ The tool returns [`DocumentSearchResult`](../../enterprise-gpt-api/Enterprise.Gp
 | `resultCount` | the number of passages in `results` |
 | `truncated` | `true` when matching passages were dropped by the token budget (§4.4) |
 | `results` | the passages, **most relevant first** |
-| `results[].citation` | `"{fileName} p.{page}"`, or the file name alone when there is no page. The prompt tells the model to quote this verbatim |
+| `results[].citation` | `"{fileName} p.{page}"` for a paginated format, `"{fileName} — {sheetName}"` for a spreadsheet, or the file name alone when neither applies. The prompt tells the model to quote this verbatim, whichever shape it takes (§7) |
 | `results[].documentName` | the uploaded file name |
-| `results[].page` | page or slide the passage starts on; **`null` for `.doc`, `.md` and `.txt`**, and for a `.docx` the OCR service did not paginate |
+| `results[].page` | page, slide, or sheet ordinal the passage starts on; **`null` for `.doc`, `.md` and `.txt`**, and for a `.docx` the OCR service did not paginate. For a spreadsheet this is always the sheet's position, not a page — see §4.3 |
 | `results[].score` | wording similarity, 0–1, higher is closer — `1 − cosineDistance`, clamped and rounded to three places |
 | `results[].text` | the merged passage text, seam removed |
 | `availableDocuments` | the names of the documents that were searched. **Present only when `results` is empty**, and omitted from the JSON otherwise |
@@ -445,13 +454,13 @@ Unit tests ([`tests/Enterprise.Gpt.Unit.Test/Tool/`](../../enterprise-gpt-api/te
 
 | File | Covers |
 |---|---|
-| [`DocumentRetrievalServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/DocumentRetrievalServiceTests.cs) | Scope resolution (upload order, deactivated documents and projects, another conversation's documents); the guards that return without embedding (no documents, blank query, over-length query, surrogate-safe echo); term extraction and `LIKE` escaping; rank fusion, the distance gate, the term-coverage gate, the per-document cap and `MaxResults`; neighbour expansion (window, no negative index, de-duplication, same index in both tables staying distinct); seam removal (shared seam, no seam, noise floor, repeated phrase, seam longer than the search window); passage assembly (merging, gaps, neighbour-only runs dropped, scoring on the match, page-less citation, keyword-only match outranking a nearer vector match, the match's page not the neighbour's); and the token budget |
+| [`DocumentRetrievalServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/DocumentRetrievalServiceTests.cs) | Scope resolution (upload order, deactivated documents and projects, another conversation's documents); the guards that return without embedding (no documents, blank query, over-length query, surrogate-safe echo); term extraction and `LIKE` escaping; rank fusion, the distance gate, the term-coverage gate, the per-document cap and `MaxResults`; neighbour expansion (window, no negative index, de-duplication, same index in both tables staying distinct); seam removal (shared seam, no seam, noise floor, repeated phrase, seam longer than the search window); passage assembly (merging, gaps, neighbour-only runs dropped, scoring on the match, page-less citation, keyword-only match outranking a nearer vector match, the match's page not the neighbour's); the token budget; and **`BuildCitation`** — a spreadsheet chunk citing its sheet by name, one with no stored sheet falling back to the file name, a prose document's citation staying `p.N` even when a sheet-name lookup is passed in, and `SpreadsheetExtensions` naming exactly the extractors that implement `ISheetStructureExtractor` (a code-search-backed assertion, so a third sheet-reporting format cannot silently keep citing its ordinals as page numbers) |
 | [`DocumentRetrievalSqlTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/DocumentRetrievalSqlTests.cs) | No statement returns an embedding to the client; scoping and soft-delete filtering at every level; `[Index]` always bracketed; one parameterised arm per term; the explicit `Latin1_General_CI_AI` collation; three parameters per chunk key; ownership re-established rather than trusted; exact-index seeks; and **no literal values in any generated statement** |
 | [`DocumentToolTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/DocumentToolTests.cs) | The tool name and its MCP-attribution rationale; the declared argument schema (`query` required, `documentName` optional, `CancellationToken` not exposed); the turn's own scope being passed rather than anything from the arguments; citations and text reaching the model; a retrieval failure being replaced with a safe message; and cancellation staying cancellation |
 
 **Anything touching the vector column has no unit coverage and cannot have any.** `SqliteRowVersionModelCustomizer` strips `SqlVector<float>` properties from the model — SQLite has no type mapping for them — so `VECTOR_DISTANCE`, the `UNION ALL` across both chunk tables and the neighbour read-back are exercised **only** by [`DocumentRetrievalIntegrationTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/DocumentRetrievalIntegrationTests.cs) against a Testcontainers **SQL Server 2025** instance. Those need Docker.
 
-The integration tests seed chunks with hand-chosen unit vectors and a scripted embedding generator, so the distances SQL Server computes are exact and the assertions can name them. They cover: ranking by cosine distance and the similarity conversion; the distance gate; citations with and without a page; neighbour expansion, the first-chunk edge, seam removal and non-adjacent matches becoming separate passages; the keyword pass finding an exact identifier the vector pass misses, and missing it when the pass is disabled; `LIKE` wildcards matched literally; case- and accent-insensitive matching; another conversation's chunks never being reachable; soft delete at document and chunk level; a conversation in a project searching both corpora; a standalone conversation never reaching project documents; a deactivated project dropping out of the scope; the single-document filter and the unknown-name fallback; an empty result listing what could have been searched; the per-document cap; and — from `sys.vector_indexes` and `sys.database_scoped_configurations` — that everything above ran with **no vector index and `PREVIEW_FEATURES` off**.
+The integration tests seed chunks with hand-chosen unit vectors and a scripted embedding generator, so the distances SQL Server computes are exact and the assertions can name them. They cover: ranking by cosine distance and the similarity conversion; the distance gate; citations with and without a page; neighbour expansion, the first-chunk edge, seam removal and non-adjacent matches becoming separate passages; the keyword pass finding an exact identifier the vector pass misses, and missing it when the pass is disabled; `LIKE` wildcards matched literally; case- and accent-insensitive matching; another conversation's chunks never being reachable; soft delete at document and chunk level; a conversation in a project searching both corpora; a standalone conversation never reaching project documents; a deactivated project dropping out of the scope; the single-document filter and the unknown-name fallback; an empty result listing what could have been searched; the per-document cap; **a spreadsheet passage citing its own stored sheet by name against a real `Core.ConversationDocumentSheet` row, and a spreadsheet document with no stored sheet citing the file name alone**; and — from `sys.vector_indexes` and `sys.database_scoped_configurations` — that everything above ran with **no vector index and `PREVIEW_FEATURES` off**.
 
 ```bash
 # from enterprise-gpt-api/

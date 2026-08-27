@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 20 stories in [`sheet-ingestion
 
 A wave here is a **phase**, not a dependency depth: several waves contain internal chains, so a story's `Depends on` may name another story in the same wave. What no story does is depend on one scheduled in a **later** wave — every row was checked against that rule by hand against the full dependency list. Within a wave, the `Parallel with` column names the stories that are neither an ancestor nor a descendant of it in the dependency graph — those can be taken concurrently by however many people are available.
 
-**Progress: 4 / 20 done.**
+**Progress: 12 / 20 done.**
 
 **Critical path.** `US-101 → US-201 → US-202 → US-304 → US-401 → US-402 → US-403 → US-405 → US-504`, nine stories deep. EP-1's `US-102 → US-103` lane and EP-3's `US-301 → US-302 → US-303` lane both join the critical path only at `US-304` (which needs `US-201`, `US-202`, **and** `US-302`), so neither is itself the bottleneck — `US-304` is, since it is the single point every one of EP-4's stories sits behind. `US-404` (the filter/list verb) and EP-5's `US-501`/`US-502`/`US-503` all run beside the critical path's tail rather than on it. Useful concurrency peaks in wave 2, where `US-301`, `US-201`, `US-303`, `US-203`, `US-204`, and `US-304`'s siblings share no dependency edge with several other wave-2 stories at once — see each row's own `Parallel with` column rather than a single headline number, since the wave's internal chain means no two people should take adjacent links of it concurrently.
 
@@ -28,16 +28,18 @@ Eight stories across two chains that meet at `US-304`: EP-2's chunking chain (`U
 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 2 | 4 | US-301 `[enabler]` Add the sheet and column tables | — | P0 | all of wave 2 except US-302, US-303, US-304 | |
-| 2 | 5 | US-201 `[enabler]` Header-aware row windows for `.xlsx` | US-101 | P0 | all of wave 2 except US-202, US-203, US-204, US-304 | |
-| 2 | 6 | US-302 `[enabler]` Add the row table with its native `json` cells column | US-301 | P0 | all of wave 2 except US-301, US-303, US-304 | |
-| 2 | 7 | US-202 `[enabler]` Header-aware row windows for `.csv` | US-102, US-201 | P0 | all of wave 2 except US-201, US-203, US-204, US-304 | |
-| 2 | 8 | US-303 `[enabler]` Adapt the SQLite fixture for the `json` column | US-302 | P1 | all of wave 2 except US-301, US-302 | |
-| 2 | 9 | US-203 `[enabler]` Per-sheet schema card | US-201, US-202 | P1 | all of wave 2 except US-201, US-202 | |
-| 2 | 10 | US-204 `[enabler]` Sheet-aware citation | US-201, US-202 | P1 | all of wave 2 except US-201, US-202 | |
-| 2 | 11 | US-304 `[enabler]` Persist sheets, columns, and rows inside the existing ingestion save | US-201, US-202, US-302 | P0 | US-303, US-203, US-204 | |
+| 2 | 4 | US-301 `[enabler]` Add the sheet and column tables | — | P0 | all of wave 2 except US-302, US-303, US-304 | ✅ Done (2026-08-27) |
+| 2 | 5 | US-201 `[enabler]` Header-aware row windows for `.xlsx` | US-101 | P0 | all of wave 2 except US-202, US-203, US-204, US-304 | ✅ Done (2026-08-27) |
+| 2 | 6 | US-302 `[enabler]` Add the row table with its native `json` cells column | US-301 | P0 | all of wave 2 except US-301, US-303, US-304 | ✅ Done (2026-08-27) |
+| 2 | 7 | US-202 `[enabler]` Header-aware row windows for `.csv` | US-102, US-201 | P0 | all of wave 2 except US-201, US-203, US-204, US-304 | ✅ Done (2026-08-27) |
+| 2 | 8 | US-303 `[enabler]` Adapt the SQLite fixture for the `json` column | US-302 | P1 | all of wave 2 except US-301, US-302 | ✅ Done (2026-08-27) |
+| 2 | 9 | US-203 `[enabler]` Per-sheet schema card | US-201, US-202 | P1 | all of wave 2 except US-201, US-202 | ✅ Done (2026-08-27) |
+| 2 | 10 | US-204 `[enabler]` Sheet-aware citation | US-201, US-202 | P1 | all of wave 2 except US-201, US-202 | ✅ Done (2026-08-27) |
+| 2 | 11 | US-304 `[enabler]` Persist sheets, columns, and rows inside the existing ingestion save | US-201, US-202, US-302 | P0 | US-303, US-203, US-204 | ✅ Done (2026-08-27) |
 
 ⛔ **`US-304` is the join point and the whole feature's bottleneck.** It is the only story in this wave with edges into both chains, and every one of EP-4's stories (`US-401`–`US-405`) sits behind it. Whoever takes `US-304` should not also be assigned `US-201`, `US-202`, or `US-302` concurrently — the join needs all three finished, not raced.
+
+✅ **Wave 2 closed 2026-08-27**, all eight stories in one pass. Two deviations from what was locked, both recorded as shipped-behaviour notes on their own stories rather than here: `US-201` shipped a fourth ceiling, `Sheets:MaxRowsPerUpload`, that §6/§9 of the PRD did not originally scope; `US-302`'s `Cells` JSON omits an empty cell rather than restating exactly `ColumnCount` properties on every row.
 
 ## Wave 3 — the deterministic lookup
 

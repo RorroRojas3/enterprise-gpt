@@ -615,6 +615,59 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         await ProblemAssert.ReadAsync(reread, HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task DeactivateConversation_ConversationWithASpreadsheet_DeactivatesItsSheetsColumnsAndRows()
+    {
+        // Nothing cascades in this model, so a table the delete does not name keeps the document's
+        // own cell data readable after the user deleted it.
+        var id = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var documentId = await SeedSpreadsheetAsync(id);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.DeleteAsync($"api/conversations/{id}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await AssertSheetsDeactivatedAsync(documentId);
+    }
+
+    [Fact]
+    public async Task DeactivateConversationsBulk_ConversationWithASpreadsheet_DeactivatesItsSheetsColumnsAndRows()
+    {
+        var id = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var documentId = await SeedSpreadsheetAsync(id);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        using var request = BulkDeleteRequest(id);
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        await AssertSheetsDeactivatedAsync(documentId);
+    }
+
+    private async Task<Guid> SeedSpreadsheetAsync(Guid conversationId)
+    {
+        var documentId = await _fixture.AddConversationDocumentAsync(conversationId, "budget.xlsx",
+            [new SeedChunk(0, "SKU | Region", SeedChunk.UnitVector(0), 1)],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await _fixture.AddConversationDocumentSheetAsync(documentId, 1, "Regional Revenue", TestContext.Current.CancellationToken);
+
+        return documentId;
+    }
+
+    private async Task AssertSheetsDeactivatedAsync(Guid documentId)
+    {
+        var sheets = await _fixture.FindDocumentSheetsAsync(documentId, TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sheets);
+        Assert.All(sheets, sheet =>
+        {
+            Assert.NotNull(sheet.DateDeactivated);
+            Assert.All(sheet.Columns, column => Assert.NotNull(column.DateDeactivated));
+            Assert.All(sheet.Rows, row => Assert.NotNull(row.DateDeactivated));
+        });
+    }
+
     // Deliberately not a 404: the service treats an already-gone conversation as done, so the route
     // is idempotent and declares no not-found response.
     [Fact]

@@ -424,6 +424,14 @@ builder.Services.AddOptions<DocumentOptions>()
 builder.Services.AddOptions<SheetOptions>()
     .Bind(builder.Configuration.GetSection(SheetOptions.SectionName))
     .ValidateDataAnnotations()
+    // Data-annotation validation does not reach into a nested options object, so the row-window
+    // ranges are checked here rather than left to the attributes on them.
+    .Validate(options => options.RowWindow.TargetTokenFraction is >= 0.1d and <= 1d,
+        "Sheets:RowWindow:TargetTokenFraction must be between 0.1 and 1.")
+    .Validate(options => options.RowWindow.MaxRows is >= 1 and <= 1_000,
+        "Sheets:RowWindow:MaxRows must be between 1 and 1,000.")
+    .Validate(options => options.MaxRowsPerUpload >= options.MaxRowsPerSheet,
+        "Sheets:MaxRowsPerUpload must be at least Sheets:MaxRowsPerSheet.")
     .ValidateOnStart();
 
 // Document retrieval (RAG) tuning. Over-fetching is what gives rank fusion and the per-document cap

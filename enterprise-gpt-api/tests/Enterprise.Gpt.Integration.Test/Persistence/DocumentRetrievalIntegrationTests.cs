@@ -122,6 +122,38 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
         Assert.Null(passage.Page);
     }
 
+    [Fact]
+    public async Task SearchAsync_SpreadsheetPassage_CitesItsSheetRatherThanAPage()
+    {
+        var conversationId = await AddConversationAsync();
+        var documentId = await _fixture.AddConversationDocumentAsync(conversationId, "budget.xlsx",
+        [
+            new SeedChunk(0, "SKU | Region | Revenue\nW-1 | East | 1200", SeedChunk.UnitVector(QueryAxis), 2)
+        ], cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentSheetAsync(documentId, 2, "Regional Revenue", TestContext.Current.CancellationToken);
+
+        var result = await SearchAsync(conversationId, "revenue", NoNeighbours());
+
+        var passage = Assert.Single(result.Results);
+        Assert.Equal("budget.xlsx — Regional Revenue", passage.Citation);
+        Assert.Equal(2, passage.Page);
+    }
+
+    [Fact]
+    public async Task SearchAsync_SpreadsheetIngestedBeforeSheetsWereStored_CitesTheFileNameAlone()
+    {
+        var conversationId = await AddConversationAsync();
+        await _fixture.AddConversationDocumentAsync(conversationId, "legacy.xlsx",
+        [
+            new SeedChunk(0, "SKU | Region\nW-1 | East", SeedChunk.UnitVector(QueryAxis), 3)
+        ], cancellationToken: TestContext.Current.CancellationToken);
+
+        var result = await SearchAsync(conversationId, "region", NoNeighbours());
+
+        var passage = Assert.Single(result.Results);
+        Assert.Equal("legacy.xlsx", passage.Citation);
+    }
+
     #endregion
 
     #region Neighbour expansion and merging

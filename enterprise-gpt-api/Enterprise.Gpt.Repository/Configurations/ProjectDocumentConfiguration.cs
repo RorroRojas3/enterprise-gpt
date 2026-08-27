@@ -24,6 +24,10 @@ public sealed class ProjectDocumentConfiguration : IEntityTypeConfiguration<Proj
             .WithOne(x => x.ProjectDocument)
             .HasForeignKey(x => x.ProjectDocumentId);
 
+        builder.HasMany(x => x.Sheets)
+            .WithOne(x => x.ProjectDocument)
+            .HasForeignKey(x => x.ProjectDocumentId);
+
         // Documents are always listed for one project at a time, filtered to the active ones.
         builder.HasIndex(x => new { x.ProjectId, x.DateDeactivated });
     }

@@ -7,26 +7,27 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Settings;
 using System.Buffers;
 using System.Globalization;
 using System.IO.Compression;
-using System.Text;
 using System.Xml;
 
 namespace Enterprise.Gpt.Service.Extraction;
 
 /// <summary>
-/// Reads Excel (<c>.xlsx</c>) workbooks locally with the Open XML SDK, one segment per worksheet.
+/// Reads Excel (<c>.xlsx</c>) workbooks locally with the Open XML SDK, as a schema card and
+/// header-repeating row windows per worksheet.
 /// </summary>
 /// <remarks>
-/// A segment opens with the sheet's name and then carries one line per row. Every ceiling in
-/// <see cref="SheetOptions"/> is enforced while streaming, because a workbook is a compressed archive
-/// and its uncompressed size is not bounded by the accepted upload size.
+/// Every ceiling in <see cref="SheetOptions"/> is enforced while streaming, because a workbook is a
+/// compressed archive and its uncompressed size is not bounded by the accepted upload size.
 /// </remarks>
 public sealed class SpreadsheetTextExtractor(
     ILogger<SpreadsheetTextExtractor> logger,
-    IOptions<SheetOptions> options) : IDocumentTextExtractor
+    IOptions<SheetOptions> options,
+    ITextChunker textChunker) : ISheetStructureExtractor
 {
     // DateTime.FromOADate's upper bound, which is 9999-12-31 in the 1900 date system.
     private const double MaxSerialDate = 2958465d;
@@ -54,8 +55,14 @@ public sealed class SpreadsheetTextExtractor(
 
     private const int InflateBufferSize = 64 * 1024;
 
+    // What the same cells cost once stored: every populated one repeats its column's name, plus JSON
+    // punctuation. Eight times the text budget leaves an ordinary wide export room and still refuses a
+    // sheet whose headings alone would outweigh its data.
+    private const int CellCharactersPerTextCharacter = 8;
+
     private readonly ILogger<SpreadsheetTextExtractor> _logger = logger;
     private readonly SheetOptions _options = options.Value;
+    private readonly ITextChunker _textChunker = textChunker;
 
     /// <inheritdoc />
     public IReadOnlyCollection<FileExtensions> SupportedExtensions { get; } = [FileExtensions.Xlsx];
@@ -68,6 +75,25 @@ public sealed class SpreadsheetTextExtractor(
     {
         ArgumentNullException.ThrowIfNull(file);
 
+        return Task.FromResult(Read(file, progress, cancellationToken).Segments);
+    }
+
+    /// <inheritdoc />
+    public Task<SheetExtractionResult> ExtractSheetsAsync(
+        FileDto file,
+        IProgress<DocumentExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return Task.FromResult(Read(file, progress, cancellationToken));
+    }
+
+    private SheetExtractionResult Read(
+        FileDto file,
+        IProgress<DocumentExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         // The whole parse is guarded, not just Open(). The Open XML SDK reads part XML lazily and parses
         // typed attributes on first access, so a truncated worksheet, a malformed style index, or a sheet
         // id pointing at a missing part all throw well after the package opens — and unguarded they would
@@ -94,7 +120,7 @@ public sealed class SpreadsheetTextExtractor(
         }
     }
 
-    private Task<IReadOnlyList<DocumentSegmentDto>> ExtractSheets(
+    private SheetExtractionResult ExtractSheets(
         FileDto file,
         IProgress<DocumentExtractionProgress>? progress,
         CancellationToken cancellationToken)
@@ -116,6 +142,9 @@ public sealed class SpreadsheetTextExtractor(
         var use1904 = workbookPart.Workbook?.WorkbookProperties?.Date1904?.Value == true;
 
         var segments = new List<DocumentSegmentDto>(sheets.Count);
+        var structures = new List<SheetStructureDto>(sheets.Count);
+        var rowsAcrossUpload = 0;
+        var cellBudget = CellBudget();
 
         for (var i = 0; i < sheets.Count; i++)
         {
@@ -130,12 +159,18 @@ public sealed class SpreadsheetTextExtractor(
                 && workbookPart.GetPartById(relationshipId) is WorksheetPart worksheetPart)
             {
                 var sheetName = ResolveSheetName(sheets[i], sheetNumber);
-                var text = BuildSheetText(worksheetPart, sheetName, sharedStrings, dateStyles, use1904, characterBudget, cancellationToken);
+                var rows = ReadSheetRows(worksheetPart, sheetName, sharedStrings, dateStyles, use1904,
+                    characterBudget, ref rowsAcrossUpload, out var characters, cancellationToken);
 
-                if (text.Length > 0)
+                if (rows.Count > 0)
                 {
-                    segments.Add(new DocumentSegmentDto { SourceNumber = sheetNumber, Text = text });
-                    characterBudget -= text.Length;
+                    var assembly = SheetAssembler.Assemble(
+                        sheetName, sheetNumber, rows, _options.RowWindow, _textChunker, cellBudget, cancellationToken);
+
+                    segments.AddRange(assembly.Segments);
+                    structures.Add(assembly.Structure);
+                    characterBudget -= characters;
+                    cellBudget -= assembly.CellCharacters;
                 }
             }
 
@@ -144,24 +179,27 @@ public sealed class SpreadsheetTextExtractor(
                 $"Reading sheet {sheetNumber} of {sheets.Count}"));
         }
 
-        _logger.LogInformation("Extracted text from {SegmentCount} of {SheetCount} sheet(s)", segments.Count, sheets.Count);
+        _logger.LogInformation("Extracted {SegmentCount} segment(s) from {ReadCount} of {SheetCount} sheet(s)",
+            segments.Count, structures.Count, sheets.Count);
 
-        return Task.FromResult<IReadOnlyList<DocumentSegmentDto>>(segments);
+        return new SheetExtractionResult(segments, structures);
     }
 
-    private string BuildSheetText(
+    private List<string[]> ReadSheetRows(
         WorksheetPart worksheetPart,
         string sheetName,
         string[] sharedStrings,
         bool[] dateStyles,
         bool use1904,
         int characterBudget,
+        ref int rowsAcrossUpload,
+        out int characters,
         CancellationToken cancellationToken)
     {
-        var builder = SheetSegmentBuilder.StartSheet(sheetName);
+        var rows = new List<string[]>();
         var cells = new List<string>();
-        var rowCount = 0;
         var columnCursor = 0;
+        characters = SheetSegmentBuilder.SheetHeaderLength(sheetName);
 
         // Cells are loaded one at a time rather than a row at a time: loading the row element would
         // materialize every cell in it before the column ceiling could refuse any of them, which is what
@@ -181,7 +219,7 @@ public sealed class SpreadsheetTextExtractor(
                 }
                 else
                 {
-                    AppendRow(builder, cells, sheetName, characterBudget, ref rowCount);
+                    AddRow(rows, cells, sheetName, characterBudget, ref rowsAcrossUpload, ref characters);
                 }
 
                 continue;
@@ -216,15 +254,23 @@ public sealed class SpreadsheetTextExtractor(
             cells[columnIndex] = text;
         }
 
-        return rowCount == 0 ? string.Empty : builder.ToString().TrimEnd();
+        return rows;
     }
 
-    private void AppendRow(
-        StringBuilder builder,
+    /// <summary>
+    /// Takes a closed row, refusing at every ceiling before the row is kept.
+    /// </summary>
+    /// <remarks>
+    /// The row is copied down to its last populated cell, which is the shape the assembler and the
+    /// character accounting both assume.
+    /// </remarks>
+    private void AddRow(
+        List<string[]> rows,
         List<string> cells,
         string sheetName,
         int characterBudget,
-        ref int rowCount)
+        ref int rowsAcrossUpload,
+        ref int characters)
     {
         var lastIndex = SheetSegmentBuilder.LastPopulatedIndex(cells);
         if (lastIndex < 0)
@@ -232,15 +278,25 @@ public sealed class SpreadsheetTextExtractor(
             return;
         }
 
-        if (rowCount == _options.MaxRowsPerSheet)
+        if (rows.Count == _options.MaxRowsPerSheet)
         {
             throw SheetSegmentBuilder.RowLimitExceeded(sheetName, _options.MaxRowsPerSheet);
         }
 
-        SheetSegmentBuilder.AppendRow(builder, cells, lastIndex);
-        rowCount++;
+        if (rowsAcrossUpload == _options.MaxRowsPerUpload)
+        {
+            throw SheetSegmentBuilder.UploadRowLimitExceeded(_options.MaxRowsPerUpload);
+        }
 
-        if (builder.Length > characterBudget)
+        var row = new string[lastIndex + 1];
+        cells.CopyTo(0, row, 0, row.Length);
+
+        rows.Add(row);
+        rowsAcrossUpload++;
+
+        characters += SheetSegmentBuilder.RowLength(row, lastIndex);
+
+        if (characters > characterBudget)
         {
             throw SheetSegmentBuilder.TextLimitExceeded(_options.MaxCharactersPerUpload);
         }
@@ -286,6 +342,14 @@ public sealed class SpreadsheetTextExtractor(
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+
+    /// <summary>
+    /// Serialized cell characters one upload may materialize, derived from its text budget.
+    /// </summary>
+    private int CellBudget()
+    {
+        return (int)Math.Min(int.MaxValue, (long)_options.MaxCharactersPerUpload * CellCharactersPerTextCharacter);
     }
 
     private long PackageBudget()
@@ -564,6 +628,6 @@ public sealed class SpreadsheetTextExtractor(
 
         return string.IsNullOrWhiteSpace(name)
             ? $"Sheet{sheetNumber}"
-            : SheetSegmentBuilder.NormalizeCell(name);
+            : SheetSegmentBuilder.TruncateName(SheetSegmentBuilder.NormalizeCell(name));
     }
 }

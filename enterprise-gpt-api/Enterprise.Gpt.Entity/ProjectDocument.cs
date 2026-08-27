@@ -20,4 +20,7 @@ public class ProjectDocument : BaseDocument
 
     /// <summary>The retrieval units the document was split into, with their embeddings.</summary>
     public List<ProjectDocumentChunk> Chunks { get; set; } = [];
+
+    /// <summary>The worksheets the document was read as, empty for a non-spreadsheet format.</summary>
+    public List<ProjectDocumentSheet> Sheets { get; set; } = [];
 }

@@ -10,5 +10,7 @@ namespace Enterprise.Gpt.Entity
         public Conversation Conversation { get; set; } = null!;
 
         public List<ConversationDocumentChunk> Chunks { get; set; } = [];
+
+        public List<ConversationDocumentSheet> Sheets { get; set; } = [];
     }
 }

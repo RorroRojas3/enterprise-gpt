@@ -306,7 +306,9 @@ namespace Enterprise.Gpt.Service
                 Path = blobPath,
                 DateCreated = date,
                 DateModified = date,
-                Chunks = BuildChunks<ConversationDocumentChunk>(ingestion, date)
+                Chunks = BuildChunks<ConversationDocumentChunk>(ingestion, date),
+                Sheets = BuildSheets<ConversationDocumentSheet, ConversationDocumentSheetColumn, ConversationDocumentSheetRow>(
+                    ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
             };
 
             _ctx.Add(document);
@@ -326,6 +328,30 @@ namespace Enterprise.Gpt.Service
                 // between the insert and the re-check, their rowversions have moved and a tracked save
                 // would throw DbUpdateConcurrencyException; this shape is a no-op in that case.
                 var deactivatedAt = DateTimeOffset.UtcNow;
+
+                // Every table is named because nothing cascades, and leaf first because this path has
+                // no transaction: a reader must never find a live cell row under a dead sheet.
+                var sheetIds = _ctx.ConversationDocumentSheets
+                    .Where(s => s.ConversationDocumentId == document.Id)
+                    .Select(s => s.Id);
+
+                await _ctx.ConversationDocumentSheetRows
+                    .Where(r => sheetIds.Contains(r.ConversationDocumentSheetId) && !r.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(r => r
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                await _ctx.ConversationDocumentSheetColumns
+                    .Where(c => sheetIds.Contains(c.ConversationDocumentSheetId) && !c.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(c => c
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                await _ctx.ConversationDocumentSheets
+                    .Where(s => s.ConversationDocumentId == document.Id && !s.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
 
                 await _ctx.ConversationDocumentChunks
                     .Where(c => c.ConversationDocumentId == document.Id && !c.DateDeactivated.HasValue)
@@ -383,7 +409,9 @@ namespace Enterprise.Gpt.Service
                 Path = blobPath,
                 DateCreated = date,
                 DateModified = date,
-                Chunks = BuildChunks<ProjectDocumentChunk>(ingestion, date)
+                Chunks = BuildChunks<ProjectDocumentChunk>(ingestion, date),
+                Sheets = BuildSheets<ProjectDocumentSheet, ProjectDocumentSheetColumn, ProjectDocumentSheetRow>(
+                    ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
             };
 
             _ctx.Add(document);
@@ -400,6 +428,28 @@ namespace Enterprise.Gpt.Service
                 // Set-based for the same reason as the conversation path: idempotent against the
                 // cascade having already deactivated these rows, with no concurrency token involved.
                 var deactivatedAt = DateTimeOffset.UtcNow;
+
+                var sheetIds = _ctx.ProjectDocumentSheets
+                    .Where(s => s.ProjectDocumentId == document.Id)
+                    .Select(s => s.Id);
+
+                await _ctx.ProjectDocumentSheetRows
+                    .Where(r => sheetIds.Contains(r.ProjectDocumentSheetId) && !r.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(r => r
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                await _ctx.ProjectDocumentSheetColumns
+                    .Where(c => sheetIds.Contains(c.ProjectDocumentSheetId) && !c.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(c => c
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
+
+                await _ctx.ProjectDocumentSheets
+                    .Where(s => s.ProjectDocumentId == document.Id && !s.DateDeactivated.HasValue)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
+                        cancellationToken);
 
                 await _ctx.ProjectDocumentChunks
                     .Where(c => c.ProjectDocumentId == document.Id && !c.DateDeactivated.HasValue)
@@ -662,11 +712,11 @@ namespace Enterprise.Gpt.Service
 
             try
             {
-                var segments = await ExtractAsync(jobId, file, cancellationToken);
-                var chunks = ChunkText(jobId, segments, cancellationToken);
+                var extraction = await ExtractAsync(jobId, file, cancellationToken);
+                var chunks = ChunkText(jobId, extraction.Segments, cancellationToken);
                 var embeddings = await EmbedAsync(jobId, chunks, cancellationToken);
 
-                return new IngestionResult(chunks, embeddings);
+                return new IngestionResult(chunks, embeddings, extraction.Sheets);
             }
             catch
             {
@@ -722,6 +772,61 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <summary>
+        /// Builds the persisted sheet rows, with their columns and cell rows, for a spreadsheet.
+        /// </summary>
+        /// <param name="selectColumns">Reaches the sheet's own column collection.</param>
+        /// <param name="selectRows">Reaches the sheet's own row collection.</param>
+        /// <remarks>
+        /// The two selectors are what keeps this one implementation: the child collections are declared
+        /// on each document family's own sheet type, so no shared base exposes them.
+        /// </remarks>
+        private static List<TSheet> BuildSheets<TSheet, TColumn, TRow>(
+            IngestionResult ingestion,
+            DateTimeOffset date,
+            Func<TSheet, List<TColumn>> selectColumns,
+            Func<TSheet, List<TRow>> selectRows)
+            where TSheet : BaseDocumentSheet, new()
+            where TColumn : BaseDocumentSheetColumn, new()
+            where TRow : BaseDocumentSheetRow, new()
+        {
+            var sheets = new List<TSheet>(ingestion.Sheets.Count);
+
+            foreach (var structure in ingestion.Sheets)
+            {
+                var sheet = new TSheet
+                {
+                    SheetIndex = structure.SheetIndex,
+                    SheetName = structure.SheetName,
+                    RowCount = structure.RowCount,
+                    ColumnCount = structure.ColumnCount,
+                    DateCreated = date,
+                    DateModified = date
+                };
+
+                selectColumns(sheet).AddRange(structure.Columns.Select(column => new TColumn
+                {
+                    ColumnIndex = column.ColumnIndex,
+                    ColumnName = column.ColumnName,
+                    InferredType = column.InferredType,
+                    DateCreated = date,
+                    DateModified = date
+                }));
+
+                selectRows(sheet).AddRange(structure.Rows.Select(row => new TRow
+                {
+                    RowIndex = row.RowIndex,
+                    Cells = row.Cells,
+                    DateCreated = date,
+                    DateModified = date
+                }));
+
+                sheets.Add(sheet);
+            }
+
+            return sheets;
+        }
+
+        /// <summary>
         /// Removes a stored blob whose document was never persisted, so a failed ingestion leaves nothing
         /// behind.
         /// </summary>
@@ -743,7 +848,10 @@ namespace Enterprise.Gpt.Service
             }
         }
 
-        private async Task<IReadOnlyList<DocumentSegmentDto>> ExtractAsync(string jobId, FileDto file, CancellationToken cancellationToken)
+        /// <summary>
+        /// Reads the file into segments, and into the sheets behind them where the format has any.
+        /// </summary>
+        private async Task<SheetExtractionResult> ExtractAsync(string jobId, FileDto file, CancellationToken cancellationToken)
         {
             _jobStatusStore.Report(jobId, JobStatus.Extracting, ExtractStart, "Reading the document");
 
@@ -761,9 +869,13 @@ namespace Enterprise.Gpt.Service
                 _jobStatusStore.Report(jobId, JobStatus.Extracting, percent, report.Message);
             });
 
-            var segments = await extractor.ExtractAsync(file, progress, cancellationToken);
+            // One call, not two: a spreadsheet's text and its grid come out of the same parse, and
+            // asking for them separately would open the package twice for nothing.
+            var extraction = extractor is ISheetStructureExtractor sheetExtractor
+                ? await sheetExtractor.ExtractSheetsAsync(file, progress, cancellationToken)
+                : new SheetExtractionResult(await extractor.ExtractAsync(file, progress, cancellationToken), []);
 
-            if (segments.Count == 0)
+            if (extraction.Segments.Count == 0)
             {
                 throw new ValidationException(
                 [
@@ -772,7 +884,7 @@ namespace Enterprise.Gpt.Service
                 ]);
             }
 
-            return segments;
+            return extraction;
         }
 
         private IReadOnlyList<TextChunkDto> ChunkText(string jobId, IReadOnlyList<DocumentSegmentDto> segments, CancellationToken cancellationToken)
@@ -837,11 +949,13 @@ namespace Enterprise.Gpt.Service
         #endregion
 
         /// <summary>
-        /// The output of the owner-agnostic pipeline: chunks and their positionally aligned vectors.
+        /// The output of the owner-agnostic pipeline: chunks and their positionally aligned vectors,
+        /// plus the structured sheets a spreadsheet also yielded.
         /// </summary>
         private sealed record IngestionResult(
             IReadOnlyList<TextChunkDto> Chunks,
-            IReadOnlyList<ReadOnlyMemory<float>> Embeddings);
+            IReadOnlyList<ReadOnlyMemory<float>> Embeddings,
+            IReadOnlyList<SheetStructureDto> Sheets);
 
         /// <summary>
         /// An <see cref="IProgress{T}"/> that runs its callback on the calling thread.

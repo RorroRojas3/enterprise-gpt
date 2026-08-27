@@ -351,7 +351,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var date = DateTimeOffset.UtcNow;
 
-        // Five separate ExecuteUpdate statements, so they need a transaction to be all-or-nothing:
+        // Eight separate ExecuteUpdate statements, so they need a transaction to be all-or-nothing:
         // a partial failure would otherwise leave conversations pointing at a deleted project, or
         // chunks alive under a deleted document.
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
@@ -363,6 +363,26 @@ public class ProjectService(ILogger<ProjectService> logger,
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.DateDeactivated, date)
                 .SetProperty(x => x.DateModified, date),
+                cancellationToken);
+
+        // Leaf first for the same reason: a live cell row under a dead sheet is the document's own
+        // data, still readable.
+        await _ctx.ProjectDocumentSheetRows
+            .Where(r => r.ProjectDocumentSheet.ProjectDocument.ProjectId == id && !r.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(r => r
+                .SetProperty(x => x.DateDeactivated, date),
+                cancellationToken);
+
+        await _ctx.ProjectDocumentSheetColumns
+            .Where(c => c.ProjectDocumentSheet.ProjectDocument.ProjectId == id && !c.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(c => c
+                .SetProperty(x => x.DateDeactivated, date),
+                cancellationToken);
+
+        await _ctx.ProjectDocumentSheets
+            .Where(s => s.ProjectDocument.ProjectId == id && !s.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentChunks
@@ -438,6 +458,24 @@ public class ProjectService(ILogger<ProjectService> logger,
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.DateDeactivated, date)
                 .SetProperty(x => x.DateModified, date),
+                cancellationToken);
+
+        await _ctx.ProjectDocumentSheetRows
+            .Where(r => r.ProjectDocumentSheet.ProjectDocumentId == documentId && !r.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(r => r
+                .SetProperty(x => x.DateDeactivated, date),
+                cancellationToken);
+
+        await _ctx.ProjectDocumentSheetColumns
+            .Where(c => c.ProjectDocumentSheet.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(c => c
+                .SetProperty(x => x.DateDeactivated, date),
+                cancellationToken);
+
+        await _ctx.ProjectDocumentSheets
+            .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentChunks

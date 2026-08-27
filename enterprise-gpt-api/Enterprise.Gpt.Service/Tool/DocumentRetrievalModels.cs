@@ -63,7 +63,7 @@ public sealed class RetrievedPassage
 {
     /// <summary>
     /// Gets or sets a short human-readable source reference the model can quote verbatim, such as
-    /// <c>handbook.pdf p.12</c>.
+    /// <c>handbook.pdf p.12</c> or <c>budget.xlsx — Regional Revenue</c>.
     /// </summary>
     [JsonPropertyOrder(0)]
     public required string Citation { get; set; }
@@ -75,9 +75,13 @@ public sealed class RetrievedPassage
     public required string DocumentName { get; set; }
 
     /// <summary>
-    /// Gets or sets the page or slide the passage starts on, or <see langword="null"/> for formats with
-    /// no such concept (<c>.doc</c>, <c>.md</c>, <c>.txt</c>).
+    /// Gets or sets the page, slide, or sheet ordinal the passage starts on, or <see langword="null"/>
+    /// for formats with no such concept (<c>.doc</c>, <c>.md</c>, <c>.txt</c>).
     /// </summary>
+    /// <remarks>
+    /// For a spreadsheet this is the sheet's position, not a page, which is why
+    /// <see cref="Citation"/> names the sheet instead of rendering this as <c>p.N</c>.
+    /// </remarks>
     [JsonPropertyOrder(2)]
     public int? Page { get; set; }
 

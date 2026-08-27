@@ -410,6 +410,26 @@ namespace Enterprise.Gpt.Service
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
+            // Leaf first for the reason the summary goes first: a live cell row under a dead sheet is
+            // the document's own data, still readable.
+            await _ctx.ConversationDocumentSheetRows
+                .Where(r => r.ConversationDocumentSheet.ConversationDocument.ConversationId == id && !r.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(r => r
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheetColumns
+                .Where(c => c.ConversationDocumentSheet.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheets
+                .Where(s => s.ConversationDocument.ConversationId == id && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
             await _ctx.ConversationDocumentChunks
                 .Where(c => c.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
                 .ExecuteUpdateAsync(c => c
@@ -468,6 +488,24 @@ namespace Enterprise.Gpt.Service
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheetRows
+                .Where(r => conversationIds.Contains(r.ConversationDocumentSheet.ConversationDocument.ConversationId) && !r.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(r => r
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheetColumns
+                .Where(c => conversationIds.Contains(c.ConversationDocumentSheet.ConversationDocument.ConversationId) && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheets
+                .Where(s => conversationIds.Contains(s.ConversationDocument.ConversationId) && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentChunks
