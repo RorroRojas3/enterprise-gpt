@@ -277,6 +277,10 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
         var produced = attempt.GetProperty("produced").GetBoolean();
         var engine = attempt.GetProperty("engine").GetString();
         var error = attempt.GetProperty("error").GetString();
+        var degraded = attempt.TryGetProperty("degraded", out var flags)
+            ? flags.EnumerateArray().Select(flag => flag.GetString()).Where(flag => flag is not null).ToList()
+            : [];
+
         var verification = attempt.GetProperty("verification");
         var openable = verification.GetProperty("openable").GetBoolean();
         var detail = verification.GetProperty("detail").GetString() ?? string.Empty;
@@ -287,9 +291,9 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
             produced,
             attempt.GetProperty("bytes").GetInt64(),
             openable,
-            error is { Length: > 0 }
-                ? $"{error} | sandbox: {detail} | host: {hostSideVerification}"
-                : $"sandbox: {detail} | host: {hostSideVerification}");
+            (error is { Length: > 0 } ? $"{error} | " : string.Empty)
+            + (degraded.Count > 0 ? $"degraded: {string.Join("; ", degraded)} | " : string.Empty)
+            + $"sandbox: {detail} | host: {hostSideVerification}");
 
         var tier = (produced, openable, cell.ProposedTier) switch
         {

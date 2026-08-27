@@ -24,6 +24,11 @@ OFFICE_BINARY = "__OFFICE_BINARY__"
 MOUNT = "/mnt/data"
 OUT_PREFIX = "converted-"
 
+# Structure a converter had to drop because the library that would have carried it is absent. The
+# caller grades a cell down on this: an output that parses is not the same as an output that kept
+# what the source expressed.
+DEGRADED = []
+
 
 SAMPLE_STEM = "sample"
 
@@ -395,9 +400,9 @@ def markup_to(target, source, path):
                 html = markdown.markdown(text, extensions=["tables"])
                 engine = "markdown"
             except ImportError:
-                # markdown is not in this image. Falling back loses the heading and table structure
-                # a renderer could have used, which is the difference between a faithful result and a
-                # structural one - not a reason to refuse a pair the sandbox can still serve.
+                DEGRADED.append(
+                    "markdown is absent, so headings, lists and tables were flattened to paragraphs"
+                )
                 html = None
         if html is None:
             html = "".join("<p>" + escape(line) + "</p>" for line in text.splitlines() if line.strip())
@@ -434,6 +439,7 @@ attempts = []
 for target in TARGETS if source_path is not None else []:
     path = out_path(target)
     attempt = {"from": SOURCE_FORMAT, "to": target, "output": os.path.basename(path)}
+    DEGRADED.clear()
     try:
         engine, metrics = convert(target, source_path, path)
         attempt["produced"] = os.path.exists(path)
@@ -448,6 +454,7 @@ for target in TARGETS if source_path is not None else []:
         attempt["metrics"] = {}
         attempt["error"] = type(error).__name__ + ": " + str(error)[:300]
         attempt["traceback"] = traceback.format_exc()[-800:]
+    attempt["degraded"] = list(DEGRADED)
     attempt["verification"] = (
         verify_output(target, path)
         if attempt["produced"]
