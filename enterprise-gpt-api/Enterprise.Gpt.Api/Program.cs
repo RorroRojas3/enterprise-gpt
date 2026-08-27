@@ -446,6 +446,15 @@ builder.Services.AddOptions<DocumentRetrievalOptions>()
         "Documents:Retrieval:LexicalCandidateCount must be at least Documents:Retrieval:MaxResults.")
     .ValidateOnStart();
 
+// The deterministic spreadsheet lookup, off unless a deployment asks for it. A call deadline shorter
+// than its own statement's timeout would abandon every query before that timeout could report one.
+builder.Services.AddOptions<SheetQueryOptions>()
+    .Bind(builder.Configuration.GetSection(SheetQueryOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options => options.ToolTimeoutSeconds >= options.TimeoutSeconds,
+        "SheetQuery:ToolTimeoutSeconds must be at least SheetQuery:TimeoutSeconds.")
+    .ValidateOnStart();
+
 // Conversation export. DisabledFormats is validated against the tokens the route actually accepts,
 // so a typo withdraws nothing silently and instead fails the app at start, the same bargain
 // PermissionEndpointFilter.Require makes with a bad permission id.
@@ -692,6 +701,7 @@ builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IConversationExportService, ConversationExportService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentRetrievalService, DocumentRetrievalService>();
+builder.Services.AddScoped<ISheetQueryService, SheetQueryService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IReportService, ReportService>();

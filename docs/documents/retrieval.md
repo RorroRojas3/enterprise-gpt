@@ -276,6 +276,8 @@ Attachment happens in `ConversationService.CreateChatOptionsAsync`, and there ar
 
 Note the asymmetry on a tool-less model: an MCP selection is something the user made and can undo, so it fails loudly with a 400; document retrieval is attached implicitly, and failing the turn over it would break every conversation that happens to hold a file, so it is dropped with a warning instead.
 
+**A third native tool, `sheet_query`, attaches beside this one** whenever the scope holds a spreadsheet with an ingested sheet and `SheetQuery:Enabled` is set — it answers computed questions (sums, averages, filtered rows) over the same documents' cell data with no vector search involved, and stands down whenever `document_search` itself does. See [Sheet Query (Deterministic Spreadsheet Lookup)](sheet-query.md).
+
 ### 6.1 Why the tool is called `document_search`
 
 Tool-call usage is attributed to an MCP server by matching the longest `{server}_` prefix on the tool name. A name such as `search_documents` would be credited to a server called "search" if one ever existed. `document_search` was chosen so its first word cannot plausibly be a server name.
@@ -480,6 +482,7 @@ dotnet test                                    # everything; Docker must be runn
 | Model-facing prompt | [`Enterprise.Gpt.Service/Prompts/document-retrieval-prompt.md`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/document-retrieval-prompt.md), [`ConversationPrompts.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/ConversationPrompts.cs) |
 | Attachment per turn | [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) — `CreateChatOptionsAsync` |
 | The sibling tool that shares this scope and name matcher | [Document Summarization: Tool, Persistence and Billing](../summarization/tool-integration.md) — `document_summarize` |
+| The sibling tool that computes over the same documents' cells | [Sheet Query (Deterministic Spreadsheet Lookup)](sheet-query.md) — `sheet_query` |
 | Tokenizer (query budget) | [`Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs) |
 | Entities | [`BaseDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/BaseDocumentChunk.cs), [`ConversationDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationDocumentChunk.cs), [`ProjectDocumentChunk.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ProjectDocumentChunk.cs) |
 | DI + options validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |

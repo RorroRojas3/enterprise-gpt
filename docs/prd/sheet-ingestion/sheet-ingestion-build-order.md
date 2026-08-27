@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 20 stories in [`sheet-ingestion
 
 A wave here is a **phase**, not a dependency depth: several waves contain internal chains, so a story's `Depends on` may name another story in the same wave. What no story does is depend on one scheduled in a **later** wave — every row was checked against that rule by hand against the full dependency list. Within a wave, the `Parallel with` column names the stories that are neither an ancestor nor a descendant of it in the dependency graph — those can be taken concurrently by however many people are available.
 
-**Progress: 12 / 20 done.**
+**Progress: 17 / 20 done.**
 
 **Critical path.** `US-101 → US-201 → US-202 → US-304 → US-401 → US-402 → US-403 → US-405 → US-504`, nine stories deep. EP-1's `US-102 → US-103` lane and EP-3's `US-301 → US-302 → US-303` lane both join the critical path only at `US-304` (which needs `US-201`, `US-202`, **and** `US-302`), so neither is itself the bottleneck — `US-304` is, since it is the single point every one of EP-4's stories sits behind. `US-404` (the filter/list verb) and EP-5's `US-501`/`US-502`/`US-503` all run beside the critical path's tail rather than on it. Useful concurrency peaks in wave 2, where `US-301`, `US-201`, `US-303`, `US-203`, `US-204`, and `US-304`'s siblings share no dependency edge with several other wave-2 stories at once — see each row's own `Parallel with` column rather than a single headline number, since the wave's internal chain means no two people should take adjacent links of it concurrently.
 
@@ -47,15 +47,17 @@ Five stories, almost a strict chain: `US-401 → US-402 → {US-403, US-404} `, 
 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3 | 12 | US-401 `[enabler]` Resolve a sheet and column by name, refusing what is unknown | US-304 | P0 | — | |
-| 3 | 13 | US-402 `[enabler]` Build the parameterized, no-raw-SQL query | US-401 | P0 | — | |
-| 3 | 14 | US-403 The model can aggregate a column, optionally grouped by another | US-402 | P0 | US-404 | |
-| 3 | 15 | US-404 The model can filter and list matching rows | US-402 | P1 | US-403, US-405 | |
-| 3 | 16 | US-405 `[enabler]` Attach `sheet_query` beside `document_search` | US-403 | P0 | US-404 | |
+| 3 | 12 | US-401 `[enabler]` Resolve a sheet and column by name, refusing what is unknown | US-304 | P0 | — | ✅ Done (2026-08-27) |
+| 3 | 13 | US-402 `[enabler]` Build the parameterized, no-raw-SQL query | US-401 | P0 | — | ✅ Done (2026-08-27) |
+| 3 | 14 | US-403 The model can aggregate a column, optionally grouped by another | US-402 | P0 | US-404 | ✅ Done (2026-08-27) |
+| 3 | 15 | US-404 The model can filter and list matching rows | US-402 | P1 | US-403, US-405 | ✅ Done (2026-08-27) |
+| 3 | 16 | US-405 `[enabler]` Attach `sheet_query` beside `document_search` | US-403 | P0 | US-404 | ✅ Done (2026-08-27) |
 
 ⛔ **`US-401` and `US-402` are a strict, un-parallelizable chain.** Both are single-owner, security-relevant stories (name resolution and SQL construction); `US-402`'s acceptance criteria depend on `US-401`'s refusal behavior already existing to build against. Do not split either across two people.
 
-⚠ **`US-405` (P0) depends only on `US-403`, not on `US-404` (P1).** This is deliberate: `sheet_query` can attach to the turn and ship its headline aggregate capability without waiting on the filter/list verb, which can land as a follow-up enhancement to an already-attached tool.
+⚠ **`US-405` (P0) depends only on `US-403`, not on `US-404` (P1).** This is deliberate: `sheet_query` can attach to the turn and ship its headline aggregate capability without waiting on the filter/list verb, which can land as a follow-up enhancement to an already-attached tool. In the event both landed in the same pass, so the deferral was never exercised.
+
+✅ **Wave 3 closed 2026-08-27**, all five stories in one pass. Four deviations from what was locked, each recorded as a shipped-behaviour note on its own story rather than here: `US-402` reads values with `TRY_CONVERT` over `JSON_VALUE` instead of `JSON_VALUE … RETURNING`; `US-404` shipped a fourth cap, `SheetQuery:MaxResultCharacters`; `US-405` narrowed its own gate to require an *ingested* sheet rather than a spreadsheet extension, and added `SheetQuery:ToolTimeoutSeconds` beside the statement timeout. `SheetQuery:Enabled` ships here — `US-405`'s own acceptance criteria are written against it — leaving `US-504` the rehearsed rollback and its documentation rather than the switch itself.
 
 ## Wave 4 — governance and switch-on
 

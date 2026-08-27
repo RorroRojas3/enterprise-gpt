@@ -11,6 +11,7 @@ using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Tool;
+using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -1082,6 +1083,134 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
         await ctx.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Inserts a fully specified sheet for an existing conversation document.
+    /// </summary>
+    /// <param name="documentId">The document the sheet belongs to.</param>
+    /// <param name="sheet">The sheet, its columns and its rows.</param>
+    /// <param name="deactivated">Whether the sheet is soft-deleted.</param>
+    /// <param name="rowsDeactivated">Whether every row is soft-deleted while the sheet is not.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted sheet.</returns>
+    public async Task<Guid> AddConversationDocumentSheetAsync(
+        Guid documentId,
+        SeedSheet sheet,
+        bool deactivated = false,
+        bool rowsDeactivated = false,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+
+        var row = new ConversationDocumentSheet
+        {
+            Id = Guid.NewGuid(),
+            ConversationDocumentId = documentId,
+            SheetIndex = sheet.SheetIndex,
+            SheetName = sheet.Name,
+            RowCount = sheet.Rows.Count,
+            ColumnCount = sheet.Columns.Count,
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated ? date : null,
+            Columns =
+            [
+                .. sheet.Columns.Select((c, i) => new ConversationDocumentSheetColumn
+                {
+                    Id = Guid.NewGuid(),
+                    ColumnIndex = i,
+                    ColumnName = c.Name,
+                    InferredType = c.Type,
+                    DateCreated = date,
+                    DateModified = date,
+                    DateDeactivated = deactivated ? date : null
+                })
+            ],
+            Rows =
+            [
+                .. sheet.Rows.Select((cells, i) => new ConversationDocumentSheetRow
+                {
+                    Id = Guid.NewGuid(),
+                    RowIndex = i,
+                    Cells = SeedSheetCells(cells),
+                    DateCreated = date,
+                    DateModified = date,
+                    DateDeactivated = deactivated || rowsDeactivated ? date : null
+                })
+            ]
+        };
+
+        ctx.ConversationDocumentSheets.Add(row);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return row.Id;
+    }
+
+    /// <summary>
+    /// Inserts a fully specified sheet for an existing project document.
+    /// </summary>
+    /// <param name="documentId">The document the sheet belongs to.</param>
+    /// <param name="sheet">The sheet, its columns and its rows.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted sheet.</returns>
+    public async Task<Guid> AddProjectDocumentSheetAsync(
+        Guid documentId, SeedSheet sheet, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+
+        var row = new ProjectDocumentSheet
+        {
+            Id = Guid.NewGuid(),
+            ProjectDocumentId = documentId,
+            SheetIndex = sheet.SheetIndex,
+            SheetName = sheet.Name,
+            RowCount = sheet.Rows.Count,
+            ColumnCount = sheet.Columns.Count,
+            DateCreated = date,
+            DateModified = date,
+            Columns =
+            [
+                .. sheet.Columns.Select((c, i) => new ProjectDocumentSheetColumn
+                {
+                    Id = Guid.NewGuid(),
+                    ColumnIndex = i,
+                    ColumnName = c.Name,
+                    InferredType = c.Type,
+                    DateCreated = date,
+                    DateModified = date
+                })
+            ],
+            Rows =
+            [
+                .. sheet.Rows.Select((cells, i) => new ProjectDocumentSheetRow
+                {
+                    Id = Guid.NewGuid(),
+                    RowIndex = i,
+                    Cells = SeedSheetCells(cells),
+                    DateCreated = date,
+                    DateModified = date
+                })
+            ]
+        };
+
+        ctx.ProjectDocumentSheets.Add(row);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return row.Id;
+    }
+
+    /// <summary>
+    /// Serializes one row's cells the way ingestion does — one string property per populated cell, and
+    /// nothing at all for an empty one.
+    /// </summary>
+    private static string SeedSheetCells(IReadOnlyDictionary<string, string> cells) =>
+        JsonSerializer.Serialize(cells.Where(c => c.Value.Length > 0).ToDictionary(c => c.Key, c => c.Value));
 
     /// <summary>
     /// Inserts a project document and its chunks directly into the database, with embeddings the caller

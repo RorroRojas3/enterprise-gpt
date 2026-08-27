@@ -656,7 +656,7 @@ public sealed class DocumentRetrievalService(
     /// a page the file does not have; the file name alone is the fallback when the sheet cannot be named,
     /// which is what a document ingested before sheets were stored gets.
     /// </remarks>
-    private static string BuildCitation(string documentName, int? page, string? sheetName)
+    internal static string BuildCitation(string documentName, int? page, string? sheetName)
     {
         if (!IsSpreadsheet(documentName))
         {

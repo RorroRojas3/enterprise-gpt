@@ -191,6 +191,8 @@ namespace Enterprise.Gpt.Service
         IDocumentSummaryService documentSummaryService,
         IUserGrantReader userGrantReader,
         IOptions<SummarizationOptions> summarizationOptions,
+        ISheetQueryService sheetQueryService,
+        IOptions<SheetQueryOptions> sheetQueryOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
@@ -217,6 +219,8 @@ namespace Enterprise.Gpt.Service
         private readonly IDocumentSummaryService _documentSummaryService = documentSummaryService;
         private readonly IUserGrantReader _userGrantReader = userGrantReader;
         private readonly SummarizationOptions _summarizationOptions = summarizationOptions.Value;
+        private readonly ISheetQueryService _sheetQueryService = sheetQueryService;
+        private readonly SheetQueryOptions _sheetQueryOptions = sheetQueryOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
         // The synthetic pair every turn's stream opens with, ahead of the first model event.
@@ -2272,6 +2276,52 @@ namespace Enterprise.Gpt.Service
                 }
             }
 
+            // Narrower than retrieval's own gate by one condition: the scope has to hold a spreadsheet,
+            // not merely a document. A tool that is always present and always answers that there is
+            // nothing to query teaches the model to stop calling it — the same reason retrieval is not
+            // attached to a conversation with no documents. No permission gate, though: this spends
+            // nothing, and a caller who can already read a document's chunks can already read its cells.
+            var spreadsheetNames = documentScope is null
+                ? []
+                : documentScope.Documents
+                    .Where(d => DocumentRetrievalService.SpreadsheetExtensions.Contains(Path.GetExtension(d.Name)))
+                    .Select(d => d.Name)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            var attachSheetQueryTool = _sheetQueryOptions.Enabled && spreadsheetNames.Length > 0;
+
+            if (attachSheetQueryTool && !model.IsToolEnabled)
+            {
+                _logger.LogWarning(
+                    "Conversation {ConversationId} has spreadsheets but model {ModelId} does not support tools; the sheet query is unavailable for this turn.",
+                    sessionId, model.Id);
+
+                attachSheetQueryTool = false;
+            }
+
+            if (attachSheetQueryTool)
+            {
+                // A spreadsheet extension is not the same fact as a queryable sheet: a file uploaded
+                // before the sheet tables existed has chunks and no rows, and attaching over it would
+                // name a workbook in the prompt that every call then denies exists.
+                try
+                {
+                    attachSheetQueryTool = await _sheetQueryService
+                        .HasQueryableSheetsAsync(documentScope!, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Checking for queryable sheets failed for conversation {ConversationId}; the turn runs without the sheet query.",
+                        sessionId);
+
+                    attachSheetQueryTool = false;
+                }
+            }
+
             var selectedServerIds = mcps.Select(m => m.Id).Distinct().ToArray();
             if (selectedServerIds.Length > 0 && !model.IsToolEnabled)
             {
@@ -2352,6 +2402,39 @@ namespace Enterprise.Gpt.Service
 
                     instructions.Add(ConversationPrompts.BuildDocumentSummaryToolPrompt(
                         DocumentSummaryTool.ToolName, DocumentTool.ToolName));
+                }
+
+                if (attachSheetQueryTool
+                    && tools.Any(t => string.Equals(t.Name, SheetQueryTool.ToolName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogWarning(
+                        "An MCP tool selected for conversation {ConversationId} is already named '{ToolName}'; the sheet query is unavailable for this turn.",
+                        sessionId, SheetQueryTool.ToolName);
+
+                    attachSheetQueryTool = false;
+                }
+
+                // Checked after retrieval has settled, for the same reason summarization is: the sheet
+                // prompt names the retrieval tool and tells the model when to prefer one over the other.
+                if (attachSheetQueryTool && !attachDocumentTool)
+                {
+                    _logger.LogWarning(
+                        "Document retrieval is unavailable for conversation {ConversationId}; the sheet query stands down with it.",
+                        sessionId);
+
+                    attachSheetQueryTool = false;
+                }
+
+                if (attachSheetQueryTool)
+                {
+                    tools.Add(SheetQueryTool.Create(
+                        documentScope!,
+                        _sheetQueryService,
+                        _sheetQueryOptions.ToolTimeoutSeconds,
+                        _logger));
+
+                    instructions.Add(ConversationPrompts.BuildSheetQueryToolPrompt(
+                        SheetQueryTool.ToolName, DocumentTool.ToolName, spreadsheetNames));
                 }
 
                 // A fabricated tool, off in every environment that has not asked for it. It exists so the

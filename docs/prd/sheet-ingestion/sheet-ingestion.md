@@ -328,7 +328,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Add a sheet-matching helper analogous to `DocumentRetrievalService.MatchByName`, resolving a model-supplied `sheetName` (or, when omitted, the sole sheet across the turn's scope if exactly one exists) against the caller's own `ConversationDocumentSheet`/`ProjectDocumentSheet` rows, and a `columnName` against that sheet's own `SheetColumn` rows — both parameterized lookups. An unresolved or ambiguous name refuses by name, listing what is actually available, mirroring `document_summarize`'s own refusal pattern. Unblocks US-402.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-304
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a `sheetName` that matches no sheet in scope, when resolution runs, then it refuses, naming the sheets that are actually available — no query is attempted against a guess.
   - Given a `sheetName` omitted with more than one sheet in scope, when resolution runs, then it refuses, naming the available sheets, rather than picking one arbitrarily.
@@ -338,8 +338,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-402: `[enabler]` Build the parameterized, no-raw-SQL query
 
 - **Story**: `[enabler]` Add `SheetQuerySql` (`Enterprise.Gpt.Service/Tool/SheetQuerySql.cs`), building the aggregate/filter T-SQL from a resolved sheet and column set: every JSON path is built only from an already-validated `ColumnName`, passed as a bound `@path` parameter to `JSON_VALUE`/`OPENJSON`; the `RETURNING` type is chosen by a closed C# `switch` over the column's `InferredType`, selecting one of a small, fixed number of pre-authored parameterized command texts; every literal comparison value is bound as an ordinary parameter; results are capped by `TOP (@n)`. Unblocks US-403, US-404.
+  **Shipped reading values with `TRY_CONVERT` over `JSON_VALUE` rather than `JSON_VALUE … RETURNING`, deliberately — a robustness call approved before implementation, not a gap.** The closed `switch` over `InferredType` selecting one of a fixed set of pre-authored fragments is unchanged; only the fragment differs. Three reasons, in order: US-302's `Cells` stores every value as a JSON *string*, so `RETURNING` would be a coercion either way; `RETURNING` is supported only against the native `json` column type, which would make this story's code the thing that breaks §6's own documented single-column `nvarchar(max)` fallback; and it has no non-throwing form, so one cell disagreeing with its column's sampled type could fail a whole aggregate. `float` rather than `decimal` for numeric reads, because it matches the arithmetic the spreadsheet itself used, never overflows a `SUM`, and does not silently drop a value written in scientific notation. Two further shipped details this criterion did not anticipate: a numeric read strips a group separator before converting, since `SheetAssembler`'s own inference accepts `1,200.50` as a number while `CONVERT` alone yields `NULL` for it; and a comparison against a time-only `Date` column anchors the model's value to 1900-01-01 to match what `TRY_CONVERT(datetime2, …)` does server-side, without which every such comparison would silently miss.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-401
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given every command text this class can produce, when `SheetQuerySqlTests` inspects them, then none contains a literal, non-parameterized value or a request-derived path fragment — mirroring `DocumentRetrievalSqlTests`' own "no literal values in any generated statement" assertion for `document_search`.
   - Given a `Boolean`-typed column, when a comparison is built against it, then it compares as text (`'true'`/`'false'`) rather than `RETURNING bit`, since `bit` is not in `JSON_VALUE`'s supported `RETURNING` type list.
@@ -351,7 +352,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: As a chat user, I want to ask a computed question about a spreadsheet — a total, an average, a count, optionally broken down by another column — and get an exact answer, so that I do not have to open the file and compute it myself.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a sum, average, min, max, or count request over a resolved column, when `sheet_query` runs, then it returns the exact value computed directly from the stored rows.
   - Given the same request with a `groupBy` column supplied, when it runs, then it returns one row per distinct group value, each with its own aggregate, capped at `SheetQuery:MaxGroups`.
@@ -361,8 +362,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-404: The model can filter and list matching rows
 
 - **Story**: As a chat user, I want to ask which rows match a condition — not just a computed total — so that I can see the actual records behind an answer.
+  **Shipped with a fifth bound this PRD did not originally scope: `SheetQuery:MaxResultCharacters` (default 20,000).** `MaxResultRows` caps how many rows come back and nothing caps how *wide* they are: fifty rows of a sheet at `Sheets:MaxColumnsPerSheet` is tens of thousands of characters of cell text competing with the answer for the model's context window, which is the same reason `Documents:Retrieval:MaxResultTokens` exists. At least one row always survives the budget, so a single very wide row is shown rather than silently becoming "no rows matched". A refusal's own `availableSheets`/`availableColumns` listing is bounded the same way, by fixed limits rather than configuration, since it is the one reply no configured cap reaches.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given one or more filter criteria (up to `SheetQuery:MaxFilters`), when `sheet_query` runs with `operation: filter`, then it returns the matching rows' cell data, capped at `SheetQuery:MaxResultRows`.
   - Given more filters than `SheetQuery:MaxFilters` are supplied, when the tool is called, then it refuses with a message naming the limit rather than silently dropping filters.
@@ -372,8 +374,10 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-405: `[enabler]` Attach `sheet_query` beside `document_search`
 
 - **Story**: `[enabler]` Attach `sheet_query` in `ConversationService.CreateChatOptionsAsync`, copying `attachSummaryTool`'s own gate ladder: gated on `SheetQuery:Enabled`, the turn's document scope being non-empty, the selected model supporting tools, standing down if `attachDocumentTool` is false (mirroring why `document_summarize` stands down the same way), and standing down on a name collision with an already-selected MCP tool. Unblocks EP-5's flag story.
+  **Shipped with a narrower scope gate than "the turn's document scope is non-empty", deliberately.** Two extra conditions, both approved before implementation. The scope must hold a spreadsheet at all — a conversation of PDFs never sees the tool, for the reason `retrieval.md` §6 gives for not attaching `document_search` to an empty scope. And that spreadsheet must have an *ingested sheet*: a file uploaded before EP-3's tables existed has chunks and no rows, and attaching over it would name a workbook in the tool prompt that every call then denies exists. The check is an `EXISTS` over the scoped document ids, and a failure to run it costs the tool rather than the turn, the same way scope resolution already fails. Every acceptance criterion below still holds — this only narrows.
+  **`SheetQuery:Enabled` ships here rather than in US-504**, because this story's own first acceptance criterion is written against it; what remains for US-504 is the rehearsed flip-and-flip-back and its documentation, not the switch. **A sixth setting shipped alongside it, `SheetQuery:ToolTimeoutSeconds` (default 30)**, bounding one whole invocation the way `Summarization:ToolTimeoutSeconds` does, because `:TimeoutSeconds` bounds a single statement and a call deadline shorter than its own statement's timeout would abandon every query before that timeout could report one. Startup validation enforces `ToolTimeoutSeconds >= TimeoutSeconds`, mirroring the summarizer's own rule.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-403
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given `SheetQuery:Enabled = false`, when a turn runs, then `sheet_query` is never attached, and the model has no way to discover it.
   - Given `SheetQuery:Enabled = true` and a conversation scope with no documents, when a turn runs, then `sheet_query` is not attached — matching `document_search`'s own precedent that an empty scope offers nothing to query.
@@ -440,8 +444,8 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 | --- | --- | --- | --- |
 | **Phase 1 — the format exists** | EP-1 in full (US-101–US-103) | ~1 week | ✅ Done (2026-08-26) |
 | **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks | ✅ Done (2026-08-27) |
-| **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks | Not started |
-| **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week | US-501 done (2026-08-26, pulled forward into Phase 1 — see risks below); US-502–US-504 not started |
+| **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks | ✅ Done (2026-08-27) |
+| **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week | US-501 done (2026-08-26, pulled forward into Phase 1 — see risks below); `SheetQuery:Enabled` shipped with US-405, leaving US-504 its rollback rehearsal; US-502–US-504 not started |
 
 **Risks & mitigations.**
 
@@ -450,7 +454,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 | SQL Server's `json` type is still preview on non-Azure-SQL SQL Server 2025 | US-302 names `nvarchar(max)` + `ISJSON` as a scoped, single-column fallback that changes nothing else in the schema |
 | The header-repetition chunking strategy degrades under the chunker's own overlap/fallback mechanics for an oversized window | §6 finding 2 states the limitation explicitly; US-201/US-202's 95%-threshold acceptance criteria measure it rather than assume perfection. **Measured 2026-08-27** — `SheetChunkingTests` confirms a sheet spanning many windows keeps its header in almost every chunk, and an oversized window still breaks on row boundaries once handed to the real, unmodified `TokenTextChunker` |
 | `MaxDistance`'s single global threshold no longer fits once row-window corpora exist | US-502 validates before this ships broadly, rather than discovering the regression in production |
-| `sheet_query` becomes a raw-SQL-injection surface through careless implementation | US-402's acceptance criteria are enforced by a pinned test (`SheetQuerySqlTests`) mirroring `DocumentRetrievalSqlTests`' own "no literal values" assertion — a build-breaking regression guard, not a one-time review |
+| `sheet_query` becomes a raw-SQL-injection surface through careless implementation | US-402's acceptance criteria are enforced by a pinned test (`SheetQuerySqlTests`) mirroring `DocumentRetrievalSqlTests`' own "no literal values" assertion — a build-breaking regression guard, not a one-time review. **Closed 2026-08-27**, with one guard the original mitigation did not name: every generated statement is also asserted to contain no `$.` at all, since a JSON path is the only route by which a model-named column could reach a command text, and a path built by concatenation would fail that assertion immediately |
 | A pathologically large workbook is uploaded before ceilings ship | **Closed 2026-08-26.** US-501 was pulled forward into Wave 1 rather than waiting for its originally scheduled phase, specifically because a code review measured reproducible unbounded-allocation vectors (up to 1.4 GB peak heap from a few-MB file) that the row/column ceilings alone did not close; `Sheets:MaxCharactersPerUpload` shipped alongside the Wave 1 extractors, before this feature has any real users |
 | SQLite cannot load the `json` column at all, blocking every other unit test in the suite | US-303 is scheduled immediately after the row table exists, before EP-4 needs to write any unit test against it. **Closed 2026-08-27** — `SqliteRowVersionModelCustomizer`'s existing `SetColumnType(null)` pass turned out to be sufficient with no removal arm; `SqliteRowVersionModelCustomizerTests` proves it rather than leaving it assumed |
 
