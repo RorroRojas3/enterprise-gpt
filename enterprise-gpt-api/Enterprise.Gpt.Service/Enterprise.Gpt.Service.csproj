@@ -70,6 +70,13 @@
     <None Include="Export\Fonts\*.ttf;Export\Fonts\*.otf;Export\Fonts\*.ttc"
           Link="Fonts\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
+    <!-- The confirmed conversion matrix (EP-0/US-003). Shipped rather than embedded for the reason
+         the prompt templates below are: it is a published deliverable an operator may need to read,
+         and EP-3's document-conversion skill and EP-4's FileAgentOptions both load this one file so
+         a pair cannot be refused in one place and offered in another. -->
+    <None Update="Agents\Documents\conversion-matrix.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Files\conversation-history.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

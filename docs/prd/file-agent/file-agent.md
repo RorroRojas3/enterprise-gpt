@@ -36,6 +36,7 @@ Priya asks the assistant to turn her uploaded meeting notes into a one-page summ
 - **A planner/executor/reviewer topology, or a reviewer LLM.** Settled by the product owner on 2026-08-14 and restated here rather than re-opened: Code Interpreter's own write→run→see-traceback→retry loop already is the executor, and no model can inspect a binary `.docx`. The reliable check is deterministic Python with no model call.
 - **Background or asynchronous execution.** The agent runs inside the streaming turn, cancelled with it. The document-ingestion pipeline's queue-and-poll design is not reused.
 - **`.xlsm` or any macro-enabled format**, and any format outside the seven named. `Xlsm` already exists in `FileExtensions` for uploads but is not a File Agent input or output.
+- **Ingesting an uploaded `.xlsx`/`.csv` — a hard predecessor, not part of this PRD.** Reading a spreadsheet a user brings into a conversation (local `.xlsx`/`.csv` extraction, header-aware row-window chunking, the sheet-aware citation, the `sheet_query` deterministic lookup) is specified in full in `docs/prd/sheet-ingestion/sheet-ingestion.md`, which ships **first** (§9). This PRD's edit/compare/convert verbs (EP-4) consume whatever spreadsheet document that PRD's pipeline has already ingested — the same `DocumentRetrievalScope`/`MatchByName` resolution every other source format already goes through — and change nothing about how it got there.
 - **Adding `Andes.Extensions.AI.Agent` or `Microsoft.Agents.AI` to `Enterprise.Gpt.Service`.** `Enterprise.Gpt.Service.csproj` carries an explicit comment recording the exclusion; it stands. The agent is composed in `Enterprise.Gpt.Api`.
 - **New `AssistantUiEvent` kinds, or any change to the vendored `Andes.Extensions.AI.UI` contract.** `ActivityStarted`/`ActivityProgress`/`ActivityCompleted`/`ActivityFailed` with `scopeId`/`parentScopeId`/`displayName`/`toolKind`/`depth` already model arbitrary nesting; adding a kind would be a breaking third-party-package change and a `npm run check:contract` drift failure.
 - **New RFC 9457 problem type URIs.** Every failure this feature introduces happens mid-stream and surfaces as a failed activity card; problem types are opaque identifiers clients match verbatim, and this PRD mints none.
@@ -74,7 +75,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | FR-4 | `ConversationDocument` carries an `Uploaded`/`Generated` discriminator; every existing row backfills to `Uploaded` | P0 | EP-1 |
 | FR-5 | A generated file is written to the dedicated `generated-documents` blob container with zero chunk rows, and rejected before being persisted if it exceeds `Documents:MaxFileSizeBytes` | P0 | EP-1 |
 | FR-6 | A generated document is never extracted, chunked, embedded, retrieved, ranked or cited | P0 | EP-1 |
-| FR-7 | A generated document downloads through the existing download route in its own format; `ResolveContentType` gains `.xlsx` and `.csv` | P1 | EP-1 |
+| FR-7 | A generated document downloads through the existing download route in its own format | P1 | EP-1 |
 | FR-8 | A transcript message carries a structured, URL-free reference to every generated file it introduced | P0 | EP-1 |
 | FR-9 | `HostedCodeInterpreterTool` is attached only to the Azure OpenAI (Responses-route) keyed client, never Azure AI Foundry, Bedrock or Anthropic | P0 | EP-2 |
 | FR-10 | Every sandbox input is supplied by the API as content on `HostedCodeInterpreterTool.Inputs`; the sandbox itself makes no outbound network call | P0 | EP-2 |
@@ -113,6 +114,8 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | FR-43 | The feature's added components ride the lazy `chat` chunk, and the initial bundle is re-baselined | P1 | EP-6 |
 | FR-44 | File generation is gated by a new, dedicated permission, resolved through `IUserPermissionCache`; administrators are not implicitly granted it | P0 | EP-7 |
 | FR-45 | The feature sits behind a configuration flag with a documented, exercised rollback requiring no redeploy | P0 | EP-7 |
+
+**Retired by this revision**: FR-46 and FR-47 (accepting `.xlsx`/`.csv` uploads and chunking them header-aware). Both moved to `docs/prd/sheet-ingestion/sheet-ingestion.md` (its FR-1/FR-2 and FR-6/FR-7 respectively) when that PRD was carved out as this feature's predecessor — see §2 and §9. The numbers are retired, not reused, so a later revision does not silently collide with a requirement this document no longer owns.
 
 ## 5. User experience
 
@@ -189,7 +192,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | Server-produced-file precedent worth reading | `Enterprise.Gpt.Service/Export/` (`ConversationExportService`, `WordExportRenderer`, `PdfExportRenderer` over `DocumentFormat.OpenXml` + `PDFsharp-MigraDoc`) — the only place this codebase writes an Office-shaped or PDF file today, and it does so without a sandbox |
 | Options-class and startup-validator precedent | `Enterprise.Gpt.Service/Settings/SummarizationOptions.cs`, `Enterprise.Gpt.Api/Startup/SummarizerBootstrapper.cs` — `AddOptions<T>().Bind(...).ValidateDataAnnotations().ValidateOnStart()` plus a startup validator that runs regardless of the feature flag |
 | Permission ids and their names | `Enterprise.Gpt.Dto/Enums/PermissionIds.cs` — `Administrator`, `UploadFile`, and the `Names` `FrozenDictionary` validated at endpoint-map time |
-| Latest migration to follow | `Enterprise.Gpt.Repository/Migrations/20260825224934_AddDocumentSummaries` — the fourteenth; this PRD's discriminator migration is the fifteenth |
+| Latest migration to follow | `Enterprise.Gpt.Repository/Migrations/20260825224934_AddDocumentSummaries` — the fourteenth; `docs/prd/sheet-ingestion/sheet-ingestion.md` ships the fifteenth first (§9), so this PRD's discriminator migration is the sixteenth |
 | Client chip, download store, activity nesting | `enterprise-gpt-ui/src/app/shared/chip/attachment-chip/`; `core/documents/document-download-store.ts` (the shipped mint-on-click path, including its 404/503 copy); `features/chat/transcript/activity-card.ts` (existing nesting, `toolKind`/`displayName` rendered as separate elements) |
 | Stream contract and drift guard | `enterprise-gpt-ui/src/app/domain/stream/andes/assistant-ui.contract.ts` (`ToolKind = "Unknown" \| "Function" \| "McpTool" \| "Agent"`, confirmed present); `npm run check:contract` |
 
@@ -200,7 +203,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 - **Neither type has chunks, and this is structural, not a filter.** `DocumentRetrievalSql`'s `UNION ALL` needs no change for a generated document to be unretrievable — it contributes nothing because it has no chunk rows. Pinned by an integration test that inserts one row of each type and asserts zero chunk rows for the generated one, exactly the shape `document_summarize`'s own retrieval-isolation guard already takes.
 - **The transcript message carries an identity, never a credential.** `TranscriptMessageDocument` (`Entity/Transcripts/TranscriptDocuments.cs`) has no field for this today — `Content` is a bare string. It gains an `attachments[]` array of `{ id, name, extension, mimeType, size }`, joining `/content/*` on the indexing-policy exclusion list; `TranscriptHeaderDocument.CurrentSchemaVersion` bumps from `1` to `2`, and a transcript persisted before this change deserializes the missing array as empty, so no transcript migration runs.
 - **The persistence write runs on its own DI scope**, mirroring `DocumentSummaryService`'s pattern: the blob write and the `ConversationDocument` insert happen together, via `IServiceScopeFactory`, never the request's shared `EnterpriseGptDbContext` — so a failure here cannot leave the turn's own save re-attempting a half-committed insert after the answer has already streamed.
-- **Migration placement.** One migration in this PRD's own scope for the discriminator (the fifteenth, following `AddDocumentSummaries`); the `(ModelId, DateCreated)` index (EP-5) is a second, independent migration.
+- **Migration placement.** One migration in this PRD's own scope for the discriminator (the sixteenth, following Sheet Ingestion's own fifteenth migration, itself following `AddDocumentSummaries`); the `(ModelId, DateCreated)` index (EP-5) is a second, independent migration.
 - **Prompt content never rides telemetry or a progress event.** Sandbox source, tool arguments and generated content stay out of `ChatProgress` lines and out of metric tags; `ToolTrackingOptions.IncludeToolArguments` stays off.
 
 **Security.**
@@ -302,14 +305,14 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 #### US-101: `[enabler]` Add the `Generated` discriminator and migrate existing rows
 
-- **Story**: `[enabler]` Add `ConversationDocumentTypes { Uploaded = 1, Generated = 2 }` to `Enterprise.Gpt.Dto/Enums/`, put the column on `ConversationDocument` (not `BaseDocument`), and ship the fifteenth migration, backfilling every existing row to `Uploaded`. Unblocks US-103 and US-106.
+- **Story**: `[enabler]` Add `ConversationDocumentTypes { Uploaded = 1, Generated = 2 }` to `Enterprise.Gpt.Dto/Enums/`, put the column on `ConversationDocument` (not `BaseDocument`), and ship the sixteenth migration, backfilling every existing row to `Uploaded`. Unblocks US-103 and US-106.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: —
 - **Status**: Not started
 - **Acceptance criteria**:
   - Given the enum, when it is placed, then it sits beside `JobStatus` and `FileExtensions`, is numbered from 1, and carries the same append-only doc-comment convention `JobStatus` already states.
   - Given `ConversationDocumentConfiguration`, when the model is built, then the property is configured with `HasConversion<int>()` and no `HasColumnName`, preserving the invariant `Tool/DocumentRetrievalSql.cs`'s hand-written SQL depends on.
   - Given the entity, when the column is added, then it is on `ConversationDocument` and not `BaseDocument`, so `ProjectDocument` is unchanged.
-  - Given the migration, when it is generated, then it follows `20260825224934_AddDocumentSummaries` as the fifteenth, is applied by the existing startup `Database.Migrate()`, and every pre-existing row reads back as `Uploaded`.
+  - Given the migration, when it is generated, then it follows Sheet Ingestion's own migration as the sixteenth overall, is applied by the existing startup `Database.Migrate()`, and every pre-existing row reads back as `Uploaded`.
 
 #### US-102: `[enabler]` Provision the `generated-documents` blob container
 
@@ -342,8 +345,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 - **Status**: Not started
 - **Acceptance criteria**:
   - Given a `Generated` document, when the existing download route is called by the conversation's owner, then a signed link is returned unchanged in shape from an uploaded document's.
-  - Given `DocumentService.ResolveContentType`, when the map is read, then it also covers `.xlsx` and `.csv` alongside the six extensions it covers today.
-  - Given the signed link, when it is built, then it carries `Content-Disposition: attachment` and the extension-derived content type, exactly as an uploaded document's link already does.
+  - Given the signed link, when it is built, then it carries `Content-Disposition: attachment` and the extension-derived content type from `DocumentService.ResolveContentType` — which, once `docs/prd/sheet-ingestion/sheet-ingestion.md` ships first (§9), already covers `.xlsx` and `.csv` alongside the six extensions it covers today, so a generated spreadsheet needs no further work here.
   - Given a caller who does not own the parent conversation, when they request the link, then the response is 404, and nothing is signed.
 
 #### US-105: `[enabler]` Carry the generated-file reference on the transcript message
@@ -367,6 +369,8 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
   - Given `DocumentRetrievalSql`, when it is compared before and after this feature, then it is unchanged — the exclusion holds because the generated document has no chunk rows, not because a type predicate was added.
   - Given a `Generated` document, when `DocumentRetrievalService.GetScopeAsync` builds the scope, then it does not contribute to `HasDocuments` nor to the document-name list injected into the retrieval prompt.
   - Given an integration test that inserts one row of each type and asserts zero chunk rows for the generated one, when the suite runs, then it passes — the regression guard for this whole invariant.
+
+**US-107 and US-108 are retired, not reused.** Both governed `.xlsx`/`.csv` files getting *into* the platform — the opposite direction from everything else in this epic — and moved to `docs/prd/sheet-ingestion/sheet-ingestion.md` (its US-101/US-102 and US-201/US-202) when that PRD was carved out as this feature's predecessor, exactly as `document-summarization.md` retires a requirement number rather than reassigning it. See §2 and §9 for the dependency this leaves behind.
 
 ### EP-2: Code interpreter execution
 
@@ -797,9 +801,11 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 | A synchronous run inside the turn widens the 409 `conversation-busy` window | US-204 bounds the run, US-205 makes Stop actually stop it, and US-604 renders progress so the wait reads as work |
 | The PDF path is judged against Word-export typography and declared broken | US-403 makes the fidelity limit an acceptance criterion and puts it in the answer text at the point of delivery |
 
-**Rollout & rollback.** One flag, `FileAgentOptions.Enabled`, defaulting **off** everywhere including development. With it off, a conversation behaves exactly as it does today, and US-702 asserts that with a regression test. Enablement order: EP-1/EP-6's storage-and-chip lane can go live inert (nothing ever writes a `Generated` row without the agent), then the agent itself once EP-3/EP-4 are accepted against the offline benchmark, then the permission is granted to a pilot group before general availability. Rollback is a configuration change with no redeploy; the path is exercised at least once before production enablement. This PRD ships two schema changes — the discriminator migration (EP-1, the fifteenth overall) and the `(ModelId, DateCreated)` index (EP-5) — both additive, so rolling the **code** back leaves the database readable. The permission gate is the last gate before general availability: until US-701 lands, the feature is reachable by anyone in an environment where the flag is on, which is why the flag defaults off.
+**Rollout & rollback.** One flag, `FileAgentOptions.Enabled`, defaulting **off** everywhere including development. With it off, a conversation behaves exactly as it does today, and US-702 asserts that with a regression test. Enablement order: EP-1/EP-6's storage-and-chip lane can go live inert (nothing ever writes a `Generated` row without the agent), then the agent itself once EP-3/EP-4 are accepted against the offline benchmark, then the permission is granted to a pilot group before general availability. Rollback is a configuration change with no redeploy; the path is exercised at least once before production enablement. This PRD ships two schema changes — the discriminator migration (EP-1, the sixteenth overall, following Sheet Ingestion's fifteenth) and the `(ModelId, DateCreated)` index (EP-5) — both additive, so rolling the **code** back leaves the database readable. The permission gate is the last gate before general availability: until US-701 lands, the feature is reachable by anyone in an environment where the flag is on, which is why the flag defaults off.
 
 ## 9. Assumptions & open questions
+
+**Dependency.** `docs/prd/sheet-ingestion/sheet-ingestion.md` is a **hard predecessor** of this PRD, mirroring the shape the now-deleted `file-agent` PRD used for its own `image-tool` predecessor (recoverable at `git show 7fc3b83^:docs/prd/file-agent/file-agent.md`): that revision named `image-tool.md` as owning the generated-file storage contract this PRD's own EP-1 now owns instead, consumed unchanged by the dependent PRD's frontend and usage epics. Sheet Ingestion plays the same role here for exactly one slice — uploaded-spreadsheet ingestion — not the whole feature: it ships `.xlsx`/`.csv` extraction, header-aware row-window chunking, the sheet-aware citation, and the `sheet_query` tool, and this PRD's EP-4 (edit/compare/convert) consumes whatever spreadsheet document that pipeline has already ingested through the identical `DocumentRetrievalScope`/`MatchByName` resolution every other source format already uses. US-107/US-108, previously specified here, are retired in favor of Sheet Ingestion's own US-101/US-102 and US-201/US-202 (§2, §4, §7's EP-1 note) — the same "the predecessor ships first, this PRD's epic starts once it has" sequencing, without the deeper coupling `image-tool.md`/this-PRD's original relationship had (no shared client surface, no shared blob container, no shared migration).
 
 **Assumptions.** Each is a guess a reviewer can veto.
 

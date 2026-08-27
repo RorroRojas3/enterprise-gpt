@@ -1,0 +1,51 @@
+{
+  "recordedUtc": "2026-08-27T01:23:54.6332602+00:00",
+  "deployment": "rr-gpt-5.6-luna",
+  "findings": [
+    {
+      "question": "Can the sandbox author a sample of every format the matrix converts between?",
+      "outcome": "7 of 7",
+      "detail": "docx 37053 bytes, xlsx 5604 bytes, pptx 30122 bytes, pdf 2128 bytes, csv 79 bytes, md 512 bytes, txt 438 bytes."
+    },
+    {
+      "question": "Which conversions from docx does this sandbox serve?",
+      "outcome": "pdf=structural, md=faithful, txt=faithful",
+      "detail": "pdf: sandbox: pages=1 characters=361 | host: verified on the host: A complete PDF of 1778 bytes carrying roughly 1 page object(s). | md: sandbox: characters=440 | host: verified on the host: 440 characters over 17 line(s). | txt: sandbox: characters=440 | host: verified on the host: 440 characters over 17 line(s)."
+    },
+    {
+      "question": "Which conversions from xlsx does this sandbox serve?",
+      "outcome": "pdf=structural, csv=faithful, md=faithful, txt=faithful",
+      "detail": "pdf: sandbox: pages=1 characters=74 | host: verified on the host: A complete PDF of 1534 bytes carrying roughly 1 page object(s). | csv: sandbox: rows=5 | host: verified on the host: 4 rows over a header of 3 fields. | md: sandbox: characters=133 | host: verified on the host: 133 characters over 6 line(s). | txt: sandbox: characters=119 | host: verified on the host: 119 characters over 5 line(s)."
+    },
+    {
+      "question": "Which conversions from pptx does this sandbox serve?",
+      "outcome": "pdf=structural, md=faithful, txt=faithful",
+      "detail": "pdf: sandbox: pages=1 characters=385 | host: verified on the host: A complete PDF of 1823 bytes carrying roughly 1 page object(s). | md: sandbox: characters=372 | host: verified on the host: 372 characters over 12 line(s). | txt: sandbox: characters=362 | host: verified on the host: 362 characters over 8 line(s)."
+    },
+    {
+      "question": "Which conversions from pdf does this sandbox serve?",
+      "outcome": "docx=structural, xlsx=refused, pptx=refused, csv=refused, md=structural, txt=structural",
+      "detail": "docx: sandbox: paragraphs=21 tables=0 | host: verified on the host: Opened as an OPC package of 17 parts, with word/document.xml at 2629 bytes. | xlsx: AttributeError: \u0027Canvas\u0027 object has no attribute \u0027extract_tables\u0027 | sandbox: nothing was produced | host: no artifact reached the API | pptx: sandbox: slides=1 | host: verified on the host: Opened as an OPC package of 39 parts, with ppt/presentation.xml at 3252 bytes. | csv: AttributeError: \u0027Canvas\u0027 object has no attribute \u0027extract_tables\u0027 | sandbox: nothing was produced | host: no artifact reached the API | md: sandbox: characters=409 | host: verified on the host: 409 characters over 22 line(s). | txt: sandbox: characters=409 | host: verified on the host: 409 characters over 22 line(s)."
+    },
+    {
+      "question": "Which conversions from csv does this sandbox serve?",
+      "outcome": "docx=faithful, xlsx=faithful, pdf=structural, md=faithful, txt=faithful",
+      "detail": "docx: sandbox: paragraphs=0 tables=1 | host: verified on the host: Opened as an OPC package of 17 parts, with word/document.xml at 3371 bytes. | xlsx: sandbox: sheets=Sheet1 | host: verified on the host: Opened as an OPC package of 10 parts, with xl/workbook.xml at 550 bytes. | pdf: sandbox: pages=1 characters=74 | host: verified on the host: A complete PDF of 1534 bytes carrying roughly 1 page object(s). | md: sandbox: characters=133 | host: verified on the host: 133 characters over 6 line(s). | txt: sandbox: characters=119 | host: verified on the host: 119 characters over 5 line(s)."
+    },
+    {
+      "question": "Which conversions from md does this sandbox serve?",
+      "outcome": "docx=faithful, pdf=refused, txt=faithful",
+      "detail": "docx: sandbox: paragraphs=12 tables=0 | host: verified on the host: Opened as an OPC package of 17 parts, with word/document.xml at 2439 bytes. | pdf: ModuleNotFoundError: No module named \u0027markdown\u0027 | sandbox: nothing was produced | host: no artifact reached the API | txt: sandbox: characters=512 | host: verified on the host: 512 characters over 18 line(s)."
+    },
+    {
+      "question": "Which conversions from txt does this sandbox serve?",
+      "outcome": "docx=faithful, pdf=faithful, md=faithful",
+      "detail": "docx: sandbox: paragraphs=11 tables=0 | host: verified on the host: Opened as an OPC package of 17 parts, with word/document.xml at 2515 bytes. | pdf: sandbox: pages=1 characters=435 | host: verified on the host: A complete PDF of 1886 bytes carrying roughly 1 page object(s). | md: sandbox: characters=438 | host: verified on the host: 438 characters over 15 line(s)."
+    },
+    {
+      "question": "Which conversion pairs does this sandbox actually serve, and at what fidelity?",
+      "outcome": "23 served, 4 refused",
+      "detail": "Office converter present: False. Cells that moved from their proposal: pdf to xlsx was structural, now refused; pdf to csv was structural, now refused; md to pdf was faithful, now refused. The container was lost and the sample corpus re-authored 0 time(s) during the pass, which is the measure of whether a container survives a run of this length."
+    }
+  ]
+}
