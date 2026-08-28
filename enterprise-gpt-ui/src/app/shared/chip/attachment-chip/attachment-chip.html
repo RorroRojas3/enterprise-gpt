@@ -87,13 +87,17 @@
   </div>
 
   @if (downloadable()) {
+    <!-- `aria-disabled`, never `disabled`: disabling the element the user just activated hands focus
+         back to `<body>` under the HTML focus-fixup rule, and it never returns. This keeps the control
+         focusable and in the tab order while telling assistive technology it is inert; `download()`
+         carries the guard that `disabled` used to. -->
     <button
       class="chip__action"
       type="button"
       [attr.aria-label]="downloadLabel()"
       [attr.aria-busy]="downloading() ? 'true' : null"
-      [disabled]="downloading()"
-      (click)="downloaded.emit(attachment().id)"
+      [attr.aria-disabled]="downloading() ? 'true' : null"
+      (click)="download()"
     >
       @if (downloading()) {
         <span class="kit-spinner" aria-hidden="true"></span>

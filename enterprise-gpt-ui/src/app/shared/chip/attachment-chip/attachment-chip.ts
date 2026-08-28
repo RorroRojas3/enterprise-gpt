@@ -50,12 +50,22 @@ export class AttachmentChip {
   protected readonly retryLabel = computed(() => `Retry uploading ${this.attachment().fileName}`);
   protected readonly progressLabel = computed(() => `Uploading ${this.attachment().fileName}`);
   /**
-   * The in-flight state is otherwise visual only: the spinner is `aria-hidden` and
-   * `disabled` takes the control out of the tab order, so the label has to carry it.
+   * Carries both the in-flight state — the spinner is `aria-hidden`, so nothing else announces it —
+   * and, for a generated file, that the assistant made it: this is the element that takes focus, and
+   * the wrapper's `role="group"` name is announced on entry by some readers and not others.
    */
-  protected readonly downloadLabel = computed(() =>
-    this.downloading()
-      ? `Downloading ${this.attachment().fileName}`
-      : `Download ${this.attachment().fileName}`,
-  );
+  protected readonly downloadLabel = computed(() => {
+    const target = this.generated()
+      ? `generated file ${this.attachment().fileName}`
+      : this.attachment().fileName;
+
+    return this.downloading() ? `Downloading ${target}` : `Download ${target}`;
+  });
+
+  /** Guards what `disabled` used to; see the template for why the attribute cannot be used here. */
+  protected download(): void {
+    if (!this.downloading()) {
+      this.downloaded.emit(this.attachment().id);
+    }
+  }
 }

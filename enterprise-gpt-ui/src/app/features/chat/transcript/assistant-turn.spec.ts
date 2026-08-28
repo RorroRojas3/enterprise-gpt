@@ -479,4 +479,72 @@ describe('AssistantTurn generated files', () => {
 
     expect(host.querySelector('app-generated-files')).toBeNull();
   });
+
+  /**
+   * The agent's own steps arrive as their own scopes beneath it, so a failed run renders the step that
+   * failed nested inside the agent's card rather than as a flat line on it.
+   */
+  it('renders the failed step nested inside the agent that ran it', async () => {
+    const events = [
+      assistantEvent('ActivityStarted', {
+        scopeId: 'agent-1',
+        depth: 1,
+        toolKind: 'Agent',
+        displayName: 'File Agent',
+      }),
+      assistantEvent('ActivityStarted', {
+        scopeId: 'step-1',
+        parentScopeId: 'agent-1',
+        depth: 2,
+        toolKind: 'Agent',
+        displayName: 'Running code',
+      }),
+      assistantEvent('ActivityProgress', {
+        scopeId: 'step-1',
+        parentScopeId: 'agent-1',
+        depth: 2,
+        toolKind: 'Agent',
+        displayName: 'Running code',
+        message: 'No file was produced',
+      }),
+      assistantEvent('ActivityFailed', {
+        scopeId: 'step-1',
+        parentScopeId: 'agent-1',
+        depth: 2,
+        toolKind: 'Agent',
+        displayName: 'Running code',
+        durationSeconds: 4,
+      }),
+      assistantEvent('ActivityFailed', {
+        scopeId: 'agent-1',
+        depth: 1,
+        toolKind: 'Agent',
+        displayName: 'File Agent',
+        durationSeconds: 9,
+      }),
+    ];
+
+    let snapshot = createInitialSnapshot();
+    let timeline = createInitialTimeline();
+
+    for (const event of events) {
+      snapshot = foldAssistantEvents(snapshot, event);
+      timeline = foldTimeline(timeline, event);
+    }
+
+    fixture.componentRef.setInput('snapshot', snapshot);
+    fixture.componentRef.setInput('timeline', timeline);
+    fixture.componentRef.setInput('streaming', false);
+    fixture.componentRef.setInput('attachments', []);
+    fixture.componentRef.setInput('conversationId', '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b');
+    await fixture.whenStable();
+
+    const child = host.querySelector('.activity-card__children .activity-card');
+
+    expect(host.querySelectorAll('app-icon.activity-card__state--warn')).toHaveLength(2);
+    expect(child?.querySelector('.activity-card__name')?.textContent?.trim()).toBe('Running code');
+    expect(child?.querySelector('.activity-card__substatus')?.textContent?.trim()).toBe(
+      'No file was produced',
+    );
+  });
 });

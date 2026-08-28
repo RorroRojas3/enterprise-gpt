@@ -15,6 +15,13 @@ public interface IFileAgentToolLease : IAsyncDisposable
     /// <summary>Gets the agent, wrapped as one tracked tool for the assistant's tool list.</summary>
     AITool Tool { get; }
 
+    /// <summary>Gets the catalog row the agent ran on, as it stood when the turn borrowed it.</summary>
+    /// <remarks>
+    /// Read when the turn's usage is recorded: an agent tool-call row is the only kind that can name
+    /// the model behind it, and this is what it names.
+    /// </remarks>
+    FileAgentModel Model { get; }
+
     /// <summary>
     /// Gets the files the agent produced and stored during this turn, in the order it produced them.
     /// </summary>
@@ -23,6 +30,14 @@ public interface IFileAgentToolLease : IAsyncDisposable
     /// agent actually runs, and empty for a run that produced nothing.
     /// </remarks>
     IReadOnlyList<MessageAttachmentDto> GeneratedDocuments { get; }
+
+    /// <summary>Withdraws every file this turn stored, for a turn that will not deliver them.</summary>
+    /// <remarks>
+    /// Called when a turn is stopped or fails: the transcript references a generated file only on a
+    /// completed turn, so a row left behind by an abandoned one is a file the user is shown and no
+    /// message introduced. Leaves <see cref="GeneratedDocuments"/> empty, and never throws.
+    /// </remarks>
+    Task DiscardGeneratedAsync();
 }
 
 /// <summary>

@@ -190,6 +190,14 @@ inheritance.
   less than the whole story.
 - **This is not a regression suite.** It is opt-in and billable, so nothing runs it on a schedule.
   The drift assertions exist for the day somebody deliberately re-runs it after an Azure change.
+- **A cell's tier is a recorded outcome of one attempt against a live model, not a physical constant of
+  the sandbox image.** A single exploratory run on 2026-08-28 (`FileAgentSpike:Record` off, so nothing was
+  overwritten) had `pptx → pdf` come back structural rather than the `refused` this document's table
+  states and the confirmed matrix still carries — the same pair the pre-flight (`the-agent.md` §5.2)
+  refuses by name, and unaffected by this, since it reads the committed matrix rather than a live probe.
+  One divergent run is an observation, not a re-recording: the matrix moves only when someone deliberately
+  reruns the gate with `Record` on, reviews the diff, and commits it. Until that happens this table is
+  still what the pre-flight, the skill, and every test in §7 agree on.
 
 ## 7. Key files
 

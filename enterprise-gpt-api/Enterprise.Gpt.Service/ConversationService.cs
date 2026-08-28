@@ -214,6 +214,7 @@ namespace Enterprise.Gpt.Service
         ISheetQueryService sheetQueryService,
         ISheetQueryOptionsProvider sheetQueryOptions,
         IFileAgentToolProvider fileAgentToolProvider,
+        IFileAgentQuotaService fileAgentQuotaService,
         IOptions<FileAgentOptions> fileAgentOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
@@ -244,6 +245,7 @@ namespace Enterprise.Gpt.Service
         private readonly ISheetQueryService _sheetQueryService = sheetQueryService;
         private readonly SheetQueryOptions _sheetQueryOptions = sheetQueryOptions.Current;
         private readonly IFileAgentToolProvider _fileAgentToolProvider = fileAgentToolProvider;
+        private readonly IFileAgentQuotaService _fileAgentQuotaService = fileAgentQuotaService;
         private readonly FileAgentOptions _fileAgentOptions = fileAgentOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
@@ -1106,6 +1108,15 @@ namespace Enterprise.Gpt.Service
                         _logger.LogError(ex, "Disposing the response stream failed for conversation {ConversationId}.", id);
                     }
 
+                    // A generated file reaches the transcript only on a completed turn, so one stored
+                    // by a turn that was stopped or faulted would sit in the conversation's files with
+                    // no message introducing it. Withdrawn before the attachments are read, so the
+                    // audit row records what the user actually got.
+                    if (!completed && fileAgentLease is not null)
+                    {
+                        await fileAgentLease.DiscardGeneratedAsync();
+                    }
+
                     generatedAttachments = [.. fileAgentLease?.GeneratedDocuments ?? []];
 
                     var turn = new TurnOutcome(
@@ -1126,7 +1137,8 @@ namespace Enterprise.Gpt.Service
                         ConversationCreatedAt: conversation.DateCreated,
                         EstimatedPromptTokens: estimatedPromptTokens,
                         Report: usageScope.Report,
-                        Attachments: generatedAttachments);
+                        Attachments: generatedAttachments,
+                        FileAgent: fileAgentLease?.Model);
 
                     // The token that ended the stream is the one that would abort the write
                     // recording it, so finalization runs uncancellable.
@@ -1249,7 +1261,8 @@ namespace Enterprise.Gpt.Service
             DateTimeOffset ConversationCreatedAt,
             long EstimatedPromptTokens,
             ChatUsageReport? Report,
-            IReadOnlyList<MessageAttachmentDto> Attachments);
+            IReadOnlyList<MessageAttachmentDto> Attachments,
+            FileAgentModel? FileAgent);
 
         /// <summary>
         /// Records a finished turn: the conversation's running counters and last model, the usage
@@ -1294,7 +1307,19 @@ namespace Enterprise.Gpt.Service
                     turn.Status, conversationId);
             }
 
-            var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, date);
+            var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, date, turn.FileAgent);
+
+            if (turn.FileAgent is null
+                && turnUsage.ToolCalls.Exists(call => call.Kind == ConversationToolKinds.Agent))
+            {
+                // The startup validator should have made this unreachable. Logged rather than
+                // reconstructed: the column is a foreign key and this write runs after the answer has
+                // already streamed, so a guessed id would trade an unattributed row for a lost one.
+                _logger.LogWarning(
+                    "An agent tool call was reported for conversation {ConversationId} with no resolved agent model; "
+                        + "its usage row carries no model.",
+                    conversationId);
+            }
 
             // Only on a turn that invoked no tools. A turn that ran tools was billed for prompts the
             // estimator never saw — every tool round trip re-sends the conversation plus the tool's
@@ -2554,7 +2579,31 @@ namespace Enterprise.Gpt.Service
                             .AcquireAsync(sessionId, _tokenService.GetOid(), cancellationToken)
                             .ConfigureAwait(false);
 
-                        tools.Add(fileAgentLease.Tool);
+                        // After composition rather than before it, because the ceiling counts rows
+                        // written against the agent's own pinned model and only the lease knows which
+                        // that is. A user over the ceiling still costs one cheap query and one
+                        // composition, and is told plainly rather than being handed a tool that then
+                        // refuses.
+                        var quota = await _fileAgentQuotaService
+                            .CheckAsync(_tokenService.GetOid(), fileAgentLease.Model.ModelId, cancellationToken)
+                            .ConfigureAwait(false);
+
+                        if (quota.Allowed)
+                        {
+                            tools.Add(fileAgentLease.Tool);
+                        }
+                        else
+                        {
+                            await fileAgentLease.DisposeAsync().ConfigureAwait(false);
+                            fileAgentLease = null;
+
+                            // The one stand-down the assistant is told about. Every other reason the
+                            // agent is absent is a capability the user never had; this one is a
+                            // capability they had an hour ago, and silence would read as a fault.
+                            instructions.Add(
+                                $"File generation is unavailable for now. {quota.Explanation} If the user asks for a "
+                                    + "file, tell them the limit was reached and that it resets within a day.");
+                        }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -2562,6 +2611,15 @@ namespace Enterprise.Gpt.Service
                         // the startup validator is where a broken registration is meant to surface.
                         _logger.LogError(
                             ex, "Composing the File Agent failed for conversation {ConversationId}; it is unavailable for this turn.", sessionId);
+
+                        // Dropped rather than left standing: a lease whose tool never reached the tool
+                        // list would still report its model on the turn's usage row, attributing an
+                        // agent to a turn that was never offered one.
+                        if (fileAgentLease is not null)
+                        {
+                            await fileAgentLease.DisposeAsync().ConfigureAwait(false);
+                            fileAgentLease = null;
+                        }
                     }
                 }
 

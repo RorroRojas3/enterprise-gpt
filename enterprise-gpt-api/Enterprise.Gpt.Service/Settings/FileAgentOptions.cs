@@ -85,4 +85,39 @@ public sealed class FileAgentOptions
     /// </remarks>
     [Range(2, 40)]
     public int MaxIterationsPerRun { get; set; } = 12;
+
+    /// <summary>
+    /// Gets or sets how many times a run may regenerate an artifact that failed verification.
+    /// Default: <c>1</c>.
+    /// </summary>
+    /// <remarks>
+    /// Zero is a legitimate setting: it makes the first artifact the only one, which is the right
+    /// choice for a deployment that would rather pay for one attempt than two. Whatever this is, the
+    /// run's own deadline still bounds the total.
+    /// </remarks>
+    [Range(0, 3)]
+    public int MaxVerificationRetries { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets how many File Agent runs one user may start per day, or <see langword="null"/> for
+    /// no ceiling. Default: <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in rather than a default number: a ceiling nobody chose is a capability that stops working
+    /// on a day nobody predicted. At the ceiling the tool is not attached and the assistant is told why,
+    /// so the user gets a sentence rather than an error.
+    /// </remarks>
+    [Range(1, 10_000)]
+    public int? MaxRunsPerUserPerDay { get; set; }
+
+    /// <summary>
+    /// Gets or sets how many seconds of File Agent runs one user may spend per day, or
+    /// <see langword="null"/> for no ceiling. Default: <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Measured from each agent tool call's recorded duration, which is the durable proxy for billed
+    /// sandbox time — the precise figure lives in a metric, which nothing can query back.
+    /// </remarks>
+    [Range(1, 1_000_000)]
+    public int? MaxSandboxSecondsPerUserPerDay { get; set; }
 }

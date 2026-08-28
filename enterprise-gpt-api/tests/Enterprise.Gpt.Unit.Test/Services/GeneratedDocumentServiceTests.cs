@@ -202,6 +202,59 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             TestContext.Current.CancellationToken));
     }
 
+    // A file stored by a turn that was then stopped: the transcript never references it, so leaving the
+    // row active would show the user a file no message introduced.
+    [Fact]
+    public async Task DiscardAsync_AStoredDocument_DeactivatesTheRowAndRemovesTheBlob()
+    {
+        var conversation = await AddConversationAsync();
+        var stored = await _service.StoreAsync(
+            new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "summary.xlsx", [1, 2, 3]),
+            TestContext.Current.CancellationToken);
+
+        await _service.DiscardAsync(stored.Id);
+
+        using var ctx = _fixture.CreateContext();
+        var document = await ctx.ConversationDocuments.SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(document.DateDeactivated);
+        await _blobStorageService.Received(1).DeleteAsync(
+            GeneratedContainerName,
+            $"{KnownIds.SeedUserId}/{conversation.Id}/{stored.Id}.xlsx",
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DiscardAsync_ADocumentThatIsNotThere_DoesNothing()
+    {
+        await _service.DiscardAsync(Guid.NewGuid());
+
+        await _blobStorageService.DidNotReceiveWithAnyArgs()
+            .DeleteAsync(default!, default!, TestContext.Current.CancellationToken);
+    }
+
+    // It runs while a turn is already unwinding, and a cleanup failure that replaced the exception in
+    // flight would lose why the turn ended.
+    [Fact]
+    public async Task DiscardAsync_WhenTheBlobDeleteFails_DoesNotThrow()
+    {
+        var conversation = await AddConversationAsync();
+        var stored = await _service.StoreAsync(
+            new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "summary.xlsx", [1, 2, 3]),
+            TestContext.Current.CancellationToken);
+
+        _blobStorageService
+            .DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("storage is down"));
+
+        await _service.DiscardAsync(stored.Id);
+
+        using var ctx = _fixture.CreateContext();
+        var document = await ctx.ConversationDocuments.SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(document.DateDeactivated);
+    }
+
     private GeneratedDocumentService CreateService(IConfiguration configuration, long maxFileSizeBytes = 50L * 1024 * 1024) =>
         new(NullLogger<GeneratedDocumentService>.Instance,
             _blobStorageService,

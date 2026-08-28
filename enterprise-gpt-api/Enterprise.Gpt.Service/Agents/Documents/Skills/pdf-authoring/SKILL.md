@@ -36,7 +36,7 @@ from weasyprint import HTML
 HTML(string=html).write_pdf("/mnt/data/report.pdf")
 ```
 
-Good for content that is naturally a document — headings, tables, lists. It is the engine behind the structural Office-to-PDF path.
+Good for content that is naturally a document — headings, tables, lists. **It failed with an `AttributeError` on every Office-to-PDF attempt recorded against this image**, so reach for it second: `reportlab` is what produced every confirmed structural conversion.
 
 ## fpdf2 — short, simple pages
 

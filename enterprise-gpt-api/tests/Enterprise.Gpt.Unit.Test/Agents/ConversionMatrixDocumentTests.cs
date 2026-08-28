@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Enterprise.Gpt.Service.Agents;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Agents;
@@ -149,6 +150,34 @@ public sealed class ConversionMatrixDocumentTests
             ReadMatrixBlock(ConversionSkillPath) == rendered,
             $"The matrix table in '{ConversionSkillPath}' no longer matches '{MatrixPath}'. Replace everything "
             + $"between the markers with:{Environment.NewLine}{Environment.NewLine}{rendered}");
+    }
+
+    // The third reader of this file, and the one that acts on it: a pair offered in the skill and refused
+    // in code — or the reverse — is what publishing one file rather than three tables prevents.
+    [Fact]
+    public void ConversionMatrixLoader_EveryCell_AgreesWithTheJsonItWasReadFrom()
+    {
+        using var matrix = Load();
+        var loaded = ConversionMatrix.Load(MatrixPath);
+
+        var expected = Cells(matrix).ToDictionary(
+            cell => (cell.GetProperty("from").GetString()!, cell.GetProperty("to").GetString()!),
+            cell => cell.GetProperty("tier").GetString()!);
+
+        Assert.Equal(expected.Count, loaded.Cells.Count);
+
+        foreach (var cell in loaded.Cells)
+        {
+            var tier = expected[(cell.From, cell.To)];
+
+            Assert.Equal(tier, cell.Tier switch
+            {
+                ConversionTiers.Faithful => "faithful",
+                ConversionTiers.Structural => "structural",
+                ConversionTiers.Refused => "refused",
+                _ => "notOffered"
+            });
+        }
     }
 
     private static string ReadMatrixBlock(string path)

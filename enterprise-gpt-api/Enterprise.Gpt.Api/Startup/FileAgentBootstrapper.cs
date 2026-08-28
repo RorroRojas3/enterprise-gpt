@@ -57,13 +57,19 @@ public static class FileAgentBootstrapper
         // output fails the deploy rather than the first user request.
         _ = ConversationPrompts.BuildFileAgentPrompt([]);
 
+        // Same reason, and it fails the same way: the run's pre-flight refuses a conversion from this
+        // file, and a deployment without it would offer every pair instead of the confirmed ones.
+        var matrix = services.GetRequiredService<IConversionMatrix>();
+
         var skills = FileAgentSkills.Discover(skillsRoot);
 
         logger.LogInformation(
-            "The File Agent will use model {ModelId} ({DeploymentName}) on provider {ProviderId}, with {SkillCount} skill(s).",
+            "The File Agent will use model {ModelId} ({DeploymentName}) on provider {ProviderId}, with {SkillCount} skill(s) "
+                + "and a conversion matrix of {CellCount} cell(s).",
             model.ModelId,
             model.DeploymentName,
             model.ProviderId,
-            skills.Count);
+            skills.Count,
+            matrix.Cells.Count);
     }
 }

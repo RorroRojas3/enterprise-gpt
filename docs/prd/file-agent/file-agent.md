@@ -400,7 +400,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a request for a file that produced only prose to be reported as a failure, so that I am not handed a confident answer with nothing attached to it.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a run whose response carries text but no artifact on any channel, when it completes, then it is classified as "no file produced" and the activity renders failed, not completed.
   - Given that classification, when the caller receives it, then it is distinguishable from a run that threw and from a run whose artifact failed verification (EP-4) — three different outcomes, three different messages.
@@ -422,7 +422,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want Stop to actually stop a long file-generation run, so that I am not left waiting on work I already abandoned.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a running File Agent turn, when the user presses Stop, then the cancellation token reaches the sandbox call and it is abandoned rather than left to complete in the background.
   - Given the cancellation, when the turn unwinds, then the conversation lock is released, no `ConversationDocument` row is committed, and any blob already written is removed or logged for reclamation.
@@ -516,7 +516,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want to describe a document and receive it as a real file, so that I can use the assistant's output in the tools my work actually happens in.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-303, US-103
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a request naming or implying one of `docx`, `xlsx`, `pptx`, `csv`, `md` or `txt`, when the agent runs, then it writes and executes Python in the sandbox, produces that file, and it is persisted through US-103's write path as a `Generated` document with zero chunk rows.
   - Given a request that does not name a format, when the agent runs, then it chooses one from the content and states its choice in the answer rather than asking a clarifying question that stalls the turn.
@@ -528,7 +528,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want the assistant to check that the file it made actually opens and matches what I asked for, so that I do not discover a corrupt document after downloading it.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-401
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a generated artifact, when the agent finishes writing it, then a second sandbox pass re-opens the file and asserts it parses, is non-zero bytes, and matches the requested shape — sheet count for `xlsx`, slide count for `pptx`, page count for `pdf`, a parseable header row for `csv`.
   - Given the verification pass, when it runs, then it makes no model call: it is deterministic Python whose pass/fail is a returned value, and it is what the artifact-validity success criterion counts. No reviewer agent or second LLM is introduced.
@@ -540,7 +540,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a PDF when I ask for one, and I want to know it will look plainer than a Word export, so that I choose the right format for the job.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a request for a PDF, when the agent runs, then it produces one entirely inside the sandbox using only fonts and libraries confirmed present by EP-0 — no web font or external renderer is fetched, because the sandbox has no outbound network access.
   - Given the produced PDF, when it is verified per US-402, then its page count is asserted against the requested shape and it opens in a standard reader.
@@ -551,7 +551,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want to hand the assistant a document already in the conversation and ask for changes, so that I do not have to describe the whole thing again from nothing.
 - **Priority**: P1 · **Estimate**: L · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a document in the conversation named in the instruction, when the agent runs, then it is resolved via US-202's matcher, its bytes are supplied to the sandbox, and the agent edits it in place there.
   - Given the edit completes, when it is persisted, then it is written as a **new** `Generated` document; the source — uploaded or generated — is never overwritten, so an edit is always recoverable.
@@ -562,7 +562,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want to ask what changed between two documents, so that I get an answer instead of reading both.
 - **Priority**: P1 · **Estimate**: L · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given two documents in the conversation, in any of the seven formats, when the agent is asked to compare them, then both are resolved and supplied to the sandbox, and the comparison runs there.
   - Given a comparison, when it completes, then the differences are reported in the answer, and a comparison **document** is produced only when the user asked for one.
@@ -573,7 +573,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want to turn a document I already have into a different format, so that I can hand it to whichever tool actually needs that format.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-402, US-003
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a source document and a requested target format that appear as either `✓` or `◐` in US-003's confirmed matrix, when the agent runs, then it produces the converted file and verifies it per US-402 — a `◐` tier is a conversion to be served, not a reason to decline.
   - Given a pair confirmed at the `◐` structural tier — every Office → `pdf` conversion when no `soffice` binary is present, and `pdf` → `docx` — when it completes, then the answer names what did not survive (exact pagination, typography, vendor-specific layout) in one sentence, without turning it into a standing disclaimer on every future answer.
@@ -585,7 +585,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a conversion request the platform genuinely cannot do told to me plainly, so that I do not wait for a file that was never coming.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-406
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a requested pair confirmed `refused` in US-003's matrix — `pdf` → `pptx` being the only one proposed — when the agent is asked for it, then it refuses before any sandbox run starts, naming the pair and why the result would not be worth handing over (a slide deck rebuilt from rendered pages is images with no editable content), and suggests a supported alternative when one exists.
   - Given a pair confirmed at the `◐` structural tier, when it is requested, then it is **served, not refused** — a refusal here is a defect against the conversion-fidelity-honesty criterion, since a fidelity caveat is not a reason to withhold the file.
@@ -597,7 +597,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a file request that cannot run to be explained rather than to break the conversation, so that a missing capability costs me a sentence and not a turn.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-303
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a model whose catalog row reports `IsToolEnabled == false`, when a turn runs, then the File Agent is not attached, a warning is logged naming the model, and the turn proceeds normally — an implicit tool, exactly like document retrieval, that stands down rather than failing the turn.
   - Given the feature flag off or the agent's registration unconfigured, when a turn runs, then the tool is not attached and the assistant is never told about a capability it cannot call.
@@ -611,7 +611,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Populate `ConversationUsageToolCall.ModelId`/`DeploymentName` for `Agent`-kind rows by mapping the File Agent to its catalog `Model`, retiring the "none exists yet" comment in `UsageReportTranslator`. Unblocks US-502 and US-503.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-303
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given an agent tool-call row, when it is built, then `ModelId` resolves to the File Agent's catalog `Model` and `DeploymentName` to that model's deployment name — the two fields currently hard-coded to null.
   - Given the comment at those two assignments, when this story lands, then it is replaced with one describing the resolution rule, not deleted silently; `Function`/`McpTool` rows still write null, and the comment says why.
@@ -621,7 +621,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add the index `ConversationUsageToolCallConfiguration` defers with "add it with the first agent that reports a model," now that one does. Unblocks per-model reporting in US-506's ceiling and any future admin cost view.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-501
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the configuration, when the index is added, then it is `(ModelId, DateCreated)`, matching the shape of the `(McpServerId, DateCreated)` and `(Kind, DateCreated)` indexes already there, and the deferral comment is replaced by the index itself.
   - Given the index, when the migration is generated, then it is a normal `dotnet ef migrations add`, following this PRD's own discriminator migration.
@@ -631,7 +631,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As an administrator, I want a File Agent turn's cost to add up, so that a conversation's totals are not quietly missing what the agent spent, or doubled by a wrong `trackUsage` choice.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-501, US-401
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a turn that called the File Agent, when the audit rows are read, then there is one `Kind = Agent`, `Depth = 0` row with its own tokens, and the enclosing turn's own row is unaffected by them.
   - Given those rows, when their own-versus-subtree token split is checked, then `SubtreeTotalTokens` equals own plus descendants', and no `InputTokens`/`OutputTokens` value is negative.
@@ -642,7 +642,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As an operator, I want sandbox session time measured, so that I am not reading a token bill that omits the most expensive part of the feature.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a run, when it completes or fails, then its elapsed sandbox time is recorded as a histogram tagged with the outcome — a session is billed on top of token fees, so tokens alone do not capture this feature's cost.
   - Given concurrent conversations, when each runs its own File Agent turn, then the count of concurrently active sandbox calls is observable.
@@ -652,7 +652,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As an operator, I want File Agent activity in the traces I already collect, so that a slow or failing run is diagnosable without reading application logs.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a `file_agent.run.duration` histogram and a `file_agent.verification` counter, when they are registered, then they follow the one-line-per-instrument pattern the existing `Meter` in `Enterprise.Gpt.Service/Observability/ChatMetrics.cs` already establishes.
   - Given the instruments, when they are constructed, then they live in `Enterprise.Gpt.Service`, never `Api`, because `Service` does not depend on `Api`.
@@ -663,7 +663,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As an operator, I want a ceiling on file generation per user or per conversation, so that one person's afternoon cannot become the month's cost anomaly.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-504
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `FileAgentOptions.MaxRunsPerUserPerDay`, when it is set, then a request that would exceed it does not run and the assistant tells the user the limit was reached.
   - Given the ceiling is unset (`null`), when the feature runs, then it behaves exactly as it does without this story — the ceiling is opt-in, not a surprise default.
@@ -710,7 +710,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want to see what the assistant is doing while it builds my file, so that a long wait reads as progress rather than as a hang.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-303
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a turn that calls the File Agent, when the stream is folded, then a `depth: 1` activity card renders with the agent's `displayName` and an **Agent** kind badge shown as separate elements — a pre-composed label like "Calling File Agent" fails this criterion.
   - Given the agent's internal steps, when they arrive as `depth: 2` events with a `parentScopeId` naming the agent's scope, then they render nested inside the agent card, using the nesting `activity-card.ts` already performs for MCP children.
@@ -722,7 +722,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a failed file request to look like a failure, so that I do not wait for a chip that is never coming.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-604, US-408
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given an `ActivityFailed` on the agent's scope, when it renders, then the card shows failed with its reason and no chip renders for that turn.
   - Given the distinct backend outcomes — verification failed, no file produced, refused conversion, and the run threw — when each renders, then the copy differs; a single generic "something went wrong" fails this criterion.
@@ -732,7 +732,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user relying on a keyboard or a screen reader, I want to reach and download a generated file, so that the feature is usable rather than decorative.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-601, US-604
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the chip, when the transcript is navigated by keyboard, then it is a real `<button>` in tab order, activated by Enter and Space, with a visible focus ring, and focus returns to it after the download begins.
   - Given a screen reader, when a chip is focused, then its accessible name states that the file was generated and names it — the icon is not the only carrier of that distinction.
@@ -744,7 +744,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Measure and record the production bundle's initial raw/transfer size after this epic's components land, confirming they ride the lazy `chat` chunk rather than the initial graph, and update the documented baseline. Unblocks nothing downstream but is required before this epic is accepted.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-601
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `npm run build`, when it runs after this epic's stories land, then `check-initial-chunk.mjs` passes, confirming no static import from `main.ts` reaches any File Agent-specific component or store.
   - Given the initial bundle, when it is measured, then it stays under the 675 kB warn line, and the delta from the prior documented baseline is recorded with which story caused it.

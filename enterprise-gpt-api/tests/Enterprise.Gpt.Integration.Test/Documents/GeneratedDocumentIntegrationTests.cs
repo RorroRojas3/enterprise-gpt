@@ -125,6 +125,52 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
             .CountAsync(x => x.ConversationId == conversationId, TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// What a stopped turn leaves behind, end to end: the row is deactivated and the blob is gone, so
+    /// the conversation never lists a file no message introduced.
+    /// </summary>
+    [Fact]
+    public async Task DiscardAsync_AStoredDocument_LeavesNoLiveRowAndNoBlob()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var stored = await StoreAsync(conversationId, "abandoned.docx", [1, 2, 3]);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<IGeneratedDocumentService>().DiscardAsync(stored.Id);
+
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        var document = await ctx.ConversationDocuments
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == stored.Id, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(document.DateDeactivated);
+        Assert.Empty(await _fixture.Factory.BlobStorage.DownloadAsync(
+            GeneratedContainer, document.Path, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// The index the usage table deferred until an agent could write a non-null <c>ModelId</c>, which
+    /// the per-user ceiling reads and which only exists if the migration actually applied.
+    /// </summary>
+    [Fact]
+    public async Task Schema_ConversationUsageToolCall_CarriesTheModelAndDateIndex()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var indexes = await ctx.Database
+            .SqlQuery<string>($"""
+                SELECT i.name AS Value
+                FROM sys.indexes i
+                JOIN sys.objects o ON o.object_id = i.object_id
+                JOIN sys.schemas s ON s.schema_id = o.schema_id
+                WHERE s.name = 'Core' AND o.name = 'ConversationUsageToolCall'
+                """)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("IX_ConversationUsageToolCall_ModelId_DateCreated", indexes);
+    }
+
     private async Task<MessageAttachmentDto> StoreAsync(Guid conversationId, string fileName, byte[] content)
     {
         using var scope = _fixture.Factory.Services.CreateScope();

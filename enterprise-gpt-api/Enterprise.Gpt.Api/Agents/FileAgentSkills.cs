@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using Enterprise.Gpt.Service.Agents;
 using Microsoft.Agents.AI;
 
 namespace Enterprise.Gpt.Api.Agents;
@@ -20,9 +21,6 @@ public static class FileAgentSkills
 
     /// <summary>The skill every run advertises, whatever it was asked for.</summary>
     private const string VerificationSkill = "artifact-verification";
-
-    private static readonly char[] _wordBreaks =
-        [' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '\"', '\'', '/', '\\'];
 
     /// <summary>
     /// What each skill is about, lower-cased. A skill is advertised when the run's instruction
@@ -186,10 +184,9 @@ public static class FileAgentSkills
 
         // Whole words, not substrings: "text" occurs inside "context" and "md" inside "command",
         // and a topic that matches everything advertises everything, which is the cost this filter
-        // exists to avoid.
-        HashSet<string> words = new(
-            instruction.Split(_wordBreaks, StringSplitOptions.RemoveEmptyEntries),
-            StringComparer.OrdinalIgnoreCase);
+        // exists to avoid. The same split the conversion pre-flight reads its targets with, so the
+        // two cannot disagree about where a word ends.
+        var words = FileAgentFormats.Words(instruction);
 
         List<string> matched = [.. _topics
             .Where(pair => pair.Value.Any(words.Contains))

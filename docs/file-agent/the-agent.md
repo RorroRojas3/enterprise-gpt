@@ -7,13 +7,12 @@ and settings, the client it runs on, how a file gets in and a produced artifact 
 SDK bridge that was not built to carry either, its skills, and the guarantees that keep every line of
 Python it runs inside the sandbox.
 
-**Scope.** This is Wave 1 — the agent's composition, its model, its skills, and the mount/harvest
-mechanism. It does **not** cover what the agent is actually asked to do: no deterministic verification
-pass exists yet, none of the four verbs (create, edit, compare, convert) has its own tested behaviour,
-and a run that answers with prose and no file is not yet told apart from one that succeeded. See §12 for
-the full list of what is not built. For where a produced file is stored and delivered, see
-[`generated-files.md`](generated-files.md); for what the sandbox itself can and cannot do, see
-[`sandbox-capabilities.md`](sandbox-capabilities.md).
+**Scope.** This covers Waves 1 and 2 — the agent's composition, its model, its skills, the mount/harvest
+mechanism, and what a run actually does: the refusals it makes before opening a sandbox, the check every
+artifact passes before it is stored, how a run's outcome is classified and reported, and what it costs.
+The one thing still missing is the permission gate; see §12. For where a produced file is stored and
+delivered, see [`generated-files.md`](generated-files.md); for what the sandbox itself can and cannot do,
+see [`sandbox-capabilities.md`](sandbox-capabilities.md).
 
 ## 1. `FileAgentOptions`, and every setting
 
@@ -29,6 +28,9 @@ Bound from the `FileAgent` configuration section
 | `ToolTimeoutSeconds` | `300` | 30–1800 | The wall-clock ceiling on one `file_agent` call, independent of the outer turn's own bounds — see §4. |
 | `MaxArtifactsPerRun` | `3` | 1–10 | How many artifacts one run may persist; the surplus is dropped and reported rather than failing a run that also produced what was asked for. |
 | `MaxIterationsPerRun` | `12` | 2–40 | The agent's own `MaximumIterationsPerRequest`, set on its dedicated client (§4) — its own number because the agent spends iterations the outer turn does not (load a skill, read its reference, run the code, re-open the artifact). |
+| `MaxVerificationRetries` | `1` | 0–3 | How many times a run may regenerate an artifact that failed its check (§5.3). Zero is legitimate: one attempt, and a deployment that would rather not pay for a second. |
+| `MaxRunsPerUserPerDay` | *(none)* | 1–10 000 | Runs one user may start in a rolling day, or unset for no ceiling (§11.1). |
+| `MaxSandboxSecondsPerUserPerDay` | *(none)* | 1–1 000 000 | Seconds of file generation one user may spend in a rolling day, or unset for no ceiling (§11.1). |
 
 `Enabled` is validated by neither `[Range]` nor `Validate(...)` (it is a plain `bool`), but `ModelId` is
 explicitly checked non-empty — `options.ModelId != Guid.Empty` — because a `Guid` has no natural "unset"
@@ -152,11 +154,110 @@ Two alternatives were weighed and rejected:
   fires here.
 
 What the assistant reads back from the tool call — `Describe(result)` — is not the agent's raw text
-verbatim. A run that stored nothing gets an explicit `"[No file was saved. ... Do not describe a file as
-though the user has one.]"` appended, because the agent legitimately produces no file sometimes (an
-unsupported conversion, an ambiguous source name) and turning that into a thrown exception would make a
-correct refusal look like a broken tool call. Telling a *genuine* failure apart from a legitimate refusal
-is a separate concern this wave does not yet build (§12, US-203).
+verbatim. A successful run gets the file's name and its **measured** shape appended
+(`"[Saved and attached to your answer: summary.xlsx (2 sheets (Revenue, Detail)).]"`), so an answer that
+quotes it is stating what the file actually holds rather than what was asked for. A run that stored
+nothing but did not fail gets `"[No file was saved. … Do not describe a file as though the user has
+one.]"` — see §5.1 for which of those two a run is.
+
+### 5.1 The nine outcomes a run can have
+
+Every `file_agent` invocation ends in exactly one outcome
+(`Enterprise.Gpt.Service/Agents/FileAgentOutcomes.cs`), decided by the middleware rather than reported by
+the model. Three of them are **refusals**, which return an answer and complete the activity; the rest are
+**failures**, which throw a sanitized `InvalidOperationException` so the tracking wrapper renders the
+activity failed and `IncludeDetailedErrors` hands the assistant a sentence it can explain.
+
+| Outcome | Reached when | Surfaces as |
+| --- | --- | --- |
+| `refused-conversion` | The pre-flight (§5.2) matched one source and one target, and the matrix marks the pair refused | An answer naming the pair and a supported alternative. **No sandbox session.** |
+| `refused-ambiguous` | A name in the instruction belongs to more than one live document | An answer asking which. No sandbox session. |
+| `refused-unknown-source` | The instruction names a file the conversation does not have | An answer naming what it does have. No sandbox session. |
+| `no-file-produced` | The run returned and stored nothing, and nothing failed a check | A failed activity reading "No file was produced" |
+| `verification-failed` | Every artifact failed to re-open, and the retry bound is spent | A failed activity reading "The file did not open when checked" |
+| `timed-out` | `ToolTimeoutSeconds` elapsed | A failed activity reading "Stopped at the time limit" |
+| `cancelled` | The turn was stopped | The cancellation propagates; the turn's own unwind handles it |
+| `error` | Anything else threw | A failed activity |
+| `created` | At least one artifact verified and was stored | The answer, plus the chip |
+
+The four failures' wording lives in one place, `FileAgentFailures.cs` — a `FileAgentFailure(Outcome,
+Message, SubStatus)` record per failure — rather than at each throw site, because progress events
+deliberately never carry error text: the line reported just before the scope fails is the only channel a
+reason has, and a single "something went wrong" would collapse the distinction the timeline exists to
+draw. `FileAgentFailuresTests` asserts all seven lines a card can show — the four failures above plus the
+three refusals — read as seven distinct strings.
+
+Telling a refusal apart from a failure is what the pre-flight makes deterministic: a refusal never
+reaches the sandbox, so a run that answers with prose *after* calling the code interpreter and produces
+nothing is a failure, whatever the prose said.
+
+### 5.2 The pre-flight, and why it is deliberately narrow
+
+`FileAgentPreflight.Evaluate` (`Enterprise.Gpt.Service/Agents/`) runs before the inner agent call. It
+refuses a conversion **only** when exactly one source is resolved, exactly one target format is named,
+and the confirmed matrix marks that cell `refused` — today `pptx` → `pdf` and `pdf` → `pptx`, and nothing
+else. Anything less certain runs.
+
+That narrowness is the point. Refusing a pair the sandbox can genuinely perform is as much a defect as
+promising one it cannot, so a `◐` structural cell is always served with its caveat and never declined; a
+test enumerates every published cell and asserts exactly that.
+
+Target detection (`FileAgentFormats.DetectTargets`) removes the resolved source's own file name before
+scanning, because "convert deck.pptx to pdf" otherwise reads its own source as a second target and no
+request naming a source would ever name exactly one. Matching is on whole words and the vocabulary is
+deliberately narrower than the skill filter's: "document" and "sheet" are excluded, because a wrong
+reading here refuses a conversion where a wrong reading there merely advertises an unwanted skill.
+
+### 5.3 Verification: on this host, not in the sandbox
+
+Every artifact is downloaded, **re-opened and measured before it is stored**
+(`Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs`): `DocumentFormat.OpenXml` for
+`docx`/`xlsx`/`pptx`, `PdfSharp` for `pdf`, `CsvHelper` for `csv`, a throwing UTF-8 decode for `md`/`txt`.
+It reports what it found — paragraphs and tables, sheet names, slide count, page count, columns and rows —
+and that measurement is what the answer quotes.
+
+It runs **on the API host rather than as a second sandbox pass**, which is a deliberate departure from
+the PRD's wording. The PRD asks for both "a second sandbox pass" and "makes no model call", and on the
+Responses route those cannot both hold: code runs in the sandbox only when a model emits it. Host-side is
+literally deterministic, costs no tokens and no sandbox seconds, and checks the exact bytes that will be
+stored and downloaded rather than a copy still inside the container. Nothing here runs Python on the host —
+opening a package with the Open XML SDK is not script execution, and §9's guarantees are untouched.
+
+A failed check does not store the file. While no artifact has verified, the middleware appends the
+failure to the conversation and calls the agent again — bounded by `MaxVerificationRetries` (default `1`)
+and by the run's own deadline. Once that is spent with nothing verified, the run throws
+`verification-failed`, and **no row and no blob exist**, because nothing was ever stored.
+
+### 5.4 What the timeline shows
+
+The agent's client carries no tool tracking, so a bare `ChatProgress.Report(...)` lands as a sub-status
+on the agent's own card. Three steps open a **nested scope** instead
+(`ChatProgress.BeginToolScope`), which is what draws them as `depth: 2` cards beneath the agent:
+`Preparing files` (only when a source file is mounted), `Running code` (once per attempt), and `Checking
+the file` (once per artifact `StoreAsync` processes).
+
+The descriptor carries prose in **`Name` as well as `DisplayName`**. The card reads its label off `Name`;
+only the status line the tracker composes uses `DisplayName`. `Name` is a **constant** — `"Checking the
+file"`, never the artifact's own name — and a code identifier there would put `run_code` on screen. The
+file name goes on the ephemeral `ChatProgress.Report($"Checking {name}")` line instead, which is never
+persisted.
+
+**Each of those three steps is its own row in `Core.ConversationUsageToolCall`** — already, per
+[`usage-and-favorites.md` §6.3](../conversations/usage-and-favorites.md#63-coreconversationusagetoolcall),
+the largest table in the schema — nested beneath the `file_agent` call's own row rather than folded into
+it. A creation run with no source file and no verification retry adds two nested rows; an edit or a
+convert, which mounts one, adds three; a verification retry (§5.3) repeats `Running code` and `Checking
+the file` for each further attempt. Worth knowing before writing a report against this table — a nested
+scope is exactly what makes the timeline in §5.1 renderable and auditable, not a leak.
+
+### 5.5 Cancellation
+
+A turn that is stopped or fails after the agent has already stored a file withdraws it:
+`IFileAgentToolLease.DiscardGeneratedAsync()` soft-deletes each row and deletes its blob, called from
+`ConversationService`'s streaming `finally` when the turn did not complete. A generated file reaches the
+transcript only on a completed turn, so a row left behind by an abandoned one would show the user a file
+no message introduced. The row-first ordering, the DI scope and why the write is uncancellable are
+[`generated-files.md` §4](generated-files.md#4-withdrawing-a-file-the-turn-did-not-deliver)'s to describe.
 
 ## 6. Skills, and their two-stage trimming
 
@@ -224,7 +325,7 @@ list the tool instance was constructed with.
 `IFileAgentDocumentReader` (`Enterprise.Gpt.Service/Agents/FileAgentDocumentReader.cs`) deliberately
 covers a *wider* corpus than `DocumentRetrievalService`'s own scope: it must see a conversation's
 generated documents too, or the agent could never edit or convert a file it produced earlier — where
-retrieval must never see one at all (see [`generated-files.md`](generated-files.md) §5). Both apply the
+retrieval must never see one at all (see [`generated-files.md`](generated-files.md) §6). Both apply the
 identical ownership rule the download route already enforces.
 
 Mutating one shared `Inputs` list per turn, rather than allocating a fresh tool per call, is safe **only**
@@ -295,41 +396,104 @@ shipped instead.
 | `FileAgent:*` | `FileAgentOptions` | §1 |
 | `AzureStorage:GeneratedContainer` | Write path | [`generated-files.md`](generated-files.md) §2 |
 
-## 12. What Wave 1 does not build yet
+### 11.1 The per-user ceiling
 
-This document describes the mechanism, not the product. None of the following exists yet — do not assume
-any of it when reading the code:
+Both ceilings are **opt-in**: unset, the feature behaves exactly as it did without them, and
+`FileAgentQuotaService` never queries. Set, they are counted from the audit rows themselves — `Kind =
+Agent`, `Depth = 0`, `ModelId` equal to the agent's pinned row, over a rolling 24 hours — so what the
+ceiling counts and what the bill counts are the same rows. A **rolling** window rather than a calendar
+day, because a UTC midnight reset lands in the middle of the working afternoon somewhere.
 
-- **The four verbs' own behaviour.** Today the agent has only its generic instructions
-  (`file-agent-instructions.md`) and whatever the model attempts unprompted; create, edit, compare and
-  convert have no dedicated logic or tests of their own (EP-4).
-- **A deterministic verification pass.** Nothing re-opens a produced artifact and checks it matches the
-  requested shape before it is stored.
-- **"No file produced" as a named, distinct failure.** A run that answers with prose and no artifact is
-  not yet told apart from one that genuinely completed.
-- **Stop-cancellation cleanup.** Pressing Stop mid-run is not yet wired to abandon the sandbox call,
-  release the lock promptly, or clean up a partial artifact.
-- **Usage attribution.** `UsageReportTranslator`'s `ModelId`/`DeploymentName` nulls are still unfilled for
-  an agent tool-call row, no sandbox-seconds metric exists, and there is no per-user spend ceiling —
-  the setting for one is deliberately absent rather than bound-and-ignored, because a documented cost
-  control nothing enforces is worse than none.
-- **The agent's own activity-card states.** Nested activities reach the stream structurally through
-  `ChatProgress`, but no dedicated states, failure copy, or accessibility pass has shipped for them.
+At the ceiling the tool is **not attached**, and one sentence is added to the turn's instructions telling
+the assistant the limit was reached so it can say so. That is the only stand-down the assistant is told
+about: every other reason the agent is absent is a capability the user never had, and announcing one
+would advertise something they cannot use.
+
+The sandbox-seconds ceiling reads the agent tool call's own recorded duration, which is the durable proxy
+for billed session time — the precise figure lives in the `sandbox.duration` metric (§11.2), which
+nothing can query back.
+
+### 11.2 Telemetry
+
+Four instruments on the existing chat `Meter` (`Enterprise.Gpt.Service/Observability/ChatMetrics.cs`), so
+the exporter registration picks them up with no wiring change:
+
+| Instrument | Type | Dimensions |
+| --- | --- | --- |
+| `enterprise_gpt.file_agent.run.duration` | Histogram, `s` | `file_agent.outcome` |
+| `enterprise_gpt.file_agent.verification` | Counter, `{artifact}` | `file_agent.outcome` (`passed`/`failed`), `document.type` |
+| `enterprise_gpt.file_agent.sandbox.duration` | Histogram, `s` | `file_agent.outcome` |
+| `enterprise_gpt.file_agent.sandbox.active` | UpDownCounter, `{session}` | — |
+
+Plus one span per run, `file_agent.run`, from an `ActivitySource` named with the same
+`TelemetryNames.ChatSource` (`Observability/FileAgentTracing.cs`), tagged with the outcome and with an
+error status for every outcome that leaves the user without a file — a refusal is a correct answer and is
+tagged `Ok`.
+
+No dimension carries prompt content, a tool argument, generated source, a signed URL or a user-supplied
+file name. `document.type` is the extension, not the name, and the question it answers — which formats
+fail — is the one the artifact-validity criterion asks.
+
+`sandbox.duration` measures the model round trip that carries the code interpreter, which is the only
+observable proxy for billed session seconds on this route: the provider bills the session separately from
+tokens and reports neither back.
+
+### 11.3 Usage attribution
+
+`UsageReportTranslator` fills `ModelId`/`DeploymentName` on a tool-call row when — and only when — the row
+is `Kind = Agent` **and** its tool name is `file_agent`. Its own nested calls are the agent's tools rather
+than further model turns, so they still write null, as does every other tool kind; that is the honest
+answer rather than a gap. A `file_agent` row on a turn with no resolved agent model — the misconfiguration
+the startup validator (§2) should have caught — leaves the columns null and logs a warning, because the
+column is a foreign key and this write runs after the answer has already streamed.
+
+`trackUsage: true` (§5) is what puts the agent's own tokens on that row without touching the turn's. The
+`(ModelId, DateCreated)` index `ConversationUsageToolCall` deferred "until the first agent that reports a
+model" now exists — migration `20260828195328_AddConversationUsageToolCallModelIndex`, filtered `WHERE
+[ModelId] IS NOT NULL` and replacing the unfiltered, EF-by-convention single-column `ModelId` index — and
+is what the ceiling above reads.
+
+## 12. What is not built yet
+
 - **The permission gate.** The feature is reachable by anyone once `FileAgent:Enabled` is on; the
-  dedicated grant arrives in a later wave, which is also why the flag defaults off.
+  dedicated grant is Wave 3, which is also why the flag defaults off.
+
+Everything else the PRD asks for is in place. The two things worth knowing before reading the code, both
+deliberate departures recorded where they happen:
+
+- Verification runs **on the API host**, not as a second sandbox pass (§5.3).
+- The **benchmark** (`tests/Enterprise.Gpt.Integration.Test/FileAgentBenchmark/`) is opt-in and
+  default-skipped, because thirty prompts is thirty billable Code Interpreter sessions. It measures the
+  same verifier a real run uses, and asserts the ≥ 90% threshold the artifact-validity criterion states.
 
 ## 13. Testing
 
-**Unit** (`Enterprise.Gpt.Unit.Test.Agents.FileAgentSkillsTests`): skill discovery against the real build
-output, topic-based selection (including that an unmatched instruction advertises everything and a
-matched one leaves the others out), that two runs get distinct provider instances, that the one
-registered script runner refuses when invoked, and a code-search guard confirming no
-`Azure.AI.Projects`/`AIProjectClient` construction exists anywhere in the solution.
+**Unit** (`Enterprise.Gpt.Unit.Test.Agents`):
 
-The opt-in, billable `FileAgentSpike` suite (`tests/Enterprise.Gpt.Integration.Test/FileAgentSpike/`)
-predates this composition — it proves the raw SDK mechanism against a live deployment
-([`sandbox-capabilities.md`](sandbox-capabilities.md) §3) and does not exercise `FileAgentToolProvider`
-or any of the composition described above.
+- `FileAgentSkillsTests` — skill discovery against the real build output, topic-based selection, that two
+  runs get distinct providers, that the one registered script runner refuses, and a code search
+  confirming no `Azure.AI.Projects`/`AIProjectClient` construction exists anywhere in the solution.
+- `GeneratedArtifactVerifierTests` — a passing and a corrupt fixture per format, built in the test rather
+  than committed, plus zero bytes and an extension this platform does not produce.
+- `FileAgentPreflightTests` — **every published matrix cell**, asserting a `refused` pair refuses and
+  every other tier proceeds; plus ambiguity, an unknown source, and that the three refusals carry three
+  different sub-statuses.
+- `FileAgentFailuresTests` — the four failures' wording, and that all seven lines a card can show (the
+  four failures plus the three refusals) read as seven distinct strings.
+- `ConversionMatrixTests` / `ConversionMatrixDocumentTests` — the loader against the JSON, and the JSON
+  against both rendered tables, so the skill and the code cannot disagree about a pair.
+- `FileAgentDocumentReaderTests`, `FileAgentFormatsTests`, `FileAgentQuotaServiceTests`.
+- `ConversationServiceTests` — the ceiling stand-down, the discard on an abandoned turn, that a nested
+  scope reaches the stream as a `depth: 2` child, and the end-to-end token attribution that fails on a
+  wrong `trackUsage` in either direction.
+
+**Integration** — the `(ModelId, DateCreated)` index against real SQL Server, and that a discarded
+document leaves no live row and no blob.
+
+**Opt-in and billable**, neither run in CI: the `FileAgentSpike` suite proves the raw SDK mechanism
+against a live deployment ([`sandbox-capabilities.md`](sandbox-capabilities.md) §3), and the
+`FileAgentBenchmark` suite runs the thirty-prompt benchmark through the agent's own instructions and the
+production verifier. Each has its own opt-in key, so enabling one does not enable the other.
 
 ## 14. Key files
 
@@ -347,3 +511,10 @@ or any of the composition described above.
 | Instructions | [`Enterprise.Gpt.Service/Prompts/file-agent-instructions.md`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/file-agent-instructions.md) |
 | Tool naming | [`Enterprise.Gpt.Service/Agents/FileAgentToolNames.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentToolNames.cs) |
 | Attachment to the turn | [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) (`CreateChatOptionsAsync`) |
+| Outcomes | [`Enterprise.Gpt.Service/Agents/FileAgentOutcomes.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentOutcomes.cs) |
+| Failure wording | [`Enterprise.Gpt.Service/Agents/FileAgentFailures.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentFailures.cs) |
+| Pre-flight refusals | [`Enterprise.Gpt.Service/Agents/FileAgentPreflight.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentPreflight.cs), [`FileAgentFormats.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentFormats.cs) |
+| The confirmed matrix, read by code | [`Enterprise.Gpt.Service/Agents/ConversionMatrix.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/ConversionMatrix.cs) |
+| Verification | [`Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs) |
+| The per-user ceiling | [`Enterprise.Gpt.Service/Agents/FileAgentQuotaService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentQuotaService.cs) |
+| Telemetry | [`Enterprise.Gpt.Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs), [`FileAgentTracing.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/FileAgentTracing.cs) |

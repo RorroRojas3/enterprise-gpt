@@ -113,11 +113,15 @@
   font-size: 12px;
   cursor: pointer;
 
-  &:hover:not(:disabled) {
+  // Keyed to the attribute, not the pseudo-class: the in-flight download is `aria-disabled` so it
+  // keeps focus, and `:disabled` would match nothing — leaving a control that lights up on hover
+  // and does nothing while it is announced as unavailable.
+  &:hover:not([aria-disabled='true']) {
     background: var(--surface-2);
     color: var(--bs-body-color);
   }
 
+  &[aria-disabled='true'],
   &:disabled {
     cursor: default;
   }

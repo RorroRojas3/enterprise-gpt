@@ -676,7 +676,15 @@ builder.Services.AddOptions<FileAgentOptions>()
     .ValidateOnStart();
 builder.Services.AddScoped<IFileAgentModelResolver, FileAgentModelResolver>();
 builder.Services.AddScoped<IFileAgentDocumentReader, FileAgentDocumentReader>();
+builder.Services.AddScoped<IFileAgentQuotaService, FileAgentQuotaService>();
 builder.Services.AddScoped<IFileAgentToolProvider, FileAgentToolProvider>();
+builder.Services.AddSingleton<IGeneratedArtifactVerifier, GeneratedArtifactVerifier>();
+
+// Read once and shared: the file ships with the build and never changes under a running process, and
+// the pre-flight that refuses a conversion consults it on the path of every File Agent run. The
+// startup validator forces this to be constructed, so a matrix left out of the build fails the deploy
+// rather than the first request.
+builder.Services.AddSingleton<IConversionMatrix>(_ => ConversionMatrix.Load());
 
 // Per-message token estimation. Validated at startup because a negative overhead term or a
 // nonsensical calibration multiplier silently corrupts every stored token count and, through the

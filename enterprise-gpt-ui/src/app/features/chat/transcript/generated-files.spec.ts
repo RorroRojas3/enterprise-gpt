@@ -134,4 +134,78 @@ describe('GeneratedFiles', () => {
 
     expect(host.querySelector('.chip')).toBeNull();
   });
+
+  // A real button rather than a clickable div is what puts the file in the tab order and makes Enter
+  // and Space activate it, without a keydown handler of our own to get wrong.
+  it('is reachable and operable without a mouse', () => {
+    const action = host.querySelector<HTMLButtonElement>('.chip__action');
+
+    expect(action?.tagName).toBe('BUTTON');
+    expect(action?.type).toBe('button');
+    expect(action?.disabled).toBe(false);
+    expect(action?.hasAttribute('tabindex')).toBe(false);
+  });
+
+  /**
+   * `disabled` would hand focus back to `<body>` under the HTML focus-fixup rule the moment the
+   * download starts, and it never returns — so the in-flight state is `aria-disabled` plus a guard in
+   * the handler. jsdom does not implement that rule in either direction, so this asserts the
+   * *mechanism* rather than the focus itself; `expect(document.activeElement)` here would pass
+   * whichever attribute the template used, which is exactly the false green worth avoiding.
+   */
+  it('stays focusable while the download is in flight', async () => {
+    const action = host.querySelector<HTMLButtonElement>('.chip__action');
+    action?.click();
+    await fixture.whenStable();
+
+    const inFlight = host.querySelector<HTMLButtonElement>('.chip__action');
+
+    expect(inFlight?.disabled).toBe(false);
+    expect(inFlight?.getAttribute('aria-disabled')).toBe('true');
+    expect(inFlight?.getAttribute('aria-busy')).toBe('true');
+
+    backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
+    await fixture.whenStable();
+  });
+
+  it('ignores a second activation while the first is still in flight', async () => {
+    const action = host.querySelector<HTMLButtonElement>('.chip__action');
+    action?.click();
+    await fixture.whenStable();
+
+    // What `disabled` used to prevent. One request, not two.
+    host.querySelector<HTMLButtonElement>('.chip__action')?.click();
+    await fixture.whenStable();
+
+    backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
+    await fixture.whenStable();
+  });
+
+  it('says the assistant made the file on the control that takes focus', async () => {
+    const action = host.querySelector<HTMLButtonElement>('.chip__action');
+
+    // Not only on the wrapping group: its name is announced on entry by some readers and not others,
+    // and this is the element a keyboard user actually lands on.
+    expect(action?.getAttribute('aria-label')).toBe(
+      'Download generated file regional-summary.xlsx',
+    );
+
+    action?.click();
+    await fixture.whenStable();
+
+    expect(host.querySelector('.chip__action')?.getAttribute('aria-label')).toBe(
+      'Downloading generated file regional-summary.xlsx',
+    );
+
+    backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
+    await fixture.whenStable();
+  });
+
+  it('carries no live region of its own', () => {
+    // The transcript's own region is what speaks while a turn runs; a region per chip would announce
+    // every file again on every change.
+    expect(host.querySelector('ul')?.getAttribute('aria-label')).toBe('Files the assistant made');
+    expect(host.querySelectorAll('[role="status"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[aria-live]')).toHaveLength(0);
+  });
 });

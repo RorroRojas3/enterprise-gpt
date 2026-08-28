@@ -6,11 +6,11 @@ the contract that closes the other direction: how a file the platform itself pro
 downloaded, kept out of retrieval, and delivered to a client, both live and after a reload.
 
 **Scope.** This is the storage and delivery contract alone — the `Uploaded`/`Generated` discriminator,
-the second blob container, the write path, the download route, retrieval isolation, and the transcript
-reference. It says nothing about what *produces* a file; see [`the-agent.md`](the-agent.md) for the File
-Agent itself. The contract was built to stand on its own specifically so it could be tested against a
-hand-inserted `Generated` row before the agent existed — every piece below shipped and passed its own
-tests two stories ahead of the first line of agent code.
+the second blob container, the write path, the withdrawal path, the download route, retrieval isolation,
+and the transcript reference. It says nothing about what *produces* a file; see
+[`the-agent.md`](the-agent.md) for the File Agent itself. The contract was built to stand on its own
+specifically so it could be tested against a hand-inserted `Generated` row before the agent existed —
+every piece below shipped and passed its own tests two stories ahead of the first line of agent code.
 
 ## 1. The `Uploaded`/`Generated` discriminator
 
@@ -104,7 +104,35 @@ set-based, because the deactivation cascade may have already moved the row's own
 between the insert and the re-check. Without this, a document could end up active under a deactivated
 conversation, which every listing in this codebase otherwise treats as impossible.
 
-## 4. Downloading a generated document
+## 4. Withdrawing a file the turn did not deliver
+
+A generated document reaches the transcript only on a completed turn (§8). Stopping or failing a turn
+after the agent had already stored a file would otherwise leave that row and blob live under a
+conversation whose transcript never mentions them — reachable from `GET api/documents`, with no message a
+user could point to and no way to remove it themselves.
+
+`IGeneratedDocumentService.DiscardAsync(documentId)` (`GeneratedDocumentService.cs`) is what withdraws
+one. It is called once per artifact from `FileAgentToolLease.DiscardGeneratedAsync()`
+(`Enterprise.Gpt.Api.Agents`) — which copies and clears the lease's own `Stored` list first, so a caller
+that reads `GeneratedDocuments` afterward sees the turn's real answer (nothing) whatever the withdrawals
+themselves do — and that, in turn, is called from `ConversationService`'s streaming `finally` whenever the
+turn did not complete. `DiscardAsync` itself:
+
+1. Reads the row's blob path, scoped to `Type == Generated`. A document already gone — a race, or an id
+   this turn never actually stored — makes it a no-op.
+2. Soft-deletes the row **first**, on its own DI scope for the identical reason `InsertAsync` uses one
+   (§3.1). Row-first is the opposite order the write path uses, and deliberately so: a row pointing at a
+   blob that is gone reads to every listing as a file that will not download, where a blob with no row is
+   merely unreferenced — the less visible failure of the two, and the one worth risking here.
+3. Deletes the blob, best effort, logged, never thrown — the same posture `FileAgentSandbox.ReleaseAsync`
+   ([`the-agent.md`](the-agent.md) §8) takes on a leaked input file.
+
+The whole call is **uncancellable and never throws**: it runs inside a turn that is already unwinding, on
+the very token that caused the unwind, and a discard failure must not replace the exception already in
+flight. A withdrawal that itself fails leaves an orphaned row and blob for an operator to reclaim by hand —
+logged at error, not retried, because nothing in this contract runs a cleanup pass.
+
+## 5. Downloading a generated document
 
 The download route is **unchanged** — `GET api/documents/conversations/{conversationId}/{documentId}`
 (`DocumentEndpoints.cs`), the same route and the same ownership rule (read off the parent conversation;
@@ -120,7 +148,7 @@ document.IsGenerated ? GeneratedContainer : DocumentsContainer,
 because both containers hold the same seven formats; nothing about a `.xlsx` blob's name says which
 container it lives in.
 
-## 5. Retrieval isolation — two independent guarantees
+## 6. Retrieval isolation — two independent guarantees
 
 A generated document must never be searched, summarized, or cited as though a user had uploaded it. This
 holds two ways, deliberately redundant:
@@ -145,7 +173,7 @@ that deliberately goes the other way — it must see a conversation's generated 
 agent can edit or convert a file it made earlier. It applies the same ownership rule as the download
 route, but no `Type` filter.
 
-## 6. The transcript reference
+## 7. The transcript reference
 
 A generated document reaches the transcript as an identity, never a credential. `TranscriptMessageDocument`
 (`Entity/Transcripts/TranscriptDocuments.cs`) gained `Attachments`, a list of
@@ -159,7 +187,7 @@ backward-compatible by construction — a transcript document written before thi
 field is excluded from the Cosmos indexing policy (`CosmosBootstrapper`'s `/attachments/*` entry) the
 same way `/content/*` and `/htmlContent/*` already are, since nothing ever queries by attachment content.
 
-## 7. Two ways a client learns about a generated file
+## 8. Two ways a client learns about a generated file
 
 The identity of a file a turn produced reaches the client through two different paths, and both read
 from the same underlying fact — the persisted `TranscriptMessageDocument.Attachments` — so they can never
@@ -181,7 +209,7 @@ cache. This is what makes a generated file survive a reload without replaying th
 made it: only the answer text and the file reference are ever transcribed, matching the existing rule
 that a reopened conversation replays an answer, never the work that produced it.
 
-### 7.1 The client side
+### 8.1 The client side
 
 `turn-store.ts` reads both paths into the same shape. `parseAttachments` decodes the live metadata key
 defensively — a parse failure, or a value that is not an array, resolves to an empty list rather than
@@ -205,7 +233,7 @@ input rather than a second chip component:
 - Clicking it calls the existing `DocumentDownloadStore`, unmodified: a link is minted at the moment of
   the click and handed straight to a detached anchor, never prefetched, never written to state.
 
-## 8. Configuration
+## 9. Configuration
 
 | Key | Default | Effect |
 | --- | --- | --- |
@@ -214,22 +242,23 @@ input rather than a second chip component:
 `Documents:MaxFileSizeBytes` (already existing) doubles as the ceiling on a generated artifact — the
 same 50 MB limit an upload is held to.
 
-## 9. Testing
+## 10. Testing
 
 **Unit** (`Enterprise.Gpt.Unit.Test`): `Services/GeneratedDocumentServiceTests.cs` drives the write path
 against SQLite in-memory — container selection, the `Generated` type on the inserted row, the size and
 extension refusals, and the blob-cleanup-on-insert-failure path. `Tool/DocumentRetrievalServiceTests.cs`
 gained `GetScopeAsync_GeneratedDocument_IsExcluded` and
 `GetScopeAsync_OnlyGeneratedDocuments_ReportsNoDocumentsAtAll`, pinning both retrieval-isolation
-guarantees from §5.
+guarantees from §6.
 
 **Integration** (`Enterprise.Gpt.Integration.Test`): `Documents/GeneratedDocumentIntegrationTests.cs`
 runs the whole contract against real SQL Server 2025 and the fake blob store —
 `StoreAsync_Artifact_LandsInTheGeneratedContainerAndNotTheUploadsOne`,
 `StoreAsync_Artifact_CreatesAGeneratedRowWithNoChunks`,
 `Download_GeneratedDocument_IsSignedAgainstItsOwnContainerWithItsOwnType`,
-`Download_GeneratedDocumentOfAnotherUsersConversation_IsNotFound`, and
-`StoreAsync_ConversationBelongingToSomeoneElse_StoresNothing`.
+`Download_GeneratedDocumentOfAnotherUsersConversation_IsNotFound`,
+`StoreAsync_ConversationBelongingToSomeoneElse_StoresNothing`, and, for §4's withdrawal path, that a
+discarded document leaves no live row and no blob behind.
 
 **Frontend** (`enterprise-gpt-ui`): `features/chat/transcript/generated-files.spec.ts` covers the chip's
 rendering, its accessible name, the absence of a remove control, mint-on-click behaviour, that no link
@@ -237,21 +266,26 @@ is prefetched, that the signed URL never lands in the DOM or storage, and per-ch
 isolation. `features/chat/turn-store.spec.ts` gained coverage for `parseAttachments` and for both the
 live and reload paths landing on the same `attachments` shape.
 
-## 10. What this contract does not cover yet
+## 11. What this contract does not cover yet
 
-This document describes storage and delivery only, and Wave 1 shipped nothing that calls it beyond a
-test harness and whatever the File Agent's bare instructions produce today (see
-[`the-agent.md`](the-agent.md) §12 for what that agent does not yet do). Specifically out of scope here:
+This document describes storage and delivery only. Wave 2 is the first to call it for real — every one of
+the agent's four verbs (create, edit, compare, convert; see [`the-agent.md`](the-agent.md)) now stores
+through exactly the path above — but the contract itself did not have to change to be exercised that way,
+which was the point of building and testing it against a hand-inserted `Generated` row two stories before
+the agent existed. Specifically out of scope here:
 
 - **Project-scoped generated documents.** The discriminator sits on `ConversationDocument`, never
   `BaseDocument`; `ProjectDocument` is untouched by design.
 - **A permission gate.** Nothing in this contract checks a grant — the feature is reachable end to end
   once `FileAgent:Enabled` is on, and the dedicated permission arrives in a later wave.
-- **A deterministic verification pass before storage.** `StoreAsync` validates size and extension, not
-  that a `.xlsx` actually parses as one; that check belongs to the agent's own second sandbox pass, not
-  yet built.
+- **Verifying an artifact is the caller's job, not this contract's.** `StoreAsync` still validates only
+  size and extension, never that a `.xlsx` actually parses as one. That check now exists — it did not when
+  this line was first written — but it runs **before** `StoreAsync` is ever called, on the API host rather
+  than as a sandbox pass; see [`the-agent.md` §5.3](the-agent.md#53-verification-on-this-host-not-in-the-sandbox).
+  Deliberately kept out of this contract, which stays reusable by anything that already has bytes it has
+  already verified.
 
-## 11. Key files
+## 12. Key files
 
 | Concern | File |
 | --- | --- |
@@ -259,7 +293,8 @@ test harness and whatever the File Agent's bare instructions produce today (see
 | Its entity and configuration | [`Enterprise.Gpt.Entity/ConversationDocument.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationDocument.cs), [`Enterprise.Gpt.Repository/Configurations/ConversationDocumentConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationDocumentConfiguration.cs) |
 | The migration | [`Enterprise.Gpt.Repository/Migrations/20260828050720_AddConversationDocumentType.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260828050720_AddConversationDocumentType.cs) |
 | The shared container/content-type helper | [`Enterprise.Gpt.Service/DocumentStorage.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentStorage.cs) |
-| The write path | [`Enterprise.Gpt.Service/GeneratedDocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/GeneratedDocumentService.cs) |
+| The write path | [`Enterprise.Gpt.Service/GeneratedDocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/GeneratedDocumentService.cs) (`StoreAsync`) |
+| The withdrawal path | [`Enterprise.Gpt.Service/GeneratedDocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/GeneratedDocumentService.cs) (`DiscardAsync`), [`Enterprise.Gpt.Api/Agents/FileAgentToolProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentToolProvider.cs) (`DiscardGeneratedAsync`), [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) (the streaming `finally`) |
 | The download route's container choice | [`Enterprise.Gpt.Service/DocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs) (`BuildDownload`) |
 | Retrieval isolation | [`Enterprise.Gpt.Service/Tool/DocumentRetrievalService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Tool/DocumentRetrievalService.cs) (`GetScopeAsync`) |
 | The transcript reference | [`Enterprise.Gpt.Entity/Transcripts/TranscriptDocuments.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Transcripts/TranscriptDocuments.cs), [`Enterprise.Gpt.Api/Startup/CosmosBootstrapper.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Startup/CosmosBootstrapper.cs) |

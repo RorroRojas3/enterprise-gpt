@@ -39,6 +39,16 @@ public interface IGeneratedDocumentService
     /// <exception cref="NotFoundException">The conversation is gone or was never the caller's.</exception>
     /// <exception cref="StorageNotConfiguredException">The generated-documents container is not configured.</exception>
     Task<MessageAttachmentDto> StoreAsync(GeneratedDocumentRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Takes back a stored document whose turn never delivered it.</summary>
+    /// <param name="documentId">The document to withdraw.</param>
+    /// <remarks>
+    /// For a turn that was stopped or failed after a file had already been stored: the transcript never
+    /// references it, so leaving the row active would show the user a file no message introduced. Takes
+    /// no cancellation token and never throws — it runs while a turn is already unwinding, and the token
+    /// that ended that turn is the one that would abandon this.
+    /// </remarks>
+    Task DiscardAsync(Guid documentId);
 }
 
 /// <inheritdoc />
@@ -119,6 +129,48 @@ public sealed class GeneratedDocumentService(
             MimeType = mimeType,
             Size = request.Content.Length
         };
+    }
+
+    /// <inheritdoc />
+    public async Task DiscardAsync(Guid documentId)
+    {
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+            var path = await ctx.ConversationDocuments
+                .AsNoTracking()
+                .Where(x => x.Id == documentId && x.Type == ConversationDocumentTypes.Generated)
+                .Select(x => x.Path)
+                .FirstOrDefaultAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (path is null)
+            {
+                return;
+            }
+
+            // The row first: a row pointing at a blob that is gone reads to every listing as a file
+            // that will not download, where a blob with no row is merely unreferenced.
+            await ctx.ConversationDocuments
+                .Where(x => x.Id == documentId && !x.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(
+                    x => x.SetProperty(d => d.DateDeactivated, DateTimeOffset.UtcNow), CancellationToken.None)
+                .ConfigureAwait(false);
+
+            await TryDeleteBlobAsync(path, documentId).ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "Withdrew generated document {DocumentId}; its turn did not deliver it", documentId);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Never thrown on: this runs inside a turn that is already unwinding, and replacing the
+            // exception in flight with a cleanup failure would lose why the turn ended.
+            _logger.LogError(
+                exception, "Could not withdraw generated document {DocumentId}; it needs reclaiming", documentId);
+        }
     }
 
     /// <summary>

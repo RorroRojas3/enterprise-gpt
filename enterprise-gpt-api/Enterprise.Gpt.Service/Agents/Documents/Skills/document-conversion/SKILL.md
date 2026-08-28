@@ -35,7 +35,7 @@ Status: confirmed. Recorded: 2026-08-27. Deployment: rr-gpt-5.6-luna. Office con
 
 | Pair | How |
 | --- | --- |
-| Office to `pdf` | Read with `python-docx` / `openpyxl` / `python-pptx`, emit HTML, render with `weasyprint`; or compose directly with `reportlab`. There is no `soffice` in this image, which is why these are structural rather than faithful. |
+| Office to `pdf` | Read with `python-docx` / `openpyxl` / `python-pptx` and compose with `reportlab`, which is what produced every confirmed cell here; `weasyprint` failed with an `AttributeError` on this image. There is no `soffice` either, which is why these are structural rather than faithful. |
 | `pdf` to `docx` | `fitz` (PyMuPDF 1.26.6) for text, headings and images, written out with `python-docx`. An editable document with the source's content, not a reconstruction of its layout. |
 | `pdf` to `xlsx` / `csv` | `pdfplumber` 0.6.2 table extraction. Dependable for ruled tables, unreliable for whitespace-aligned ones. Report how many tables you found. |
 | `pdf` to `md` / `txt` | `fitz` text extraction. Legible for a text PDF, empty for a scanned one — say which you got. |

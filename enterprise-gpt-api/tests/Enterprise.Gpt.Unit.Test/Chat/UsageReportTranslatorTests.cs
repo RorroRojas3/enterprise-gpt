@@ -1,7 +1,9 @@
 using Andes.Extensions.AI;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.Chat;
 using Microsoft.Extensions.AI;
 using Xunit;
@@ -16,6 +18,9 @@ namespace Enterprise.Gpt.Unit.Test.Chat;
 public sealed class UsageReportTranslatorTests
 {
     private static readonly DateTimeOffset _date = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly FileAgentModel _fileAgent =
+        new(Guid.Parse("2f0d0c1e-6c0a-4f0a-9b3f-2a1c9a5f7e01"), Providers.AzureOpenAI, "gpt-file-agent");
 
     private static UsageDetails Usage(
         long input,
@@ -559,5 +564,60 @@ public sealed class UsageReportTranslatorTests
 
         Assert.Null(result.CachedInputTokens);
         Assert.Null(result.ReasoningTokens);
+    }
+
+    [Fact]
+    public void Translate_FileAgentCall_RecordsTheAgentsCatalogModel()
+    {
+        var report = Report(Usage(10, 4), Call(FileAgentToolNames.Agent, Usage(30, 12), ToolKind.Agent));
+
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date, _fileAgent).ToolCalls);
+
+        Assert.Equal(ConversationToolKinds.Agent, row.Kind);
+        Assert.Equal(_fileAgent.ModelId, row.ModelId);
+        Assert.Equal(_fileAgent.DeploymentName, row.DeploymentName);
+    }
+
+    // The agent's own nested calls are its tools, not further model turns of its own, so attributing
+    // the agent's model to them would claim a cost for a row that never made a model call.
+    [Fact]
+    public void Translate_CallsBeneathTheFileAgent_RecordNoModel()
+    {
+        var report = Report(
+            Usage(10, 4),
+            Call(FileAgentToolNames.Agent, Usage(30, 12), ToolKind.Agent, children: Call("load_skill", Usage(4, 1))));
+
+        var child = Assert.Single(
+            UsageReportTranslator.Translate(report, [], _date, _fileAgent).ToolCalls, call => call.Depth == 1);
+
+        Assert.Null(child.ModelId);
+        Assert.Null(child.DeploymentName);
+    }
+
+    [Theory]
+    [InlineData(ToolKind.Function, "document_search")]
+    [InlineData(ToolKind.McpTool, "jira_search")]
+    [InlineData(ToolKind.Agent, "some_other_agent")]
+    public void Translate_EveryOtherCall_RecordsNoModel(ToolKind kind, string toolName)
+    {
+        var report = Report(Usage(10, 4), Call(toolName, Usage(3, 1), kind));
+
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date, _fileAgent).ToolCalls);
+
+        Assert.Null(row.ModelId);
+        Assert.Null(row.DeploymentName);
+    }
+
+    // The misconfiguration the startup validator is meant to catch. The row is still written, without
+    // a model, rather than failing a save that runs after the answer has already streamed.
+    [Fact]
+    public void Translate_FileAgentCallWithNoResolvedModel_LeavesTheColumnsNull()
+    {
+        var report = Report(Usage(10, 4), Call(FileAgentToolNames.Agent, Usage(30, 12), ToolKind.Agent));
+
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+
+        Assert.Null(row.ModelId);
+        Assert.Null(row.DeploymentName);
     }
 }
