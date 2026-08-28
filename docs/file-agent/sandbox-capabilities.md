@@ -27,13 +27,21 @@ a unit test fails the build if the two disagree — EP-3's `document-conversion`
 `FileAgentOptions` read the same file, so a pair cannot be refused in one place and offered in
 another.
 
-> **Status.** The harness, the evidence files and the guards are in place; the recording run against
-> a live deployment has not been made yet. Until it has, every tier in §5 is the PRD's *proposal*,
-> marked as such by the matrix's own `status` field, and no cell carries evidence.
+> **Status.** The recording run against a live deployment happened on 2026-08-27 (§5's `Recorded:` date)
+> and the matrix's `status` field reads `confirmed`. §2's own input/output mechanism, established by that
+> same run, is no longer a proposal either — it shipped in Wave 1 as `FileAgentSandbox`; see the note at
+> the top of §2.
 
 ## 2. How a file reaches the sandbox, and how an artifact comes back
 
 This is the part of the design the PRD gets wrong, and the reason US-001 exists.
+
+> **This mechanism is no longer a proposal.** EP-0's finding below is exactly what Wave 1 shipped:
+> `FileAgentSandbox` (`Enterprise.Gpt.Api/Agents/FileAgentSandbox.cs`) uploads through the Files API and
+> reads a produced artifact back the same way §3 recorded a live deployment actually answering. See
+> [`the-agent.md` §7–8](the-agent.md) for the production mount/harvest code and
+> [`generated-files.md`](generated-files.md) for where the downloaded bytes land. What follows is kept
+> as the record of *why* the mechanism looks the way it does, not as a description of unbuilt work.
 
 `HostedCodeInterpreterTool.Inputs` accepts any `AIContent`, and its own documentation says
 "unsupported inputs will be ignored by the `IChatClient` to which the tool is passed." In
@@ -47,8 +55,8 @@ case HostedCodeInterpreterTool codeTool:
             new()));
 ```
 
-Only `HostedFileContent` survives. **`DataContent` — raw bytes — is silently discarded**, which is
-what FR-10 and US-202 currently describe as the input mechanism. The working path is one step longer:
+Only `HostedFileContent` survives. **`DataContent` — raw bytes — is silently discarded**, which FR-10
+and US-202 were rewritten against once this was confirmed. The working path is one step longer:
 
 1. Upload the bytes to the Files API, producing a file id. `OpenAIClient.AsIHostedFileClient()`
    returns an `IHostedFileClient` that speaks both the standard Files API and container-scoped files.
@@ -65,7 +73,8 @@ what FR-10 and US-202 currently describe as the input mechanism. The working pat
 `CodeInterpreterToolResultContent.Outputs` and the message's own `CitationAnnotation`s are both
 plausible carriers for step 3 — the SDK implies the first, Azure's documentation implies the second.
 The harness looks on every channel and records which one answered, rather than picking one; that
-recorded answer is what FR-11 should be rewritten against.
+recorded answer is what FR-11 was rewritten against, and `FileAgentSandbox.Harvest` walks the identical
+set of channels in production rather than trusting the one the SDK's docs imply.
 
 Two constraints follow from the same reading, and they shape the cost of everything above:
 
@@ -148,13 +157,13 @@ Tiers, per the PRD:
 - **`n/a`** — not offered in v1, because no natural request maps to it. Not a refusal.
 
 <!-- conversion-matrix:begin -->
-Status: confirmed. Recorded: 2026-08-27. Deployment: rr-gpt-5.6-luna. Office converter: absent.
+Status: confirmed. Recorded: 2026-08-28. Deployment: rr-gpt-5.6-luna. Office converter: absent.
 
 | From \ To | docx | xlsx | pptx | pdf | csv | md | txt |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | docx | — | n/a | n/a | ◐ | n/a | ✓ | ✓ |
 | xlsx | n/a | — | n/a | ◐ | ✓ | ✓ | ✓ |
-| pptx | n/a | n/a | — | refused | n/a | ✓ | ✓ |
+| pptx | n/a | n/a | — | ◐ | n/a | ✓ | ✓ |
 | pdf | ◐ | ◐ | refused | — | ◐ | ◐ | ◐ |
 | csv | ✓ | ✓ | n/a | ◐ | — | ✓ | ✓ |
 | md | ✓ | n/a | n/a | ✓ | n/a | — | ✓ |
@@ -181,6 +190,14 @@ inheritance.
   less than the whole story.
 - **This is not a regression suite.** It is opt-in and billable, so nothing runs it on a schedule.
   The drift assertions exist for the day somebody deliberately re-runs it after an Azure change.
+- **A cell's tier is a recorded outcome of one attempt against a live model, not a physical constant of
+  the sandbox image.** A single exploratory run on 2026-08-28 (`FileAgentSpike:Record` off, so nothing was
+  overwritten) had `pptx → pdf` come back structural rather than the `refused` this document's table
+  states and the confirmed matrix still carries — the same pair the pre-flight (`the-agent.md` §5.2)
+  refuses by name, and unaffected by this, since it reads the committed matrix rather than a live probe.
+  One divergent run is an observation, not a re-recording: the matrix moves only when someone deliberately
+  reruns the gate with `Record` on, reviews the diff, and commits it. Until that happens this table is
+  still what the pre-flight, the skill, and every test in §7 agree on.
 
 ## 7. Key files
 

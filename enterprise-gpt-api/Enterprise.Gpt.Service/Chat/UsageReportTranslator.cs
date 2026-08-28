@@ -1,6 +1,7 @@
 using Andes.Extensions.AI;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Service.Agents;
 
 namespace Enterprise.Gpt.Service.Chat;
 
@@ -104,11 +105,16 @@ internal static class UsageReportTranslator
     /// row.
     /// </param>
     /// <param name="dateCreated">The timestamp stamped on every row, shared with the parent call.</param>
+    /// <param name="fileAgent">
+    /// The File Agent's catalog row when the turn attached it, or <see langword="null"/> when it did
+    /// not — which is every turn that never offered the agent.
+    /// </param>
     /// <returns>The token split and the tool-call rows; an empty result for a null report.</returns>
     public static TurnUsage Translate(
         ChatUsageReport? report,
         IReadOnlyList<McpServerReference> mcpServers,
-        DateTimeOffset dateCreated)
+        DateTimeOffset dateCreated,
+        FileAgentModel? fileAgent = null)
     {
         ArgumentNullException.ThrowIfNull(mcpServers);
 
@@ -125,7 +131,7 @@ internal static class UsageReportTranslator
             .ToList();
 
         List<ConversationUsageToolCall> flattened = [];
-        BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, dateCreated, flattened);
+        BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, dateCreated, fileAgent, flattened);
 
         // The top-level entries already roll their descendants up, so summing them is summing
         // everything every tool consumed.
@@ -232,6 +238,7 @@ internal static class UsageReportTranslator
         int parentDepth,
         List<(Guid Id, string Prefix, string Name)> prefixes,
         DateTimeOffset dateCreated,
+        FileAgentModel? fileAgent,
         List<ConversationUsageToolCall> flattened)
     {
         var depth = parentDepth + 1;
@@ -241,6 +248,7 @@ internal static class UsageReportTranslator
         {
             var call = calls[index];
             var kind = MapKind(call.Kind);
+            var agentModel = ResolveAgentModel(call, kind, fileAgent);
 
             var row = new ConversationUsageToolCall
             {
@@ -257,11 +265,13 @@ internal static class UsageReportTranslator
                 McpServerId = kind == ConversationToolKinds.McpTool
                     ? ResolveMcpServerId(call, prefixes)
                     : null,
-                // Left unset on purpose. Nothing in a tool call names the model behind it: an MCP
-                // server is opaque, and a function that reports usage does not say what produced
-                // it. Only an agent this application configured could answer, and none exists yet.
-                ModelId = null,
-                DeploymentName = null,
+                // Only an agent this application composed can name the model behind it, and only for
+                // its own root call: an MCP server is opaque, a function that reports usage does not
+                // say what produced it, and an agent's own nested calls are the agent's tools rather
+                // than further model turns. Every other row still writes null, and that is not a gap
+                // to be filled later — it is the honest answer.
+                ModelId = agentModel?.ModelId,
+                DeploymentName = Truncate(agentModel?.DeploymentName, ConversationUsageToolCall.DeploymentNameMaxLength),
                 InputTokens = OwnTokens(call.Usage?.InputTokenCount, call.Children, child => child.Usage?.InputTokenCount),
                 OutputTokens = OwnTokens(call.Usage?.OutputTokenCount, call.Children, child => child.Usage?.OutputTokenCount),
                 TotalTokens = OwnTokens(call.Usage?.TotalTokenCount, call.Children, child => child.Usage?.TotalTokenCount),
@@ -276,11 +286,27 @@ internal static class UsageReportTranslator
             rows.Add(row);
             flattened.Add(row);
 
-            row.Children = BuildToolCalls(call.Children, depth, prefixes, dateCreated, flattened);
+            row.Children = BuildToolCalls(call.Children, depth, prefixes, dateCreated, fileAgent, flattened);
         }
 
         return rows;
     }
+
+    /// <summary>
+    /// Matches an agent-kind call to the one agent this application composes.
+    /// </summary>
+    /// <returns>
+    /// The catalog row, or <see langword="null"/> for every other call — and for a File Agent call on a
+    /// turn that carries no resolved row, which is a misconfiguration the startup validator should have
+    /// caught. Null rather than a guess: the column is a foreign key, and this write runs in a
+    /// <c>finally</c> after the answer has already streamed.
+    /// </returns>
+    private static FileAgentModel? ResolveAgentModel(
+        ToolCallUsage call, ConversationToolKinds kind, FileAgentModel? fileAgent) =>
+        kind == ConversationToolKinds.Agent
+        && string.Equals(call.ToolName, FileAgentToolNames.Agent, StringComparison.OrdinalIgnoreCase)
+            ? fileAgent
+            : null;
 
     /// <summary>
     /// Reduces a reported rollup to what the invocation itself consumed.

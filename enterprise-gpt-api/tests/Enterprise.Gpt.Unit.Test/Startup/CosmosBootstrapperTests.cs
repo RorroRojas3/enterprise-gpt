@@ -27,6 +27,7 @@ public sealed class CosmosBootstrapperTests
     [InlineData("/htmlContent/*")]
     [InlineData("/usage/*")]
     [InlineData("/feedback/*")]
+    [InlineData("/attachments/*")]
     public void CreateTranscriptContainerProperties_ExcludesThePropertiesNothingQueriesOn(string path)
     {
         var properties = CosmosBootstrapper.CreateTranscriptContainerProperties("transcript");

@@ -237,5 +237,67 @@ describe('chat accessibility (US-1405)', () => {
 
       await expectNoSeriousViolations(element, `/chat/:id rated answer (${theme})`);
     });
+
+    /**
+     * A file the assistant made, replayed under its answer (US-601/US-602/US-606).
+     *
+     * Its own case because nothing else reaches the surface: every other transcript here
+     * flushes messages with no attachments, so the chip, its download control and the
+     * list that names them would stay unaudited. Unlike the footer above, this row is
+     * visible at rest, so every visibility-dependent rule actually runs on it.
+     */
+    it(`finds nothing serious on a generated file in the ${theme} theme`, async () => {
+      const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
+      const element = await open(`/chat/${conversation.id}`, theme);
+
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
+        .flush(conversationDetailFixture({ ...conversation }));
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
+        .flush({
+          id: conversation.id,
+          name: conversation.name,
+          messages: [
+            messageFixture({ text: 'Make me a spreadsheet.', role: CHAT_ROLE.user }),
+            messageFixture({
+              text: 'Here is the workbook.',
+              role: CHAT_ROLE.assistant,
+              // Two, because that is what a run producing more than one file looks like, and one chip
+              // audits neither the wrapped row nor a second glyph tone. It does not tighten the
+              // target-spacing case: the flex gap keeps the two controls far apart either way.
+              attachments: [
+                {
+                  id: '9c8b7a65-4321-4fed-8cba-0987654321fe',
+                  name: 'regional-summary.xlsx',
+                  extension: '.xlsx',
+                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  size: 2048,
+                },
+                {
+                  id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+                  name: 'meeting-summary.pptx',
+                  extension: '.pptx',
+                  mimeType:
+                    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                  size: 51_200,
+                },
+              ],
+            }),
+          ],
+        });
+      await loadCatalogues();
+      await harness.fixture.whenStable();
+
+      // Rendered *and* visible: this file has already been burned once by a zero-opacity subtree
+      // turning an audit into a green no-op, and a chip axe cannot see is one it cannot fail.
+      const chips = element.querySelectorAll<HTMLElement>('app-generated-files .chip');
+
+      expect(chips).toHaveLength(2);
+      expect(element.querySelectorAll('app-generated-files .chip__action')).toHaveLength(2);
+      expect(getComputedStyle(chips[0] as Element).opacity).toBe('1');
+
+      await expectNoSeriousViolations(element, `/chat/:id generated file (${theme})`);
+    });
   }
 });

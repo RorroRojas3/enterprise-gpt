@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Extraction;
@@ -65,6 +66,35 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         Assert.Equal(["first.pdf", "second.pdf"], scope.Documents.Select(d => d.Name));
         Assert.All(scope.Documents, d => Assert.Equal(DocumentSource.Conversation, d.Source));
         Assert.Null(scope.ProjectId);
+    }
+
+    [Fact]
+    public async Task GetScopeAsync_GeneratedDocument_IsExcluded()
+    {
+        var conversationId = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversationId, "uploaded.pdf");
+        await AddConversationDocumentAsync(conversationId, "made-for-you.xlsx", type: ConversationDocumentTypes.Generated);
+
+        var scope = await CreateService().GetScopeAsync(conversationId, TestContext.Current.CancellationToken);
+
+        // A file the assistant made is never a source it can search, summarize or cite — and its name
+        // never reaches the retrieval prompt either.
+        Assert.Equal(["uploaded.pdf"], scope.Documents.Select(d => d.Name));
+        Assert.Equal(["uploaded.pdf"], scope.DocumentNames);
+    }
+
+    [Fact]
+    public async Task GetScopeAsync_OnlyGeneratedDocuments_ReportsNoDocumentsAtAll()
+    {
+        var conversationId = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversationId, "made-for-you.docx", type: ConversationDocumentTypes.Generated);
+
+        var scope = await CreateService().GetScopeAsync(conversationId, TestContext.Current.CancellationToken);
+
+        // HasDocuments is what attaches the retrieval and summarization tools, so a conversation whose
+        // only file is generated must look exactly like one with no files.
+        Assert.False(scope.HasDocuments);
+        Assert.Empty(scope.Documents);
     }
 
     [Fact]
@@ -889,7 +919,9 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         return project.Id;
     }
 
-    private async Task AddConversationDocumentAsync(Guid conversationId, string name, bool deactivated = false, int ageMinutes = 0)
+    private async Task AddConversationDocumentAsync(
+        Guid conversationId, string name, bool deactivated = false, int ageMinutes = 0,
+        ConversationDocumentTypes type = ConversationDocumentTypes.Uploaded)
     {
         var date = DateTimeOffset.UtcNow.AddMinutes(-ageMinutes);
 
@@ -899,6 +931,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
             Id = Guid.NewGuid(),
             ConversationId = conversationId,
             UserId = KnownIds.SeedUserId,
+            Type = type,
             Name = name,
             Extension = ".pdf",
             MimeType = "application/pdf",

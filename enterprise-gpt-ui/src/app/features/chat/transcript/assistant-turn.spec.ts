@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MarkdownComponent, MarkdownService } from 'ngx-markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,6 +48,8 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       providers: [
         provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
         provideChatMarkdown(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
       ],
     });
     fixture = TestBed.createComponent(AssistantTurn);
@@ -422,5 +426,125 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     expect(settled?.innerHTML).toBe(expected?.innerHTML);
 
     (reference.nativeElement as HTMLElement).remove();
+  });
+});
+
+describe('AssistantTurn generated files', () => {
+  let fixture: ComponentFixture<AssistantTurn>;
+  let host: HTMLElement;
+
+  const FILE = {
+    id: '9c8b7a65-4321-4fed-8cba-0987654321fe',
+    name: 'regional-summary.xlsx',
+    extension: '.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    size: 2048,
+  };
+
+  async function render(attachments: readonly (typeof FILE)[]): Promise<void> {
+    const event = assistantEvent('TextDelta', { text: 'Here it is.' });
+    fixture.componentRef.setInput('snapshot', foldAssistantEvents(createInitialSnapshot(), event));
+    fixture.componentRef.setInput('timeline', foldTimeline(createInitialTimeline(), event));
+    fixture.componentRef.setInput('streaming', false);
+    fixture.componentRef.setInput('attachments', attachments);
+    fixture.componentRef.setInput('conversationId', '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b');
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
+        provideChatMarkdown(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
+    });
+    fixture = TestBed.createComponent(AssistantTurn);
+    host = fixture.nativeElement as HTMLElement;
+  });
+
+  it('puts the files beside the answer, not in the hover-revealed footer', async () => {
+    // The footer is invisible until hover or focus. A file the assistant made is part of the
+    // answer, so it must not be somewhere a reader has to go looking.
+    await render([FILE]);
+
+    expect(host.querySelector('.assistant-turn__content > app-generated-files')).not.toBeNull();
+    expect(host.querySelector('.assistant-turn__footer app-generated-files')).toBeNull();
+  });
+
+  it('renders no row at all for a turn that produced nothing', async () => {
+    await render([]);
+
+    expect(host.querySelector('app-generated-files')).toBeNull();
+  });
+
+  /**
+   * The agent's own steps arrive as their own scopes beneath it, so a failed run renders the step that
+   * failed nested inside the agent's card rather than as a flat line on it.
+   */
+  it('renders the failed step nested inside the agent that ran it', async () => {
+    const events = [
+      assistantEvent('ActivityStarted', {
+        scopeId: 'agent-1',
+        depth: 1,
+        toolKind: 'Agent',
+        displayName: 'File Agent',
+      }),
+      assistantEvent('ActivityStarted', {
+        scopeId: 'step-1',
+        parentScopeId: 'agent-1',
+        depth: 2,
+        toolKind: 'Agent',
+        displayName: 'Running code',
+      }),
+      assistantEvent('ActivityProgress', {
+        scopeId: 'step-1',
+        parentScopeId: 'agent-1',
+        depth: 2,
+        toolKind: 'Agent',
+        displayName: 'Running code',
+        message: 'No file was produced',
+      }),
+      assistantEvent('ActivityFailed', {
+        scopeId: 'step-1',
+        parentScopeId: 'agent-1',
+        depth: 2,
+        toolKind: 'Agent',
+        displayName: 'Running code',
+        durationSeconds: 4,
+      }),
+      assistantEvent('ActivityFailed', {
+        scopeId: 'agent-1',
+        depth: 1,
+        toolKind: 'Agent',
+        displayName: 'File Agent',
+        durationSeconds: 9,
+      }),
+    ];
+
+    let snapshot = createInitialSnapshot();
+    let timeline = createInitialTimeline();
+
+    for (const event of events) {
+      snapshot = foldAssistantEvents(snapshot, event);
+      timeline = foldTimeline(timeline, event);
+    }
+
+    fixture.componentRef.setInput('snapshot', snapshot);
+    fixture.componentRef.setInput('timeline', timeline);
+    fixture.componentRef.setInput('streaming', false);
+    fixture.componentRef.setInput('attachments', []);
+    fixture.componentRef.setInput('conversationId', '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b');
+    await fixture.whenStable();
+
+    const child = host.querySelector('.activity-card__children .activity-card');
+
+    expect(host.querySelectorAll('app-icon.activity-card__state--warn')).toHaveLength(2);
+    expect(child?.querySelector('.activity-card__name')?.textContent?.trim()).toBe('Running code');
+    expect(child?.querySelector('.activity-card__substatus')?.textContent?.trim()).toBe(
+      'No file was produced',
+    );
   });
 });

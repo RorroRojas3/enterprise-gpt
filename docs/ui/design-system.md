@@ -428,7 +428,7 @@ One projection trap belongs to the footer slot rather than to any input: **a con
 | `<app-kind-badge>` | `kind` **required** | — | A `ToolKind` from the stream contract: "MCP tool", "Agent", "Function" |
 | `<app-permission-badge>` | `name` **required**, `managedBy` | — | A grant; `managedBy` marks one the administrator cannot revoke here |
 | `<app-source-badge>` | `source` `uploaded`&#124;`generated` | — | Distinguishes an uploaded file from an assistant-produced one |
-| `<app-attachment-chip>` | `attachment` **required**, `removable` | `removed`, `retried` | One attached file, five states |
+| `<app-attachment-chip>` | `attachment` **required**, `removable`, `removeAction`, `downloadable`, `downloading`, `generated` | `removed`, `retried`, `downloaded` | One attached file, five upload states plus a generated variant |
 | `<app-project-card>` | `name`, `updatedLabel`, `link` — **required**; `description`, `favorite`, `pending` | `favoriteToggled` | Project tile; row menu projects into `[cardMenu]` |
 
 `KindBadge` renders the kind **alone**. The stream contract keeps `displayName` and `kind` apart precisely so a card reads "Create issue" + "MCP tool" — with "Jira Cloud" as the `source` subtitle beneath — rather than "Calling Jira Cloud MCP", and composing them here would put the kind word back. An unrecognized kind renders as itself rather than as nothing. The label beside the badge is not the raw `displayName` for an MCP activity: the chat feature derives it in `domain/stream/activity-label.ts`, which is a feature concern and not the kit's ([Answer Rendering §10.3](answer-rendering.md#103-the-running-commentary-is-a-pure-function-and-it-lives-outside-the-transcript)).
@@ -445,6 +445,8 @@ type AttachmentState =
 ```
 
 `@switch` over `kind` is then exhaustive and "uploading *and* expired" is unrepresentable — the same modelling discipline `withRequestStatus` established, for the same reason: the deleted client tracked those flags independently and got it wrong. The `unknown` arm is load-bearing rather than cosmetic: an expired status must not read as a failure, because nothing failed and there is nothing to retry. Its copy says so — "Status is only kept for a limited time" — and it offers no Retry.
+
+A sixth input, `generated`, sits outside that union rather than as a state within it: a file the assistant made is outside the upload lifecycle the five states describe, and is always finished, so it bypasses the `@switch` entirely at the template's top level. Its download control uses `[attr.aria-disabled]`, never `[disabled]`, while a link is in flight — disabling the control the user just activated hands focus to `<body>` under the HTML focus-fixup rule and it never returns. See [Generated Files: Storage and Delivery §8.1](../file-agent/generated-files.md#81-the-client-side).
 
 `ProjectCard`'s title is a real `<a routerLink>` rather than a clickable card, so the tile is not one giant unlabelled button and the link stays reachable, focusable and middle-clickable.
 

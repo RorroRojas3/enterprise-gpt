@@ -32,4 +32,10 @@ public static class KnownIds
     /// The built-in Administrator permission seeded by <c>PermissionConfiguration</c>.
     /// </summary>
     public static readonly Guid AdministratorPermissionId = PermissionIds.Administrator;
+
+    /// <summary>
+    /// The built-in Generate Files permission seeded by <c>PermissionConfiguration</c>. Not
+    /// <c>IsDefault</c>, so no test user holds it until a test grants it.
+    /// </summary>
+    public static readonly Guid GenerateFilesPermissionId = PermissionIds.GenerateFiles;
 }

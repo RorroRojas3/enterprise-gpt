@@ -293,6 +293,17 @@ public sealed class PermissionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdatePermissionAsync_GenerateFilesPermission_ThrowsValidationException()
+    {
+        var request = new UpdatePermissionActionDto { Name = "aaa-renamed" };
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => _service.UpdatePermissionAsync(KnownIds.GenerateFilesPermissionId, request, TestContext.Current.CancellationToken));
+
+        Assert.Contains("built-in Generate Files permission cannot be modified", exception.Message);
+    }
+
+    [Fact]
     public async Task UpdatePermissionAsync_McpLinkedPermission_ThrowsValidationException()
     {
         var server = await AddMcpServerAsync("aaa-server");
@@ -362,6 +373,13 @@ public sealed class PermissionServiceTests : IDisposable
     {
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.DeactivatePermissionAsync(KnownIds.AdministratorPermissionId, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeactivatePermissionAsync_GenerateFilesPermission_ThrowsValidationException()
+    {
+        await Assert.ThrowsAsync<ValidationException>(
+            () => _service.DeactivatePermissionAsync(KnownIds.GenerateFilesPermissionId, TestContext.Current.CancellationToken));
     }
 
     [Fact]

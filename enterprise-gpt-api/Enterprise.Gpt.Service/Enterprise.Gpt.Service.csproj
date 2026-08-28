@@ -112,6 +112,15 @@
     <None Update="Prompts\sheet-query-tool-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Prompts\file-agent-instructions.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <!-- Globbed, unlike the prompts above: a skill is a directory of files rather than one
+         named template, and the startup probe fails the deploy when the set that shipped is
+         not the set the agent expects. -->
+    <None Update="Agents\Documents\Skills\**\*.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

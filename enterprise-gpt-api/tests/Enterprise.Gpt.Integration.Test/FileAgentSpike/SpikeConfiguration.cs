@@ -21,7 +21,21 @@ internal static class SpikeConfiguration
         + " set \"FileAgentSpike:Enabled\" \"true\" — and make sure AzureOpenAI:Url, AzureOpenAI:ApiKey "
         + "and AzureOpenAI:DefaultModel are set in the same store. See docs/file-agent/sandbox-capabilities.md.";
 
+    /// <summary>Why the benchmark skips, phrased as the command that turns it on.</summary>
+    /// <remarks>
+    /// Its own key rather than the spike's: the benchmark is thirty billable runs where the spike is a
+    /// handful, and opting into one must not opt into the other.
+    /// </remarks>
+    public const string BenchmarkSkipReason =
+        "The File Agent benchmark is opt-in because it bills thirty Code Interpreter sessions. "
+        + "Enable it with: dotnet user-secrets --id " + ApiUserSecretsId
+        + " set \"FileAgentBenchmark:Enabled\" \"true\" — and make sure AzureOpenAI:Url, AzureOpenAI:ApiKey "
+        + "and AzureOpenAI:DefaultModel are set in the same store. See docs/file-agent/the-agent.md.";
+
     public const string SectionName = "FileAgentSpike";
+
+    /// <summary>The section the benchmark's own opt-in lives under.</summary>
+    public const string BenchmarkSectionName = "FileAgentBenchmark";
 
     // Literal copy of Enterprise.Gpt.Api.csproj's UserSecretsId: AddUserSecrets<T> resolves the id
     // from the assembly it is given, which for this one is no id at all.
@@ -62,11 +76,11 @@ internal static class SpikeConfiguration
         }
     }
 
-    private static bool Flag(string key)
+    private static bool Flag(string key, string section = SectionName)
     {
         try
         {
-            return Configuration.GetValue<bool>($"{SectionName}:{key}");
+            return Configuration.GetValue<bool>($"{section}:{key}");
         }
         catch (Exception)
         {
@@ -80,6 +94,14 @@ internal static class SpikeConfiguration
         && AzureOpenAI.IsUrlAbsolute
         && AzureOpenAI.IsUrlResourceRoot
         && !string.IsNullOrWhiteSpace(AzureOpenAI.ApiKey)
+        && !string.IsNullOrWhiteSpace(DeploymentName);
+
+    /// <summary>Gets whether the thirty-prompt benchmark may make its billable calls.</summary>
+    public static bool IsBenchmarkEnabled =>
+        Flag("Enabled", BenchmarkSectionName)
+        && AzureOpenAI.IsUrlAbsolute
+        && AzureOpenAI.IsUrlResourceRoot
+        && !string.IsNullOrWhiteSpace(ApiKey)
         && !string.IsNullOrWhiteSpace(DeploymentName);
 
     /// <summary>Gets whether a run overwrites the committed evidence instead of asserting against it.</summary>

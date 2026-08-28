@@ -50,4 +50,10 @@ public static class KnownIds
     /// sets must account for it.
     /// </summary>
     public static readonly Guid UploadFilePermissionId = PermissionIds.UploadFile;
+
+    /// <summary>
+    /// The built-in Generate Files permission seeded by <c>PermissionConfiguration</c>. Unlike Upload
+    /// File it is not <c>IsDefault</c>, so no provisioning path grants it.
+    /// </summary>
+    public static readonly Guid GenerateFilesPermissionId = PermissionIds.GenerateFiles;
 }

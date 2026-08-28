@@ -48,9 +48,12 @@ public sealed class ConversationUsageToolCallConfiguration : IEntityTypeConfigur
         // Usage reported for one MCP server over a period.
         builder.HasIndex(x => new { x.McpServerId, x.DateCreated });
 
-        // No index on ModelId yet: it is null on every row this application can currently write,
-        // so an index would cost writes on the largest table in the schema and serve nothing. Add
-        // it with the first agent that reports a model.
+        // What one agent's model cost over a period, and the per-user ceiling that reads the same rows.
+        // Deferred until an agent existed to write a non-null ModelId, which the File Agent now does.
+        // Filtered, because SQL Server indexes NULL keys like any other: unfiltered, the largest table
+        // in the schema would pay a write per row for an index only agent rows are ever read from.
+        builder.HasIndex(x => new { x.ModelId, x.DateCreated })
+            .HasFilter("[ModelId] IS NOT NULL");
 
         // None on Iteration either, deliberately. Attribution groups a single call's rows by it,
         // and the (ConversationUsageId, Sequence) index above already seeks to those rows — the

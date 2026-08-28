@@ -1,7 +1,7 @@
 namespace Enterprise.Gpt.Service.Exceptions;
 
 /// <summary>
-/// Thrown when blob storage cannot be used as configured — the documents container is not named, or
+/// Thrown when blob storage cannot be used as configured — a container is not named, or
 /// the <c>BlobServiceClient</c> was built with credentials that cannot produce a service SAS. Mapped
 /// to HTTP 503 by the global exception handler: the request is well formed and the document exists,
 /// so this is an operator condition rather than a client mistake.

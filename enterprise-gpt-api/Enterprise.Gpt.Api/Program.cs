@@ -16,6 +16,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using OpenAI;
+using Enterprise.Gpt.Api.Agents;
 using Enterprise.Gpt.Api.Chat;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.Export;
@@ -27,6 +28,7 @@ using Enterprise.Gpt.Api.Startup;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Chat;
@@ -149,6 +151,28 @@ builder.Services.AddOptions<AzureOpenAIOptions>()
         "AzureOpenAI:ReasoningEffort must be one of minimal, low, medium, high.")
     .ValidateOnStart();
 
+// One client for every Azure OpenAI surface this application reaches — chat, embeddings, and the
+// Files API the File Agent uploads through. Registered in its own right rather than constructed
+// inside each factory, because the hosted-file client has to be built from the OpenAIClient itself:
+// the narrower GetFileClient() overload cannot see a file the code interpreter wrote into its
+// container, and answers 404 for every artifact.
+//
+// A factory rather than an eager construction, for the reason the embedding generator below records:
+// building it here would run new Uri(...) before ValidateOnStart, turning a blank AzureOpenAI:Url
+// into a bare UriFormatException instead of the validator's message.
+#pragma warning disable OPENAI001, MEAI001
+builder.Services.AddSingleton(sp =>
+{
+    var settings = sp.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
+
+    return new OpenAIClient(
+        new ApiKeyCredential(settings.ApiKey),
+        new OpenAIClientOptions { Endpoint = settings.V1Endpoint });
+});
+
+builder.Services.AddSingleton(sp => sp.GetRequiredService<OpenAIClient>().AsIHostedFileClient());
+#pragma warning restore OPENAI001, MEAI001
+
 // The Responses API rather than Chat Completions, because reasoning summaries exist only on that
 // surface: Azure returns no reasoning content over Chat Completions, so the activity timeline's
 // reasoning region had nothing to render. That is the whole difference between this provider and
@@ -166,9 +190,7 @@ builder.Services.AddKeyedChatClient(
             // the one call site rather than project-wide, so a second experimental API cannot slip
             // in unnoticed behind it.
 #pragma warning disable OPENAI001, MEAI001
-            return new OpenAIClient(
-                    new ApiKeyCredential(settings.ApiKey),
-                    new OpenAIClientOptions { Endpoint = settings.V1Endpoint })
+            return sp.GetRequiredService<OpenAIClient>()
                 .GetResponsesClient()
                 .AsIChatClient(settings.DefaultModel);
 #pragma warning restore OPENAI001, MEAI001
@@ -186,6 +208,54 @@ builder.Services.AddKeyedChatClient(
     // Last in the chain, which is innermost — see the Anthropic registration below for why that
     // matters. It is also what makes clearing ConversationId safe: the telemetry client above has
     // already read it by the time this runs.
+    .Use((innerClient, services) => new ConfigureOptionsChatClient(
+        innerClient,
+        AzureOpenAIChatDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
+
+// The File Agent's own client, over the same Responses route and the same OpenAIClient. Two
+// deliberate differences from the registration above.
+//
+// Its own function-invocation bounds, because the agent spends iterations the turn does not — load a
+// skill, read its reference, run the code, re-open the artifact — and MaximumIterationsPerRequest is
+// an instance setting with no per-request override, so sharing the client would silently cap the
+// agent at the turn's own ceiling.
+//
+// And no UseToolTracking: a nested tracker opens a root scope of its own with no writer, which would
+// swallow every progress line the run reports and leave its activities unreachable from the turn's
+// stream. Without one, the ambient scope stays the enclosing file_agent tool's, so the agent's work
+// nests underneath it — which is also why WithTracking is asked to report the agent's usage itself.
+builder.Services.AddKeyedChatClient(
+        ChatClientKeys.FileAgent,
+        sp =>
+        {
+            var settings = sp.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
+
+#pragma warning disable OPENAI001, MEAI001
+            return sp.GetRequiredService<OpenAIClient>()
+                .GetResponsesClient()
+                .AsIChatClient(settings.DefaultModel);
+#pragma warning restore OPENAI001, MEAI001
+        }
+    )
+    .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+    // Constructed rather than configured through UseFunctionInvocation, because that callback is
+    // handed no service provider and the iteration bound belongs to FileAgentOptions — read off
+    // IConfiguration directly it would skip its own [Range] and duplicate its default.
+    .Use((innerClient, services) =>
+    {
+        var fileAgent = services.GetRequiredService<IOptions<FileAgentOptions>>().Value;
+
+        return new FunctionInvokingChatClient(innerClient, services.GetService<ILoggerFactory>(), services)
+        {
+            // False for the same reason it is on every other provider, and load-bearing here for one
+            // more: the agent shares a single HostedCodeInterpreterTool across a turn's calls, and
+            // its Inputs are mutated between them.
+            AllowConcurrentInvocation = false,
+            IncludeDetailedErrors = true,
+            MaximumIterationsPerRequest = fileAgent.MaxIterationsPerRun,
+            MaximumConsecutiveErrorsPerRequest = 5
+        };
+    })
     .Use((innerClient, services) => new ConfigureOptionsChatClient(
         innerClient,
         AzureOpenAIChatDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
@@ -383,9 +453,7 @@ builder.Services.AddEmbeddingGenerator(sp =>
 {
     var settings = sp.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
 
-    return new OpenAIClient(
-            new ApiKeyCredential(settings.ApiKey),
-            new OpenAIClientOptions { Endpoint = settings.V1Endpoint })
+    return sp.GetRequiredService<OpenAIClient>()
         .GetEmbeddingClient(settings.EmbeddingModel)
         .AsIEmbeddingGenerator();
 });
@@ -601,6 +669,23 @@ builder.Services.AddScoped<IDocumentTextAssembler, DocumentTextAssembler>();
 builder.Services.AddScoped<IDocumentSummarizer, DocumentSummarizer>();
 builder.Services.AddScoped<IDocumentSummaryService, DocumentSummaryService>();
 
+builder.Services.AddOptions<FileAgentOptions>()
+    .Bind(builder.Configuration.GetSection(FileAgentOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(options => options.ModelId != Guid.Empty, "FileAgent:ModelId is required.")
+    .ValidateOnStart();
+builder.Services.AddScoped<IFileAgentModelResolver, FileAgentModelResolver>();
+builder.Services.AddScoped<IFileAgentDocumentReader, FileAgentDocumentReader>();
+builder.Services.AddScoped<IFileAgentQuotaService, FileAgentQuotaService>();
+builder.Services.AddScoped<IFileAgentToolProvider, FileAgentToolProvider>();
+builder.Services.AddSingleton<IGeneratedArtifactVerifier, GeneratedArtifactVerifier>();
+
+// Read once and shared: the file ships with the build and never changes under a running process, and
+// the pre-flight that refuses a conversion consults it on the path of every File Agent run. The
+// startup validator forces this to be constructed, so a matrix left out of the build fails the deploy
+// rather than the first request.
+builder.Services.AddSingleton<IConversionMatrix>(_ => ConversionMatrix.Load());
+
 // Per-message token estimation. Validated at startup because a negative overhead term or a
 // nonsensical calibration multiplier silently corrupts every stored token count and, through the
 // context budget built on them, silently shrinks what is replayed to the model.
@@ -706,6 +791,7 @@ builder.Services.AddSingleton<ITextChunker, TokenTextChunker>();
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IConversationExportService, ConversationExportService>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IGeneratedDocumentService, GeneratedDocumentService>();
 builder.Services.AddScoped<IDocumentRetrievalService, DocumentRetrievalService>();
 builder.Services.AddScoped<ISheetQueryService, SheetQueryService>();
 builder.Services.AddScoped<IModelService, ModelService>();
@@ -765,6 +851,20 @@ if (!app.Environment.IsEnvironment("Testing"))
         // unhandled-exception printer reaches stderr and nothing else, and this is the message an
         // operator reads to find out which setting to fix.
         app.Logger.LogError(ex, "The configured document summarizer could not be resolved");
+        throw;
+    }
+
+    // Regardless of FileAgent:Enabled, for the reason the summarizer's own validator runs regardless
+    // of its flag: a deployment whose agent is misconfigured should say so now, not on the first
+    // request after somebody switches it on months later.
+    try
+    {
+        await FileAgentBootstrapper.ValidateAsync(
+            services, FileAgentSkills.DeployedRoot, app.Logger, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "The File Agent could not be composed");
         throw;
     }
 }

@@ -21,6 +21,37 @@ namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
 internal static class SpikeResults
 {
     /// <summary>
+    /// Runs one probe program and reads the result file it was written to produce, repeating the run
+    /// once if nothing came back.
+    /// </summary>
+    /// <param name="session">The session to run in.</param>
+    /// <param name="script">The complete program to run.</param>
+    /// <param name="fileName">The file the probe was written to produce.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The run that produced the result, and the parsed result the caller owns and disposes.</returns>
+    /// <remarks>
+    /// A live model occasionally answers a "run this program" turn with something else — the observed
+    /// case is executing a file an earlier probe left in the shared container. One repeat costs one
+    /// sandbox call; letting it through costs every source format the caller already attempted.
+    /// </remarks>
+    public static async Task<(SandboxRun Run, JsonDocument Result)> RunProbeAsync(
+        SandboxSession session, string script, string fileName, CancellationToken cancellationToken)
+    {
+        var run = await session.RunPythonAsync(script, cancellationToken);
+
+        try
+        {
+            return (run, await RequireAsync(session, run, fileName, cancellationToken));
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or JsonException)
+        {
+            var repeat = await session.RunPythonAsync(script, cancellationToken);
+
+            return (repeat, await RequireAsync(session, repeat, fileName, cancellationToken));
+        }
+    }
+
+    /// <summary>
     /// Downloads and parses the JSON document a probe wrote.
     /// </summary>
     /// <param name="session">The session that ran the probe.</param>

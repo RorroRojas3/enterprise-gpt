@@ -45,6 +45,26 @@ namespace Enterprise.Gpt.Repository.Configurations
                     DateModified = dateCreated,
                     CreatedById = userId,
                     ModifiedById = userId
+                },
+                new Model
+                {
+                    Id = new("8f2b4d16-9c05-4a3e-8f7a-1d6a9c2b5e04"),
+                    ProviderId = Providers.AzureOpenAI,
+                    Name = "RR GPT 5.6 Luna (File Agent)",
+                    // The pinned File Agent. Its own row rather than the summarizer's so the two can be
+                    // repointed independently, and on Azure OpenAI because the hosted code interpreter
+                    // rides that provider's Responses route and no other. Hidden from the picker: it is
+                    // a purpose-built deployment nobody should be able to hold a conversation with.
+                    DeploymentName = "rr-gpt5.6-luna",
+                    ContextWindowSize = 1_000_000m,
+                    MaxOutputTokens = 16_384m,
+                    IsUserSelectable = false,
+                    IsToolEnabled = true,
+                    Description = "Runs the File Agent's sandbox turns.",
+                    DateCreated = dateCreated,
+                    DateModified = dateCreated,
+                    CreatedById = userId,
+                    ModifiedById = userId
                 }
             );
         }

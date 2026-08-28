@@ -141,6 +141,59 @@ describe('AttachmentChip', () => {
     expect(downloaded).toHaveBeenCalledWith('a1');
   });
 
+  // Both arms, because only one of them is obviously wrong when it breaks: announcing every uploaded
+  // file as one the assistant made would read as correct on the surface that produced this label.
+  it.each([
+    [false, 'Download q3-report.pdf'],
+    [true, 'Download generated file q3-report.pdf'],
+  ])('names the download for a generated=%s file as "%s"', async (generated, label) => {
+    const fixture = TestBed.createComponent(AttachmentChip);
+    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
+    fixture.componentRef.setInput('downloadable', true);
+    fixture.componentRef.setInput('generated', generated);
+    await fixture.whenStable();
+
+    expect(
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('.chip__action')
+        ?.getAttribute('aria-label'),
+    ).toBe(label);
+  });
+
+  describe('a file the assistant produced', () => {
+    async function renderGenerated() {
+      const fixture = TestBed.createComponent(AttachmentChip);
+      fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
+      fixture.componentRef.setInput('generated', true);
+      await fixture.whenStable();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    it('leads with the file type rather than the upload tick', async () => {
+      // The tick answers "your upload finished", which is not a question anyone asked of a
+      // file they never uploaded.
+      const host = await renderGenerated();
+
+      expect(host.querySelector('app-icon use')?.getAttribute('href')).toBe('#bi-file-earmark-pdf');
+    });
+
+    it('says so in text, not by colour or glyph alone', async () => {
+      const host = await renderGenerated();
+
+      expect(host.querySelector('.source-badge')?.textContent?.trim()).toBe('Generated');
+      expect(host.querySelector('.chip')?.getAttribute('aria-label')).toBe(
+        'Generated file, q3-report.pdf',
+      );
+    });
+
+    it('reports the size instead of the upload lifecycle', async () => {
+      const host = await renderGenerated();
+
+      expect(host.textContent).toContain('2.4 MB');
+      expect(host.textContent).not.toContain('Ready to use');
+    });
+  });
+
   it('hides the remove control where the caller forbids it', async () => {
     const fixture = TestBed.createComponent(AttachmentChip);
     fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));

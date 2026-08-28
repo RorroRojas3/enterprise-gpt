@@ -122,6 +122,47 @@ public static class ChatMetrics
         description: "Duration of one sheet query invocation, by operation and outcome.");
 
     /// <summary>
+    /// How long a whole File Agent run took, tagged by how it ended.
+    /// </summary>
+    /// <remarks>
+    /// A run, not a call: the pre-flight, every sandbox round trip, verification and the store roll
+    /// into one measurement, which is the grain a user waiting on the tool actually experiences.
+    /// </remarks>
+    private static readonly Histogram<double> FileAgentRunDuration = Meter.CreateHistogram<double>(
+        "enterprise_gpt.file_agent.run.duration",
+        unit: "s",
+        description: "Duration of one File Agent run, by outcome.");
+
+    /// <summary>
+    /// One increment per artifact re-opened and measured before it was stored.
+    /// </summary>
+    private static readonly Counter<long> FileAgentVerification = Meter.CreateCounter<long>(
+        "enterprise_gpt.file_agent.verification",
+        unit: "{artifact}",
+        description: "Artifacts re-opened and checked before being stored, by outcome and format.");
+
+    /// <summary>
+    /// How long the sandbox leg of a run took, tagged by how it ended.
+    /// </summary>
+    /// <remarks>
+    /// The model round trip that carries the code interpreter, which is the only observable proxy for
+    /// billed session seconds on this route — the provider bills the session separately from tokens and
+    /// reports neither back. Distinct from the run duration above, which also covers work on this host.
+    /// </remarks>
+    private static readonly Histogram<double> FileAgentSandboxDuration = Meter.CreateHistogram<double>(
+        "enterprise_gpt.file_agent.sandbox.duration",
+        unit: "s",
+        description: "Duration of one sandbox leg of a File Agent run, by outcome.");
+
+    /// <summary>
+    /// Sandbox legs in flight right now, across every conversation this instance is serving.
+    /// </summary>
+    private static readonly UpDownCounter<long> FileAgentSandboxActive = Meter.CreateUpDownCounter<long>(
+        "enterprise_gpt.file_agent.sandbox.active",
+        unit: "{session}",
+        description: "Sandbox calls currently in flight across all conversations.");
+
+    /// <summary>
     /// Records how far the local estimate was from what the provider reported.
     /// </summary>
     /// <param name="providerId">The provider that served the turn.</param>
@@ -231,4 +272,44 @@ public static class ChatMetrics
             elapsed.TotalSeconds,
             new KeyValuePair<string, object?>("sheet_query.operation", operation),
             new KeyValuePair<string, object?>("sheet_query.outcome", outcome));
+
+    /// <summary>
+    /// Records a completed, refused or failed File Agent run.
+    /// </summary>
+    /// <param name="outcome">One of <see cref="Agents.FileAgentOutcomes"/>.</param>
+    /// <param name="elapsed">Wall-clock duration of the whole run.</param>
+    public static void RecordFileAgentRun(string outcome, TimeSpan elapsed) =>
+        FileAgentRunDuration.Record(
+            elapsed.TotalSeconds, new KeyValuePair<string, object?>("file_agent.outcome", outcome));
+
+    /// <summary>
+    /// Records one sandbox leg of a File Agent run.
+    /// </summary>
+    /// <param name="outcome">Either <c>success</c> or how the leg failed.</param>
+    /// <param name="elapsed">Wall-clock duration of the leg.</param>
+    public static void RecordFileAgentSandbox(string outcome, TimeSpan elapsed) =>
+        FileAgentSandboxDuration.Record(
+            elapsed.TotalSeconds, new KeyValuePair<string, object?>("file_agent.outcome", outcome));
+
+    /// <summary>
+    /// Moves the count of sandbox legs in flight.
+    /// </summary>
+    /// <param name="delta"><c>1</c> when a leg starts, <c>-1</c> when it ends.</param>
+    public static void RecordFileAgentSandboxActive(int delta) => FileAgentSandboxActive.Add(delta);
+
+    /// <summary>
+    /// Records one artifact re-opened and measured.
+    /// </summary>
+    /// <param name="documentType">The produced format, as the extension without its dot.</param>
+    /// <param name="passed">Whether it opened and matched the shape it claimed.</param>
+    /// <remarks>
+    /// The direct source for the artifact-validity target, which is why the format is a dimension and
+    /// the file's own name is not: a name is user content, and the question the metric answers is which
+    /// formats fail.
+    /// </remarks>
+    public static void RecordFileAgentVerification(string documentType, bool passed) =>
+        FileAgentVerification.Add(
+            1,
+            new KeyValuePair<string, object?>("file_agent.outcome", passed ? "passed" : "failed"),
+            new KeyValuePair<string, object?>("document.type", documentType));
 }

@@ -47,13 +47,15 @@ internal sealed class SandboxSession : IAsyncDisposable
     private readonly List<AIContent> _inputs = [];
     private readonly List<string> _uploadedFileIds = [];
     private readonly int _maxTurns;
+    private readonly string _systemInstruction;
 
-    private SandboxSession(IChatClient chat, IHostedFileClient files, int maxTurns)
+    private SandboxSession(IChatClient chat, IHostedFileClient files, int maxTurns, string systemInstruction)
     {
         _chat = chat;
         _files = files;
         _codeInterpreter = new HostedCodeInterpreterTool { Inputs = _inputs };
         _maxTurns = maxTurns;
+        _systemInstruction = systemInstruction;
     }
 
     public string DeploymentName { get; } = SpikeConfiguration.DeploymentName;
@@ -64,7 +66,12 @@ internal sealed class SandboxSession : IAsyncDisposable
     /// Whole exchanges to keep, or zero to keep all. Bound it across independent scripts: the
     /// container survives on a recent tool call, and older code only costs input tokens.
     /// </param>
-    public static SandboxSession Create(int maxTurns = 0)
+    /// <param name="systemInstruction">
+    /// What the model is told it is doing. Defaults to the probe's own "run this program verbatim";
+    /// the benchmark passes the File Agent's real instructions instead, because a benchmark of the
+    /// agent that did not use the agent's own prompt would measure something else.
+    /// </param>
+    public static SandboxSession Create(int maxTurns = 0, string? systemInstruction = null)
     {
         var client = new OpenAIClient(
             new ApiKeyCredential(SpikeConfiguration.ApiKey),
@@ -73,7 +80,7 @@ internal sealed class SandboxSession : IAsyncDisposable
         var chat = client.GetResponsesClient().AsIChatClient(SpikeConfiguration.DeploymentName);
         var files = client.AsIHostedFileClient();
 
-        return new SandboxSession(chat, files, maxTurns);
+        return new SandboxSession(chat, files, maxTurns, systemInstruction ?? SystemInstruction);
     }
 
     /// <summary>
@@ -113,7 +120,7 @@ internal sealed class SandboxSession : IAsyncDisposable
     public async Task<SandboxRun> RunAsync(string instruction, CancellationToken cancellationToken)
     {
         List<ChatMessage> turn = [new(ChatRole.User, instruction)];
-        List<ChatMessage> request = [new(ChatRole.System, SystemInstruction), .. _turns.SelectMany(kept => kept), .. turn];
+        List<ChatMessage> request = [new(ChatRole.System, _systemInstruction), .. _turns.SelectMany(kept => kept), .. turn];
 
         var response = await _chat.GetResponseAsync(
             request,

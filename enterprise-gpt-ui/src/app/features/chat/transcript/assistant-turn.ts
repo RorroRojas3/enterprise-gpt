@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { MessageFeedbackRating } from '@domain/api/conversation';
+import { MessageAttachmentDto, MessageFeedbackRating } from '@domain/api/conversation';
 import {
   AssistantActivity,
   AssistantStatusSnapshot,
@@ -14,6 +14,7 @@ import { MarkdownComponent } from 'ngx-markdown';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { MarkdownExtras } from '../markdown/markdown-extras';
 import { ActivityCard } from './activity-card';
+import { GeneratedFiles } from './generated-files';
 import { MessageCopy } from './message-copy';
 import { MessageFeedback } from './message-feedback';
 import { ReasoningRegion } from './reasoning-region';
@@ -45,6 +46,7 @@ type RenderedNode =
   imports: [
     ActivityCard,
     BrandLogo,
+    GeneratedFiles,
     MarkdownComponent,
     MarkdownExtras,
     MessageCopy,
@@ -78,6 +80,10 @@ export class AssistantTurn {
   readonly rating = input<MessageFeedbackRating | null>(null);
   /** Whether this answer's own rating request is in flight (US-1103). */
   readonly ratingPending = input<boolean>(false);
+  /** The files this turn produced, empty when it produced none. */
+  readonly attachments = input<readonly MessageAttachmentDto[]>([]);
+  /** The conversation a chip's download is addressed to. */
+  readonly conversationId = input<string | null>(null);
   /** The thumb the reader pressed. What it means is the store's decision, not this one's. */
   readonly rated = output<MessageFeedbackRating>();
 

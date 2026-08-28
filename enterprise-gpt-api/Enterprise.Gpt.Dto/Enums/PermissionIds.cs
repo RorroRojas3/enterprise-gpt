@@ -21,6 +21,17 @@ namespace Enterprise.Gpt.Dto.Enums
         public static readonly Guid UploadFile = new("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e");
 
         /// <summary>
+        /// The built-in Generate Files permission, which lets the assistant create, edit, compare and
+        /// convert documents on the holder's behalf. This value must match the seeded
+        /// <c>Core.Permission</c> row exactly; out-of-band data migrations must use it verbatim.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not implied by <see cref="Administrator"/>, and not granted by default: each run
+        /// provisions a billed sandbox session, so the capability is granted rather than inherited.
+        /// </remarks>
+        public static readonly Guid GenerateFiles = new("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f");
+
+        /// <summary>
         /// Display names of the built-in permissions, keyed by id.
         /// </summary>
         /// <remarks>
@@ -33,7 +44,8 @@ namespace Enterprise.Gpt.Dto.Enums
         public static readonly FrozenDictionary<Guid, string> Names = new Dictionary<Guid, string>
         {
             [Administrator] = "Administrator",
-            [UploadFile] = "Upload File"
+            [UploadFile] = "Upload File",
+            [GenerateFiles] = "Generate Files"
         }.ToFrozenDictionary();
     }
 }

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Enterprise.Gpt.Service.Agents;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Agents;
@@ -23,6 +24,11 @@ public sealed class ConversionMatrixDocumentTests
 
     private static readonly string DocumentPath =
         Path.Combine(AppContext.BaseDirectory, "file-agent-sandbox-capabilities.md");
+
+    // The agent reads this one, and the pair it offers has to be the pair the matrix confirmed —
+    // a conversion refused in one place and offered in the other is the failure this catches.
+    private static readonly string ConversionSkillPath = Path.Combine(
+        AppContext.BaseDirectory, "Agents", "Documents", "Skills", "document-conversion", "SKILL.md");
     private const string BeginMarker = "<!-- conversion-matrix:begin -->";
     private const string EndMarker = "<!-- conversion-matrix:end -->";
 
@@ -129,6 +135,60 @@ public sealed class ConversionMatrixDocumentTests
             published == rendered,
             $"The matrix table in '{DocumentPath}' no longer matches '{MatrixPath}'. Replace everything "
             + $"between the markers with:{Environment.NewLine}{Environment.NewLine}{rendered}");
+    }
+
+    [Fact]
+    public void ConversionSkill_MatrixTable_IsExactlyWhatTheJsonRendersTo()
+    {
+        using var matrix = Load();
+
+        Assert.True(File.Exists(ConversionSkillPath), $"'{ConversionSkillPath}' did not ship with the build.");
+
+        var rendered = Render(matrix);
+
+        Assert.True(
+            ReadMatrixBlock(ConversionSkillPath) == rendered,
+            $"The matrix table in '{ConversionSkillPath}' no longer matches '{MatrixPath}'. Replace everything "
+            + $"between the markers with:{Environment.NewLine}{Environment.NewLine}{rendered}");
+    }
+
+    // The third reader of this file, and the one that acts on it: a pair offered in the skill and refused
+    // in code — or the reverse — is what publishing one file rather than three tables prevents.
+    [Fact]
+    public void ConversionMatrixLoader_EveryCell_AgreesWithTheJsonItWasReadFrom()
+    {
+        using var matrix = Load();
+        var loaded = ConversionMatrix.Load(MatrixPath);
+
+        var expected = Cells(matrix).ToDictionary(
+            cell => (cell.GetProperty("from").GetString()!, cell.GetProperty("to").GetString()!),
+            cell => cell.GetProperty("tier").GetString()!);
+
+        Assert.Equal(expected.Count, loaded.Cells.Count);
+
+        foreach (var cell in loaded.Cells)
+        {
+            var tier = expected[(cell.From, cell.To)];
+
+            Assert.Equal(tier, cell.Tier switch
+            {
+                ConversionTiers.Faithful => "faithful",
+                ConversionTiers.Structural => "structural",
+                ConversionTiers.Refused => "refused",
+                _ => "notOffered"
+            });
+        }
+    }
+
+    private static string ReadMatrixBlock(string path)
+    {
+        var document = File.ReadAllText(path);
+        var start = document.IndexOf(BeginMarker, StringComparison.Ordinal);
+        var end = document.IndexOf(EndMarker, StringComparison.Ordinal);
+
+        Assert.True(start >= 0 && end > start, $"'{path}' carries no rendered matrix block.");
+
+        return document[(start + BeginMarker.Length)..end].ReplaceLineEndings("\n").Trim('\n');
     }
 
     private static JsonDocument Load() => JsonDocument.Parse(File.ReadAllText(MatrixPath));

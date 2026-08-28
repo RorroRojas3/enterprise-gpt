@@ -1,4 +1,6 @@
 ﻿using Andes.Extensions.AI;
+using Microsoft.Agents.AI;
+using System.Text.Json;
 using FluentValidation;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +16,7 @@ using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Entity.Transcripts;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
@@ -50,6 +53,8 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly IDocumentSummaryService _documentSummaryService = Substitute.For<IDocumentSummaryService>();
     private readonly IUserGrantReader _userGrantReader = Substitute.For<IUserGrantReader>();
     private readonly ISheetQueryService _sheetQueryService = Substitute.For<ISheetQueryService>();
+    private readonly IFileAgentToolProvider _fileAgentToolProvider = Substitute.For<IFileAgentToolProvider>();
+    private readonly IFileAgentQuotaService _fileAgentQuotaService = Substitute.For<IFileAgentQuotaService>();
     private readonly FakeChatClient _chatClient = new();
     private readonly IChatClient _trackedChatClient;
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
@@ -82,7 +87,14 @@ public sealed class ConversationServiceTests : IDisposable
         // here builds through a container, which is what would otherwise supply it.
         _trackedChatClient = _chatClient
             .AsBuilder()
-            .UseToolTracking(options => options.Observers.Add(new ChatUsageObserver()))
+            .UseToolTracking(options =>
+            {
+                options.Observers.Add(new ChatUsageObserver());
+
+                // As Program.cs installs it, so an agent exposed as a function classifies here the way
+                // it does in production rather than as an anonymous function.
+                options.UseAgentToolClassification();
+            })
             .UseFunctionInvocation()
             .Build();
         _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_trackedChatClient);
@@ -93,17 +105,27 @@ public sealed class ConversationServiceTests : IDisposable
             .GetScopeAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => new DocumentRetrievalScope(callInfo.ArgAt<Guid>(0), null, []));
 
-        // Granted by default, so a test that switches summarization on is testing the switch rather
-        // than the grant. The tests that care about the grant arrange it themselves.
+        // Granted by default, so a test that switches summarization or the File Agent on is testing
+        // the switch rather than the grant. The tests that care about a grant arrange it themselves.
         _userGrantReader
             .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid> { PermissionIds.UploadFile });
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>
+            {
+                PermissionIds.UploadFile,
+                PermissionIds.GenerateFiles
+            });
 
         // Sheets present by default, so a test that switches the sheet query on is testing the switch
         // rather than whether the workbook was ever ingested.
         _sheetQueryService
             .HasQueryableSheetsAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<CancellationToken>())
             .Returns(true);
+
+        // No ceiling by default, so a test that switches the agent on is testing the switch rather
+        // than the quota. The tests that care about the ceiling arrange it themselves.
+        _fileAgentQuotaService
+            .CheckAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(FileAgentQuotaDecision.Unbounded);
 
         _service = new ConversationService(
             NullLogger<ConversationService>.Instance,
@@ -128,6 +150,9 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            _fileAgentQuotaService,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
     }
 
@@ -160,6 +185,9 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            _fileAgentQuotaService,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     /// <summary>
@@ -190,6 +218,9 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(options ?? new SummarizationOptions { Enabled = true }),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            _fileAgentQuotaService,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     /// <summary>
@@ -219,6 +250,9 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             options ?? new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
+            _fileAgentToolProvider,
+            _fileAgentQuotaService,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     public void Dispose()
@@ -567,9 +601,12 @@ public sealed class ConversationServiceTests : IDisposable
     /// said are not entangled with the activity events interleaved among them.
     /// </summary>
     private async Task<List<string?>> StreamToEndAsync(
-        Guid conversationId, CreateConversationStreamActionDto request, CancellationToken? cancellationToken = null)
+        Guid conversationId,
+        CreateConversationStreamActionDto request,
+        CancellationToken? cancellationToken = null,
+        ConversationService? service = null)
     {
-        var events = await StreamEventsToEndAsync(conversationId, request, cancellationToken);
+        var events = await StreamEventsToEndAsync(conversationId, request, cancellationToken, service);
 
         return [.. events.Where(e => e.Kind == AssistantUiEventKind.TextDelta).Select(e => e.Text)];
     }
@@ -791,6 +828,512 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal("/contextTokens", patch[1].Path);
         Assert.Equal(PatchOperationType.Set, patch[2].OperationType);
         Assert.Equal("/dateModified", patch[2].Path);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentProducedAFile_WritesItOntoTheAssistantMessage()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var file = SetUpFileAgentProducing(
+            new MessageAttachmentDto
+            {
+                Id = Guid.NewGuid(),
+                Name = "regional-summary.xlsx",
+                Extension = ".xlsx",
+                MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Size = 2048
+            });
+
+        var service = CreateServiceWithFileAgent();
+
+        await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: service);
+
+        var assistant = Assert.IsType<TranscriptMessageDocument>(CapturedBatchOperations()[1].Item);
+        var attachment = Assert.Single(assistant.Attachments);
+
+        Assert.Equal(file.Id, attachment.Id);
+        Assert.Equal("regional-summary.xlsx", attachment.Name);
+        Assert.Equal(".xlsx", attachment.Extension);
+        Assert.Equal(2048, attachment.Size);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentProducedAFile_NamesItOnTheFinishedFrame()
+    {
+        // The chip on the turn that made the file. A reload reads the same identities off the
+        // transcript, so this key is the live path rather than the only one.
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var file = SetUpFileAgentProducing(
+            new MessageAttachmentDto
+            {
+                Id = Guid.NewGuid(),
+                Name = "notes.md",
+                Extension = ".md",
+                MimeType = "text/markdown",
+                Size = 12
+            });
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Write me notes", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        var finished = events.Last(e => e.Kind == AssistantUiEventKind.Finished);
+        var payload = Assert.Contains("generatedAttachments", finished.Metadata!);
+        var parsed = JsonSerializer.Deserialize<List<MessageAttachmentDto>>(payload)!;
+
+        Assert.Equal(file.Id, Assert.Single(parsed).Id);
+        Assert.Contains("notes.md", payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentProducedNothing_ClaimsNoAttachments()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        var finished = events.Last(e => e.Kind == AssistantUiEventKind.Finished);
+        Assert.True(finished.Metadata is null || !finished.Metadata.ContainsKey("generatedAttachments"));
+
+        var assistant = Assert.IsType<TranscriptMessageDocument>(CapturedBatchOperations()[1].Item);
+        Assert.Empty(assistant.Attachments);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentIsOff_IsNeverAskedForATool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] });
+
+        await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        Assert.Null(_chatClient.CapturedOptions?.Instructions);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_CallerWithoutTheGenerateFilesGrant_IsNeverAskedForATool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>());
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        Assert.Null(_chatClient.CapturedOptions?.Instructions);
+    }
+
+    /// <summary>
+    /// The standing rule for every grant here: administration is a permission of its own, not a
+    /// superset of the others.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_AdministratorWithoutTheGenerateFilesGrant_HasNoFileAgent()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid> { PermissionIds.Administrator });
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+    }
+
+    /// <summary>
+    /// The grant is read per turn rather than per conversation, which is the whole of what makes a
+    /// revocation take effect without waiting for the conversation to end.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheGrantIsRevokedBetweenTurns_TheSecondTurnHasNoFileAgent()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+        var service = CreateServiceWithFileAgent();
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: service);
+
+        Assert.Contains(_chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>());
+        SetUpTranscript(conversation.Id);
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me another", ModelId = model.Id, McpServers = [] },
+            service: service);
+
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        await _fileAgentToolProvider.Received(1)
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenComposingTheFileAgentFails_TheTurnStillAnswers()
+    {
+        // A misconfigured agent costs the turn a capability, not the turn.
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _fileAgentToolProvider
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IFileAgentToolLease>>(_ => throw new InvalidOperationException("no agent here"));
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.Finished);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheUserIsAtTheirCeiling_StandsTheAgentDownAndSaysWhy()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+
+        _fileAgentQuotaService
+            .CheckAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new FileAgentQuotaDecision(false, "This account has reached its limit of 3 generated file(s) in a day."));
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        Assert.Contains(
+            "limit of 3 generated file(s)", _chatClient.CapturedOptions?.Instructions ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    // Every other reason the agent is absent is a capability the user never had, and saying so would
+    // advertise one they cannot use.
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheUserIsUnderTheirCeiling_TellsTheAssistantNothingAboutIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        Assert.Contains(_chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        Assert.DoesNotContain(
+            "limit", _chatClient.CapturedOptions?.Instructions ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A generated file reaches the transcript only on a completed turn, so one stored by a turn that
+    /// was stopped would sit in the conversation's files with no message introducing it.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheTurnIsStopped_WithdrawsWhatTheAgentHadAlreadyStored()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var lease = SetUpFileAgentLease(AIFunctionFactory.Create(() => "done", FileAgentToolNames.Agent));
+        var service = CreateServiceWithFileAgent();
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Make me a sheet",
+            ModelId = model.Id,
+            McpServers = []
+        };
+
+        using var cts = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in service.StreamConversationAsync(conversation.Id, request, cts.Token))
+            {
+                await cts.CancelAsync();
+            }
+        });
+
+        await lease.Received(1).DiscardGeneratedAsync();
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheTurnCompletes_KeepsWhatTheAgentStored()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var lease = SetUpFileAgentLease(AIFunctionFactory.Create(() => "done", FileAgentToolNames.Agent));
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        await lease.DidNotReceive().DiscardGeneratedAsync();
+    }
+
+    /// <summary>
+    /// The test a wrong <c>trackUsage</c> fails on. With it set the other way the agent's tokens either
+    /// double or vanish, and the row-versus-counter comparison below is what catches either.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentRuns_ItsTokensAreItsOwnAndTheTurnsAreUnchanged()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var agentModel = SetUpFileAgentLease(TrackedAgent(input: 40, output: 25)).Model;
+
+        _chatClient.ToolCallName = FileAgentToolNames.Agent;
+        _chatClient.ToolCallArguments["query"] = "Build a spreadsheet of last quarter's revenue.";
+        _chatClient.ToolTurnUsage = new UsageDetails { InputTokenCount = 5, OutputTokenCount = 3 };
+        _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        var row = Assert.Single(await ReadToolCallsAsync(conversation.Id));
+        var usage = Assert.Single(await ReadUsageAsync(conversation.Id));
+
+        Assert.Equal(ConversationToolKinds.Agent, row.Kind);
+        Assert.True(row.Succeeded);
+        Assert.Equal(0, row.Depth);
+        Assert.Equal(agentModel.ModelId, row.ModelId);
+        Assert.Equal(agentModel.DeploymentName, row.DeploymentName);
+        Assert.Equal(40, row.InputTokens);
+        Assert.Equal(25, row.OutputTokens);
+        Assert.Equal(65, row.SubtreeTotalTokens);
+
+        // The assistant's own two turns, untouched by what the agent spent.
+        Assert.Equal(16, usage.InputTokens);
+        Assert.Equal(10, usage.OutputTokens);
+        Assert.Equal(40, usage.ToolInputTokens);
+        Assert.Equal(25, usage.ToolOutputTokens);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(usage.InputTokens + usage.ToolInputTokens, stored.InputTokens);
+        Assert.Equal(usage.OutputTokens + usage.ToolOutputTokens, stored.OutputTokens);
+    }
+
+    /// <summary>
+    /// The mechanism the agent's own steps ride on: a scope opened inside a tool reaches the stream as
+    /// a child of that tool's activity, which is what draws "Running code" and "Checking …" beneath the
+    /// agent's card rather than as flat sub-status lines on it.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenAToolOpensANestedScope_ItReachesTheStreamAsAChildActivity()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        SetUpFileAgentLease(AIFunctionFactory.Create(
+            () =>
+            {
+                using var scope = ChatProgress.BeginToolScope(
+                    new ToolDescriptor
+                    {
+                        Name = "Running code",
+                        DisplayName = "Running code",
+                        Kind = ToolKind.Agent
+                    },
+                    owner: null);
+
+                ChatProgress.Report("Loaded 1 file(s)");
+
+                return "done";
+            },
+            FileAgentToolNames.Agent));
+
+        _chatClient.ToolCallName = FileAgentToolNames.Agent;
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        var parent = Assert.Single(
+            events,
+            e => e.Kind == AssistantUiEventKind.ActivityStarted && e.DisplayName == FileAgentToolNames.Agent);
+        var child = Assert.Single(
+            events, e => e.Kind == AssistantUiEventKind.ActivityStarted && e.DisplayName == "Running code");
+
+        Assert.Equal(1, parent.Depth);
+        Assert.Equal(2, child.Depth);
+        Assert.Equal(parent.ScopeId, child.ParentScopeId);
+
+        // The card reads its label off the descriptor's Name, not its DisplayName — which is why the
+        // production descriptors carry prose in both rather than a code identifier in the first.
+        Assert.Equal(ToolKind.Agent.ToString(), child.ToolKind.ToString());
+
+        // The sub-status belongs to the child, not to the agent's own card.
+        var progress = Assert.Single(events, e => e.Kind == AssistantUiEventKind.ActivityProgress);
+        Assert.Equal(child.ScopeId, progress.ScopeId);
+    }
+
+    /// <summary>The agent as the tracked tool the assistant actually calls, over a client of its own.</summary>
+    private static AITool TrackedAgent(long input, long output)
+    {
+        var client = new FakeAgentChatClient
+        {
+            Usage = new UsageDetails
+            {
+                InputTokenCount = input,
+                OutputTokenCount = output,
+                TotalTokenCount = input + output
+            }
+        };
+
+        var agent = new ChatClientAgent(
+            client, new ChatClientAgentOptions { Name = "File Agent", UseProvidedChatClientAsIs = true });
+
+        return agent.WithTracking(
+            new AIFunctionFactoryOptions { Name = FileAgentToolNames.Agent }, trackUsage: true);
+    }
+
+    /// <summary>Builds a service with the File Agent switched on; options are captured at construction.</summary>
+    private ConversationService CreateServiceWithFileAgent() =>
+        new(NullLogger<ConversationService>.Instance,
+            _modelService,
+            _chatClientResolver,
+            _mcpToolProvider,
+            _documentRetrievalService,
+            _lockService,
+            _tokenService,
+            _transcriptStore,
+            _tokenEstimatorResolver,
+            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            _markdownRenderer,
+            new CreateConversationActionDtoValidator(),
+            new CreateConversationStreamActionDtoValidator(),
+            new DeactivateConversationsBulkActionDtoValidator(),
+            new UpdateConversationActionDtoValidator(),
+            new SetMessageFeedbackActionDtoValidator(),
+            Options.Create(new WeatherToolOptions()),
+            _documentSummaryService,
+            _userGrantReader,
+            Options.Create(new SummarizationOptions()),
+            _sheetQueryService,
+            new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            _fileAgentQuotaService,
+            Options.Create(new FileAgentOptions { Enabled = true, ModelId = Guid.NewGuid() }),
+            _fixture.Context);
+
+    /// <summary>Stands the File Agent up as a lease that reports the given files as produced.</summary>
+    private MessageAttachmentDto SetUpFileAgentProducing(params MessageAttachmentDto[] produced)
+    {
+        var lease = SetUpFileAgentLease(AIFunctionFactory.Create(() => "done", FileAgentToolNames.Agent));
+        lease.GeneratedDocuments.Returns(produced);
+
+        return produced.FirstOrDefault()!;
+    }
+
+    /// <summary>Stands the File Agent up as a lease over a given tool, and returns the lease itself.</summary>
+    private IFileAgentToolLease SetUpFileAgentLease(AITool tool)
+    {
+        var lease = Substitute.For<IFileAgentToolLease>();
+        lease.Tool.Returns(tool);
+        lease.GeneratedDocuments.Returns([]);
+        lease.Model.Returns(new FileAgentModel(KnownIds.SeedModelId, Providers.AzureOpenAI, "file-agent-deployment"));
+
+        _fileAgentToolProvider
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(lease);
+
+        return lease;
+    }
+
+    /// <summary>The agent's own client: one non-streamed answer, with the usage the run reports.</summary>
+    private sealed class FakeAgentChatClient : IChatClient
+    {
+        public UsageDetails? Usage { get; init; }
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            // On the message as well as the response: the agent's own usage is what WithTracking
+            // attributes, and it is read off whichever of the two the bridge carries through.
+            var message = new ChatMessage(ChatRole.Assistant, "Made it.");
+
+            if (Usage is not null)
+            {
+                message.Contents.Add(new UsageContent(Usage));
+            }
+
+            return Task.FromResult(new ChatResponse(message) { Usage = Usage });
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The agent is run non-streamed through AsAIFunction.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
     }
 
     /// <summary>
@@ -4083,6 +4626,13 @@ public sealed class ConversationServiceTests : IDisposable
         public string? ToolCallName { get; set; }
 
         /// <summary>
+        /// Gets or sets the arguments the scripted call carries. Empty by default, which suits a tool
+        /// that takes none; a tool with a required parameter needs it, or the invocation fails before
+        /// the tool body runs and reports no usage.
+        /// </summary>
+        public Dictionary<string, object?> ToolCallArguments { get; } = [];
+
+        /// <summary>
         /// Gets or sets the usage reported for the first turn, the one that only asks for a tool.
         /// </summary>
         public UsageDetails? ToolTurnUsage { get; set; }
@@ -4118,7 +4668,7 @@ public sealed class ConversationServiceTests : IDisposable
                 yield return new ChatResponseUpdate
                 {
                     Role = ChatRole.Assistant,
-                    Contents = [new FunctionCallContent("call_1", ToolCallName, new Dictionary<string, object?>())]
+                    Contents = [new FunctionCallContent("call_1", ToolCallName, ToolCallArguments)]
                 };
 
                 if (ToolTurnUsage is not null)

@@ -35,7 +35,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// schema is created once for the whole run, so deleting a seeded row would remove it permanently and
     /// every later test would run against a database missing a built-in permission.
     /// </summary>
-    private static readonly Guid[] _builtInPermissionIds = [PermissionIds.Administrator, PermissionIds.UploadFile];
+    private static readonly Guid[] _builtInPermissionIds =
+        [PermissionIds.Administrator, PermissionIds.UploadFile, PermissionIds.GenerateFiles];
 
     /// <summary>
     /// Gets the shared application factory. Populated once the container has started.
@@ -988,7 +989,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// </remarks>
     public async Task<Guid> AddConversationDocumentAsync(
         Guid conversationId, string name, IReadOnlyList<SeedChunk> chunks, bool deactivated = false,
-        bool chunksDeactivated = false, Guid? userId = null, CancellationToken cancellationToken = default)
+        bool chunksDeactivated = false, Guid? userId = null,
+        ConversationDocumentTypes type = ConversationDocumentTypes.Uploaded,
+        CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -999,6 +1002,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             Id = Guid.NewGuid(),
             ConversationId = conversationId,
             UserId = userId ?? TestUsers.RegularUserId,
+            Type = type,
             Name = name,
             Extension = Path.GetExtension(name),
             MimeType = "application/octet-stream",

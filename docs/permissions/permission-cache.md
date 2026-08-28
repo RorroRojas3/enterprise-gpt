@@ -61,6 +61,7 @@ The filter takes ids only, but the 403 body needs display names. Reading them fr
 |---|---|
 | `a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d` | `Administrator` |
 | `b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e` | `Upload File` |
+| `c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f` | `Generate Files` |
 
 `Require` validates its arguments against that map **at map time**, not at request time. Pass an id with no entry and the application throws `ArgumentException` during startup rather than serving a nameless 403 months later. Passing no ids at all throws `ArgumentOutOfRangeException`; duplicates are collapsed and named once.
 

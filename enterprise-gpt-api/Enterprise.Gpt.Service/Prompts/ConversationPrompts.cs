@@ -31,6 +31,9 @@ namespace Enterprise.Gpt.Service.Prompts
         private static readonly string SheetQueryToolPromptTemplate =
             LoadTemplate("sheet-query-tool-prompt.md");
 
+        private static readonly string FileAgentInstructionsTemplate =
+            LoadTemplate("file-agent-instructions.md");
+
         #region Public static methods
 
         /// <summary>
@@ -184,6 +187,33 @@ namespace Enterprise.Gpt.Service.Prompts
 
             return string.Format(
                 CultureInfo.InvariantCulture, SheetQueryToolPromptTemplate, sheetToolName, list, retrievalToolName);
+        }
+
+        /// <summary>
+        /// Builds the File Agent's own instructions, naming the files it may be asked to work from.
+        /// </summary>
+        /// <remarks>
+        /// The agent's instructions rather than the assistant's: the assistant is told nothing about
+        /// how a file gets made, and the agent is told nothing about the conversation beyond the file
+        /// names it might be pointed at.
+        /// <para>
+        /// <c>file-agent-instructions.md</c> is a composite format string whose <c>{0}</c> is the file
+        /// list, so a literal brace added to it must be doubled. The names are arguments and never
+        /// re-parsed, so a brace in a file name is safe.
+        /// </para>
+        /// </remarks>
+        /// <param name="documentNames">The files available to this run, which may be empty.</param>
+        /// <returns>The agent's instruction text.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="documentNames"/> is <see langword="null"/>.</exception>
+        public static string BuildFileAgentPrompt(IReadOnlyList<string> documentNames)
+        {
+            ArgumentNullException.ThrowIfNull(documentNames);
+
+            var list = documentNames.Count == 0
+                ? "There are no files in this conversation, so every request is a create."
+                : string.Join("\n", documentNames.Select(name => $"- {name}"));
+
+            return string.Format(CultureInfo.InvariantCulture, FileAgentInstructionsTemplate, list);
         }
 
         #endregion

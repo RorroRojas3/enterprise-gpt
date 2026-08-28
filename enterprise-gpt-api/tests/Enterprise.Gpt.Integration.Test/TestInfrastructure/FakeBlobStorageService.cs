@@ -12,11 +12,21 @@ public sealed class FakeBlobStorageService : IBlobStorageService
 {
     private readonly ConcurrentDictionary<string, byte[]> _blobs = new();
     private readonly ConcurrentDictionary<string, byte> _uploadedPaths = new();
+    private readonly ConcurrentDictionary<string, byte> _uploadedKeys = new();
 
     /// <summary>
     /// Gets the blob paths (excluding the container) uploaded since the last reset.
     /// </summary>
     public IReadOnlyCollection<string> UploadedPaths => [.. _uploadedPaths.Keys];
+
+    /// <summary>
+    /// Gets the blob paths uploaded since the last reset, each prefixed by its container.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="UploadedPaths"/> because that one drops the container, and which of
+    /// the two containers a write landed in is exactly what a generated-document test asserts.
+    /// </remarks>
+    public IReadOnlyCollection<string> UploadedKeys => [.. _uploadedKeys.Keys];
 
     /// <summary>
     /// Clears all stored blobs.
@@ -25,6 +35,7 @@ public sealed class FakeBlobStorageService : IBlobStorageService
     {
         _blobs.Clear();
         _uploadedPaths.Clear();
+        _uploadedKeys.Clear();
     }
 
     /// <inheritdoc />
@@ -32,6 +43,7 @@ public sealed class FakeBlobStorageService : IBlobStorageService
     {
         _blobs[$"{container}/{blob}"] = data;
         _uploadedPaths[blob] = 0;
+        _uploadedKeys[$"{container}/{blob}"] = 0;
         return Task.CompletedTask;
     }
 

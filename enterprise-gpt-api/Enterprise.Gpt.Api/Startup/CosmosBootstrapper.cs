@@ -33,6 +33,7 @@ public static class CosmosBootstrapper
         "/htmlContent/*",
         "/usage/*",
         "/feedback/*",
+        "/attachments/*",
         "/\"_etag\"/?"
     ];
 

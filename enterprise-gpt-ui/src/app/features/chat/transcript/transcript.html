@@ -43,6 +43,8 @@
         [messageId]="entry.messageId"
         [rating]="entry.rating"
         [ratingPending]="isRatingPending(entry.messageId)"
+        [attachments]="entry.attachments"
+        [conversationId]="turn.boundConversationId()"
         (rated)="rateMessage(entry.messageId, $event)"
       />
     }

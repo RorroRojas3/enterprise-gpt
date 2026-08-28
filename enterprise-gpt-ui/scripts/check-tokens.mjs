@@ -208,6 +208,10 @@ const CONTRAST_PAIRS = [
   // wrong token here, which _markdown.scss says in prose — this is that claim
   // measured.
   { background: 'code-head', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
+  // The Generated badge on a chip. Small bold text on --surface, so SC 1.4.3 applies at the
+  // text minimum — which is why it takes --brand rather than the --accent the board draws:
+  // that measures 2.74:1 here in the light theme, the same gate the usage chart's line hit.
+  { background: 'surface', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
   { background: 'code-bg', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
   // US-1302. The usage dashboard's marks, measured as graphical objects (SC 1.4.11): the area
   // chart's line and the donut's three arcs on the card surface, and the leading bar's fill on
