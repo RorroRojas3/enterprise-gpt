@@ -34,6 +34,7 @@ import {
   ChatConversationDto,
   ConversationDto,
   ConversationMessageDto,
+  MessageAttachmentDto,
   MessageFeedbackRating,
 } from '@domain/api/conversation';
 import {
@@ -115,6 +116,13 @@ export type TranscriptEntry =
       readonly messageId: string | null;
       /** The rating recorded against it (US-1103): server-confirmed, or optimistic. */
       readonly rating: MessageFeedbackRating | null;
+      /**
+       * The files the assistant produced on this turn, empty when it produced none.
+       *
+       * Identities only — a link is minted when a chip is clicked, so nothing here goes
+       * stale between the turn and the download.
+       */
+      readonly attachments: readonly MessageAttachmentDto[];
     }
   | {
       readonly kind: 'cutOff';
@@ -302,6 +310,35 @@ function clearLiveTurn(): Pick<
   };
 }
 
+/**
+ * Reads the generated-file identities off the `Finished` frame's metadata.
+ *
+ * Narrowed element by element, not just parsed: the payload crosses an untyped
+ * `Record<string, string>` bag, and a malformed entry reaching the chip would throw inside
+ * a computed and take the whole transcript's render with it. A turn whose files could not
+ * be described is a turn with no chips.
+ */
+function parseAttachments(value: string | undefined): readonly MessageAttachmentDto[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(isAttachment) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isAttachment(value: unknown): value is MessageAttachmentDto {
+  const file = value as Partial<MessageAttachmentDto> | null;
+
+  return (
+    typeof file?.id === 'string' && typeof file.name === 'string' && typeof file.size === 'number'
+  );
+}
+
 /** The one append `Finished` earns: the user and assistant entries land in a single patch. */
 function settleFinished(): PartialStateUpdater<TurnState> {
   return (state) => ({
@@ -323,6 +360,10 @@ function settleFinished(): PartialStateUpdater<TurnState> {
         // is no persisted message to rate.
         messageId: state.snapshot.metadata?.['assistantMessageId'] ?? null,
         rating: null,
+        // The chip on the turn that made the file. The bag is Record<string, string>, so
+        // the payload is JSON in a string — the contract is vendored and byte-locked, and
+        // a typed array there would mean a new event kind.
+        attachments: parseAttachments(state.snapshot.metadata?.['generatedAttachments']),
       },
     ],
     nextEntryId: state.nextEntryId + 2,
@@ -440,6 +481,9 @@ function toHistoryEntries(messages: readonly ConversationMessageDto[]): Transcri
         // The whole of how a rating survives a reload: replaceHistory rebuilds this block
         // from the response, so what the server holds is what the footer draws.
         rating: message.feedback?.rating ?? null,
+        // The whole of how a generated file survives a reload, and the same mechanism the
+        // rating above uses: what the server holds is what the transcript draws.
+        attachments: message.attachments ?? [],
         ...replayAssistantText(message.text),
       });
     }

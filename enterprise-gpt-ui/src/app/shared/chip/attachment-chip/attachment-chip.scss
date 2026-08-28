@@ -122,3 +122,13 @@
     cursor: default;
   }
 }
+
+.chip--generated {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.chip__meta--generated {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

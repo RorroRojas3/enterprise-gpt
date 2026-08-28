@@ -78,8 +78,8 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | FR-7 | A generated document downloads through the existing download route in its own format | P1 | EP-1 |
 | FR-8 | A transcript message carries a structured, URL-free reference to every generated file it introduced | P0 | EP-1 |
 | FR-9 | `HostedCodeInterpreterTool` is attached only to the Azure OpenAI (Responses-route) keyed client, never Azure AI Foundry, Bedrock or Anthropic | P0 | EP-2 |
-| FR-10 | Every sandbox input is supplied by the API as content on `HostedCodeInterpreterTool.Inputs`; the sandbox itself makes no outbound network call | P0 | EP-2 |
-| FR-11 | Generated artifacts are read back exclusively via `CodeInterpreterToolResultContent`; an input the client silently ignores is asserted by a test, not assumed away | P1 | EP-2 |
+| FR-10 | Every sandbox input is uploaded by the API to the Files API and supplied as `HostedFileContent` on `HostedCodeInterpreterTool.Inputs`; the sandbox itself makes no outbound network call | P0 | EP-2 |
+| FR-11 | Generated artifacts are read back off every channel a response can carry one on, and downloaded container-scoped; raw `DataContent` inputs are asserted by a test to be silently dropped rather than assumed away | P1 | EP-2 |
 | FR-12 | A run that returns text but no artifact is classified as a distinct "no file produced" failure, never a completed turn | P1 | EP-2 |
 | FR-13 | A run is bounded in wall-clock time and total artifact count, independent of the outer turn's own function-invocation bounds | P0 | EP-2 |
 | FR-14 | A run is cancelled with the turn; cancellation never leaves an orphaned document row or an orphaned blob | P0 | EP-2 |
@@ -88,7 +88,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | FR-17 | The agent carries a non-empty `Name`, and its tool name does not sanitize to the leading `{token}_` prefix of any catalog MCP server name today | P0 | EP-3 |
 | FR-18 | Format-targeted Agent Skills are attached via `AgentSkillsProvider` and filtered, before advertisement, to the run's source and target formats | P0 | EP-3 |
 | FR-19 | All three skill tools are auto-approved for read-only use so a headless turn never stalls on an unanswered approval request | P0 | EP-3 |
-| FR-20 | No `AgentFileSkillScriptRunner` delegate is ever registered anywhere in the solution; a skill's own scripts, if referenced, execute only inside the sandbox | P0 | EP-3 |
+| FR-20 | The only `AgentFileSkillScriptRunner` registered anywhere in the solution refuses to execute; a skill's own scripts, if referenced, run only inside the sandbox | P0 | EP-3 |
 | FR-21 | Skill content ships as `SKILL.md`/`references/*.md` files under `Enterprise.Gpt.Service/Agents/Documents/Skills/`, copied to the output directory | P1 | EP-3 |
 | FR-22 | The agent's model is a dedicated, pinned `Core.Ref.Model` row on the Azure OpenAI provider, validated at startup regardless of the feature flag | P0 | EP-3 |
 | FR-23 | The agent creates a document in `docx`, `xlsx`, `pptx`, `csv`, `md` or `txt` from a natural-language request | P0 | EP-4 |
@@ -154,11 +154,11 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 
 **Three findings shape the design below, beyond what the invocation already established.**
 
-**1. `AIAgent.AsAIFunction()` — and therefore `WithTracking(...)`, which wraps it — exposes exactly one string parameter in and one string out.** Confirmed from `Microsoft.Agents.AI.xml` (1.17.0): *"The resulting function accepts a query string as input and returns the agent's response as a string."* This settles a question the invocation left open: the File Agent's outward tool schema is a single natural-language instruction, not structured `sourceDocumentNames`/`targetFormat` parameters. The assistant composes that instruction from context it already has — the document names `document_search`/`document_summarize` already surface — and the File Agent's own instructions are primed with the same names via a new `ConversationPrompts.BuildFileAgentPrompt(...)`-style helper. Because the model has no separate tool for "fetch this document's bytes," source-document resolution has to happen **inside the agent's own chat pipeline**, ahead of the model seeing the request: a delegating `IChatClient` inserted into the agent's own client chain matches document names appearing verbatim (case-insensitively) in the incoming instruction against the turn's `DocumentRetrievalScope` (`DocumentRetrievalService.MatchByName`, the same matcher `document_summarize` already uses), downloads any match's blob, and adds it to the `HostedCodeInterpreterTool` instance's `Inputs` before the request reaches the model. This is safe to do by mutating one shared tool instance per turn rather than allocating one per call, because `ConfigureFunctionInvocation` (`Program.cs:103-109`) sets `AllowConcurrentInvocation = false` on every provider — at most one tool call executes at a time on a turn, so nothing races the mutation.
+**1. `AIAgent.AsAIFunction()` — and therefore `WithTracking(...)`, which wraps it — exposes exactly one string parameter in and one string out.** Confirmed from `Microsoft.Agents.AI.xml` (1.17.0): *"The resulting function accepts a query string as input and returns the agent's response as a string."* This settles a question the invocation left open: the File Agent's outward tool schema is a single natural-language instruction, not structured `sourceDocumentNames`/`targetFormat` parameters. The assistant composes that instruction from context it already has — the document names `document_search`/`document_summarize` already surface — and the File Agent's own instructions are primed with the same names via a new `ConversationPrompts.BuildFileAgentPrompt(...)`-style helper. Because the model has no separate tool for "fetch this document's bytes," source-document resolution has to happen **inside the agent's own chat pipeline**, ahead of the model seeing the request: a delegating `IChatClient` inserted into the agent's own client chain matches document names appearing verbatim (case-insensitively) in the incoming instruction against the turn's `DocumentRetrievalScope` (`DocumentRetrievalService.MatchByName`, the same matcher `document_summarize` already uses), downloads any match's blob, uploads it to the Files API, and adds the resulting `HostedFileContent` to the `HostedCodeInterpreterTool` instance's `Inputs` before the request reaches the model. **EP-0 corrected this bullet's original claim**: raw `DataContent` on `Inputs` is silently discarded by the Responses bridge, so only a hosted file reference reaches the sandbox. This is safe to do by mutating one shared tool instance per turn rather than allocating one per call, because `ConfigureFunctionInvocation` (`Program.cs:103-109`) sets `AllowConcurrentInvocation = false` on every provider — at most one tool call executes at a time on a turn, so nothing races the mutation.
 
-**2. `WithTracking`'s string-in/string-out bridge does not itself expose the underlying `AgentRunResponse`, which is what an artifact-persistence step needs to read `CodeInterpreterToolResultContent` off.** This is a genuine open engineering question this PRD surfaces rather than resolves: the composing code (US-302) must choose a mechanism — a second, agent-scoped function tool the model itself calls to hand off a produced artifact's identity, or an inspection point on the `AgentSession`/thread `WithTracking` is given — and record the choice in a comment beside `FileAgentToolProvider`, since neither `Andes.Extensions.AI.Agent` 0.8.0's public surface nor Microsoft's own docs pin one mechanism as canonical. Every acceptance criterion below is written against the **observable outcome** (a produced artifact ends up as a persisted `Generated` document) rather than against unconfirmed internals.
+**2. `WithTracking`'s string-in/string-out bridge does not itself expose the underlying `AgentRunResponse`, which is what an artifact-persistence step needs to read `CodeInterpreterToolResultContent` off.** This is a genuine open engineering question this PRD surfaces rather than resolves: the composing code (US-302) must choose a mechanism — a second, agent-scoped function tool the model itself calls to hand off a produced artifact's identity, or an inspection point on the `AgentSession`/thread `WithTracking` is given — and record the choice in a comment beside `FileAgentToolProvider`, since neither `Andes.Extensions.AI.Agent` 0.8.0's public surface nor Microsoft's own docs pin one mechanism as canonical. What EP-0 *did* settle is where an artifact's identity appears once a response is in hand: on this deployment it arrived as a `CitationAnnotation` carrying a file id and a container id, not on `CodeInterpreterToolResultContent.Outputs` — so whatever mechanism reaches the response must walk every channel rather than the documented one alone. Every acceptance criterion below is written against the **observable outcome** (a produced artifact ends up as a persisted `Generated` document) rather than against unconfirmed internals.
 
-**3. The task's own name for the skill script-execution guard does not exist in the installed package.** `SubprocessScriptRunner` appears nowhere in `Microsoft.Agents.AI` 1.17.0 (confirmed by scanning every DLL in the package for that string). The real type is `AgentFileSkillScriptRunner` — a **delegate**, not a class — whose own doc comment states plainly that *"implementations determine the execution strategy (e.g., local subprocess, hosted code execution environment)."* Nothing in the package ships a default implementation; one is only ever wired in by calling `AgentFileSkillsProviderBuilder.UseFileScriptRunner(...)`. The correct, testable guard is therefore: **`UseFileScriptRunner` is never called anywhere in the solution**, not a search for a nonexistent class.
+**3. The task's own name for the skill script-execution guard does not exist in the installed package.** `SubprocessScriptRunner` appears nowhere in `Microsoft.Agents.AI` 1.17.0 (confirmed by scanning every DLL in the package for that string). The real type is `AgentFileSkillScriptRunner` — a **delegate**, not a class — whose own doc comment states plainly that *"implementations determine the execution strategy (e.g., local subprocess, hosted code execution environment)."* Nothing in the package ships a default implementation; one is only ever wired in by calling `AgentFileSkillsProviderBuilder.UseFileScriptRunner(...)`. The correct, testable guard is therefore about the runner rather than a nonexistent class — **but not its absence**: implementation found that `AgentSkillsProviderBuilder.Build()` *rejects* a file-based skill source with no runner ("File-based skill sources require a script runner"), so the guard is that the solution registers exactly one, and that the one it registers throws.
 
 **Integration points.** All verified against the working tree.
 
@@ -182,7 +182,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | Where the agent is composed | `Enterprise.Gpt.Api/Agents/` (empty, committed) |
 | Where skill content is deployed from | `Enterprise.Gpt.Service/Agents/Documents/Skills/` (empty, committed); deployed the way `Enterprise.Gpt.Service.csproj` already ships `Prompts/*.md` — `<None Update="Agents\Documents\Skills\**\*.md"><CopyToOutputDirectory>Always</CopyToOutputDirectory></None>` |
 | Skills SDK surface, confirmed present in `Microsoft.Agents.AI` 1.17.0 | `AgentSkillsProvider`, `AgentSkillsProviderBuilder` (`.UseFileSkill`, `.UseSkill`/`InlineSkill`, `.UseFilter`, `.Build()`), `AgentFileSkillsSourceOptions`, `AgentFileSkillScriptRunner` (delegate), `ToolApprovalAgentOptions`, `AgentSkillsProvider.ReadOnlyToolsAutoApprovalRule`, `.UseToolApproval(...)`, `ToolApprovalRequestContent` — every name confirmed by scanning the installed package's DLLs and XML docs directly, not from memory |
-| Hosted code interpreter SDK surface, confirmed present in `Microsoft.Extensions.AI.Abstractions` 10.9.0 | `HostedCodeInterpreterTool` (with `.Inputs`, added in 10.9.0), `CodeInterpreterToolCallContent`, `CodeInterpreterToolResultContent` |
+| Hosted code interpreter SDK surface, confirmed present in `Microsoft.Extensions.AI.Abstractions` 10.9.0 | `HostedCodeInterpreterTool` (with `.Inputs`, added in 10.9.0), `CodeInterpreterToolCallContent`, `CodeInterpreterToolResultContent`, `HostedFileContent` (with `.Scope`, which carries the container id). The download itself needs `IHostedFileClient`, built from `OpenAIClient.AsIHostedFileClient()` in `Microsoft.Extensions.AI.OpenAI` 10.9.0 — the `OpenAIFileClient` overload cannot see a container file. |
 | Content-type map for downloads | `Enterprise.Gpt.Service/DocumentService.cs:591-599` — `ResolveContentType` over a `FrozenDictionary` covering `.doc .docx .md .pdf .pptx .txt`; needs `.xlsx` and `.csv` |
 | Signed link generation and its constraint | `Enterprise.Gpt.Service/BlobStorageService.cs` — `IBlobStorageService` is `byte[]`-based with no list operation; `GenerateSasUri` throws `StorageNotConfiguredException` unless `BlobClient.CanGenerateSasUri` is true, which requires a `StorageSharedKeyCredential` — `DefaultAzureCredential` would need a user-delegation SAS instead |
 | Download route and ownership rule | `Enterprise.Gpt.Api/Endpoints/DocumentEndpoints.cs:80-82`, `Enterprise.Gpt.Service/DocumentService.cs:427-443` — ownership read off the parent conversation in the query itself, so a miss is a `FirstOrDefaultAsync` returning `null` → 404, never a 403 |
@@ -212,7 +212,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 - **A generated document is model output and is treated as untrusted.** Served with the existing `attachment` `Content-Disposition` and a content type derived from the extension, never a declared MIME type — an `inline` disposition would let generated HTML or SVG execute on the storage origin.
 - **SAS signing still requires a shared-key connection string.** `BlobClient.CanGenerateSasUri` is true only for a `StorageSharedKeyCredential`; the second container changes nothing about that constraint.
 - **A generated artifact is capped at the same ceiling as an upload** (`Documents:MaxFileSizeBytes`, 50 MB), enforced when the artifact is pulled out of the sandbox, so a runaway script cannot write an unbounded blob.
-- **No skill tool ever executes a subprocess on the API host.** No `AgentFileSkillsProviderBuilder.UseFileScriptRunner(...)` call site exists anywhere in the solution, `AgentFileSkillsSourceOptions.AllowedScriptExtensions = []`, and `AllowedResourceExtensions = [".md"]` — belt and braces on top of the missing runner.
+- **No skill tool ever executes a subprocess on the API host.** Three things together: `AgentFileSkillsSourceOptions.AllowedScriptExtensions = []`, so nothing is discovered as a script; `AllowedResourceExtensions = [".md"]`, so a `.py` beside a skill is not even readable; and the one script runner the package insists on is a delegate that throws.
 - **All three skill tools are auto-approved for read-only use**, via `AgentSkillsProvider.ReadOnlyToolsAutoApprovalRule` on a `ToolApprovalAgentOptions` passed to `.UseToolApproval(...)`. Left unconfigured, every skill call returns `ToolApprovalRequestContent` instead of executing — a headless server turn with no human to answer, which would stall every File Agent run silently.
 - **Per-turn container isolation is inherent, not configured.** The Responses API's Code Interpreter tool provisions its own execution context per request on this route; no toolbox or shared-project construct is used anywhere in this design.
 
@@ -230,7 +230,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 - **Offline benchmark and pass threshold**: a fixed benchmark of 30 prompts spanning all seven create formats plus the edit, compare and convert verbs. Pass threshold before EP-4 is accepted: **≥ 90%** produce an artifact that passes verification, and **100%** of the remainder surface as a failed activity card — a silent text-only answer counts as a failure regardless of the prose quality.
 - **Skills satisfy targeted loading at two levels, and both matter.** `AgentSkillsProviderBuilder.UseFilter(...)` trims the *advertise* stage by the run's source/target formats before a single token is spent; progressive disclosure (`load_skill` → `read_skill_resource` → `run_skill_script`) trims the *load* stage after. Filtering alone or disclosure alone is half the mechanism. Skills are per-turn state — the provider is built fresh each turn, never cached across conversations.
 - **The proposed skill set**, one per format family plus one per verb: `docx-authoring`, `xlsx-authoring`, `pptx-authoring`, `pdf-authoring`, `csv-tabular`, `markdown-text`, `document-comparison`, `document-conversion`, `artifact-verification`. Each `SKILL.md` carries the production Python recipe naming real, currently-shippable libraries; deep API detail moves to `references/*.md`, read on demand.
-- **Named Python tooling** (subject to EP-0's inventory, §7 EP-0): `python-docx` (docx), `openpyxl` (xlsx), `python-pptx` (pptx), `pandas` (csv/tabular), `reportlab` and `fpdf` (pdf authoring — the published inventory carries `fpdf` **1.x, not `fpdf2`**, so no skill may assume the 2.x API), `pypdf`/`pdfplumber` (pdf reading and table extraction), **`PyMuPDF`/`fitz`** (pdf text-and-layout extraction — the engine behind `pdf` → `docx`), **`weasyprint`** (HTML → pdf rendering — the engine behind Office → `pdf` when no `soffice` binary is present), `Pillow` (raster work a chart export needs), `markdown` (md parsing). `pandoc`, `docx2pdf`, `mammoth` and `pdf2docx` are **absent** from the published inventory; no skill may depend on them, and none is installable because the sandbox has no outbound network for `pip`. Every Office → `pdf` and `pdf` → Office claim carries a fidelity tier rather than a yes/no — see the conversion matrix below.
+- **Named Python tooling**, as recorded by EP-0's inventory (`FileAgentSpike/Evidence/sandbox-inventory.json`, Python 3.11.15): `python-docx` 1.2.0 (docx), `openpyxl` 3.1.5 (xlsx), `python-pptx` 1.0.2 (pptx), `pandas` 1.5.3 and `tabulate` 0.9.0 (csv/tabular), `reportlab` 4.4.5 and **`fpdf` 2.8.3 — the fpdf2 API, not the 1.x this PRD originally assumed** (pdf authoring), `pypdf` 6.3.0 / `PyPDF2` 3.0.1 / `pdfplumber` 0.6.2 (pdf reading and table extraction), **`PyMuPDF` 1.26.6** (pdf text-and-layout extraction — the engine behind `pdf` → `docx`), **`weasyprint` 53.3** (HTML → pdf rendering — the engine behind Office → `pdf`, since no `soffice` binary was found), `Pillow` 9.1.0 (raster work a chart export needs), plus `beautifulsoup4` 4.14.3, `lxml` 6.1.1 and `matplotlib` 3.6.3. **`markdown` is absent** — the one library on the original list that is not installed, so no skill may import it. `pandoc`, `docx2pdf`, `mammoth` and `pdf2docx` are absent too; none is installable, because the sandbox has no outbound network on any of the three paths EP-0 probed. Every Office → `pdf` and `pdf` → Office claim carries a fidelity tier rather than a yes/no — see the conversion matrix below.
 - **Proposed conversion matrix** (source rows, target columns; confirmed and published authoritatively by US-003). Conversion is graded on a **fidelity tier**, not a binary — refusing a pair the sandbox can genuinely perform is as much a defect as promising a fidelity it cannot reach:
 
   - **`✓` faithful** — the target carries everything the source expressed that the format can hold. No caveat needed in the answer.
@@ -241,13 +241,13 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
   | --- | --- | --- | --- | --- | --- | --- | --- |
   | docx | — | n/a | n/a | **◐**¹ | n/a | ✓ | ✓ |
   | xlsx | n/a | — | n/a | **◐**¹ | ✓ | ✓ | ✓ |
-  | pptx | n/a | n/a | — | **◐**¹ | n/a | ✓ | ✓ |
+  | pptx | n/a | n/a | — | **refused**⁶ | n/a | ✓ | ✓ |
   | pdf | **◐**² | **◐**³ | **refused**⁴ | — | **◐**³ | ◐⁵ | ◐⁵ |
   | csv | ✓ | ✓ | n/a | **◐**¹ | — | ✓ | ✓ |
   | md | ✓ | n/a | n/a | ✓ | n/a | — | ✓ |
   | txt | ✓ | n/a | n/a | ✓ | n/a | ✓ | — |
 
-  ¹ **Office → `pdf` is supported, not refused.** A *pixel-faithful* render needs LibreOffice or Word, and neither is guaranteed in a hosted Code Interpreter image — but faithfulness is not the only useful outcome. The structural path is fully achievable with libraries the image is known to carry: read with `python-docx`/`openpyxl`/`python-pptx`, emit HTML, render with **`weasyprint`** (present, 53.3 in the published inventory), or compose directly with `reportlab`. US-003 probes for a `soffice` binary first and uses it when present, giving `✓`; absent it, the structural path gives `◐` and the answer says the typography is the sandbox's, not the source's. Refusing a conversion this common because the best-case renderer is missing would fail the user over a fidelity distinction they did not ask about. ² `pdf` → `docx` recovers text, heading structure, tables and embedded images via **`PyMuPDF`** (present, 1.19.6) written out with `python-docx`. It is an editable document with the source's content — **not** a faithful reconstruction of its layout, and the answer says so. ³ Tables only, via `pdfplumber`'s table extraction; dependable for ruled tables, unreliable for whitespace-aligned ones, and the answer reports how many tables it found. ⁴ Reconstructing a slide deck from rendered PDF pages produces one image-per-slide with no editable content — worse than useless, so refused outright. ⁵ Text extraction; legible for text-based PDFs, not guaranteed for a scanned one, stated as such in the answer. `n/a` cells are not proposed for v1 (for example spreadsheet-to-slide-deck) because no natural request maps to them; they are not "refused," they are simply not offered. **Every tier in this table is a proposal grounded in the named libraries' documented capabilities and the published sandbox inventory, not in an executed run in this tenant — US-003 exists to confirm or correct each cell before EP-4 starts, and may promote a `◐` to `✓` if it finds `soffice`.**
+  ¹ **Office → `pdf` is supported, not refused.** A *pixel-faithful* render needs LibreOffice or Word, and neither is guaranteed in a hosted Code Interpreter image — but faithfulness is not the only useful outcome. The structural path is fully achievable with libraries the image is known to carry: read with `python-docx`/`openpyxl`/`python-pptx`, emit HTML, render with **`weasyprint`** (present, 53.3 in the published inventory), or compose directly with `reportlab`. US-003 probes for a `soffice` binary first and uses it when present, giving `✓`; absent it, the structural path gives `◐` and the answer says the typography is the sandbox's, not the source's. Refusing a conversion this common because the best-case renderer is missing would fail the user over a fidelity distinction they did not ask about. ² `pdf` → `docx` recovers text, heading structure, tables and embedded images via **`PyMuPDF`** (present, 1.19.6) written out with `python-docx`. It is an editable document with the source's content — **not** a faithful reconstruction of its layout, and the answer says so. ³ Tables only, via `pdfplumber`'s table extraction; dependable for ruled tables, unreliable for whitespace-aligned ones, and the answer reports how many tables it found. ⁴ Reconstructing a slide deck from rendered PDF pages produces one image-per-slide with no editable content — worse than useless, so refused outright. ⁵ Text extraction; legible for text-based PDFs, not guaranteed for a scanned one, stated as such in the answer. `n/a` cells are not proposed for v1 (for example spreadsheet-to-slide-deck) because no natural request maps to them; they are not "refused," they are simply not offered. ⁶ **Demoted by US-003's run**: no `soffice` was found, and the structural path through `python-pptx` → HTML → `weasyprint` did not produce a pdf worth handing over for a slide deck specifically. **US-003 has since confirmed every cell against the real sandbox; the authoritative table now lives in `Enterprise.Gpt.Service/Agents/Documents/conversion-matrix.json`, rendered into `docs/file-agent/sandbox-capabilities.md` §5 and guarded by a drift test. Where this table and that file disagree, that file is right.**
 - **Tool names are chosen deliberately.** `file_agent` is the outward tool name; a code-search-backed test asserts no MCP server name in the catalog today sanitizes to a `file_agent_`-colliding prefix, matching the same residual, acknowledged (not eliminated) risk `document_search`/`document_summarize` already carry for their own prefix.
 
 ## 7. Epics & user stories
@@ -256,7 +256,7 @@ The grant is resolved through the singleton `IUserPermissionCache`, the same pat
 | --- | --- | --- | --- | --- | --- |
 | EP-0 | Provisioning & capability spike | Prove the Responses route carries `HostedCodeInterpreterTool` in this tenant/region; inventory the sandbox's Python libraries; establish which conversion pairs are actually achievable | P0 | M | — |
 | EP-1 | Generated-file contract | A file this platform produces is stored, delivered and structurally unretrievable — one implementation, one migration | P0 | L | — |
-| EP-2 | Code interpreter execution | Files in via `Inputs`, artifacts out via `CodeInterpreterToolResultContent`, bounded and cancelled with the turn, "no file produced" a named failure | P0 | L | EP-0 |
+| EP-2 | Code interpreter execution | Files in as hosted file references on `Inputs`, artifacts out by their container-scoped identity, bounded and cancelled with the turn, "no file produced" a named failure | P0 | L | EP-0 |
 | EP-3 | The File Agent & its skills | Composed in `Api` behind a `Service` abstraction, attached with `WithTracking`, format-targeted skills, read-only auto-approval, no host-side script execution | P0 | L | EP-0, EP-2 |
 | EP-4 | Create · edit · compare · convert | The four verbs across the seven formats, each artifact re-opened in the sandbox and asserted before it is returned | P0 | L | EP-1, EP-3 |
 | EP-5 | Usage, cost & observability | Fill the `ModelId`/`DeploymentName` nulls, add the deferred index, attribute sandbox seconds, bound per-user spend | P0 | M | EP-3 |
@@ -271,18 +271,18 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Stand up a throwaway console or skipped-integration-test harness that resolves the existing `ChatClientKeys.AzureOpenAI` client, attaches a bare `HostedCodeInterpreterTool`, sends a request that writes a small file, and reads it back via `CodeInterpreterToolResultContent` — so EP-2 and EP-3 are estimated against a working path in this tenant rather than a documentation page. Unblocks US-002 and, through it, the whole critical path.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the existing `ChatClientKeys.AzureOpenAI` registration, when `HostedCodeInterpreterTool` is added to `ChatOptions.Tools` and a request is sent, then the response completes and carries a `CodeInterpreterToolResultContent` naming a produced artifact.
   - Given the same request, when the sandbox is asked to make an outbound HTTP call from within its own generated code, then the call fails — confirming the no-network constraint holds in this deployment rather than assuming it.
-  - Given `HostedCodeInterpreterTool.Inputs`, when a small file is supplied as `DataContent`, then it is visible to the generated Python code, and when an unsupported input type is supplied instead, then the client silently drops it rather than throwing — recorded as evidence for FR-11 rather than assumed.
+  - Given `HostedCodeInterpreterTool.Inputs`, when a small file is supplied as `DataContent`, then it is **silently dropped** and never reaches the sandbox, and when the same file is uploaded to the Files API and supplied as `HostedFileContent`, then the generated Python code can read it — recorded as evidence for FR-10 and FR-11 rather than assumed.
   - Given the harness completes, when it is reviewed, then it is deleted or left under `tests/` as a skipped integration test; no spike code is merged into `Enterprise.Gpt.Api` or `Enterprise.Gpt.Service`.
 
 #### US-002: `[enabler]` Inventory the sandbox's actual Python libraries
 
 - **Story**: `[enabler]` Using the harness from US-001, run a script that imports and reports the version of every library the skills would name — `python-docx`, `openpyxl`, `python-pptx`, `pandas`, `reportlab`, `fpdf`/`fpdf2`, `pypdf`, `pdfplumber`, `PyMuPDF`/`fitz`, `weasyprint`, `Pillow`, `markdown` — **and probe the shell for a `soffice`/`libreoffice` binary**, since its presence is what promotes every Office → `pdf` cell from `◐` to `✓`. Records which are present, absent, or present at a materially different version than assumed. Unblocks US-003 and every EP-3 skill story.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-001
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the sandbox image, when the inventory script runs, then it reports, for each named library, whether it imports successfully and its version.
   - Given a library that fails to import, when the inventory is reviewed, then the affected skill's `SKILL.md` is written against whichever library actually is available (or the format's authoring capability is marked deferred) rather than against an assumption.
@@ -292,7 +292,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Attempt every conversion pair proposed in §6's matrix against the real sandbox — **assigning each a confirmed fidelity tier (`✓` faithful / `◐` structural / `refused`) rather than a yes-or-no**, and attempting every proposed `refused` pair anyway so the refusal is evidence rather than inheritance — and publish the confirmed matrix as the authoritative source `FileAgentOptions`/the `document-conversion` skill reference against. Unblocks US-406 and US-407.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-002
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given each `✓` cell in §6's proposed matrix, when the pair is attempted with a real sample file, then it either succeeds and is confirmed, or is demoted to `◐` or `refused` with the reason recorded.
   - Given each proposed `◐` cell — every Office → `pdf` pair and `pdf` → `docx` among them — when the pair is attempted, then the structural path is confirmed to produce an openable target carrying the source's content, or the cell is demoted with the reason recorded. A `◐` cell that is quietly refused instead of attempted fails this story.
@@ -307,7 +307,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add `ConversationDocumentTypes { Uploaded = 1, Generated = 2 }` to `Enterprise.Gpt.Dto/Enums/`, put the column on `ConversationDocument` (not `BaseDocument`), and ship the sixteenth migration, backfilling every existing row to `Uploaded`. Unblocks US-103 and US-106.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the enum, when it is placed, then it sits beside `JobStatus` and `FileExtensions`, is numbered from 1, and carries the same append-only doc-comment convention `JobStatus` already states.
   - Given `ConversationDocumentConfiguration`, when the model is built, then the property is configured with `HasConversion<int>()` and no `HasColumnName`, preserving the invariant `Tool/DocumentRetrievalSql.cs`'s hand-written SQL depends on.
@@ -318,7 +318,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add `AzureStorage:GeneratedContainer`, whose value is the Azure Blob Storage container `generated-documents`, and the write path into it, keeping `IBlobStorageService` and its integration test double in step. Unblocks US-103.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the committed configuration, when `AzureStorage:GeneratedContainer` is read, then its value is `generated-documents` — a container distinct from the one `AzureStorage:DocumentsContainer` names, so an uploaded file and a generated one never share a retention policy, an access policy or a lifecycle rule.
   - Given `AzureStorage:GeneratedContainer`, when it is read, then it is read on each use rather than cached at construction, matching `DocumentService`'s own consumption of `AzureStorage:DocumentsContainer`.
@@ -330,7 +330,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add the write path that stores an artifact's bytes in the `generated-documents` container and creates a `ConversationDocument` row with `Type = Generated`, on its own DI scope via `IServiceScopeFactory` rather than the request's shared `EnterpriseGptDbContext`, with **no** extraction, chunking, embedding, or document-pipeline job stage. Unblocks US-104, US-106, and every EP-4 verb.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-101, US-102
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given an artifact and its target format, when it is persisted, then a blob is written to the `generated-documents` container and a `ConversationDocument` row is created with `Type = Generated`, in one operation whose failure leaves neither a row without a blob nor a blob without a row.
   - Given the write, when it is inspected, then it runs on a scope obtained from `IServiceScopeFactory`, never the calling turn's own `EnterpriseGptDbContext` instance — a test asserts the two contexts differ.
@@ -342,7 +342,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a file the assistant made to download with the right name and the right type, so that it opens correctly rather than arriving as an anonymous byte stream.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-103
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a `Generated` document, when the existing download route is called by the conversation's owner, then a signed link is returned unchanged in shape from an uploaded document's.
   - Given the signed link, when it is built, then it carries `Content-Disposition: attachment` and the extension-derived content type from `DocumentService.ResolveContentType` — which, once `docs/prd/sheet-ingestion/sheet-ingestion.md` ships first (§9), already covers `.xlsx` and `.csv` alongside the six extensions it covers today, so a generated spreadsheet needs no further work here.
@@ -352,7 +352,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add an `attachments[]` array of `{ id, name, extension, mimeType, size }` to `TranscriptMessageDocument`, bump `TranscriptHeaderDocument.CurrentSchemaVersion` from `1` to `2`, and exclude the new field from the Cosmos indexing policy alongside `/content/*`. Unblocks US-601 and US-603.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a message that introduced a generated file, when it is persisted, then its `attachments[]` array carries the file's identity and never a URL or SAS token.
   - Given a message with no generated attachment, when it is persisted, then the array is absent or empty, and no existing reader of `TranscriptMessageDocument` needs a code change to keep working.
@@ -363,7 +363,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want a file the assistant made kept out of its own retrieval corpus, so that it is never quoted back to me as if it were a source I uploaded.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-103
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a conversation holding one uploaded document and one generated document, when `document_search` runs, then only the uploaded document's chunks appear in the candidate set and only it can be cited.
   - Given `DocumentRetrievalSql`, when it is compared before and after this feature, then it is unchanged — the exclusion holds because the generated document has no chunk rows, not because a type predicate was added.
@@ -378,7 +378,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add the service-level wiring that attaches `HostedCodeInterpreterTool` to a request only when it is bound for the Azure OpenAI (`ChatClientKeys.AzureOpenAI`) keyed client — never Azure AI Foundry, Bedrock, or Anthropic — with a code-search-backed guard, since attaching it elsewhere would either be silently ignored by that provider's SDK bridge or fail the request outright. Unblocks US-202.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-001
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the File Agent's pinned catalog model, when its `ProviderId` is resolved through `Providers.ServiceKeys`, then it maps to `ChatClientKeys.AzureOpenAI`; a test asserts a model row pointed at any other provider fails startup validation (US-303) rather than silently misconfiguring the tool.
   - Given the resolved client, when `HostedCodeInterpreterTool` is constructed, then it is added only to the File Agent's own `ChatOptions.Tools`, never to the outer turn's `chatOptions.Tools` list `CreateChatOptionsAsync` assembles.
@@ -386,13 +386,13 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 #### US-202: `[enabler]` Upload turn inputs into the sandbox and read artifacts back
 
-- **Story**: `[enabler]` Implement the mechanism that resolves a source document named in the agent's instruction against the turn's `DocumentRetrievalScope` (via `DocumentRetrievalService.MatchByName`), downloads its blob, sets it as `DataContent` on the shared per-turn `HostedCodeInterpreterTool.Inputs`, and reads produced artifacts back via `CodeInterpreterToolResultContent` once the run completes. Unblocks US-203, US-204, US-205, and every EP-4 verb.
+- **Story**: `[enabler]` Implement the mechanism that resolves a source document named in the agent's instruction against the turn's `DocumentRetrievalScope` (via `DocumentRetrievalService.MatchByName`), downloads its blob, uploads it to the Files API and sets the resulting `HostedFileContent` on the shared per-turn `HostedCodeInterpreterTool.Inputs`, and reads produced artifacts back off the completed response — walking every channel that can carry one, then downloading each container-scoped through `IHostedFileClient`. Unblocks US-203, US-204, US-205, and every EP-4 verb.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-201
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given an instruction naming a document in scope, when the run starts, then the API downloads its blob and sets it on `Inputs` before the model sees the request — the sandbox itself never reaches Blob Storage.
   - Given `AllowConcurrentInvocation = false` (`Program.cs:105`), when two `file_agent` calls occur within one turn, then they are confirmed serialized before the shared `Inputs` list is mutated between them — a test exercises this directly rather than assuming the setting.
-  - Given a run that produces one or more artifacts, when the response is read, then every `CodeInterpreterToolResultContent` is extracted, in the order produced, with its original file name preserved where the sandbox supplied one.
+  - Given a run that produces one or more artifacts, when the response is read, then every artifact is extracted, in the order produced, with its original file name preserved where the sandbox supplied one — from `CodeInterpreterToolResultContent.Outputs`, from hosted file content on the message, and from a `CitationAnnotation`, which is the channel EP-0 recorded this deployment answering on.
   - Given a named document the caller does not own the parent conversation of, when the resolver attempts to read it, then the read is refused by the same ownership rule the download route enforces, and the run reports that it cannot access the file.
   - Given no document name matches the instruction, when the run proceeds, then it starts with empty `Inputs` — a create request with nothing to read from is not an error.
 
@@ -402,7 +402,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-202
 - **Status**: Not started
 - **Acceptance criteria**:
-  - Given a run whose response carries text but no `CodeInterpreterToolResultContent`, when it completes, then it is classified as "no file produced" and the activity renders failed, not completed.
+  - Given a run whose response carries text but no artifact on any channel, when it completes, then it is classified as "no file produced" and the activity renders failed, not completed.
   - Given that classification, when the caller receives it, then it is distinguishable from a run that threw and from a run whose artifact failed verification (EP-4) — three different outcomes, three different messages.
   - Given the failure, when the assistant continues, then it receives an error it can explain to the user, and no `ConversationDocument` row is created.
   - Given the run, when telemetry is emitted, then the outcome is tagged distinctly, so the "0 runs report success while producing no file" success criterion has a direct source.
@@ -411,7 +411,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Bound one `file_agent` invocation by a configurable wall-clock deadline (`FileAgentOptions.ToolTimeoutSeconds`) and a maximum artifact count per run (`FileAgentOptions.MaxArtifactsPerRun`), independent of the outer turn's own `MaximumIterationsPerRequest`. Unblocks US-205 and every EP-4 verb.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `ToolTimeoutSeconds`, when a run exceeds it, then the call is abandoned and reported as a bounded failure naming the timeout, via a linked `CancellationTokenSource` exactly as `DocumentSummaryTool` already does.
   - Given `MaxArtifactsPerRun`, when a run's response carries more artifacts than the configured ceiling, then only the ceiling's worth are persisted and the run reports that the rest were dropped, rather than persisting an unbounded number.
@@ -435,7 +435,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Add `FileAgentOptions` (`Enabled`, `ModelId`, `ToolTimeoutSeconds`, `MaxArtifactsPerRun`, `MaxRunsPerUserPerDay`) bound from a `FileAgent` configuration section, seed a dedicated `Core.Ref.Model` row pointed at `Providers.AzureOpenAI`, and add a `FileAgentBootstrapper`-style validator, mirroring `SummarizerBootstrapper`, that runs regardless of the feature flag. Unblocks US-201 and US-302.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-001
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `FileAgentOptions`, when it is bound, then it follows `AddOptions<T>().Bind(...).ValidateDataAnnotations().Validate(...).ValidateOnStart()`, with `SectionName = "FileAgent"` and every numeric field carrying a `[Range]`.
   - Given the seeded model row, when the validator runs at startup, then it confirms the row's `ProviderId` resolves to `ChatClientKeys.AzureOpenAI` and fails startup with a message naming the mismatch if it does not — because the Azure AI Foundry route structurally cannot carry this tool.
@@ -444,9 +444,9 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 #### US-302: `[enabler]` Compose and name the File Agent behind a Service abstraction
 
-- **Story**: `[enabler]` Build the agent in `Enterprise.Gpt.Api/Agents/` — its `Name`, its instructions (naming the seven formats and the four verbs), its `HostedCodeInterpreterTool`, and its `AgentSkillsProvider` — and expose it to `ConversationService` through `IFileAgentToolProvider`/`IFileAgentToolLease`, declared in `Enterprise.Gpt.Service`, mirroring `IMcpToolProvider`/`IMcpToolLeaseSet`. Record, in a comment beside the composing code, which mechanism (an agent-scoped persistence tool, or a session/thread inspection point) is used to extract `CodeInterpreterToolResultContent` given `WithTracking`'s string-in/string-out bridge (§6, finding 2). Unblocks US-303, US-304, and every EP-4 verb.
+- **Story**: `[enabler]` Build the agent in `Enterprise.Gpt.Api/Agents/` — its `Name`, its instructions (naming the seven formats and the four verbs), its `HostedCodeInterpreterTool`, and its `AgentSkillsProvider` — and expose it to `ConversationService` through `IFileAgentToolProvider`/`IFileAgentToolLease`, declared in `Enterprise.Gpt.Service`, mirroring `IMcpToolProvider`/`IMcpToolLeaseSet`. Record, in a comment beside the composing code, which mechanism (an agent-scoped persistence tool, agent-level middleware, or a session/thread inspection point) is used to reach the run's own response given `WithTracking`'s string-in/string-out bridge (§6, finding 2). Unblocks US-303, US-304, and every EP-4 verb.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-301, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `Enterprise.Gpt.Service.csproj`, when it is inspected after this story, then it still references `Andes.Extensions.AI`, `.Mcp` and `.UI` and not `.Agent`, and carries no `Microsoft.Agents.AI` reference.
   - Given `ConversationService`, when it acquires the File Agent tool, then it does so through `IFileAgentToolProvider.AcquireAsync(scope, conversationId, cancellationToken)`, whose implementation lives in `Enterprise.Gpt.Api`, returning the tool plus a disposable bounding its lifetime to the turn.
@@ -458,10 +458,10 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Wrap the agent with `AIAgent.WithTracking(...)` at the single tool funnel in `CreateChatOptionsAsync`, choosing `trackUsage` explicitly, so it classifies as `ToolKind.Agent` and reports usage correctly rather than doubling or losing it. Unblocks US-401, US-501, US-604, US-701 and US-702.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the wrapper, when it is applied, then it is `AgentToolTrackingExtensions.WithTracking(...)` and never a bare `AsAIFunction()` — a code search shows zero `AsAIFunction()` call sites outside the wrapper.
-  - Given `trackUsage`, when it is set, then it is `false`, because the agent's own resolved `IChatClient` is one of the four keyed clients already decorated with `.UseToolTracking(ConfigureToolTracking)` in `Program.cs` — a comment beside the call records this reasoning, since the opposite choice double-counts every agent token.
+  - Given `trackUsage`, when it is set, then it follows from what the agent's own client carries, and a comment beside the call records the reasoning either way: `false` if that client is decorated with `.UseToolTracking(...)`, because the nested pipeline already rolls its usage up and reporting it again double-counts; `true` if it is not. **Implementation settled this as `true`**: the agent runs on a client of its own, deliberately without tool tracking, because a nested tracker opens its own writer-less root scope — which would swallow every progress line the run reports and make the `depth: 2` children US-604 renders unreachable.
   - Given the function name, when it is set via `AIFunctionFactoryOptions`, then it is `"file_agent"`, and a test asserts no MCP server name in the catalog sanitizes to a colliding `file_agent_`-prefix match.
   - Given a turn that calls the agent, when the stream is read, then an `ActivityStarted` arrives with `toolKind: "Agent"` at `depth: 1`, and the vendored reducer nests its children with no change to the contract.
   - Given the same turn, when the usage report is translated, then `UsageReportTranslator.MapKind` produces `ConversationToolKinds.Agent` and the row is written with `Depth = 0` and its children beneath it.
@@ -470,7 +470,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: `[enabler]` Build the `AgentSkillsProvider` via `AgentSkillsProviderBuilder().UseFileSkill(skillsRoot).UseFilter((skill, ctx) => ...).Build()`, filtering to the run's known or inferred source/target formats before any skill is advertised, and construct it fresh per turn rather than caching it. Unblocks US-305, US-306, US-307.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a request naming or implying `xlsx` as the target, when skills are advertised, then only `xlsx-authoring` and `artifact-verification` (plus any verb-specific skill the instruction implies) appear in the system prompt — the ~100-token-per-skill advertise cost for the other five format skills is not spent.
   - Given the same provider, when a `load_skill` call is made for an advertised skill, then the returned `SKILL.md` body is under 5,000 tokens, matching the recommended progressive-disclosure ceiling.
@@ -479,21 +479,22 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 #### US-305: `[enabler]` Auto-approve read-only skill tools
 
-- **Story**: `[enabler]` Configure `ToolApprovalAgentOptions { AutoApprovalRules = [AgentSkillsProvider.ReadOnlyToolsAutoApprovalRule] }` via `.AsBuilder().UseToolApproval(...)` on the agent, so `load_skill` and `read_skill_resource` never stall on an unanswered `ToolApprovalRequestContent` in a headless server turn. Unblocks EP-4.
+- **Story**: `[enabler]` Switch approval off for the two read-only skill tools via `AgentSkillsProviderOptions { DisableLoadSkillApproval = true, DisableReadSkillResourceApproval = true }`, so `load_skill` and `read_skill_resource` never stall on an unanswered approval request in a headless server turn. Unblocks EP-4.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-304
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given the agent runs without this configuration, when a skill tool is called, then it returns `ToolApprovalRequestContent` instead of executing — reproduced once as a regression fixture before the fix, so the fix is provably load-bearing.
-  - Given the configured auto-approval rule, when `load_skill` or `read_skill_resource` is called, then it executes immediately with no approval round trip.
-  - Given `run_skill_script` specifically, when it is called, then it is **not** covered by the read-only auto-approval rule — confirmed by a test, since no script runner is registered at all (US-306) and this call path must never silently execute.
+  - Given the configuration, when `load_skill` or `read_skill_resource` is called, then it executes immediately with no approval round trip.
+  - Given `run_skill_script` specifically, when it is called, then it still requires approval — `DisableRunSkillScriptApproval` stays `false`, and the runner behind it refuses (US-306), so this call path can neither be auto-approved nor silently execute.
+  - Given the alternative the original draft named — `UseToolApproval` with `AgentSkillsProvider.ReadOnlyToolsAutoApprovalRule` — when it is weighed, then it is **not** used: the rule is documented as able to match any tool by name, and with `UseProvidedChatClientAsIs` the approval decorators it depends on are absent, so it would need both wired by hand for a weaker guarantee.
 
 #### US-306: `[enabler]` Exclude host-side script execution from the skill runner
 
-- **Story**: `[enabler]` Confirm and pin, with a code-search test, that `AgentFileSkillsProviderBuilder.UseFileScriptRunner(...)` is never called anywhere in the solution, and set `AgentFileSkillsSourceOptions { AllowedScriptExtensions = [], AllowedResourceExtensions = [".md"] }` as belt-and-braces. Unblocks US-401 (nothing runs Python outside the sandbox).
+- **Story**: `[enabler]` Confirm and pin, with a code-search test, that the solution registers exactly one `AgentFileSkillScriptRunner` and that it **refuses to execute**, and set `AgentFileSkillsSourceOptions { AllowedScriptExtensions = [], AllowedResourceExtensions = [".md"] }` as belt-and-braces. Unblocks US-401 (nothing runs Python outside the sandbox).
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-304
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
-  - Given a solution-wide code search, when it looks for `UseFileScriptRunner`, then it finds zero call sites — the correct guard, since `AgentFileSkillScriptRunner` is a delegate type with no default implementation shipped by the package, not a concrete class to search for.
+  - Given a solution-wide code search, when it looks for the registered script runner, then it finds exactly one call site, and a test asserts the runner it registers throws when invoked. Zero call sites is not reachable: `AgentSkillsProviderBuilder.Build()` rejects a file-based skill source that has no runner, so a refusing runner is both the strongest available guarantee and a stricter one than absence, because it fails loudly rather than by omission.
   - Given `AgentFileSkillsSourceOptions.AllowedScriptExtensions`, when it is inspected, then it is an empty collection, so `run_skill_script` is never advertised regardless of what a skill's own directory contains.
   - Given a skill directory that happens to contain a `.py` or `.sh` file, when skills are discovered, then that file is never surfaced as a runnable script — `AllowedResourceExtensions = [".md"]` also keeps it out of `read_skill_resource`.
   - Given this configuration, when the test suite runs, then a regression test fails loudly if a future change adds a `UseFileScriptRunner(...)` call anywhere in the solution.
@@ -502,7 +503,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a backend engineer, I want the skill markdown files to ship with the build the same way the existing prompt files do, so that a skill is available in every deployed environment without a manual copy step.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-304
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `Enterprise.Gpt.Service.csproj`, when the skills are added, then a `<None Update="Agents\Documents\Skills\**\*.md"><CopyToOutputDirectory>Always</CopyToOutputDirectory></None>` entry ships them, matching the existing pattern for `Prompts/*.md`.
   - Given the nine skills named in §6, when the repository is built, then each has a `SKILL.md` under its own subdirectory of `Enterprise.Gpt.Service/Agents/Documents/Skills/`, discovered at the default search depth of 2.
@@ -675,7 +676,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want the file the assistant made to appear under its answer, so that I can tell a file it produced from one I uploaded.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-105
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a message carrying an `attachments[]` entry, when the transcript renders, then a chip appears under the assistant's message showing the file name, an extension glyph and the size.
   - Given the chip, when it is built, then it is a variant of the existing `shared/chip/attachment-chip` component rather than a second chip component, visually and semantically distinguishable from an upload chip via its leading glyph and accessible name ("Generated file, {name}").
@@ -687,7 +688,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want clicking the chip to save the file, so that the assistant's output ends up on my machine.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-601, US-104
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a chip, when it is clicked, then `DocumentDownloadStore` requests the link at that moment and hands it to a detached anchor — no link is prefetched on render.
   - Given the returned URL, when the download starts, then it is never written to store state, `localStorage`, `sessionStorage`, a router URL, or a log.
@@ -698,7 +699,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As a chat user, I want the file still there when I come back to the conversation tomorrow, so that a file announced only while I was watching is not lost.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-601, US-105
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a conversation reopened after a reload, when the transcript replays, then every generated file's chip renders from the persisted message reference, in the same position under the same message.
   - Given the reopened conversation, when a chip is clicked, then a fresh link is minted; no link from the original turn is reused, because none was ever persisted.
@@ -811,7 +812,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - The document-type discriminator is `Uploaded = 1` / `Generated = 2`, self-contained to this PRD. `docs/prd/image-input/image-input.md` (a separate, unbuilt PRD with zero shipped stories) independently proposes `Uploaded = 1` / `Attachment = 2` and reserves `3` for a hypothetical future "Generated" type of its own. This PRD does not build against that reservation, since the invocation names no dependency on that document and building toward an unshipped sibling's numbering would be inventing a coupling nobody asked for. If both PRDs are ever implemented, whichever lands second reconciles the enum — symmetric to how `image-input.md` itself handles the mirror case for the now-deleted `image-tool.md`.
 - The outward tool's parameter schema is a single natural-language instruction (confirmed from `AIAgent.AsAIFunction()`'s own doc comment), with source-document resolution happening inside the agent's own chat pipeline rather than as a structured parameter. If a future Agent Framework release adds a structured-parameter overload, US-302 should prefer it — it would remove the delegating-`IChatClient` name-matching layer entirely.
-- The mechanism for extracting `CodeInterpreterToolResultContent` out of a `WithTracking`-wrapped agent run (an agent-scoped persistence tool vs. a session/thread inspection point) is left to US-302's implementing engineer to choose and document, rather than pinned here, because neither the installed package nor Microsoft's public docs name one canonical approach as of this writing.
+- The mechanism for reaching a `WithTracking`-wrapped agent run's own response, which is where an artifact's identity is read from (an agent-scoped persistence tool vs. agent-level middleware vs. a session/thread inspection point) is left to US-302's implementing engineer to choose and document, rather than pinned here, because neither the installed package nor Microsoft's public docs name one canonical approach as of this writing.
 - `trackUsage: false` is correct because the File Agent's underlying `IChatClient` is one of the four keyed clients Program.cs already decorates with `.UseToolTracking(...)`. If a future change resolves the agent's model through an **undecorated** client instead, this flag must flip to `true`, and US-503's regression test is what would catch the mismatch either way.
 - A single feature flag (`FileAgentOptions.Enabled`) governs the whole feature, rather than two independent flags (one for Code Interpreter attachment, one for the agent) as the now-superseded prior design proposed. That design's second flag existed to gate a separate Foundry SDK registration decision 1 no longer requires; with Code Interpreter riding the existing Azure OpenAI registration, a second flag has no independent failure mode left to gate.
 - File generation defaults off in every environment, including development — a capability billed per sandbox run should be switched on deliberately.

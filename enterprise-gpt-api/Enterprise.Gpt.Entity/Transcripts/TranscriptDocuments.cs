@@ -35,8 +35,12 @@ public sealed record TranscriptHeaderDocument
     /// <remarks>
     /// Present so a future shape change has a discriminator to read, rather than having to infer a
     /// document's vintage from which properties happen to be absent.
+    /// <para>
+    /// Version 2 added <see cref="TranscriptMessageDocument.Attachments"/>. It reads back as empty on
+    /// a version 1 document, so nothing migrates and both vintages are readable by the same code.
+    /// </para>
     /// </remarks>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     /// <summary>Gets the document identifier, which is the conversation's identifier.</summary>
     [JsonPropertyName("id")]
@@ -240,6 +244,17 @@ public sealed record TranscriptMessageDocument
     [JsonPropertyName("feedback")]
     public TranscriptMessageFeedback? Feedback { get; init; }
 
+    /// <summary>
+    /// Gets the files this message introduced, or an empty list when it introduced none.
+    /// </summary>
+    /// <remarks>
+    /// Identities and never credentials: a download link is minted on click, so a transcript that
+    /// leaked would carry nothing usable. A message written before this field existed deserializes to
+    /// an empty list, which is why no transcript migration runs for it.
+    /// </remarks>
+    [JsonPropertyName("attachments")]
+    public IReadOnlyList<TranscriptMessageAttachment> Attachments { get; init; } = [];
+
     /// <summary>Gets the moment the message was produced.</summary>
     /// <remarks>
     /// The sort key for the whole transcript. A user message is stamped when its prompt was
@@ -303,6 +318,36 @@ public sealed record TranscriptMessageUsage
     /// <summary>Gets the turn's total output tokens, tools included.</summary>
     [JsonPropertyName("outputTokens")]
     public long OutputTokens { get; init; }
+}
+
+/// <summary>
+/// One file an assistant message introduced.
+/// </summary>
+/// <remarks>
+/// Deliberately a copy of the identity fields rather than a document id alone: a reload has to draw
+/// the chip before anything is fetched, and a name and a size are what it draws.
+/// </remarks>
+public sealed record TranscriptMessageAttachment
+{
+    /// <summary>Gets the document's identifier, as the download route takes it.</summary>
+    [JsonPropertyName("id")]
+    public Guid Id { get; init; }
+
+    /// <summary>Gets the file name to save it under.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = null!;
+
+    /// <summary>Gets the lower-cased file extension, including the leading dot.</summary>
+    [JsonPropertyName("extension")]
+    public string Extension { get; init; } = null!;
+
+    /// <summary>Gets the content type derived from the extension.</summary>
+    [JsonPropertyName("mimeType")]
+    public string MimeType { get; init; } = null!;
+
+    /// <summary>Gets the file size in bytes.</summary>
+    [JsonPropertyName("size")]
+    public long Size { get; init; }
 }
 
 /// <summary>

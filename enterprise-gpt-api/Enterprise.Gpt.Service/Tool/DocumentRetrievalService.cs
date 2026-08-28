@@ -138,9 +138,15 @@ public sealed class DocumentRetrievalService(
     {
         List<RetrievableDocument> documents = [];
 
+        // Uploaded only. A generated document has no chunk rows, so it is already absent from the
+        // retrieval query itself; excluding it here is what also keeps its file name out of the
+        // retrieval prompt, out of HasDocuments, and out of every tool that resolves a name through
+        // this scope.
         var conversationDocuments = await _ctx.ConversationDocuments
             .AsNoTracking()
-            .Where(d => d.ConversationId == conversationId && !d.DateDeactivated.HasValue)
+            .Where(d => d.ConversationId == conversationId
+                && !d.DateDeactivated.HasValue
+                && d.Type == ConversationDocumentTypes.Uploaded)
             .OrderBy(d => d.DateCreated)
             .Select(d => new { d.Id, d.Name })
             .ToListAsync(cancellationToken)

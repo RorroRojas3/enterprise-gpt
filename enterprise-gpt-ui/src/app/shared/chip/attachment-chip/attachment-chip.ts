@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { Icon } from '@shared/icon/icon';
+import { SourceBadge } from '@shared/badge/source-badge/source-badge';
 import { Attachment, AttachmentRemoveAction } from '@domain/documents/attachment';
 import { fileGlyph } from './attachment.model';
 
@@ -13,7 +14,7 @@ import { fileGlyph } from './attachment.model';
 @Component({
   selector: 'app-attachment-chip',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, SourceBadge],
   templateUrl: './attachment-chip.html',
   styleUrl: './attachment-chip.scss',
 })
@@ -26,12 +27,21 @@ export class AttachmentChip {
   readonly downloadable = input<boolean>(false);
   /** Whether a download request for this file is already in flight. */
   readonly downloading = input<boolean>(false);
+  /**
+   * Not a sixth {@link Attachment} state: a generated file is outside the upload lifecycle
+   * those describe, and it is always finished.
+   */
+  readonly generated = input<boolean>(false);
 
   readonly removed = output<string>();
   readonly retried = output<string>();
   readonly downloaded = output<string>();
 
   protected readonly glyph = computed(() => fileGlyph(this.attachment().fileName));
+  /** The chip's own accessible name, so the distinction survives without sight of the badge. */
+  protected readonly generatedLabel = computed(
+    () => `Generated file, ${this.attachment().fileName}`,
+  );
   protected readonly removeLabel = computed(() =>
     this.removeAction() === 'cancel'
       ? `Remove ${this.attachment().fileName}`

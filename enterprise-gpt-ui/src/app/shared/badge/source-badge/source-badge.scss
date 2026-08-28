@@ -13,7 +13,10 @@
   color: var(--muted);
 }
 
+// `--brand`, not the `--accent` the board draws: this is 11px/600 text, so SC 1.4.3 wants
+// 4.5:1, and light `--accent` `#21a8d8` measures 2.74:1 on `--surface`. Dark is unaffected —
+// `--brand` *is* that cyan there — and the border keeps the accent, which is decorative.
 .source-badge--generated {
   border-color: rgba(33, 168, 216, 0.5);
-  color: var(--accent);
+  color: var(--brand);
 }

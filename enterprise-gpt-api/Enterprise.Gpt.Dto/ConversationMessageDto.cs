@@ -77,6 +77,15 @@ namespace Enterprise.Gpt.Dto
         /// rated, the rating was withdrawn, or the message is not an assistant message (US-1102).
         /// </summary>
         public ConversationMessageFeedbackDto? Feedback { get; set; }
+
+        /// <summary>
+        /// The files this message introduced, empty when it introduced none.
+        /// </summary>
+        /// <remarks>
+        /// Identities only. A client asks the document download route for a link at the moment of the
+        /// click, so nothing here expires and nothing here is a credential.
+        /// </remarks>
+        public IReadOnlyList<MessageAttachmentDto> Attachments { get; set; } = [];
     }
 
     /// <summary>

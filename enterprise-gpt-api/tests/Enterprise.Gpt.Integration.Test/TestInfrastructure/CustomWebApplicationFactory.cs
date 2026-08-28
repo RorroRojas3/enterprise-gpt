@@ -82,6 +82,7 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["CosmosDb:TranscriptContainerId"] = "test-transcript-container",
             ["AzureStorage:ConnectionString"] = "UseDevelopmentStorage=true",
             ["AzureStorage:DocumentsContainer"] = "test-documents",
+            ["AzureStorage:GeneratedContainer"] = "test-generated-documents",
             ["DocumentIntelligence:Endpoint"] = "https://localhost/",
             ["DocumentIntelligence:ApiKey"] = "test-key",
             ["DocumentIntelligence:OCRModelId"] = "prebuilt-read",

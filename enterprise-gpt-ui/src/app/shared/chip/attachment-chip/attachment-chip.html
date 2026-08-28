@@ -1,7 +1,15 @@
 @let state = attachment().state;
 
-<div class="chip" [class]="'chip--' + state.kind">
-  @if (state.kind === 'processing') {
+<div
+  class="chip"
+  [class]="'chip--' + state.kind"
+  [class.chip--generated]="generated()"
+  [attr.role]="generated() ? 'group' : null"
+  [attr.aria-label]="generated() ? generatedLabel() : null"
+>
+  @if (generated()) {
+    <app-icon class="chip__icon" [class]="'chip__icon--' + glyph().tone" [name]="glyph().icon" />
+  } @else if (state.kind === 'processing') {
     <span class="kit-spinner chip__spinner" aria-hidden="true"></span>
   } @else if (state.kind === 'ready') {
     <app-icon class="chip__icon chip__icon--ok" name="bi-check-circle-fill" />
@@ -16,55 +24,64 @@
   <div class="chip__body">
     <p class="chip__name">{{ attachment().fileName }}</p>
 
-    @switch (state.kind) {
-      @case ('uploading') {
-        <div
-          class="chip__progress"
-          role="progressbar"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          [attr.aria-valuenow]="state.percent"
-          [attr.aria-label]="progressLabel()"
-        >
-          <span class="chip__progress-fill" [style.width.%]="state.percent"></span>
-        </div>
-        <p class="chip__meta font-mono">{{ state.percent }}%</p>
-      }
-      @case ('processing') {
-        <!-- Polite: ingest progress is worth hearing, but not worth interrupting. -->
-        <p class="chip__meta" role="status">{{ state.subStatus }}</p>
-      }
-      @case ('ready') {
-        <p class="chip__meta">
-          @if (attachment().sizeLabel) {
-            {{ attachment().sizeLabel }} ·
-          }
-          Ready to use
-        </p>
-      }
-      @case ('failed') {
-        <!-- No `role="status"`: a live region created together with its content is
+    @if (generated()) {
+      <div class="chip__meta chip__meta--generated">
+        <app-source-badge source="generated" />
+        @if (attachment().sizeLabel) {
+          <span>{{ attachment().sizeLabel }}</span>
+        }
+      </div>
+    } @else {
+      @switch (state.kind) {
+        @case ('uploading') {
+          <div
+            class="chip__progress"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="state.percent"
+            [attr.aria-label]="progressLabel()"
+          >
+            <span class="chip__progress-fill" [style.width.%]="state.percent"></span>
+          </div>
+          <p class="chip__meta font-mono">{{ state.percent }}%</p>
+        }
+        @case ('processing') {
+          <!-- Polite: ingest progress is worth hearing, but not worth interrupting. -->
+          <p class="chip__meta" role="status">{{ state.subStatus }}</p>
+        }
+        @case ('ready') {
+          <p class="chip__meta">
+            @if (attachment().sizeLabel) {
+              {{ attachment().sizeLabel }} ·
+            }
+            Ready to use
+          </p>
+        }
+        @case ('failed') {
+          <!-- No `role="status"`: a live region created together with its content is
              not reliably announced, so the surrounding surface owns the summary
              region instead — see the composer's. -->
-        <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
-        <!-- Retry belongs to this arm alone: the same file through the same pipeline
+          <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+          <!-- Retry belongs to this arm alone: the same file through the same pipeline
              can succeed on a second attempt, where an unsupported extension cannot. -->
-        <button
-          class="chip__retry"
-          type="button"
-          [attr.aria-label]="retryLabel()"
-          (click)="retried.emit(attachment().id)"
-        >
-          Retry
-        </button>
-      }
-      @case ('unsupported') {
-        <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
-      }
-      @case ('unknown') {
-        <!-- Deliberately not the word "failed": nothing failed, the status simply is
+          <button
+            class="chip__retry"
+            type="button"
+            [attr.aria-label]="retryLabel()"
+            (click)="retried.emit(attachment().id)"
+          >
+            Retry
+          </button>
+        }
+        @case ('unsupported') {
+          <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+        }
+        @case ('unknown') {
+          <!-- Deliberately not the word "failed": nothing failed, the status simply is
              no longer kept. -->
-        <p class="chip__meta">Status is only kept for a limited time.</p>
+          <p class="chip__meta">Status is only kept for a limited time.</p>
+        }
       }
     }
   </div>

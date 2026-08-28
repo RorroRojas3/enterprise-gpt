@@ -16,10 +16,12 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text;
+using System.Text.Json;
 using Conversation = Enterprise.Gpt.Entity.Conversation;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using Enterprise.Gpt.Entity.Transcripts;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Mappers;
@@ -52,6 +54,24 @@ namespace Enterprise.Gpt.Service
         /// </para>
         /// </remarks>
         const string AssistantMessageIdMetadataKey = "assistantMessageId";
+
+        /// <summary>
+        /// The <c>metadata</c> key the <see cref="AssistantUiEventKind.Finished"/> frame carries the
+        /// files this turn produced under, as a JSON array of
+        /// <see cref="Dto.MessageAttachmentDto"/>.
+        /// </summary>
+        /// <remarks>
+        /// An opaque identifier clients match verbatim, like the key above. JSON in a string because
+        /// the streamed contract's metadata bag is <c>Record&lt;string, string&gt;</c> — a typed array
+        /// would need a new event kind, which is a breaking change to a vendored contract.
+        /// <para>
+        /// Absent when the turn produced no file, and absent on a turn that never reached a
+        /// <see cref="AssistantUiEventKind.Finished"/> frame at all. A reload reads the same identities
+        /// off the transcript instead, so this key is a convenience for the turn that made them rather
+        /// than the only place they exist.
+        /// </para>
+        /// </remarks>
+        const string GeneratedAttachmentsMetadataKey = "generatedAttachments";
 
         /// <summary>
         /// Reads a single conversation, including the model and MCP servers its most recent turn ran
@@ -193,6 +213,8 @@ namespace Enterprise.Gpt.Service
         IOptions<SummarizationOptions> summarizationOptions,
         ISheetQueryService sheetQueryService,
         ISheetQueryOptionsProvider sheetQueryOptions,
+        IFileAgentToolProvider fileAgentToolProvider,
+        IOptions<FileAgentOptions> fileAgentOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
@@ -221,6 +243,8 @@ namespace Enterprise.Gpt.Service
         private readonly SummarizationOptions _summarizationOptions = summarizationOptions.Value;
         private readonly ISheetQueryService _sheetQueryService = sheetQueryService;
         private readonly SheetQueryOptions _sheetQueryOptions = sheetQueryOptions.Current;
+        private readonly IFileAgentToolProvider _fileAgentToolProvider = fileAgentToolProvider;
+        private readonly FileAgentOptions _fileAgentOptions = fileAgentOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
         // The synthetic pair every turn's stream opens with, ahead of the first model event.
@@ -290,9 +314,14 @@ namespace Enterprise.Gpt.Service
             var userId = _tokenService.GetOid();
             await EnsureConversationExistsAsync(id, userId, cancellationToken);
 
+            // Uploads only. Every surface this feeds — the composer's chips, the files panel — is
+            // about what the user brought to the conversation, and a file the assistant made reaches
+            // them through the chip on the message that made it instead.
             return await _ctx.ConversationDocuments
                 .AsNoTracking()
-                .Where(x => x.ConversationId == id && !x.DateDeactivated.HasValue)
+                .Where(x => x.ConversationId == id
+                    && !x.DateDeactivated.HasValue
+                    && x.Type == ConversationDocumentTypes.Uploaded)
                 .OrderByDescending(x => x.DateCreated)
                 .Select(ConversationDocumentMapper.MapToConversationDocumentDtoExpression)
                 .ToListAsync(cancellationToken);
@@ -933,7 +962,7 @@ namespace Enterprise.Gpt.Service
 
             var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
             var chatClient = _chatClientResolver.Resolve(model.ProviderId);
-            var (chatOptions, toolLeases) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
+            var (chatOptions, toolLeases, fileAgentLease) = await CreateChatOptionsAsync(id, model, request.McpServers, projectInstructions, cancellationToken).ConfigureAwait(false);
 
             StringBuilder sb = new();
             var completed = false;
@@ -946,6 +975,10 @@ namespace Enterprise.Gpt.Service
             AssistantUiEvent? finishedEvent = null;
             Guid? assistantMessageId = null;
 
+            // Copied out of the lease while it is still open, because the frame that carries it is
+            // yielded after the lease scope has closed.
+            IReadOnlyList<MessageAttachmentDto> generatedAttachments = [];
+
             // Held for the same reason the frame is. A completed turn is owed its Finished event
             // whatever the write then does, and throwing out of the finally below would skip the
             // statement that delivers it — so the failure is captured there and rethrown after.
@@ -954,6 +987,7 @@ namespace Enterprise.Gpt.Service
             // The lease set (null when no MCPs are selected) must stay alive for the whole
             // stream: the attached tools invoke through the leased clients. await using
             // releases the leases on completion, fault, or client disconnect alike.
+            await using (fileAgentLease)
             await using (toolLeases)
             {
                 // Inside the lease scope, not before it: this throws when the prompt cannot fit the
@@ -1072,6 +1106,8 @@ namespace Enterprise.Gpt.Service
                         _logger.LogError(ex, "Disposing the response stream failed for conversation {ConversationId}.", id);
                     }
 
+                    generatedAttachments = [.. fileAgentLease?.GeneratedDocuments ?? []];
+
                     var turn = new TurnOutcome(
                         ConversationId: id,
                         UserId: userId,
@@ -1089,7 +1125,8 @@ namespace Enterprise.Gpt.Service
                         ConversationName: conversation.Name,
                         ConversationCreatedAt: conversation.DateCreated,
                         EstimatedPromptTokens: estimatedPromptTokens,
-                        Report: usageScope.Report);
+                        Report: usageScope.Report,
+                        Attachments: generatedAttachments);
 
                     // The token that ended the stream is the one that would abort the write
                     // recording it, so finalization runs uncancellable.
@@ -1140,15 +1177,23 @@ namespace Enterprise.Gpt.Service
                 // Assignment rather than a merge, and safe because it is: ToUiEventsAsync documents
                 // that it always leaves Metadata null, so there is nothing here to preserve. A
                 // package that starts attaching its own values would need this to merge.
-                yield return assistantMessageId is { } messageId
-                    ? finishedEvent with
-                    {
-                        Metadata = new Dictionary<string, string>
-                        {
-                            [IConversationService.AssistantMessageIdMetadataKey] = messageId.ToString()
-                        }
-                    }
-                    : finishedEvent;
+                Dictionary<string, string> metadata = [];
+
+                if (assistantMessageId is { } messageId)
+                {
+                    metadata[IConversationService.AssistantMessageIdMetadataKey] = messageId.ToString();
+                }
+
+                // Only on the turn that made them, and only once they are genuinely stored: this is
+                // what lets the chip appear under the answer without waiting for a reload, and a
+                // reload reads the same identities off the transcript.
+                if (generatedAttachments.Count > 0)
+                {
+                    metadata[IConversationService.GeneratedAttachmentsMetadataKey] =
+                        JsonSerializer.Serialize(generatedAttachments);
+                }
+
+                yield return metadata.Count > 0 ? finishedEvent with { Metadata = metadata } : finishedEvent;
             }
 
             // After the frame, never instead of it. Rethrown with its original stack, so the
@@ -1203,7 +1248,8 @@ namespace Enterprise.Gpt.Service
             string ConversationName,
             DateTimeOffset ConversationCreatedAt,
             long EstimatedPromptTokens,
-            ChatUsageReport? Report);
+            ChatUsageReport? Report,
+            IReadOnlyList<MessageAttachmentDto> Attachments);
 
         /// <summary>
         /// Records a finished turn: the conversation's running counters and last model, the usage
@@ -1397,7 +1443,15 @@ namespace Enterprise.Gpt.Service
                 {
                     InputTokens = inputTokens,
                     OutputTokens = outputTokens
-                }
+                },
+                Attachments = [.. turn.Attachments.Select(a => new TranscriptMessageAttachment
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Extension = a.Extension,
+                    MimeType = a.MimeType,
+                    Size = a.Size
+                })]
             };
 
             // One batch, so the header's counters and the documents they count either all land or
@@ -1930,7 +1984,17 @@ namespace Enterprise.Gpt.Service
                                     {
                                         Rating = x.Feedback.Rating,
                                         DateModified = x.Feedback.DateModified
-                                    }
+                                    },
+                                // The whole of how a generated file survives a reload: the chip is
+                                // drawn from this, and the link is minted when it is clicked.
+                                Attachments = [.. x.Attachments.Select(a => new MessageAttachmentDto
+                                {
+                                    Id = a.Id,
+                                    Name = a.Name,
+                                    Extension = a.Extension,
+                                    MimeType = a.MimeType,
+                                    Size = a.Size
+                                })]
                             })
                             .ToList();
 
@@ -2166,7 +2230,7 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="ValidationException">MCP servers were selected but <paramref name="model"/> does not support tools.</exception>
         /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
         /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
-        private async Task<(ChatOptions ChatOptions, IMcpToolLeaseSet? ToolLeases)> CreateChatOptionsAsync(
+        private async Task<(ChatOptions ChatOptions, IMcpToolLeaseSet? ToolLeases, IFileAgentToolLease? FileAgentLease)> CreateChatOptionsAsync(
             Guid sessionId, ModelDto model, List<McpServerSelectionDto> mcps, string? projectInstructions, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(model);
@@ -2333,6 +2397,7 @@ namespace Enterprise.Gpt.Service
             }
 
             IMcpToolLeaseSet? toolLeases = null;
+            IFileAgentToolLease? fileAgentLease = null;
             if (selectedServerIds.Length > 0)
             {
                 toolLeases = await _mcpToolProvider.AcquireToolsAsync(selectedServerIds, cancellationToken).ConfigureAwait(false);
@@ -2456,6 +2521,50 @@ namespace Enterprise.Gpt.Service
                     }
                 }
 
+                // The same gate ladder document summarization climbs, minus the grant rung, which is
+                // this feature's own story and lands with the permission it needs. A stood-down agent
+                // is not a failed turn: the assistant is simply never told the capability exists.
+                var attachFileAgent = _fileAgentOptions.Enabled;
+
+                if (attachFileAgent && !model.IsToolEnabled)
+                {
+                    _logger.LogWarning(
+                        "The File Agent is enabled but model {ModelId} does not support tools; it is unavailable for this turn.",
+                        model.Id);
+
+                    attachFileAgent = false;
+                }
+
+                if (attachFileAgent
+                    && tools.Any(t => string.Equals(t.Name, FileAgentToolNames.Agent, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // The user's explicit MCP selection wins, as it does for every implicit tool here.
+                    _logger.LogWarning(
+                        "An MCP tool selected for conversation {ConversationId} is already named '{ToolName}'; the File Agent is unavailable for this turn.",
+                        sessionId, FileAgentToolNames.Agent);
+
+                    attachFileAgent = false;
+                }
+
+                if (attachFileAgent)
+                {
+                    try
+                    {
+                        fileAgentLease = await _fileAgentToolProvider
+                            .AcquireAsync(sessionId, _tokenService.GetOid(), cancellationToken)
+                            .ConfigureAwait(false);
+
+                        tools.Add(fileAgentLease.Tool);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // A misconfigured agent costs the turn a capability, not the turn itself —
+                        // the startup validator is where a broken registration is meant to surface.
+                        _logger.LogError(
+                            ex, "Composing the File Agent failed for conversation {ConversationId}; it is unavailable for this turn.", sessionId);
+                    }
+                }
+
                 if (instructions.Count > 0)
                 {
                     chatOptions.Instructions = string.Join("\n\n", instructions);
@@ -2468,11 +2577,22 @@ namespace Enterprise.Gpt.Service
                     chatOptions.AllowMultipleToolCalls = true;
                 }
 
-                return (chatOptions, toolLeases);
+                return (chatOptions, toolLeases, fileAgentLease);
             }
-            catch when (toolLeases is not null)
+            catch when (toolLeases is not null || fileAgentLease is not null)
             {
-                await toolLeases.DisposeAsync().ConfigureAwait(false);
+                // Innermost first, matching the order the stream's own nested `await using` scopes
+                // unwind in.
+                if (toolLeases is not null)
+                {
+                    await toolLeases.DisposeAsync().ConfigureAwait(false);
+                }
+
+                if (fileAgentLease is not null)
+                {
+                    await fileAgentLease.DisposeAsync().ConfigureAwait(false);
+                }
+
                 throw;
             }
         }

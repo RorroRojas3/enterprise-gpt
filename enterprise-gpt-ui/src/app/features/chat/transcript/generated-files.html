@@ -1,0 +1,19 @@
+@if (attachments().length > 0) {
+  <!-- `role="list"` because `list-style: none` strips list semantics in Safari. An empty one
+       would still be announced as a list, which is why this is guarded here as well as at
+       the call site. -->
+  <ul class="generated-files" role="list" aria-label="Files the assistant made">
+    @for (file of rows(); track file.id) {
+      <li>
+        <app-attachment-chip
+          [attachment]="file"
+          [generated]="true"
+          [removable]="false"
+          [downloadable]="downloadable()"
+          [downloading]="downloading(file.id)"
+          (downloaded)="download($event)"
+        />
+      </li>
+    }
+  </ul>
+}

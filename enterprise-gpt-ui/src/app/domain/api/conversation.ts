@@ -82,6 +82,21 @@ export interface ConversationMessageFeedbackDto {
 }
 
 /**
+ * One file an assistant message introduced.
+ *
+ * An identity and never a credential: the download route mints a short-lived link when the
+ * chip is clicked, so nothing here expires and nothing here is worth intercepting.
+ */
+export interface MessageAttachmentDto {
+  readonly id: string;
+  readonly name: string;
+  /** Lower-cased, including the leading dot. */
+  readonly extension: string;
+  readonly mimeType: string;
+  readonly size: number;
+}
+
+/**
  * One persisted message.
  *
  * `id` is the anchor a rating is addressed to (US-1101), and the only reason it is read
@@ -98,6 +113,8 @@ export interface ConversationMessageDto {
   readonly text: string;
   readonly role: ChatRole;
   readonly feedback?: ConversationMessageFeedbackDto | null;
+  /** Optional for the same reason `feedback` is: a message that introduced none may omit it. */
+  readonly attachments?: readonly MessageAttachmentDto[] | null;
 }
 
 /**

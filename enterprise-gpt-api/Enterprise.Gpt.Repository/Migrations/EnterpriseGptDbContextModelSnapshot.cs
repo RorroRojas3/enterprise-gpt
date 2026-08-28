@@ -134,6 +134,10 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("Type")
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -944,6 +948,24 @@ namespace Enterprise.Gpt.Repository.Migrations
                             MaxOutputTokens = 16384m,
                             ModifiedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
                             Name = "RR GPT 5.6 Luna",
+                            ProviderId = new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0")
+                        },
+                        new
+                        {
+                            Id = new Guid("8f2b4d16-9c05-4a3e-8f7a-1d6a9c2b5e04"),
+                            ContextWindowSize = 1000000m,
+                            CreatedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
+                            DateCreated = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DateModified = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DeploymentName = "rr-gpt5.6-luna",
+                            Description = "Runs the File Agent's sandbox turns.",
+                            IsDefault = false,
+                            IsReasoningEnabled = false,
+                            IsToolEnabled = true,
+                            IsUserSelectable = false,
+                            MaxOutputTokens = 16384m,
+                            ModifiedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
+                            Name = "RR GPT 5.6 Luna (File Agent)",
                             ProviderId = new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0")
                         });
                 });

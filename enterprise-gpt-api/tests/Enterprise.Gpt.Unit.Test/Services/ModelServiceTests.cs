@@ -313,11 +313,14 @@ public sealed class ModelServiceTests : IDisposable
     {
         var request = CreateRequest() with { Name = string.Empty, ContextWindowSize = 0m };
 
+        using var before = _fixture.CreateContext();
+        var seeded = await before.Models.CountAsync(TestContext.Current.CancellationToken);
+
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateModelAsync(request, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        Assert.Equal(1, await ctx.Models.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(seeded, await ctx.Models.CountAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

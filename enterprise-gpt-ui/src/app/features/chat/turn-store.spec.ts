@@ -785,6 +785,106 @@ describe('TurnStore', () => {
     });
   });
 
+  describe('files the assistant produced', () => {
+    const SPREADSHEET = {
+      id: '9c8b7a65-4321-4fed-8cba-0987654321fe',
+      name: 'regional-summary.xlsx',
+      extension: '.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: 2048,
+    } as const;
+
+    it('reads the files a live turn produced off the Finished frame', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Here it is.' })));
+      handle.enqueue(
+        frame(
+          assistantEvent('Finished', {
+            metadata: { generatedAttachments: JSON.stringify([SPREADSHEET]) },
+          }),
+        ),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([SPREADSHEET]);
+    });
+
+    it('leaves a turn that produced nothing with no attachments', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(fullTurnEvents().map(frame).join(''));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([]);
+    });
+
+    it('ignores a metadata payload it cannot read rather than breaking the transcript', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(
+        frame(assistantEvent('Finished', { metadata: { generatedAttachments: 'not json' } })),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([]);
+    });
+
+    it('drops an entry it cannot read rather than letting it reach a chip', async () => {
+      // A malformed element would otherwise throw inside the chip's own computed, which takes
+      // the whole transcript's render with it rather than one row.
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(
+        frame(
+          assistantEvent('Finished', {
+            metadata: { generatedAttachments: JSON.stringify([{ id: 1 }, SPREADSHEET]) },
+          }),
+        ),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([SPREADSHEET]);
+    });
+
+    it('replays a generated file from the stored transcript', () => {
+      // The whole of how a chip survives a reload: what the server holds is what the
+      // transcript draws, and the link is minted again when it is clicked.
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'Make me a sheet', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'Done.', role: CHAT_ROLE.assistant, attachments: [SPREADSHEET] }),
+      ]);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([SPREADSHEET]);
+    });
+
+    it('replays a message that carried no attachments field at all', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'Older answer', role: CHAT_ROLE.assistant, attachments: undefined }),
+      ]);
+
+      const answer = store.entries()[0] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([]);
+    });
+  });
+
   describe('replaying the stored transcript (US-410)', () => {
     const HISTORY: readonly ConversationMessageDto[] = [
       messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),

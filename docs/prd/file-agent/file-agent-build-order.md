@@ -8,7 +8,7 @@ A wave here is a **phase**, not a dependency depth: every wave below contains in
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 0 / 44 done.**
+**Progress: 22 / 44 done.**
 
 **Critical path.** `US-001` (Code Interpreter proven on the Responses route) feeds three chains: `US-001 → US-002 → US-003` (the conversion matrix, needed by `US-406`/`US-407`), `US-001 → US-201 → US-202` (the sandbox execution mechanism, also needed by `US-204`), and `US-001 → US-301` (the agent's pinned model). `US-302` needs both `US-301` and `US-202` — the first join — and `US-401` needs both `US-303` and `US-103` (EP-1's storage chain) — the second, and the true bottleneck of the whole backend. From there, `US-402` is the gate every other EP-4 verb (`US-403`-`US-407`) and EP-5's totals test (`US-503`) sit behind. Nine deep along its longest branch: `US-001 → US-201 → US-202 → US-302 → US-303 → US-401 → US-402 → US-406 → US-407` — the conversion-refusal story is the single longest tail because it alone needs both the create/verify chain and US-003's matrix. EP-1's schema/storage chain (`US-101`/`US-102 → US-103 → US-104`/`US-106`) and EP-6's chip lane (`US-105 → US-601 → US-602`/`US-603`) run clear of that whole chain from day one, testable against a hand-inserted `Generated` row with no agent in existence. **Useful concurrency reaches at least 7** in wave 1 — for example `US-104`, `US-106`, `US-204`, `US-305`, `US-306`, `US-307` and `US-603` share no dependency edge with one another — against a build that opens wave 0 with a strict three-story chain.
 
@@ -18,11 +18,13 @@ Three stories, a strict chain, and nothing below is estimated in detail until al
 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | 1 | US-001 `[enabler]` Prove Code Interpreter runs over the Responses-route Azure OpenAI client | — | P0 | — | |
-| 0 | 2 | US-002 `[enabler]` Inventory the sandbox's actual Python libraries | US-001 | P0 | — | |
-| 0 | 3 | US-003 `[enabler]` Establish and publish the supported conversion matrix | US-002 | P0 | — | |
+| 0 | 1 | US-001 `[enabler]` Prove Code Interpreter runs over the Responses-route Azure OpenAI client | — | P0 | — | ✅ Done (2026-08-27) |
+| 0 | 2 | US-002 `[enabler]` Inventory the sandbox's actual Python libraries | US-001 | P0 | — | ✅ Done (2026-08-27) |
+| 0 | 3 | US-003 `[enabler]` Establish and publish the supported conversion matrix | US-002 | P0 | — | ✅ Done (2026-08-27) |
 
 ⛔ **This is a gate, not a phase.** `US-001` pins whether `HostedCodeInterpreterTool` actually works on this tenant's existing Azure OpenAI registration; `US-002` and `US-003` both read that result directly. Starting `US-201` or `US-301` before `US-001` closes risks building the whole sandbox-execution and agent-composition chains around an assumption the tenant does not actually support.
+
+✅ **The gate closed on 2026-08-27**, and it moved three things the rest of this PRD was written against. `DataContent` on `HostedCodeInterpreterTool.Inputs` is silently dropped, so inputs go through the Files API as `HostedFileContent` (FR-10/FR-11 and US-202 corrected). `markdown` is absent from the image and `fpdf` is 2.8.3 rather than 1.x (§6's tooling list corrected). `pptx` → `pdf` was demoted from structural to refused, and the confirmed matrix now lives in `Enterprise.Gpt.Service/Agents/Documents/conversion-matrix.json`.
 
 ## Wave 1 — storage, catalog, agent composition, and the chip beside them
 
@@ -30,25 +32,27 @@ The backend splits into three chains that only meet once, at `US-302`: EP-1's st
 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 4 | US-101 `[enabler]` Add the `Generated` discriminator and migrate existing rows | — | P0 | US-102, US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | |
-| 1 | 5 | US-102 `[enabler]` Provision the `generated-documents` blob container | — | P0 | US-101, US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | |
-| 1 | 6 | US-105 `[enabler]` Carry the generated-file reference on the transcript message | — | P0 | US-101, US-102, US-103, US-104, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307 | |
-| 1 | 7 | US-201 `[enabler]` Attach `HostedCodeInterpreterTool` only on the Responses-route client | US-001 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-301, US-601, US-602, US-603 | |
-| 1 | 8 | US-301 `[enabler]` Configure the File Agent's pinned model and validate it at startup | US-001 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-201, US-202, US-204, US-601, US-602, US-603 | |
-| 1 | 9 | US-103 `[enabler]` Persist a generated file without ingesting it | US-101, US-102 | P0 | US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | |
-| 1 | 10 | US-202 `[enabler]` Upload turn inputs into the sandbox and read artifacts back | US-201 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-301, US-601, US-602, US-603 | |
-| 1 | 11 | US-601 Show a generated document on the assistant message | US-105 | P0 | US-101, US-102, US-103, US-104, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307 | |
-| 1 | 12 | US-104 Download a generated document in its own format | US-103 | P1 | US-105, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | |
-| 1 | 13 | US-106 A generated document is never retrieved or cited | US-103 | P0 | US-104, US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-602, US-603 | |
-| 1 | 14 | US-302 `[enabler]` Compose and name the File Agent behind a Service abstraction | US-301, US-202 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-601, US-602, US-603 | |
-| 1 | 15 | US-204 `[enabler]` Bound a sandbox run's time and artifact count | US-202 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-602, US-603 | |
-| 1 | 16 | US-602 Download a generated document on click | US-601, US-104 | P0 | US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-603 | |
-| 1 | 17 | US-603 A generated document survives a reload | US-601, US-105 | P1 | US-101, US-102, US-103, US-104, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-602 | |
-| 1 | 18 | US-303 `[enabler]` Attach the agent as one tracked tool via `WithTracking` | US-302 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-304, US-305, US-306, US-307, US-601, US-602, US-603 | |
-| 1 | 19 | US-304 `[enabler]` Load format-targeted Agent Skills, filtered before advertisement | US-302 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-601, US-602, US-603 | |
-| 1 | 20 | US-305 `[enabler]` Auto-approve read-only skill tools | US-304 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-306, US-307, US-601, US-602, US-603 | |
-| 1 | 21 | US-306 `[enabler]` Exclude host-side script execution from the skill runner | US-304 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-305, US-307, US-601, US-602, US-603 | |
-| 1 | 22 | US-307 Ship skill content as deployed files | US-304 | P1 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-305, US-306, US-601, US-602, US-603 | |
+| 1 | 4 | US-101 `[enabler]` Add the `Generated` discriminator and migrate existing rows | — | P0 | US-102, US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | ✅ Done (2026-08-28) |
+| 1 | 5 | US-102 `[enabler]` Provision the `generated-documents` blob container | — | P0 | US-101, US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | ✅ Done (2026-08-28) |
+| 1 | 6 | US-105 `[enabler]` Carry the generated-file reference on the transcript message | — | P0 | US-101, US-102, US-103, US-104, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307 | ✅ Done (2026-08-28) |
+| 1 | 7 | US-201 `[enabler]` Attach `HostedCodeInterpreterTool` only on the Responses-route client | US-001 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-301, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 8 | US-301 `[enabler]` Configure the File Agent's pinned model and validate it at startup | US-001 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-201, US-202, US-204, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 9 | US-103 `[enabler]` Persist a generated file without ingesting it | US-101, US-102 | P0 | US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | ✅ Done (2026-08-28) |
+| 1 | 10 | US-202 `[enabler]` Upload turn inputs into the sandbox and read artifacts back | US-201 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-301, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 11 | US-601 Show a generated document on the assistant message | US-105 | P0 | US-101, US-102, US-103, US-104, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307 | ✅ Done (2026-08-28) |
+| 1 | 12 | US-104 Download a generated document in its own format | US-103 | P1 | US-105, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-603 | ✅ Done (2026-08-28) |
+| 1 | 13 | US-106 A generated document is never retrieved or cited | US-103 | P0 | US-104, US-105, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 14 | US-302 `[enabler]` Compose and name the File Agent behind a Service abstraction | US-301, US-202 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 15 | US-204 `[enabler]` Bound a sandbox run's time and artifact count | US-202 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 16 | US-602 Download a generated document on click | US-601, US-104 | P0 | US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-603 | ✅ Done (2026-08-28) |
+| 1 | 17 | US-603 A generated document survives a reload | US-601, US-105 | P1 | US-101, US-102, US-103, US-104, US-106, US-201, US-202, US-204, US-301, US-302, US-303, US-304, US-305, US-306, US-307, US-602 | ✅ Done (2026-08-28) |
+| 1 | 18 | US-303 `[enabler]` Attach the agent as one tracked tool via `WithTracking` | US-302 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-304, US-305, US-306, US-307, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 19 | US-304 `[enabler]` Load format-targeted Agent Skills, filtered before advertisement | US-302 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 20 | US-305 `[enabler]` Auto-approve read-only skill tools | US-304 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-306, US-307, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 21 | US-306 `[enabler]` Exclude host-side script execution from the skill runner | US-304 | P0 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-305, US-307, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+| 1 | 22 | US-307 Ship skill content as deployed files | US-304 | P1 | US-101, US-102, US-103, US-104, US-105, US-106, US-204, US-303, US-305, US-306, US-601, US-602, US-603 | ✅ Done (2026-08-28) |
+
+✅ **Wave 1 closed on 2026-08-28**, and it moved three things the PRD had settled differently. The agent runs on a keyed client of its own **without** tool tracking, so `US-303`'s `trackUsage` is `true` rather than `false` — a nested tracker opens its own writer-less root scope and would swallow the run's progress. `US-305` disables approval on the two read-only skill tools through `AgentSkillsProviderOptions` rather than an auto-approval rule. And `US-306`'s “zero `UseFileScriptRunner` call sites” is unreachable — the package refuses to build a file-skill provider without a runner — so the guard is one call site passing a runner that throws.
 
 ⛔ **`US-302` is the join point.** It is the only story in this wave with edges into both the EP-2 chain (`US-202`) and the EP-3 chain (`US-301`); everything after it in EP-3 (`US-303`-`US-307`) is blocked on it. Whoever takes `US-302` should not also be assigned `US-202` or `US-301` concurrently — the join needs both finished, not raced.
 

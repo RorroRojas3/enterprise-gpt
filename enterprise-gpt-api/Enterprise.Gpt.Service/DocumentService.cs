@@ -2,7 +2,6 @@ using Azure.Storage.Sas;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlTypes;
-using System.Collections.Frozen;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -189,28 +188,19 @@ namespace Enterprise.Gpt.Service
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
-        /// <summary>
-        /// The container every document blob lives in, read on each use rather than cached so a
-        /// reloaded configuration takes effect without a restart.
-        /// </summary>
+        /// <summary>The container every uploaded document blob lives in.</summary>
         /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
-        private string DocumentsContainer
-        {
-            get
-            {
-                var container = _configuration.GetValue<string>("AzureStorage:DocumentsContainer");
+        private string DocumentsContainer =>
+            DocumentStorage.RequireContainer(_configuration, _logger, DocumentStorage.DocumentsContainerKey);
 
-                if (string.IsNullOrWhiteSpace(container))
-                {
-                    // Diagnosable as the operator condition it is. Left to the Azure SDK, a missing
-                    // container name surfaces as an opaque 500 with the message suppressed.
-                    _logger.LogError("AzureStorage:DocumentsContainer is not configured, so no document blob can be read or written");
-                    throw new StorageNotConfiguredException();
-                }
-
-                return container;
-            }
-        }
+        /// <summary>The container every generated document blob lives in.</summary>
+        /// <remarks>
+        /// A container of its own rather than a prefix inside the uploads one, so a generated file and an
+        /// uploaded file never share a retention policy, an access policy or a lifecycle rule.
+        /// </remarks>
+        /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
+        private string GeneratedContainer =>
+            DocumentStorage.RequireContainer(_configuration, _logger, DocumentStorage.GeneratedContainerKey);
 
         /// <inheritdoc />
         public async Task<JobDto> QueueConversationDocumentAsync(Guid conversationId, FileDto file, CancellationToken cancellationToken)
@@ -491,7 +481,7 @@ namespace Enterprise.Gpt.Service
                     && !x.DateDeactivated.HasValue
                     && x.Conversation.UserId == userId
                     && !x.Conversation.DateDeactivated.HasValue)
-                .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path))
+                .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path, x.Type == ConversationDocumentTypes.Generated))
                 .FirstOrDefaultAsync(cancellationToken);
 
             return BuildDownload(document, documentId, userId);
@@ -509,7 +499,7 @@ namespace Enterprise.Gpt.Service
                     && !x.DateDeactivated.HasValue
                     && x.Project.UserId == userId
                     && !x.Project.DateDeactivated.HasValue)
-                .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path))
+                .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path, false))
                 .FirstOrDefaultAsync(cancellationToken);
 
             return BuildDownload(document, documentId, userId);
@@ -530,9 +520,15 @@ namespace Enterprise.Gpt.Service
             // the conversation after persisting, so an active document implies an active conversation.
             // The Conversation join in the projection exists only to carry the name, and the
             // (UserId, DateDeactivated) index serves this filter.
+            // Uploads only, for the reason the per-conversation listing filters the same way: this
+            // library's rows are captioned as uploads, and a generated file listed among them would
+            // be labelled as something it is not. The invariant above holds for a generated row too —
+            // its own write path re-checks the conversation after persisting.
             var query = _ctx.ConversationDocuments
                 .AsNoTracking()
-                .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+                .Where(x => x.UserId == userId
+                    && !x.DateDeactivated.HasValue
+                    && x.Type == ConversationDocumentTypes.Uploaded);
 
             var totalCount = await query.CountAsync(cancellationToken);
 
@@ -581,12 +577,12 @@ namespace Enterprise.Gpt.Service
             var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
 
             var sasUri = _blobStorageService.GenerateSasUri(
-                DocumentsContainer,
+                document.IsGenerated ? GeneratedContainer : DocumentsContainer,
                 document.Path,
                 lifetime,
                 BlobSasPermissions.Read,
                 BuildContentDisposition(document.Name),
-                ResolveContentType(document.Extension));
+                DocumentStorage.ResolveContentType(document.Extension));
 
             // The link is a bearer credential until it expires, so only the document id is recorded.
             _logger.LogInformation("Issued a download link for document {DocumentId} to user {UserId}, expiring at {ExpiresAt}", documentId, userId, expiresAt);
@@ -623,39 +619,15 @@ namespace Enterprise.Gpt.Service
             return $"attachment; filename=\"{fallback}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
         }
 
-        /// <summary>
-        /// Maps a stored file extension to the content type the download link is served under.
-        /// </summary>
-        /// <param name="extension">The lower-cased extension, including the leading dot.</param>
-        /// <returns>A content type, or <c>application/octet-stream</c> for anything unrecognised.</returns>
-        /// <remarks>
-        /// Derived from the extension rather than from the <c>MimeType</c> column, because that column is
-        /// whatever the client declared at upload time and nothing validates it — and this value is signed
-        /// into the link as the header storage will actually return. Serving an uploader's chosen media
-        /// type back to them would put the burden of preventing stored XSS entirely on the
-        /// <c>attachment</c> disposition. The extension is derived server-side from the file name and is
-        /// validated, so it is the trustworthy half. Falling back to a byte stream is safe: every link is
-        /// an attachment, so the type only decides which application opens the saved file.
-        /// </remarks>
-        private static string ResolveContentType(string extension) =>
-            _contentTypes.GetValueOrDefault(extension, "application/octet-stream");
-
-        private static readonly FrozenDictionary<string, string> _contentTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            [".csv"] = "text/csv",
-            [".doc"] = "application/msword",
-            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            [".md"] = "text/markdown",
-            [".pdf"] = "application/pdf",
-            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            [".txt"] = "text/plain",
-            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// The columns a download needs, projected server-side so no chunk or embedding data is read.
         /// </summary>
-        private sealed record DocumentBlobRef(string Name, string Extension, string Path);
+        /// <param name="IsGenerated">
+        /// Whether the blob lives in the generated-documents container. Read off the row rather than
+        /// inferred from the extension: both containers hold the same seven formats.
+        /// </param>
+        private sealed record DocumentBlobRef(string Name, string Extension, string Path, bool IsGenerated);
         #endregion
 
         #region Pipeline stages

@@ -1,4 +1,5 @@
 ﻿using Andes.Extensions.AI;
+using System.Text.Json;
 using FluentValidation;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Entity.Transcripts;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.Chat;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Rendering;
@@ -50,6 +52,7 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly IDocumentSummaryService _documentSummaryService = Substitute.For<IDocumentSummaryService>();
     private readonly IUserGrantReader _userGrantReader = Substitute.For<IUserGrantReader>();
     private readonly ISheetQueryService _sheetQueryService = Substitute.For<ISheetQueryService>();
+    private readonly IFileAgentToolProvider _fileAgentToolProvider = Substitute.For<IFileAgentToolProvider>();
     private readonly FakeChatClient _chatClient = new();
     private readonly IChatClient _trackedChatClient;
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
@@ -128,6 +131,8 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
     }
 
@@ -160,6 +165,8 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     /// <summary>
@@ -190,6 +197,8 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(options ?? new SummarizationOptions { Enabled = true }),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     /// <summary>
@@ -219,6 +228,8 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             options ?? new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
+            _fileAgentToolProvider,
+            Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     public void Dispose()
@@ -791,6 +802,165 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal("/contextTokens", patch[1].Path);
         Assert.Equal(PatchOperationType.Set, patch[2].OperationType);
         Assert.Equal("/dateModified", patch[2].Path);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentProducedAFile_WritesItOntoTheAssistantMessage()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var file = SetUpFileAgentProducing(
+            new MessageAttachmentDto
+            {
+                Id = Guid.NewGuid(),
+                Name = "regional-summary.xlsx",
+                Extension = ".xlsx",
+                MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Size = 2048
+            });
+
+        var service = CreateServiceWithFileAgent();
+
+        await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: service);
+
+        var assistant = Assert.IsType<TranscriptMessageDocument>(CapturedBatchOperations()[1].Item);
+        var attachment = Assert.Single(assistant.Attachments);
+
+        Assert.Equal(file.Id, attachment.Id);
+        Assert.Equal("regional-summary.xlsx", attachment.Name);
+        Assert.Equal(".xlsx", attachment.Extension);
+        Assert.Equal(2048, attachment.Size);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentProducedAFile_NamesItOnTheFinishedFrame()
+    {
+        // The chip on the turn that made the file. A reload reads the same identities off the
+        // transcript, so this key is the live path rather than the only one.
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var file = SetUpFileAgentProducing(
+            new MessageAttachmentDto
+            {
+                Id = Guid.NewGuid(),
+                Name = "notes.md",
+                Extension = ".md",
+                MimeType = "text/markdown",
+                Size = 12
+            });
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Write me notes", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        var finished = events.Last(e => e.Kind == AssistantUiEventKind.Finished);
+        var payload = Assert.Contains("generatedAttachments", finished.Metadata!);
+        var parsed = JsonSerializer.Deserialize<List<MessageAttachmentDto>>(payload)!;
+
+        Assert.Equal(file.Id, Assert.Single(parsed).Id);
+        Assert.Contains("notes.md", payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentProducedNothing_ClaimsNoAttachments()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        var finished = events.Last(e => e.Kind == AssistantUiEventKind.Finished);
+        Assert.True(finished.Metadata is null || !finished.Metadata.ContainsKey("generatedAttachments"));
+
+        var assistant = Assert.IsType<TranscriptMessageDocument>(CapturedBatchOperations()[1].Item);
+        Assert.Empty(assistant.Attachments);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheFileAgentIsOff_IsNeverAskedForATool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] });
+
+        await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_WhenComposingTheFileAgentFails_TheTurnStillAnswers()
+    {
+        // A misconfigured agent costs the turn a capability, not the turn.
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        _fileAgentToolProvider
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IFileAgentToolLease>>(_ => throw new InvalidOperationException("no agent here"));
+
+        var events = await StreamEventsToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.Finished);
+    }
+
+    /// <summary>Builds a service with the File Agent switched on; options are captured at construction.</summary>
+    private ConversationService CreateServiceWithFileAgent() =>
+        new(NullLogger<ConversationService>.Instance,
+            _modelService,
+            _chatClientResolver,
+            _mcpToolProvider,
+            _documentRetrievalService,
+            _lockService,
+            _tokenService,
+            _transcriptStore,
+            _tokenEstimatorResolver,
+            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            _markdownRenderer,
+            new CreateConversationActionDtoValidator(),
+            new CreateConversationStreamActionDtoValidator(),
+            new DeactivateConversationsBulkActionDtoValidator(),
+            new UpdateConversationActionDtoValidator(),
+            new SetMessageFeedbackActionDtoValidator(),
+            Options.Create(new WeatherToolOptions()),
+            _documentSummaryService,
+            _userGrantReader,
+            Options.Create(new SummarizationOptions()),
+            _sheetQueryService,
+            new FakeSheetQueryOptionsProvider(),
+            _fileAgentToolProvider,
+            Options.Create(new FileAgentOptions { Enabled = true, ModelId = Guid.NewGuid() }),
+            _fixture.Context);
+
+    /// <summary>Stands the File Agent up as a lease that reports the given files as produced.</summary>
+    private MessageAttachmentDto SetUpFileAgentProducing(params MessageAttachmentDto[] produced)
+    {
+        var lease = Substitute.For<IFileAgentToolLease>();
+        lease.Tool.Returns(AIFunctionFactory.Create(() => "done", "file_agent"));
+        lease.GeneratedDocuments.Returns(produced);
+
+        _fileAgentToolProvider
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(lease);
+
+        return produced.FirstOrDefault()!;
     }
 
     /// <summary>

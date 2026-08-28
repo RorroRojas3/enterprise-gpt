@@ -988,7 +988,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// </remarks>
     public async Task<Guid> AddConversationDocumentAsync(
         Guid conversationId, string name, IReadOnlyList<SeedChunk> chunks, bool deactivated = false,
-        bool chunksDeactivated = false, Guid? userId = null, CancellationToken cancellationToken = default)
+        bool chunksDeactivated = false, Guid? userId = null,
+        ConversationDocumentTypes type = ConversationDocumentTypes.Uploaded,
+        CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -999,6 +1001,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             Id = Guid.NewGuid(),
             ConversationId = conversationId,
             UserId = userId ?? TestUsers.RegularUserId,
+            Type = type,
             Name = name,
             Extension = Path.GetExtension(name),
             MimeType = "application/octet-stream",

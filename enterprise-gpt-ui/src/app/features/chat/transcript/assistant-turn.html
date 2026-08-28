@@ -94,6 +94,16 @@
       }
     }
 
+    <!-- Outside the footer below, and deliberately: the footer is invisible until hover or
+         focus, and a file the assistant made is part of the answer rather than an
+         affordance about it. Guarded rather than rendered empty, so a turn that produced
+         nothing is unchanged down to the element — and safe to guard, because a settled
+         entry's files are fixed for its life and cannot change height under the
+         transcript's ResizeObserver. -->
+    @if (attachments().length > 0) {
+      <app-generated-files [attachments]="attachments()" [conversationId]="conversationId()" />
+    }
+
     @if (!streaming()) {
       <!-- Frames 1f/1g: the completed turn's footer, revealed on hover and on
            focus (US-607). It exists for every settled turn, because Copy is

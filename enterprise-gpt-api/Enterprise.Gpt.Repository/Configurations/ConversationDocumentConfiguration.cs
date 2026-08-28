@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Enums;
 
 namespace Enterprise.Gpt.Repository.Configurations
 {
@@ -11,6 +12,15 @@ namespace Enterprise.Gpt.Repository.Configurations
             builder.ToTable(nameof(ConversationDocument), "Core");
 
             builder.HasKey(x => x.Id);
+
+            // A store default rather than the property initializer alone: EF scaffolds AddColumn from
+            // the CLR default, so without it the column would backfill every existing row to a value
+            // the enum does not define. ValueGeneratedNever keeps it a backfill rather than a value EF
+            // may withhold from an insert — the same pair, for the same reason, as Model.IsUserSelectable.
+            builder.Property(x => x.Type)
+                .HasConversion<int>()
+                .HasDefaultValue(ConversationDocumentTypes.Uploaded)
+                .ValueGeneratedNever();
 
             builder.HasOne(x => x.Conversation)
                 .WithMany(x => x.Documents)

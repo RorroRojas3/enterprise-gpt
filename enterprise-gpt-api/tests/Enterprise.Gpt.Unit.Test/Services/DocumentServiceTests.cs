@@ -28,6 +28,7 @@ namespace Enterprise.Gpt.Unit.Test.Services;
 public sealed class DocumentServiceTests : IDisposable
 {
     private const string ContainerName = "documents";
+    private const string GeneratedContainerName = "generated-documents";
 
     private readonly SqliteDbContextFixture _fixture = new();
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator =
@@ -51,7 +52,11 @@ public sealed class DocumentServiceTests : IDisposable
         _extractorFactory.Resolve(Arg.Any<FileExtensions>()).Returns(_extractor);
 
         _service = CreateService(new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureStorage:DocumentsContainer"] = ContainerName })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AzureStorage:DocumentsContainer"] = ContainerName,
+                ["AzureStorage:GeneratedContainer"] = GeneratedContainerName
+            })
             .Build());
     }
 
@@ -774,7 +779,7 @@ public sealed class DocumentServiceTests : IDisposable
     private async Task<ConversationDocument> AddConversationDocumentAsync(
         Conversation conversation, string name = "quarterly report.pdf",
         string mimeType = "application/pdf", DateTimeOffset? deactivated = null, Guid? uploadedBy = null,
-        DateTimeOffset? dateCreated = null)
+        DateTimeOffset? dateCreated = null, ConversationDocumentTypes type = ConversationDocumentTypes.Uploaded)
     {
         var date = dateCreated ?? DateTimeOffset.UtcNow;
         var document = new ConversationDocument
@@ -782,6 +787,7 @@ public sealed class DocumentServiceTests : IDisposable
             Id = Guid.NewGuid(),
             UserId = uploadedBy ?? conversation.UserId,
             ConversationId = conversation.Id,
+            Type = type,
             Name = name,
             Extension = System.IO.Path.GetExtension(name).ToLowerInvariant(),
             MimeType = mimeType,
@@ -855,6 +861,27 @@ public sealed class DocumentServiceTests : IDisposable
             ContainerName,
             document.Path,
             TimeSpan.FromMinutes(5),
+            BlobSasPermissions.Read,
+            Arg.Any<string?>(),
+            Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_GeneratedDocument_SignsAgainstTheGeneratedContainer()
+    {
+        // Both containers hold the same seven formats, so the row's own type is the only thing that
+        // says which one holds this blob. Signing the wrong one produces a link that 404s.
+        SetUpSigning();
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(
+            conversation, name: "summary.xlsx", type: ConversationDocumentTypes.Generated);
+
+        await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _blobStorageService.Received(1).GenerateSasUri(
+            GeneratedContainerName,
+            document.Path,
+            Arg.Any<TimeSpan>(),
             BlobSasPermissions.Read,
             Arg.Any<string?>(),
             Arg.Any<string?>());
