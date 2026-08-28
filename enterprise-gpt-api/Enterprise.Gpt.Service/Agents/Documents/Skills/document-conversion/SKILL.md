@@ -17,13 +17,13 @@ decides what your answer has to say.
 - **n/a** — not offered. Not a refusal; no natural request maps to it.
 
 <!-- conversion-matrix:begin -->
-Status: confirmed. Recorded: 2026-08-27. Deployment: rr-gpt-5.6-luna. Office converter: absent.
+Status: confirmed. Recorded: 2026-08-28. Deployment: rr-gpt-5.6-luna. Office converter: absent.
 
 | From \ To | docx | xlsx | pptx | pdf | csv | md | txt |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | docx | — | n/a | n/a | ◐ | n/a | ✓ | ✓ |
 | xlsx | n/a | — | n/a | ◐ | ✓ | ✓ | ✓ |
-| pptx | n/a | n/a | — | refused | n/a | ✓ | ✓ |
+| pptx | n/a | n/a | — | ◐ | n/a | ✓ | ✓ |
 | pdf | ◐ | ◐ | refused | — | ◐ | ◐ | ◐ |
 | csv | ✓ | ✓ | n/a | ◐ | — | ✓ | ✓ |
 | md | ✓ | n/a | n/a | ✓ | n/a | — | ✓ |

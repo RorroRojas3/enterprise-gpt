@@ -52,13 +52,13 @@ public sealed class FileAgentPreflightTests
     [Fact]
     public void Evaluate_ARefusedPair_SuggestsWhatTheSourceCanReach()
     {
-        var resolution = Resolution(Matched("deck.pptx"), available: ["deck.pptx"]);
+        var resolution = Resolution(Matched("report.pdf"), available: ["report.pdf"]);
 
-        var refusal = FileAgentPreflight.Evaluate(resolution, "Convert deck.pptx to pdf", _matrix);
+        var refusal = FileAgentPreflight.Evaluate(resolution, "Convert report.pdf to pptx", _matrix);
 
         Assert.NotNull(refusal);
+        Assert.Contains("docx", refusal.Text, StringComparison.Ordinal);
         Assert.Contains("md", refusal.Text, StringComparison.Ordinal);
-        Assert.Contains("txt", refusal.Text, StringComparison.Ordinal);
     }
 
     // The instruction names its own source, whose extension reads as a format too. Without removing it
@@ -66,9 +66,9 @@ public sealed class FileAgentPreflightTests
     [Fact]
     public void Evaluate_ARefusedPairWhoseSourceNamesItsOwnFormat_StillRefuses()
     {
-        var resolution = Resolution(Matched("quarterly deck.pptx"), available: ["quarterly deck.pptx"]);
+        var resolution = Resolution(Matched("quarterly report.pdf"), available: ["quarterly report.pdf"]);
 
-        var refusal = FileAgentPreflight.Evaluate(resolution, "turn quarterly deck.pptx into a pdf", _matrix);
+        var refusal = FileAgentPreflight.Evaluate(resolution, "turn quarterly report.pdf into a pptx", _matrix);
 
         Assert.NotNull(refusal);
         Assert.Equal(FileAgentOutcomes.RefusedConversion, refusal.Outcome);
@@ -140,7 +140,7 @@ public sealed class FileAgentPreflightTests
     public void Evaluate_TheThreeRefusals_CarryThreeDifferentSubStatuses()
     {
         var conversion = FileAgentPreflight.Evaluate(
-            Resolution(Matched("deck.pptx"), available: ["deck.pptx"]), "Convert deck.pptx to pdf", _matrix);
+            Resolution(Matched("report.pdf"), available: ["report.pdf"]), "Convert report.pdf to pptx", _matrix);
         var ambiguous = FileAgentPreflight.Evaluate(
             Resolution([], ambiguous: ["report.docx"]), "Convert report.docx to pdf", _matrix);
         var unknown = FileAgentPreflight.Evaluate(

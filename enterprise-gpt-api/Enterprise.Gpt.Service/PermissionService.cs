@@ -54,7 +54,7 @@ namespace Enterprise.Gpt.Service
         /// <param name="request">The update request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The updated permission.</returns>
-        /// <exception cref="ValidationException">The request fails validation, the permission is the built-in Administrator, the permission is managed by an MCP server, or the name is already in use.</exception>
+        /// <exception cref="ValidationException">The request fails validation, the permission is a built-in, the permission is managed by an MCP server, or the name is already in use.</exception>
         /// <exception cref="NotFoundException">No active permission with <paramref name="id"/> exists.</exception>
         Task<PermissionDto> UpdatePermissionAsync(Guid id, UpdatePermissionActionDto request, CancellationToken cancellationToken = default);
 
@@ -64,7 +64,7 @@ namespace Enterprise.Gpt.Service
         /// </summary>
         /// <param name="id">The id of the permission to deactivate.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
-        /// <exception cref="ValidationException">The permission is the built-in Administrator or is managed by an MCP server.</exception>
+        /// <exception cref="ValidationException">The permission is a built-in or is managed by an MCP server.</exception>
         /// <exception cref="NotFoundException">No active permission with <paramref name="id"/> exists.</exception>
         Task DeactivatePermissionAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -317,22 +317,15 @@ namespace Enterprise.Gpt.Service
         /// </summary>
         private static void EnsurePermissionIsCustom(Permission permission)
         {
-            // Both built-ins are referenced by fixed id from code — Administrator by every admin route's
-            // PermissionEndpointFilter and Upload File by DocumentEndpoints — so renaming or deleting
-            // either would silently break the endpoints that depend on them.
-            if (permission.Id == PermissionIds.Administrator)
+            // Every built-in is referenced by fixed id from code — Administrator by admin routes,
+            // Upload File by DocumentEndpoints, Generate Files by the turn's tool composition — so
+            // renaming or deleting one would break what depends on it. Driven off Names, which only
+            // endpoint-filter ids are forced into at map time; PermissionIdsTests holds the rest.
+            if (PermissionIds.Names.TryGetValue(permission.Id, out var builtInName))
             {
                 throw new ValidationException(
                 [
-                    new ValidationFailure(nameof(Permission.Id), "The built-in Administrator permission cannot be modified.")
-                ]);
-            }
-
-            if (permission.Id == PermissionIds.UploadFile)
-            {
-                throw new ValidationException(
-                [
-                    new ValidationFailure(nameof(Permission.Id), "The built-in Upload File permission cannot be modified.")
+                    new ValidationFailure(nameof(Permission.Id), $"The built-in {builtInName} permission cannot be modified.")
                 ]);
             }
 

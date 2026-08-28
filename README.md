@@ -297,6 +297,7 @@ export const environment = {
 | `Tools:Weather:DelayMilliseconds`     | Artificial latency per lookup, 0–10000                        | No       | 600                    |
 | `Summarization:Enabled`               | Attaches the `document_summarize` tool to every turn          | No       | false                  |
 | `SheetQuery:Enabled`                  | Attaches the `sheet_query` tool to a turn with a queryable spreadsheet in scope | No | false      |
+| `FileAgent:Enabled`                   | Attaches the `file_agent` tool, which runs a hosted Code Interpreter sandbox | No | false        |
 | `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
 
 Azure OpenAI is required — it serves the default model over the Responses API and also backs
@@ -320,6 +321,17 @@ explicitly per environment rather than inheriting what the repository ships.
 lands through a reloading configuration source; see
 [docs/documents/sheet-query.md §10](docs/documents/sheet-query.md#10-rollback) for exactly how, and
 the one case (an environment variable) where it does not.
+
+`FileAgent:Enabled` is the exception to that convenience: it defaults to `false` **in code and in the
+committed `appsettings.json`**, because every run it permits provisions a billed sandbox session — a
+cost the other two flags do not carry. A developer who wants to exercise the File Agent locally
+switches it on themselves, in user secrets or an environment-specific override, rather than inheriting
+it from a checkout. A test (`FileAgentOptionsTests.Bind_TheShippedConfiguration_LeavesFileGenerationOff`)
+binds the real committed file and fails the build if that ever changes. Unlike `SheetQuery:Enabled`,
+flipping it takes a restart — see [docs/file-agent/the-agent.md §13](docs/file-agent/the-agent.md#13-rollback)
+for the shape of that rollback and why it does not follow `SheetQuery`'s reload mechanism. Even with
+the flag on, generating a file also needs the caller to hold the `Generate Files` permission — see
+[docs/permissions/permission-cache.md §3](docs/permissions/permission-cache.md#3-permission-names-are-resolved-from-a-static-map-not-the-database).
 
 The two `AzureOpenAI:Reasoning*` settings only take effect on a model whose catalog row sets
 `isReasoningEnabled`, which is **off by default** — a deployment that does not support reasoning

@@ -2546,9 +2546,8 @@ namespace Enterprise.Gpt.Service
                     }
                 }
 
-                // The same gate ladder document summarization climbs, minus the grant rung, which is
-                // this feature's own story and lands with the permission it needs. A stood-down agent
-                // is not a failed turn: the assistant is simply never told the capability exists.
+                // The same gate ladder document summarization climbs. A stood-down agent is not a
+                // failed turn: the assistant is simply never told the capability exists.
                 var attachFileAgent = _fileAgentOptions.Enabled;
 
                 if (attachFileAgent && !model.IsToolEnabled)
@@ -2558,6 +2557,21 @@ namespace Enterprise.Gpt.Service
                         model.Id);
 
                     attachFileAgent = false;
+                }
+
+                if (attachFileAgent)
+                {
+                    // Silently, and before anything is composed: a caller who was never offered the
+                    // capability has nothing to be told. Administrators are not implicitly granted it,
+                    // and reading the grant per turn is what makes a revocation land on the next one.
+                    var granted = await _userGrantReader
+                        .GetGrantsAsync(_tokenService.GetOid(), cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (!granted.Contains(PermissionIds.GenerateFiles))
+                    {
+                        attachFileAgent = false;
+                    }
                 }
 
                 if (attachFileAgent

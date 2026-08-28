@@ -480,4 +480,69 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         var administrator = Assert.Single(user.Permissions, x => x.Id == KnownIds.AdministratorPermissionId);
         Assert.Equal("Administrator", administrator.Name);
     }
+
+    /// <summary>
+    /// The grant that gates file generation, as the seeded row an administrator actually sees.
+    /// </summary>
+    [Fact]
+    public async Task GetPermissions_GenerateFiles_IsSeededAndNotGrantedByDefault()
+    {
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var permissions = await client.GetFromJsonAsync<List<PermissionDto>>(
+            "api/permissions", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(permissions);
+        var generateFiles = Assert.Single(permissions, x => x.Id == KnownIds.GenerateFilesPermissionId);
+        Assert.Equal("Generate Files", generateFiles.Name);
+        Assert.False(generateFiles.IsDefault);
+        Assert.Null(generateFiles.McpServerId);
+    }
+
+    /// <summary>
+    /// Referenced by fixed id from the turn's own tool composition, so an administrator renaming or
+    /// retiring it would break the gate rather than relax it.
+    /// </summary>
+    [Fact]
+    public async Task MutateGenerateFilesPermission_AsAdministrator_IsRejected()
+    {
+        using var client = _fixture.Factory.CreateAdminClient();
+
+        var update = await client.PutAsJsonAsync(
+            $"api/permissions/{KnownIds.GenerateFilesPermissionId}",
+            UpdateRequest(name: "it-perm-renamed-builtin"),
+            TestContext.Current.CancellationToken);
+        var updateProblem = await ProblemAssert.ReadValidationAsync(update);
+        Assert.Equal(
+            "The built-in Generate Files permission cannot be modified.",
+            Assert.Single(updateProblem.Errors["Id"]));
+
+        var deactivate = await client.DeleteAsync(
+            $"api/permissions/{KnownIds.GenerateFilesPermissionId}", TestContext.Current.CancellationToken);
+        var deactivateProblem = await ProblemAssert.ReadValidationAsync(deactivate);
+        Assert.Equal(
+            "The built-in Generate Files permission cannot be modified.",
+            Assert.Single(deactivateProblem.Errors["Id"]));
+    }
+
+    /// <summary>
+    /// The rung the File Agent reads: a grant that reaches the permission cache like any other.
+    /// </summary>
+    [Fact]
+    public async Task GrantGenerateFiles_ToARegularUser_AppearsOnTheirOwnUserRecord()
+    {
+        using var admin = _fixture.Factory.CreateAdminClient();
+        var grant = await admin.PostAsync(
+            $"api/users/{TestUsers.RegularUserId}/permissions/{KnownIds.GenerateFilesPermissionId}",
+            content: null, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
+
+        using var user = _fixture.Factory.CreateUserClient();
+        var response = await user.PostAsync("api/users/me", content: null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var me = await response.Content.ReadFromJsonAsync<UserDto>(TestContext.Current.CancellationToken);
+        Assert.NotNull(me);
+        Assert.Contains(me.Permissions, x => x.Id == KnownIds.GenerateFilesPermissionId);
+    }
 }

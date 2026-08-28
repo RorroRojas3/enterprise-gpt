@@ -140,8 +140,6 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
     {
         session.SetInputs();
 
-        var run = await session.RunPythonAsync(SpikePaths.ReadScript("make-samples.py"), cancellationToken);
-
         // make-samples.py imports python-docx, openpyxl, python-pptx and reportlab at module scope,
         // so a library leaving the image kills it outright with no result line at all. Recorded here
         // because that failure costs a sandbox session to reproduce.
@@ -149,7 +147,8 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
 
         try
         {
-            result = await SpikeResults.RequireAsync(session, run, "samples.json", cancellationToken);
+            (_, result) = await SpikeResults.RunProbeAsync(
+                session, SpikePaths.ReadScript("make-samples.py"), "samples.json", cancellationToken);
         }
         catch (Exception exception) when (exception is InvalidOperationException or JsonException)
         {
@@ -211,10 +210,11 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
             .Replace("__TARGETS__", JsonSerializer.Serialize(targets), StringComparison.Ordinal)
             .Replace("__OFFICE_BINARY__", inventory.OfficeConverter.Path ?? string.Empty, StringComparison.Ordinal);
 
-        var run = await session.RunPythonAsync(script, cancellationToken);
+        var probe = await SpikeResults.RunProbeAsync(
+            session, script, $"conversion-{source}.json", cancellationToken);
 
-        using var result = await SpikeResults.RequireAsync(
-            session, run, $"conversion-{source}.json", cancellationToken);
+        var run = probe.Run;
+        using var result = probe.Result;
 
         if (!result.RootElement.GetProperty("sourceFound").GetBoolean())
         {

@@ -47,10 +47,10 @@ public sealed class ConversionMatrixTests
     [Fact]
     public void OfferedTargets_ASource_ListsOnlyWhatItCanActuallyReach()
     {
-        var targets = _matrix.OfferedTargets("pptx");
+        var targets = _matrix.OfferedTargets("pdf");
 
-        Assert.Equal(["md", "txt"], targets);
-        Assert.DoesNotContain("pdf", targets);
+        Assert.Equal(["docx", "xlsx", "csv", "md", "txt"], targets);
+        Assert.DoesNotContain("pptx", targets);
     }
 
     [Fact]

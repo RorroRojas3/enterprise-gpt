@@ -756,7 +756,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As an administrator, I want to decide who can make the platform generate files, so that a capability with a different cost profile from uploading is granted deliberately.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-303
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given a new, dedicated permission (not a reuse of `Upload File`), when it is added, then it is seeded in a migration, added to `PermissionIds` **and** to `PermissionIds.Names` — an id absent from `Names` would produce a nameless 403 and fail the map-time validation `PermissionEndpointFilter` already performs.
   - Given a user without the grant, when a turn runs, then the File Agent tool is not attached, the assistant is told nothing about it, and nothing renders an unavailable state.
@@ -768,7 +768,7 @@ EP-1 depends on no Azure capability and can start immediately, alongside the EP-
 
 - **Story**: As an operator, I want to switch file generation off without a deployment, so that a misbehaving sandbox integration in production is a configuration change rather than an incident.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-303
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-28)
 - **Acceptance criteria**:
   - Given `FileAgentOptions.Enabled`, when it is turned off, then the File Agent tool is not attached to any turn and conversations behave exactly as they do today — a regression test asserts this.
   - Given a fresh environment with no explicit setting, when it starts, then `Enabled` defaults to **off** — a feature billed per sandbox run should be switched on deliberately.

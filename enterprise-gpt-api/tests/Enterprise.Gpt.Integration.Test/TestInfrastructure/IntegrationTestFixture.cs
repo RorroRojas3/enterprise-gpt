@@ -35,7 +35,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// schema is created once for the whole run, so deleting a seeded row would remove it permanently and
     /// every later test would run against a database missing a built-in permission.
     /// </summary>
-    private static readonly Guid[] _builtInPermissionIds = [PermissionIds.Administrator, PermissionIds.UploadFile];
+    private static readonly Guid[] _builtInPermissionIds =
+        [PermissionIds.Administrator, PermissionIds.UploadFile, PermissionIds.GenerateFiles];
 
     /// <summary>
     /// Gets the shared application factory. Populated once the container has started.

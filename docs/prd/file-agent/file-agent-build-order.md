@@ -8,7 +8,7 @@ A wave here is a **phase**, not a dependency depth: every wave below contains in
 
 Status here mirrors the `Status` field on each PRD story. Update both, or update the PRD and re-derive this.
 
-**Progress: 42 / 44 done.**
+**Progress: 44 / 44 done.**
 
 **Critical path.** `US-001` (Code Interpreter proven on the Responses route) feeds three chains: `US-001 → US-002 → US-003` (the conversion matrix, needed by `US-406`/`US-407`), `US-001 → US-201 → US-202` (the sandbox execution mechanism, also needed by `US-204`), and `US-001 → US-301` (the agent's pinned model). `US-302` needs both `US-301` and `US-202` — the first join — and `US-401` needs both `US-303` and `US-103` (EP-1's storage chain) — the second, and the true bottleneck of the whole backend. From there, `US-402` is the gate every other EP-4 verb (`US-403`-`US-407`) and EP-5's totals test (`US-503`) sit behind. Nine deep along its longest branch: `US-001 → US-201 → US-202 → US-302 → US-303 → US-401 → US-402 → US-406 → US-407` — the conversion-refusal story is the single longest tail because it alone needs both the create/verify chain and US-003's matrix. EP-1's schema/storage chain (`US-101`/`US-102 → US-103 → US-104`/`US-106`) and EP-6's chip lane (`US-105 → US-601 → US-602`/`US-603`) run clear of that whole chain from day one, testable against a hand-inserted `Generated` row with no agent in existence. **Useful concurrency reaches at least 7** in wave 1 — for example `US-104`, `US-106`, `US-204`, `US-305`, `US-306`, `US-307` and `US-603` share no dependency edge with one another — against a build that opens wave 0 with a strict three-story chain.
 
@@ -102,7 +102,9 @@ Two stories, no edge between them, and neither may be skipped before the feature
 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 3 | 43 | US-701 Gate file generation on a new permission | US-303 | P0 | US-702 | |
-| 3 | 44 | US-702 Feature-flag the whole feature with a documented rollback | US-303 | P0 | US-701 | |
+| 3 | 43 | US-701 Gate file generation on a new permission | US-303 | P0 | US-702 | ✅ Done (2026-08-28) |
+| 3 | 44 | US-702 Feature-flag the whole feature with a documented rollback | US-303 | P0 | US-701 | ✅ Done (2026-08-28) |
 
 Both are blocked on nothing but a working tracked tool (`US-303`), so both could in principle start as soon as wave 1 closes — they are scheduled last because a flag and a permission are only worth exercising against the feature they gate, and testing a rollback before the feature exists to roll back would prove nothing.
+
+✅ **Wave 3 closed on 2026-08-28, and with it the PRD.** It settled two things the earlier waves had left implicit. `US-702` turned out to be mostly already built — `FileAgentOptions.Enabled` and the stand-down ladder shipped in wave 1 — so the story's real content was the *committed* default: `appsettings.json` shipped `true`, which the PRD's own "off in every environment, including development" ruling contradicts, and flipping it is what makes the code default meaningful rather than theoretical. And `US-701`'s grant rung sits **above** the tool-name collision check rather than beside the quota check, because every rung below it either logs or tells the assistant something, and a caller who was never offered the capability must be told nothing at all.

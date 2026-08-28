@@ -157,13 +157,13 @@ Tiers, per the PRD:
 - **`n/a`** — not offered in v1, because no natural request maps to it. Not a refusal.
 
 <!-- conversion-matrix:begin -->
-Status: confirmed. Recorded: 2026-08-27. Deployment: rr-gpt-5.6-luna. Office converter: absent.
+Status: confirmed. Recorded: 2026-08-28. Deployment: rr-gpt-5.6-luna. Office converter: absent.
 
 | From \ To | docx | xlsx | pptx | pdf | csv | md | txt |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | docx | — | n/a | n/a | ◐ | n/a | ✓ | ✓ |
 | xlsx | n/a | — | n/a | ◐ | ✓ | ✓ | ✓ |
-| pptx | n/a | n/a | — | refused | n/a | ✓ | ✓ |
+| pptx | n/a | n/a | — | ◐ | n/a | ✓ | ✓ |
 | pdf | ◐ | ◐ | refused | — | ◐ | ◐ | ◐ |
 | csv | ✓ | ✓ | n/a | ◐ | — | ✓ | ✓ |
 | md | ✓ | n/a | n/a | ✓ | n/a | — | ✓ |

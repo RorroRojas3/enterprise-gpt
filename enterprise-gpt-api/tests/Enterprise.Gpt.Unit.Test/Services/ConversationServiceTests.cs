@@ -105,11 +105,15 @@ public sealed class ConversationServiceTests : IDisposable
             .GetScopeAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => new DocumentRetrievalScope(callInfo.ArgAt<Guid>(0), null, []));
 
-        // Granted by default, so a test that switches summarization on is testing the switch rather
-        // than the grant. The tests that care about the grant arrange it themselves.
+        // Granted by default, so a test that switches summarization or the File Agent on is testing
+        // the switch rather than the grant. The tests that care about a grant arrange it themselves.
         _userGrantReader
             .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid> { PermissionIds.UploadFile });
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>
+            {
+                PermissionIds.UploadFile,
+                PermissionIds.GenerateFiles
+            });
 
         // Sheets present by default, so a test that switches the sheet query on is testing the switch
         // rather than whether the workbook was ever ingested.
@@ -921,6 +925,95 @@ public sealed class ConversationServiceTests : IDisposable
             new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] });
 
         await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        Assert.Null(_chatClient.CapturedOptions?.Instructions);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_CallerWithoutTheGenerateFilesGrant_IsNeverAskedForATool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>());
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        Assert.Null(_chatClient.CapturedOptions?.Instructions);
+    }
+
+    /// <summary>
+    /// The standing rule for every grant here: administration is a permission of its own, not a
+    /// superset of the others.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_AdministratorWithoutTheGenerateFilesGrant_HasNoFileAgent()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid> { PermissionIds.Administrator });
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: CreateServiceWithFileAgent());
+
+        await _fileAgentToolProvider.DidNotReceive()
+            .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+    }
+
+    /// <summary>
+    /// The grant is read per turn rather than per conversation, which is the whole of what makes a
+    /// revocation take effect without waiting for the conversation to end.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_WhenTheGrantIsRevokedBetweenTurns_TheSecondTurnHasNoFileAgent()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpFileAgentProducing();
+        var service = CreateServiceWithFileAgent();
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me a sheet", ModelId = model.Id, McpServers = [] },
+            service: service);
+
+        Assert.Contains(_chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+
+        _userGrantReader
+            .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>());
+        SetUpTranscript(conversation.Id);
+
+        await StreamToEndAsync(
+            conversation.Id,
+            new CreateConversationStreamActionDto { Prompt = "Make me another", ModelId = model.Id, McpServers = [] },
+            service: service);
+
+        Assert.DoesNotContain(
+            _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
+        await _fileAgentToolProvider.Received(1)
             .AcquireAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 

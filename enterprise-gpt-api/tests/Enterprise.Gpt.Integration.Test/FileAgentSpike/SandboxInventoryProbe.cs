@@ -17,9 +17,10 @@ internal static class SandboxInventoryProbe
     {
         session.SetInputs();
 
-        var run = await session.RunPythonAsync(SpikePaths.ReadScript("inventory.py"), cancellationToken);
+        var probe = await SpikeResults.RunProbeAsync(
+            session, SpikePaths.ReadScript("inventory.py"), "inventory.json", cancellationToken);
 
-        using var result = await SpikeResults.RequireAsync(session, run, "inventory.json", cancellationToken);
+        using var result = probe.Result;
 
         return Parse(result.RootElement);
     }

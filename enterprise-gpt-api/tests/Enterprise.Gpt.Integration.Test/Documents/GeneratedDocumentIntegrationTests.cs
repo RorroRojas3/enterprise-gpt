@@ -6,9 +6,11 @@ using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Documents;
@@ -89,6 +91,29 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
             query["rscd"]);
         Assert.Equal(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", query["rsct"]);
+    }
+
+    /// <summary>
+    /// The rollback lever governs new generation, not access to what was already produced — and the
+    /// value asserted here is the one the repository ships, so switching the feature on by editing
+    /// the committed configuration fails a test rather than a bill.
+    /// </summary>
+    [Fact]
+    public async Task Download_GeneratedDocument_WithGenerationSwitchedOff_StillSucceeds()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        Assert.False(scope.ServiceProvider.GetRequiredService<IOptions<FileAgentOptions>>().Value.Enabled);
+
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var stored = await StoreAsync(conversationId, "quarterly.docx", [1, 2, 3]);
+
+        using var client = _fixture.Factory.CreateUserClient();
+        var download = await client.GetFromJsonAsync<DocumentDownloadDto>(
+            $"api/documents/conversations/{conversationId}/{stored.Id}", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(download);
+        Assert.Equal("quarterly.docx", download.FileName);
+        Assert.Contains($"/{GeneratedContainer}/", download.DownloadUrl, StringComparison.Ordinal);
     }
 
     [Fact]

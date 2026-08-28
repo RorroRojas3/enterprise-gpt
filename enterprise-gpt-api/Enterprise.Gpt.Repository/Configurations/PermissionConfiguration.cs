@@ -58,6 +58,19 @@ namespace Enterprise.Gpt.Repository.Configurations
                     DateModified = date,
                     CreatedById = userId,
                     ModifiedById = userId
+                },
+                // Not IsDefault, unlike the upload grant beside it: every run this permits provisions a
+                // billed sandbox session, so it is granted deliberately rather than handed to everyone.
+                new Permission
+                {
+                    Id = PermissionIds.GenerateFiles,
+                    Name = "Generate Files",
+                    Description = "Ask the assistant to create, edit, compare and convert documents.",
+                    IsDefault = false,
+                    DateCreated = date,
+                    DateModified = date,
+                    CreatedById = userId,
+                    ModifiedById = userId
                 }
             );
         }

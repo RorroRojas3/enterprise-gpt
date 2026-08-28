@@ -148,6 +148,16 @@ document.IsGenerated ? GeneratedContainer : DocumentsContainer,
 because both containers hold the same seven formats; nothing about a `.xlsx` blob's name says which
 container it lives in.
 
+**Downloading is gated on conversation ownership alone.** Neither `FileAgent:Enabled` nor the
+`Generate Files` permission ([`the-agent.md` §12](the-agent.md#12-the-generate-files-permission-gate)) is
+checked on this route, and neither ever will be: both govern *producing* a new file, and a file that
+already exists must stay reachable by whoever could already reach it, whatever either setting is doing
+by the time the download happens — an administrator who switches the flag off, or revokes the permission,
+does not thereby lock anyone out of a file already delivered.
+[`GeneratedDocumentIntegrationTests.Download_GeneratedDocument_WithGenerationSwitchedOff_StillSucceeds`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Documents/GeneratedDocumentIntegrationTests.cs)
+proves the flag half of that; ownership was already proven by
+`Download_GeneratedDocumentOfAnotherUsersConversation_IsNotFound` (§10).
+
 ## 6. Retrieval isolation — two independent guarantees
 
 A generated document must never be searched, summarized, or cited as though a user had uploaded it. This
@@ -276,8 +286,12 @@ the agent existed. Specifically out of scope here:
 
 - **Project-scoped generated documents.** The discriminator sits on `ConversationDocument`, never
   `BaseDocument`; `ProjectDocument` is untouched by design.
-- **A permission gate.** Nothing in this contract checks a grant — the feature is reachable end to end
-  once `FileAgent:Enabled` is on, and the dedicated permission arrives in a later wave.
+- **A permission gate is not this contract's job.** `Core.UserPermission`'s `Generate Files` grant
+  (`PermissionIds.GenerateFiles`) gates whether the File Agent tool is ever offered to a turn in the
+  first place — see [`the-agent.md` §12](the-agent.md#12-the-generate-files-permission-gate) — but
+  nothing in this storage and delivery contract checks it. The download route (§5) is gated on
+  conversation ownership alone, by design, so a file already produced stays reachable however the
+  permission, or the `FileAgent:Enabled` flag, are set afterward.
 - **Verifying an artifact is the caller's job, not this contract's.** `StoreAsync` still validates only
   size and extension, never that a `.xlsx` actually parses as one. That check now exists — it did not when
   this line was first written — but it runs **before** `StoreAsync` is ever called, on the API host rather

@@ -52,7 +52,7 @@ public sealed class FileAgentFailuresTests
         List<string> lines =
         [
             .. _failures.Select(failure => failure.SubStatus),
-            Refusal("Convert deck.pptx to pdf", Matched("deck.pptx")).SubStatus,
+            Refusal("Convert report.pdf to pptx", Matched("report.pdf")).SubStatus,
             Refusal("Convert report.docx to pdf", [], ambiguous: ["report.docx"]).SubStatus,
             Refusal("Convert missing.docx to pdf", [], unresolved: ["missing.docx"]).SubStatus
         ];

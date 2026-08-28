@@ -7,12 +7,13 @@ and settings, the client it runs on, how a file gets in and a produced artifact 
 SDK bridge that was not built to carry either, its skills, and the guarantees that keep every line of
 Python it runs inside the sandbox.
 
-**Scope.** This covers Waves 1 and 2 — the agent's composition, its model, its skills, the mount/harvest
-mechanism, and what a run actually does: the refusals it makes before opening a sandbox, the check every
-artifact passes before it is stored, how a run's outcome is classified and reported, and what it costs.
-The one thing still missing is the permission gate; see §12. For where a produced file is stored and
-delivered, see [`generated-files.md`](generated-files.md); for what the sandbox itself can and cannot do,
-see [`sandbox-capabilities.md`](sandbox-capabilities.md).
+**Scope.** This covers Waves 1 through 3 — the agent's composition, its model, its skills, the
+mount/harvest mechanism, what a run actually does (the refusals it makes before opening a sandbox, the
+check every artifact passes before it is stored, how a run's outcome is classified and reported, and what
+it costs), the permission that gates the whole capability (§12), and the rollback lever that switches it
+off without a deployment (§13). For where a produced file is stored and delivered, see
+[`generated-files.md`](generated-files.md); for what the sandbox itself can and cannot do, see
+[`sandbox-capabilities.md`](sandbox-capabilities.md).
 
 ## 1. `FileAgentOptions`, and every setting
 
@@ -23,7 +24,7 @@ Bound from the `FileAgent` configuration section
 
 | Setting | Default | Range | What it governs |
 | --- | --- | --- | --- |
-| `Enabled` | `false` | — | Whether the tool is offered to the model at all. This is the feature's whole rollback lever: off, the tool is never attached and no sandbox session ever starts. A file already generated stays downloadable regardless — this governs new generation, not access to what exists. |
+| `Enabled` | `false` | — | Whether the tool is offered to the model at all. This is the feature's whole rollback lever: off, the tool is never attached and no sandbox session ever starts. A file already generated stays downloadable regardless — this governs new generation, not access to what exists. The **committed** `appsettings.json` also ships `false` — unlike `Summarization:Enabled`/`SheetQuery:Enabled`, whose committed files turn them on for development — because this is the one of the three that bills per run; see §13.6. |
 | `ModelId` | *(required)* | non-empty `Guid` | The `Core.Ref.Model` row the agent runs on. See §2. |
 | `ToolTimeoutSeconds` | `300` | 30–1800 | The wall-clock ceiling on one `file_agent` call, independent of the outer turn's own bounds — see §4. |
 | `MaxArtifactsPerRun` | `3` | 1–10 | How many artifacts one run may persist; the surplus is dropped and reported rather than failing a run that also produced what was asked for. |
@@ -121,12 +122,14 @@ is the abstraction that lets `Enterprise.Gpt.Service` reach the agent without ev
 6. Wraps the result with `AIAgent.WithTracking(...)`, naming the tool `file_agent` and passing
    `trackUsage: true`.
 
-`ConversationService` attaches the tool through the same gate ladder `document_summarize` already climbs
-— minus the permission rung, which is a later wave (§12) — and treats a stood-down agent as a lost
-capability, not a failed turn: `FileAgent:Enabled` off, a model with no tool support, or a name collision
-with a user's own MCP selection each simply skip attaching it, logged at warning. A composition failure
-(the model row misconfigured, the client missing) is caught and logged at error rather than failing the
-turn, on the theory that the startup validator (§2) is where that should already have surfaced.
+`ConversationService` attaches the tool through the same gate ladder `document_summarize` already climbs,
+plus a `Generate Files` permission rung of its own (§12) — and treats a stood-down agent as a lost
+capability, not a failed turn: `FileAgent:Enabled` off, a missing grant, a model with no tool support, or
+a name collision with a user's own MCP selection each simply skip attaching it. Every rung but the grant
+check logs a warning; the grant check is the one silent rung, for the reason §12 explains. A composition
+failure (the model row misconfigured, the client missing) is caught and logged at error rather than
+failing the turn, on the theory that the startup validator (§2) is where that should already have
+surfaced.
 
 ## 5. How an artifact gets out of a string-in/string-out bridge
 
@@ -453,22 +456,137 @@ model" now exists — migration `20260828195328_AddConversationUsageToolCallMode
 [ModelId] IS NOT NULL` and replacing the unfiltered, EF-by-convention single-column `ModelId` index — and
 is what the ceiling above reads.
 
-## 12. What is not built yet
+## 12. The Generate Files permission gate
 
-- **The permission gate.** The feature is reachable by anyone once `FileAgent:Enabled` is on; the
-  dedicated grant is Wave 3, which is also why the flag defaults off.
+Every capability described above still needs one more thing before it reaches a caller: the
+**`Generate Files`** permission (`PermissionIds.GenerateFiles`), seeded as a third built-in
+`Core.Permission` row alongside `Administrator` and `Upload File` — by `PermissionConfiguration.HasData`
+for a database built from empty, and by migration `20260828214951_SeedGenerateFilesPermission` for one
+that already exists. Unlike `Upload File`, its `IsDefault` is `false`: every run this permits provisions
+a billed sandbox session, so it is granted deliberately rather than handed to every user, existing or new,
+at sign-in.
 
-Everything else the PRD asks for is in place. The two things worth knowing before reading the code, both
-deliberate departures recorded where they happen:
+**Where it sits in the ladder.** The grant check runs in `ConversationService.CreateChatOptionsAsync`,
+after the `FileAgent:Enabled` check and the model-supports-tools check, and **before** the tool-name
+collision check, `IFileAgentToolProvider.AcquireAsync`, and the per-user quota (§11.1). It reads
+`IUserGrantReader.GetGrantsAsync` — the same singleton `IUserPermissionCache` every other gated check in
+this API reads, not a per-request query; see [Permission Cache](../permissions/permission-cache.md) for
+how that cache is warmed, invalidated, and bounded. Missing the grant stands the agent down with **no log
+line and no instruction appended to the turn** — the one silent rung in this whole ladder, because every
+rung above and below it either logs a warning or tells the assistant something about a capability it
+could otherwise have used. A caller who was never offered the capability has nothing to be told; a stood-
+down agent still reads as a lost capability, not a failed turn, exactly as the rest of the ladder already
+treats one.
 
-- Verification runs **on the API host**, not as a second sandbox pass (§5.3).
-- The **benchmark** (`tests/Enterprise.Gpt.Integration.Test/FileAgentBenchmark/`) is opt-in and
-  default-skipped, because thirty prompts is thirty billable Code Interpreter sessions. It measures the
-  same verifier a real run uses, and asserts the ≥ 90% threshold the artifact-validity criterion states.
+**Administrators are not implicit holders.** `PermissionIds.Administrator` gates admin routes and nothing
+else (see [Permission Cache §2](../permissions/permission-cache.md#2-quick-start--gating-an-endpoint)),
+so an administrator who lacks `Generate Files` gets the identical silent stand-down as anyone else — a
+test pins this explicitly (`StreamConversationAsync_AdministratorWithoutTheGenerateFilesGrant_HasNoFileAgent`).
 
-## 13. Testing
+**The grant is read once per turn, not once per conversation.** A revocation therefore lands on the
+caller's very next turn — it is read before the tool is acquired, so it never interrupts a turn already
+streaming with the tool attached.
 
-**Unit** (`Enterprise.Gpt.Unit.Test.Agents`):
+**Granting and revoking go through the existing surface; mutating the row itself does not.** An
+administrator grants or revokes `Generate Files` through the same `api/permissions` /
+`api/users/{id}/permissions` routes every other permission uses — there is no new endpoint. What they
+cannot do is rename or deactivate the row: `PermissionService.EnsurePermissionIsCustom` now walks
+`PermissionIds.Names` rather than checking `Administrator` and `Upload File` by two separate `if`s, so
+`Generate Files` gets the same protection for free, and the next built-in permission will too, as long as
+it is added to `Names` — already a requirement (see
+[Permission Cache §3](../permissions/permission-cache.md#3-permission-names-are-resolved-from-a-static-map-not-the-database)).
+
+**The migration's `Down` is narrower than it looks.** It deletes the seeded row outright, which succeeds
+only while nobody holds the grant — the `UserPermission` foreign key is `NoAction` and a revoked grant is
+soft-deleted rather than removed, so rolling this migration back on a deployment that ever used the
+feature means clearing those grant rows by hand first.
+
+## 13. Rollback
+
+`FileAgent:Enabled` is the feature's entire rollback lever — with it off, the tool is never attached to
+any turn and the model cannot discover or call it (§1). This section exists for the reason
+[`sheet-query.md` §10](../documents/sheet-query.md#10-rollback) gives its own rollback lever a section of
+its own: worth documenting on its own terms, not left as one row in a settings table.
+
+### 13.1 What changed
+
+Nothing about the mechanism changed this wave — `FileAgentOptions.Enabled` already defaulted to `false`
+in code, and the stand-down ladder (§4, §12) already read it, since Wave 1. What changed is the
+**committed** [`appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json): it
+shipped `true`, directly contradicting the option's own remark ("Defaults off everywhere, development
+included"), and now ships `false`.
+[`FileAgentOptionsTests.Bind_TheShippedConfiguration_LeavesFileGenerationOff`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/FileAgentOptionsTests.cs)
+binds the real file and fails the build if that ever drifts back.
+
+### 13.2 Why not a live-reload provider, the way `SheetQueryOptions` got one
+
+`SheetQueryOptions` is read through a purpose-built `ISheetQueryOptionsProvider` that rebuilds itself on
+every configuration reload, deliberately avoiding the callback-thread crash a bare `IOptionsMonitor<T>`
+risks (see [`sheet-query.md` §10.2](../documents/sheet-query.md#102-why-not-ioptionsmonitorsheetqueryoptions)).
+`FileAgentOptions` took none of that: `ConversationService` resolves plain `IOptions<FileAgentOptions>`
+and caches `.Value` in a constructor field, exactly as `SummarizationOptions` does. `IOptions<T>`'s value
+is computed once, the first time anything resolves it, and held for the life of the process — a later
+edit to `appsettings.json`, reloading or not, never reaches it.
+
+The story this closes asks to switch file generation off "without a deployment," not without a restart —
+the stronger guarantee `SheetQuery:Enabled` earns for a flag that ships **on** in every developer's
+environment by default. `FileAgent:Enabled` ships **off** everywhere, so the pressure to flip it live,
+mid-incident, with no restart at all, is lower: a runaway sandbox session is already bounded by its own
+`ToolTimeoutSeconds` and by the per-user quota (§11.1) regardless of the flag. Building
+`ISheetQueryOptionsProvider`'s shape a second time here would add real complexity for a lever this
+story's own acceptance criteria does not ask for.
+
+### 13.3 What reaches the next turn — and what needs a restart
+
+An edit to `appsettings.json`, an environment variable, or an Azure App Service Application Setting all
+need the same thing here: **a restart**. `IOptions<FileAgentOptions>` binds once, at first resolution,
+from whatever `IConfiguration` said at that moment — unlike `SheetQuery:Enabled`, there is no
+reloading-file-provider shortcut that skips it. In practice this costs little: an Azure App Service
+Application Setting change already restarts the app on its own, and a container environment variable
+already needs a new container regardless. The one case where this is a real cost is a bare
+`appsettings.json` edit on a long-running process with no orchestrator watching it — that edit needs an
+explicit restart, where the identical edit under `SheetQuery:Enabled` would not.
+
+### 13.4 What flipping the switch does not touch
+
+`FileAgentOptions` is read in exactly the places §1's settings table, §2's model resolver, and §12's
+permission gate describe. Turning the flag off touches none of `FileAgentBootstrapper`'s startup
+validation, which runs **regardless of the flag** (§2) — a misconfigured pinned model fails the deploy
+whether or not anyone can reach it yet — none of the skills on disk (§6), and nothing already stored: a
+file a run produced while the flag was on stays downloadable after it is switched off, because the
+download route is gated on conversation ownership alone, never on this flag or on the `Generate Files`
+permission — see [`generated-files.md` §5](generated-files.md#5-downloading-a-generated-document).
+
+### 13.5 Rehearsing it
+
+1. With the flag off, take a turn asking for a generated file in a conversation where the caller holds
+   `Generate Files`. Confirm the assistant never mentions the capability and no `file_agent` call appears
+   in the activity feed.
+2. Flip `FileAgent:Enabled` to `true` and **restart the process**. A request against a still-running
+   instance from before the restart must still show no tool — proving the flag genuinely needs one.
+3. Take a turn in the same conversation. Confirm `file_agent` now attaches and the request produces a
+   file.
+4. Flip it back to `false`, restart again, and confirm the file produced in step 3 still downloads — the
+   flag governs new generation, never access to what already exists.
+
+### 13.6 The default is the committed file too — unlike its siblings, deliberately
+
+`Summarization:Enabled` and `SheetQuery:Enabled` both default to `false` in the property, while their
+committed `appsettings.json` values turn them **on** for development — a convenience each of those
+features' own docs are careful to call an environment's own choice, not a rule (see
+[`sheet-query.md` §10.6](../documents/sheet-query.md#106-the-default-is-the-property-not-the-committed-file)).
+`FileAgent:Enabled` inverts that: the committed value is off **too**, on purpose, because every run this
+flag permits provisions a billed sandbox session — a cost neither sibling carries.
+[`FileAgentOptionsTests.Bind_TheShippedConfiguration_LeavesFileGenerationOff`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/FileAgentOptionsTests.cs)
+is what makes that a rule rather than an accident: unlike `SheetQueryOptionsTests`, which pins only that
+an unconfigured environment gets nothing — never the committed value itself, since an explicit setting is
+not a default — this test binds the actual shipped file and fails if `true` is ever reintroduced. A
+developer who wants to exercise the agent locally sets `FileAgent:Enabled` explicitly, in user secrets or
+a personal override; the repository will not hand it to them by checkout.
+
+## 14. Testing
+
+**Unit** (`Enterprise.Gpt.Unit.Test.Agents`, plus the settings, service and enum suites named below):
 
 - `FileAgentSkillsTests` — skill discovery against the real build output, topic-based selection, that two
   runs get distinct providers, that the one registered script runner refuses, and a code search
@@ -483,19 +601,33 @@ deliberate departures recorded where they happen:
 - `ConversionMatrixTests` / `ConversionMatrixDocumentTests` — the loader against the JSON, and the JSON
   against both rendered tables, so the skill and the code cannot disagree about a pair.
 - `FileAgentDocumentReaderTests`, `FileAgentFormatsTests`, `FileAgentQuotaServiceTests`.
+- `FileAgentOptionsTests` — binds the real, committed `appsettings.json` and asserts `Enabled` reads
+  `false` (§13.6), that the shipped bounds validate, and that every numeric range still rejects a value
+  outside it.
 - `ConversationServiceTests` — the ceiling stand-down, the discard on an abandoned turn, that a nested
-  scope reaches the stream as a `depth: 2` child, and the end-to-end token attribution that fails on a
-  wrong `trackUsage` in either direction.
+  scope reaches the stream as a `depth: 2` child, the end-to-end token attribution that fails on a wrong
+  `trackUsage` in either direction, and (§12) that a caller without the `Generate Files` grant is never
+  asked for the tool, that an administrator holds no implicit grant, and that revoking the grant between
+  two turns in the same conversation stands the tool down on the second without touching the first.
+- `PermissionServiceTests` — `Generate Files` rejects a rename and a deactivation the same way
+  `Administrator` and `Upload File` already do (§12).
+- `PermissionIdsTests` — that every built-in id has a `Names` entry, and that each entry matches its
+  seeded row. The first is what lets §12's built-in guard read `Names` instead of one `if` per id: only
+  ids named in an endpoint filter are forced into that map at startup, and this permission is read from
+  a service rather than a filter.
 
-**Integration** — the `(ModelId, DateCreated)` index against real SQL Server, and that a discarded
-document leaves no live row and no blob.
+**Integration** — the `(ModelId, DateCreated)` index against real SQL Server; that a discarded document
+leaves no live row and no blob; that downloading an already-generated document still succeeds with
+`FileAgent:Enabled` off (§13.4); and, on the seeded `Generate Files` permission (§12), that it is present
+and not granted by default, that renaming or deactivating it is rejected, and that granting it to a user
+reaches their own `GET api/users/me` permission list.
 
 **Opt-in and billable**, neither run in CI: the `FileAgentSpike` suite proves the raw SDK mechanism
 against a live deployment ([`sandbox-capabilities.md`](sandbox-capabilities.md) §3), and the
 `FileAgentBenchmark` suite runs the thirty-prompt benchmark through the agent's own instructions and the
 production verifier. Each has its own opt-in key, so enabling one does not enable the other.
 
-## 14. Key files
+## 15. Key files
 
 | Concern | File |
 | --- | --- |
@@ -518,3 +650,5 @@ production verifier. Each has its own opt-in key, so enabling one does not enabl
 | Verification | [`Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs) |
 | The per-user ceiling | [`Enterprise.Gpt.Service/Agents/FileAgentQuotaService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentQuotaService.cs) |
 | Telemetry | [`Enterprise.Gpt.Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs), [`FileAgentTracing.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/FileAgentTracing.cs) |
+| The permission (§12) | [`Enterprise.Gpt.Dto/Enums/PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs) (`GenerateFiles`), [`Enterprise.Gpt.Repository/Configurations/PermissionConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/PermissionConfiguration.cs), the seeding migration [`20260828214951_SeedGenerateFilesPermission.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260828214951_SeedGenerateFilesPermission.cs), [`Enterprise.Gpt.Service/PermissionService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/PermissionService.cs) (`EnsurePermissionIsCustom`) |
+| Rollback (§13) | [`Enterprise.Gpt.Api/appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json), [`tests/Enterprise.Gpt.Unit.Test/Settings/FileAgentOptionsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/FileAgentOptionsTests.cs) |
