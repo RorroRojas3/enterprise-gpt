@@ -312,10 +312,10 @@ the rule that `disabled` thinking is not accepted above `high` effort.
 catalog model's `maxOutputTokens` is never sent — and with thinking on it covers reasoning and answer
 text together. Size it generously; see [docs/models/anthropic.md](docs/models/anthropic.md).
 
-`Summarization:Enabled` and `SheetQuery:Enabled` both default to `false` in code, but only one of
-them ships that way: the repository's committed `appsettings.json` turns `Summarization:Enabled` on
-for development, while `SheetQuery:Enabled` stays `false` in every environment, development included
-— set `Summarization:Enabled` explicitly per environment rather than inheriting the committed value.
+`Summarization:Enabled` and `SheetQuery:Enabled` both default to `false` in code, so an environment
+that configures neither gets neither — but the repository's committed `appsettings.json` turns both
+on for development. That committed value is a development convenience, not a default: set each one
+explicitly per environment rather than inheriting what the repository ships.
 `SheetQuery:Enabled` reaches a running deployment without a redeploy or a restart, when the change
 lands through a reloading configuration source; see
 [docs/documents/sheet-query.md §10](docs/documents/sheet-query.md#10-rollback) for exactly how, and

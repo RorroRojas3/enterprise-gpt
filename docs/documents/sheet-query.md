@@ -15,7 +15,7 @@ Four decisions shape everything below:
 1. **The tool never receives or builds SQL from the model.** The model supplies a sheet name, a column name, an operation drawn from a closed set, and literal comparison values — nothing else. Every statement is one of a small number of pre-authored, parameterized command texts (§4).
 2. **An unresolved name refuses, it does not widen.** Computing a total over the wrong sheet is a wrong answer with nothing about it to give the mistake away, so `sheet_query` takes the opposite side of the line `document_summarize` already drew against `document_search`'s own widen-on-ambiguity behavior (§3.3).
 3. **A cell's value is read by `TRY_CONVERT`, chosen by the column's own inferred type — never `JSON_VALUE … RETURNING`.** Three reasons, none of them cosmetic (§5).
-4. **The tool ships switched off.** `SheetQuery:Enabled` defaults to `false`; sheet upload, chunking and `document_search` over spreadsheet content all work regardless (§8).
+4. **The tool is opted into, not inherited.** `SheetQuery:Enabled` defaults to `false` in code, so an environment that sets nothing gets nothing; sheet upload, chunking and `document_search` over spreadsheet content all work regardless (§8).
 
 ### 1.1 Sequence
 
@@ -255,7 +255,7 @@ The `SheetQuery` section binds to [`SheetQueryOptions`](../../enterprise-gpt-api
 
 ```json
 "SheetQuery": {
-  "Enabled": false,
+  "Enabled": true,
   "MaxResultRows": 50,
   "MaxResultCharacters": 20000,
   "MaxGroups": 200,
@@ -267,7 +267,7 @@ The `SheetQuery` section binds to [`SheetQueryOptions`](../../enterprise-gpt-api
 
 | Key | Default | Range | Meaning |
 |---|---|---|---|
-| `Enabled` | `false` | — | Whether the tool is ever attached to a turn. Off by default in every environment, including development, and affects nothing about upload, extraction, chunking or `document_search` either way — see §10 for exactly how, and how quickly, a flip reaches a running deployment |
+| `Enabled` | `false` | — | Whether the tool is ever attached to a turn. The **property** default is off, so an environment that sets nothing gets nothing; the committed `appsettings.json` turns it on for development, which is that environment's own choice rather than a default. Affects nothing about upload, extraction, chunking or `document_search` either way — see §10 for exactly how, and how quickly, a flip reaches a running deployment |
 | `MaxResultRows` | `50` | 1 … 500 | Most rows a `filter` result may return, via `TOP (@maxRows)` |
 | `MaxResultCharacters` | `20,000` | 1,000 … 200,000 | Cap on the total cell text of one `filter` result. `MaxResultRows` bounds row *count*, not row *width* — a wide sheet's fifty rows can still be tens of thousands of characters competing with the answer for the model's context window. At least one row always survives this budget, so a single very wide row is shown rather than the result silently becoming empty |
 | `MaxGroups` | `200` | 1 … 2,000 | Most distinct groups a grouped aggregate returns, via `TOP (@maxGroups)` |
@@ -307,9 +307,11 @@ An **environment variable** — how a container's env var or an Azure App Servic
 
 [`SheetQueryOptionsProviderTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsProviderTests.cs) covers the same rehearsal in code: a reload turning the switch on and back off, a reload carrying an invalid value being logged and ignored rather than applied, a corrected file recovering on its own once reloaded again, and disposal stopping the provider from following further reloads.
 
-### 10.6 A deliberately stricter default than `Summarization:Enabled`
+### 10.6 The default is the property, not the committed file
 
-`Summarization:Enabled`'s property defaults to `false` in code, but the committed `appsettings.json` sets it to `true` for development — an environment's own choice, not a rule. `SheetQuery:Enabled` is `false` in **both** the class default and the committed file, on purpose: a deployment gets `sheet_query` only by asking for it, in every environment including development. [`SheetQueryOptionsTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsTests.cs) pins both halves of that — `Bind_TheShippedConfiguration_LeavesTheToolSwitchedOff` and `Bind_NoConfigurationAtAll_LeavesTheToolDisabled`.
+`SheetQuery:Enabled` follows `Summarization:Enabled` exactly: the property defaults to `false`, so an environment that configures nothing gets nothing, while the committed `appsettings.json` sets it to `true` for development. That committed value is **an environment's own choice, not a rule** — set it explicitly per environment rather than inheriting what the repository happens to ship, because a development convenience is not a production decision.
+
+[`SheetQueryOptionsTests.Bind_NoConfigurationAtAll_LeavesTheToolDisabled`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsTests.cs) pins the half that is a rule. No test pins the committed value, for the same reason [`SummarizationOptionsTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SummarizationOptionsTests.cs) does not: an explicit setting is not a default, and a test asserting one would turn every environment's own decision into a build failure.
 
 ## 11. Testing
 
@@ -324,7 +326,7 @@ Sheet and column resolution, refusal shapes, JSON-path rendering and rejection, 
 | [`SheetQueryToolTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/SheetQueryToolTests.cs) | The tool name and its MCP-attribution rationale; the declared argument schema (`operation` the only required argument, `CancellationToken` not exposed); the turn's own scope reaching the service rather than anything from the arguments; filter objects reaching the service as supplied rather than as text; a query failure replaced with a safe message; the tool's own deadline elapsing reported to the model rather than failing the turn; cancellation staying cancellation |
 | `ConversationServiceTests.cs` (`#region Sheet query tool`) | Every row of §7's table: attaching beside retrieval when enabled with a queryable spreadsheet; the prompt naming the spreadsheets and when to prefer the tool; staying detached when disabled, when no spreadsheet is in scope, when no documents are in scope at all, when a spreadsheet has no ingested sheet, when the queryable-sheet check itself fails, on a non-tool-enabled model, when retrieval has stood down, and on an MCP name collision |
 | [`SheetQueryOptionsProviderTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsProviderTests.cs) | §10's rollback path, against the real options pipeline minus `ValidateOnStart`: the switch turning on and back off across a reload, an invalid reload logged and ignored while the last valid configuration keeps serving, a corrected file recovering on its own, and disposal releasing the change-token registration |
-| [`SheetQueryOptionsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsTests.cs) | The shipped configuration validating and leaving the tool off; every numeric bound rejecting a value outside its range; the `ToolTimeoutSeconds >= TimeoutSeconds` cross-field rule; every settable bound carrying a `[Range]` |
+| [`SheetQueryOptionsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsTests.cs) | The shipped configuration validating, and a configuration that sets nothing leaving the tool off; every numeric bound rejecting a value outside its range; the `ToolTimeoutSeconds >= TimeoutSeconds` cross-field rule; every settable bound carrying a `[Range]` |
 | [`ChatMetricsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Observability/ChatMetricsTests.cs) | `RecordSheetQuery` tagging the parsed operation and the outcome (§7.3), and the instrument carrying no dimension beyond those two |
 
 **Anything that actually executes `JSON_VALUE`/`OPENJSON` against the native `json` column has no unit coverage and cannot have any** — the same SQLite limitation [Document Retrieval §12](retrieval.md#12-testing) documents for the `vector` column applies here. Those statements are exercised only by [`SheetQueryIntegrationTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/SheetQueryIntegrationTests.cs) against a Testcontainers **SQL Server 2025** instance, seeded through [`SeedSheet`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/SeedSheet.cs). Those 39 tests include the PRD's fixed 20-query benchmark — every `sum`/`avg`/`min`/`max`/`count`, a grouped case and a filtered case, each checked against a hand-computed expected value — plus numeric/date/boolean comparison correctness, the group-separator strip, the time-only anchor, row and group truncation at their caps, the character budget (including the "one row always survives" rule), empty cells omitted rather than blank, and no matching rows returning an explicit empty result rather than an error.

@@ -61,19 +61,14 @@ public sealed class SheetQueryOptionsTests
     }
 
     /// <summary>
-    /// Unlike <c>Summarization:Enabled</c>, whose committed value is an environment's own choice, the
-    /// committed value here is a rule: the tool ships switched off in every environment, development
-    /// included.
-    /// </summary>
-    [Fact]
-    public void Bind_TheShippedConfiguration_LeavesTheToolSwitchedOff()
-    {
-        Assert.False(Resolve(ShippedDefaults).Enabled);
-    }
-
-    /// <summary>
     /// An environment that overrides nothing does not silently switch the tool on.
     /// </summary>
+    /// <remarks>
+    /// The class default is the only one asserted here. The committed <c>appsettings.json</c> sets the
+    /// key deliberately, and an explicit setting is not a default — what it happens to say is an
+    /// environment's own choice rather than a rule a test enforces, the same line
+    /// <c>SummarizationOptionsTests</c> draws.
+    /// </remarks>
     [Fact]
     public void Bind_NoConfigurationAtAll_LeavesTheToolDisabled()
     {
