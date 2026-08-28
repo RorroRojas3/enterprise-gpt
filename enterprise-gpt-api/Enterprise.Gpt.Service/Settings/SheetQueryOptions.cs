@@ -23,8 +23,9 @@ public sealed class SheetQueryOptions
     /// Default: <see langword="false"/>.
     /// </summary>
     /// <remarks>
-    /// Off unless a deployment asks for it, and flipping it takes effect on the next turn with no
-    /// redeploy. Upload, extraction, chunking and storage for spreadsheets are unaffected either way.
+    /// Off unless a deployment asks for it, and read through <see cref="ISheetQueryOptionsProvider"/> so
+    /// flipping it reaches the next turn as soon as the configuration source reloads, without a restart.
+    /// Upload, extraction, chunking and storage for spreadsheets are unaffected either way.
     /// </remarks>
     public bool Enabled { get; set; }
 

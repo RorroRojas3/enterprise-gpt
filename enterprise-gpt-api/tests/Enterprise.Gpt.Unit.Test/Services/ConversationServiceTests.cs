@@ -127,7 +127,7 @@ public sealed class ConversationServiceTests : IDisposable
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
-            Options.Create(new SheetQueryOptions()),
+            new FakeSheetQueryOptionsProvider(),
             _fixture.Context);
     }
 
@@ -159,7 +159,7 @@ public sealed class ConversationServiceTests : IDisposable
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
-            Options.Create(new SheetQueryOptions()),
+            new FakeSheetQueryOptionsProvider(),
             _fixture.Context);
 
     /// <summary>
@@ -189,14 +189,14 @@ public sealed class ConversationServiceTests : IDisposable
             _userGrantReader,
             Options.Create(options ?? new SummarizationOptions { Enabled = true }),
             _sheetQueryService,
-            Options.Create(new SheetQueryOptions()),
+            new FakeSheetQueryOptionsProvider(),
             _fixture.Context);
 
     /// <summary>
     /// Builds a service with the sheet query switched on. Options are captured at construction, so a
     /// test that wants the tool cannot reuse the shared instance.
     /// </summary>
-    private ConversationService CreateServiceWithSheetQueryTool(SheetQueryOptions? options = null) =>
+    private ConversationService CreateServiceWithSheetQueryTool(ISheetQueryOptionsProvider? options = null) =>
         new(NullLogger<ConversationService>.Instance,
             _modelService,
             _chatClientResolver,
@@ -218,7 +218,7 @@ public sealed class ConversationServiceTests : IDisposable
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
             _sheetQueryService,
-            Options.Create(options ?? new SheetQueryOptions { Enabled = true }),
+            options ?? new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
             _fixture.Context);
 
     public void Dispose()
@@ -1344,6 +1344,34 @@ public sealed class ConversationServiceTests : IDisposable
         var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
 
         await StreamEventsToEndAsync(conversation.Id, request);
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    /// <summary>
+    /// The other half of the rollback: the flag is read once per turn, so switching it off reaches the
+    /// next turn rather than the next restart.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_SheetQuerySwitchedOffBetweenTurns_StopsAttachingTheTool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+        var options = new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true });
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool(options));
+
+        Assert.Contains(_chatClient.CapturedOptions?.Tools ?? [], t => t.Name == SheetQueryTool.ToolName);
+
+        options.Current = new SheetQueryOptions();
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool(options));
 
         var tools = _chatClient.CapturedOptions?.Tools;
         Assert.NotNull(tools);

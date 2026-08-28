@@ -267,4 +267,14 @@ public sealed class SheetQueryResult
     [JsonPropertyOrder(13)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Note { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether nothing was queried because a name did not resolve.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="Note"/>: a query that ran perfectly well also carries one when it matched no rows,
+    /// hit a cap, or read a column whose values disagree with its type.
+    /// </remarks>
+    [JsonIgnore]
+    public bool IsRefusal { get; set; }
 }

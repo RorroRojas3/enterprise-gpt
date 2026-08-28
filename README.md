@@ -295,6 +295,8 @@ export const environment = {
 | `Anthropic:MaxRetries`                | SDK retries per failed request                                | No       | 2                      |
 | `Tools:Weather:Enabled`               | Attaches the fabricated `get_weather` tool to every turn      | No       | false                  |
 | `Tools:Weather:DelayMilliseconds`     | Artificial latency per lookup, 0–10000                        | No       | 600                    |
+| `Summarization:Enabled`               | Attaches the `document_summarize` tool to every turn          | No       | false                  |
+| `SheetQuery:Enabled`                  | Attaches the `sheet_query` tool to a turn with a queryable spreadsheet in scope | No | false      |
 | `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
 
 Azure OpenAI is required — it serves the default model over the Responses API and also backs
@@ -309,6 +311,15 @@ the rule that `disabled` thinking is not accepted above `high` effort.
 `Anthropic:DefaultMaxOutputTokens` is the ceiling on **every** Anthropic turn, not a fallback — the
 catalog model's `maxOutputTokens` is never sent — and with thinking on it covers reasoning and answer
 text together. Size it generously; see [docs/models/anthropic.md](docs/models/anthropic.md).
+
+`Summarization:Enabled` and `SheetQuery:Enabled` both default to `false` in code, but only one of
+them ships that way: the repository's committed `appsettings.json` turns `Summarization:Enabled` on
+for development, while `SheetQuery:Enabled` stays `false` in every environment, development included
+— set `Summarization:Enabled` explicitly per environment rather than inheriting the committed value.
+`SheetQuery:Enabled` reaches a running deployment without a redeploy or a restart, when the change
+lands through a reloading configuration source; see
+[docs/documents/sheet-query.md §10](docs/documents/sheet-query.md#10-rollback) for exactly how, and
+the one case (an environment variable) where it does not.
 
 The two `AzureOpenAI:Reasoning*` settings only take effect on a model whose catalog row sets
 `isReasoningEnabled`, which is **off by default** — a deployment that does not support reasoning

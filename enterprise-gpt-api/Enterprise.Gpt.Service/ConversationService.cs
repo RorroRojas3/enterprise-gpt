@@ -192,7 +192,7 @@ namespace Enterprise.Gpt.Service
         IUserGrantReader userGrantReader,
         IOptions<SummarizationOptions> summarizationOptions,
         ISheetQueryService sheetQueryService,
-        IOptions<SheetQueryOptions> sheetQueryOptions,
+        ISheetQueryOptionsProvider sheetQueryOptions,
         EnterpriseGptDbContext ctx) : IConversationService
     {
         private readonly ILogger _logger = logger;
@@ -220,7 +220,7 @@ namespace Enterprise.Gpt.Service
         private readonly IUserGrantReader _userGrantReader = userGrantReader;
         private readonly SummarizationOptions _summarizationOptions = summarizationOptions.Value;
         private readonly ISheetQueryService _sheetQueryService = sheetQueryService;
-        private readonly SheetQueryOptions _sheetQueryOptions = sheetQueryOptions.Value;
+        private readonly SheetQueryOptions _sheetQueryOptions = sheetQueryOptions.Current;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
         // The synthetic pair every turn's stream opens with, ahead of the first model event.

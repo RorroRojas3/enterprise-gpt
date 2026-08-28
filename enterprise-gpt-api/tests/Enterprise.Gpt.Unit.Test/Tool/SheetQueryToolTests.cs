@@ -1,8 +1,11 @@
+using Enterprise.Gpt.Common.Observability;
 using Enterprise.Gpt.Service.Tool;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Tool;
@@ -219,6 +222,194 @@ public sealed class SheetQueryToolTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => SheetQueryTool.Create(Scope(), _sheetQueryService, 0, NullLogger.Instance));
     }
+
+    [Fact]
+    public async Task InvokeAsync_AComputedResult_RecordsTheOperationAndASuccess()
+    {
+        SetUpResult(new SheetQueryResult { Operation = "sum", Value = 12d });
+        using var collector = CollectQueryDurations();
+
+        await CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "sum" }, TestContext.Current.CancellationToken);
+
+        AssertRecorded(collector, "sum", "success");
+    }
+
+    /// <summary>
+    /// A refusal never throws, so counting it as an error would hide how often the model asks for a
+    /// sheet or column that does not exist.
+    /// </summary>
+    [Fact]
+    public async Task InvokeAsync_ARefusal_IsRecordedAsItsOwnOutcome()
+    {
+        SetUpResult(new SheetQueryResult
+        {
+            Operation = "filter",
+            Note = "No sheet is named 'Payroll'.",
+            IsRefusal = true
+        });
+        using var collector = CollectQueryDurations();
+
+        await CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "filter" }, TestContext.Current.CancellationToken);
+
+        AssertRecorded(collector, "filter", "refused");
+    }
+
+    /// <summary>
+    /// The operation is tagged from the closed set, never from the text the result echoes back, so a
+    /// model that invents one cannot put an unbounded value on a metric dimension.
+    /// </summary>
+    [Fact]
+    public async Task InvokeAsync_AnOperationOutsideTheClosedSet_IsTaggedAsUnknown()
+    {
+        SetUpResult(new SheetQueryResult
+        {
+            Operation = "median",
+            Note = "'median' is not an operation.",
+            IsRefusal = true
+        });
+        using var collector = CollectQueryDurations();
+
+        await CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "median" }, TestContext.Current.CancellationToken);
+
+        AssertRecorded(collector, "unknown", "refused");
+    }
+
+    /// <summary>
+    /// A query that ran and matched nothing carries a note too, so counting notes rather than refusals
+    /// would report most successful calls as refused.
+    /// </summary>
+    /// <summary>
+    /// The refusal flag is the tool's own discriminator, not something the model is meant to read, and
+    /// it is the one public member of the result deliberately kept off the payload.
+    /// </summary>
+    [Fact]
+    public async Task InvokeAsync_ARefusal_DoesNotSerializeTheRefusalFlagToTheModel()
+    {
+        SetUpResult(new SheetQueryResult
+        {
+            Operation = "sum",
+            Note = "No sheet is named 'Payroll'.",
+            IsRefusal = true
+        });
+
+        var result = await CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "sum" }, TestContext.Current.CancellationToken);
+
+        var json = JsonSerializer.Serialize(result);
+
+        Assert.Contains("No sheet is named", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("isRefusal", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AQueryThatRanButCarriesANote_IsRecordedAsASuccess()
+    {
+        SetUpResult(new SheetQueryResult
+        {
+            Operation = "sum",
+            Note = "No rows matched, so there was nothing to compute."
+        });
+
+        using var collector = CollectQueryDurations();
+
+        await CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "sum" }, TestContext.Current.CancellationToken);
+
+        AssertRecorded(collector, "sum", "success");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AFilterThatMatchedNoRows_IsRecordedAsASuccess()
+    {
+        SetUpResult(new SheetQueryResult { Operation = "filter", Rows = [], Note = "No rows matched." });
+        using var collector = CollectQueryDurations();
+
+        await CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "filter" }, TestContext.Current.CancellationToken);
+
+        AssertRecorded(collector, "filter", "success");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_QueryFails_RecordsAnError()
+    {
+        _sheetQueryService
+            .QueryAsync(
+                Arg.Any<DocumentRetrievalScope>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<IReadOnlyList<SheetFilter>?>(),
+                Arg.Any<CancellationToken>())
+            .Throws(new InvalidOperationException("boom"));
+
+        using var collector = CollectQueryDurations();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateFunction().InvokeAsync(
+            new AIFunctionArguments { ["operation"] = "count" }, TestContext.Current.CancellationToken).AsTask());
+
+        AssertRecorded(collector, "count", "error");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ItsOwnDeadlineElapses_RecordsATimeout()
+    {
+        _sheetQueryService
+            .QueryAsync(
+                Arg.Any<DocumentRetrievalScope>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<IReadOnlyList<SheetFilter>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+
+                return new SheetQueryResult { Operation = "avg" };
+            });
+
+        using var collector = CollectQueryDurations();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => SheetQueryTool.Create(Scope(), _sheetQueryService, 1, NullLogger.Instance)
+                .InvokeAsync(
+                    new AIFunctionArguments { ["operation"] = "avg" },
+                    TestContext.Current.CancellationToken)
+                .AsTask());
+
+        AssertRecorded(collector, "avg", "timed-out");
+    }
+
+    private void SetUpResult(SheetQueryResult result) =>
+        _sheetQueryService
+            .QueryAsync(
+                Arg.Any<DocumentRetrievalScope>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<IReadOnlyList<SheetFilter>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(result);
+
+    private static MetricCollector<double> CollectQueryDurations() =>
+        new(meterScope: null, TelemetryNames.ChatSource, "enterprise_gpt.sheet_query.duration");
+
+    /// <remarks>
+    /// The instrument is process-global, so this looks for a matching measurement rather than asserting
+    /// on the only one.
+    /// </remarks>
+    private static void AssertRecorded(MetricCollector<double> collector, string operation, string outcome) =>
+        Assert.Contains(
+            collector.GetMeasurementSnapshot(),
+            m => m.Tags["sheet_query.operation"] as string == operation
+                && m.Tags["sheet_query.outcome"] as string == outcome);
 
     private AIFunction CreateFunction() =>
         SheetQueryTool.Create(Scope(), _sheetQueryService, TimeoutSeconds, NullLogger.Instance);

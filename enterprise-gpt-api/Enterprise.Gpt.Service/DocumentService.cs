@@ -3,6 +3,7 @@ using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlTypes;
 using System.Collections.Frozen;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -18,6 +19,7 @@ using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Settings;
 
 namespace Enterprise.Gpt.Service
@@ -872,7 +874,7 @@ namespace Enterprise.Gpt.Service
             // One call, not two: a spreadsheet's text and its grid come out of the same parse, and
             // asking for them separately would open the package twice for nothing.
             var extraction = extractor is ISheetStructureExtractor sheetExtractor
-                ? await sheetExtractor.ExtractSheetsAsync(file, progress, cancellationToken)
+                ? await ExtractSheetsAsync(sheetExtractor, file, progress, cancellationToken)
                 : new SheetExtractionResult(await extractor.ExtractAsync(file, progress, cancellationToken), []);
 
             if (extraction.Segments.Count == 0)
@@ -885,6 +887,55 @@ namespace Enterprise.Gpt.Service
             }
 
             return extraction;
+        }
+
+        /// <summary>
+        /// Reads a spreadsheet's text and grid, recording the shape and cost of the read.
+        /// </summary>
+        /// <remarks>
+        /// Measured here rather than inside the extractors, so both formats report through one site and a
+        /// ceiling refusal is counted as the outcome it is rather than as a read that never happened.
+        /// </remarks>
+        private static async Task<SheetExtractionResult> ExtractSheetsAsync(
+            ISheetStructureExtractor extractor,
+            FileDto file,
+            IProgress<DocumentExtractionProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            var documentType = file.FileExtension.ToString().ToLowerInvariant();
+            var started = Stopwatch.GetTimestamp();
+
+            try
+            {
+                var extraction = await extractor.ExtractSheetsAsync(file, progress, cancellationToken);
+
+                ChatMetrics.RecordSheetIngestion(
+                    documentType,
+                    outcome: "success",
+                    extraction.Sheets.Count,
+                    extraction.Sheets.Sum(sheet => sheet.RowCount),
+                    extraction.Sheets.Count == 0 ? 0 : extraction.Sheets.Max(sheet => sheet.ColumnCount),
+                    Stopwatch.GetElapsedTime(started));
+
+                return extraction;
+            }
+            catch (Exception ex)
+            {
+                ChatMetrics.RecordSheetIngestion(
+                    documentType,
+                    outcome: ex switch
+                    {
+                        ValidationException => "refused",
+                        OperationCanceledException when cancellationToken.IsCancellationRequested => "cancelled",
+                        _ => "error"
+                    },
+                    sheetCount: 0,
+                    rowCount: 0,
+                    columnCount: 0,
+                    Stopwatch.GetElapsedTime(started));
+
+                throw;
+            }
         }
 
         private IReadOnlyList<TextChunkDto> ChunkText(string jobId, IReadOnlyList<DocumentSegmentDto> segments, CancellationToken cancellationToken)

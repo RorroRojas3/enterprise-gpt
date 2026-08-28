@@ -79,6 +79,21 @@ public sealed class DocumentRetrievalSqlTests
         Assert.Equal(termCount, CountOccurrences(sql, "CASE WHEN c.[Text]"));
     }
 
+    /// <summary>
+    /// The tie-break that decides a mixed corpus: at equal match count the shorter chunk wins, and a
+    /// spreadsheet's row windows are short and dense by construction, so they outrank prose that used the
+    /// same term. Kept, not changed — for the identifiers this pass exists for, the denser chunk is the
+    /// better evidence.
+    /// </summary>
+    [Fact]
+    public void BuildLexicalSearch_TiesOnMatchCount_BreakTowardsTheShorterChunk()
+    {
+        Assert.Contains(
+            "ORDER BY m.[MatchCount] DESC, m.[TokenCount] ASC",
+            DocumentRetrievalSql.BuildLexicalSearch(2),
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void BuildLexicalSearch_MatchesCaseAndAccentInsensitivelyWhateverTheDatabaseCollation()
     {

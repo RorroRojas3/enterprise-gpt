@@ -4,19 +4,22 @@ using Enterprise.Gpt.Common.Observability;
 namespace Enterprise.Gpt.Service.Observability;
 
 /// <summary>
-/// The instruments the chat pipeline records to.
+/// The instruments the chat pipeline and document ingestion record to.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Named with <see cref="TelemetryNames.ChatSource"/> so the exporter registration that already
-/// adds that meter picks these up with no wiring change. With no Application Insights connection
-/// string configured the distro is skipped entirely and nothing is exported — the instruments are
-/// still recorded to, which costs nothing and keeps the code path identical between environments.
+/// adds that meter picks these up with no wiring change — which is also why the ingestion instruments
+/// ride it rather than a meter of their own that nothing would export. With no Application Insights
+/// connection string configured the distro is skipped entirely and nothing is exported — the
+/// instruments are still recorded to, which costs nothing and keeps the code path identical between
+/// environments.
 /// </para>
 /// <para>
-/// No dimension carries a conversation id, a user id, or message content. Metric dimensions are
-/// high-cardinality storage that is retained and queried far more widely than logs, and neither
-/// identifier would answer a question the deployment name does not.
+/// No dimension carries a conversation id, a user id, message content, or anything read out of an
+/// uploaded file — a sheet name, a column name and a cell value are all file content. Metric
+/// dimensions are high-cardinality storage that is retained and queried far more widely than logs,
+/// and none of those would answer a question the deployment or document type does not.
 /// </para>
 /// </remarks>
 public static class ChatMetrics
@@ -73,6 +76,50 @@ public static class ChatMetrics
         "enterprise_gpt.document_summary.run.map_units",
         unit: "{unit}",
         description: "Map units one summarization run split its document into.");
+
+    /// <summary>
+    /// How long reading one spreadsheet's text and grid took, tagged by format and how it ended.
+    /// </summary>
+    private static readonly Histogram<double> SheetIngestionDuration = Meter.CreateHistogram<double>(
+        "enterprise_gpt.sheet_ingestion.duration",
+        unit: "s",
+        description: "Duration of one spreadsheet extraction, by document type and outcome.");
+
+    /// <summary>
+    /// How many sheets one upload yielded. Zero on any outcome that produced none.
+    /// </summary>
+    private static readonly Histogram<int> SheetIngestionSheets = Meter.CreateHistogram<int>(
+        "enterprise_gpt.sheet_ingestion.sheets",
+        unit: "{sheet}",
+        description: "Sheets read from one spreadsheet upload.");
+
+    /// <summary>
+    /// Data rows read across every sheet of one upload, headers excluded.
+    /// </summary>
+    private static readonly Histogram<int> SheetIngestionRows = Meter.CreateHistogram<int>(
+        "enterprise_gpt.sheet_ingestion.rows",
+        unit: "{row}",
+        description: "Data rows read from one spreadsheet upload, across all of its sheets.");
+
+    /// <summary>
+    /// Columns of the widest sheet in one upload.
+    /// </summary>
+    /// <remarks>
+    /// The widest rather than the total, because it is the one that approaches
+    /// <c>Sheets:MaxColumnsPerSheet</c> and decides whether an upload is refused.
+    /// </remarks>
+    private static readonly Histogram<int> SheetIngestionColumns = Meter.CreateHistogram<int>(
+        "enterprise_gpt.sheet_ingestion.columns",
+        unit: "{column}",
+        description: "Columns of the widest sheet in one spreadsheet upload.");
+
+    /// <summary>
+    /// How long one whole sheet-query invocation took, tagged by operation and how it ended.
+    /// </summary>
+    private static readonly Histogram<double> SheetQueryDuration = Meter.CreateHistogram<double>(
+        "enterprise_gpt.sheet_query.duration",
+        unit: "s",
+        description: "Duration of one sheet query invocation, by operation and outcome.");
 
     /// <summary>
     /// Records how far the local estimate was from what the provider reported.
@@ -144,4 +191,44 @@ public static class ChatMetrics
             SummaryRunMapUnits.Record(units, tags);
         }
     }
+
+    /// <summary>
+    /// Records what one spreadsheet extraction read and what it cost.
+    /// </summary>
+    /// <param name="documentType">The uploaded format, as the extension without its dot.</param>
+    /// <param name="outcome">How it ended: <c>success</c>, <c>refused</c>, <c>error</c> or <c>cancelled</c>.</param>
+    /// <param name="sheetCount">Sheets read.</param>
+    /// <param name="rowCount">Data rows read across every sheet.</param>
+    /// <param name="columnCount">Columns of the widest sheet read.</param>
+    /// <param name="elapsed">Wall-clock duration of the extraction.</param>
+    public static void RecordSheetIngestion(
+        string documentType, string outcome, int sheetCount, int rowCount, int columnCount, TimeSpan elapsed)
+    {
+        KeyValuePair<string, object?>[] tags =
+        [
+            new("document.type", documentType),
+            new("sheet.outcome", outcome)
+        ];
+
+        SheetIngestionDuration.Record(elapsed.TotalSeconds, tags);
+        SheetIngestionSheets.Record(sheetCount, tags);
+        SheetIngestionRows.Record(rowCount, tags);
+        SheetIngestionColumns.Record(columnCount, tags);
+    }
+
+    /// <summary>
+    /// Records a completed, refused or failed sheet query.
+    /// </summary>
+    /// <param name="operation">The parsed operation, or <c>unknown</c> when the request named none.</param>
+    /// <param name="outcome">How it ended: <c>success</c>, <c>refused</c>, <c>timed-out</c>, <c>error</c> or <c>cancelled</c>.</param>
+    /// <param name="elapsed">Wall-clock duration of the whole invocation.</param>
+    /// <remarks>
+    /// The operation must be the parsed one: the result echoes the model's own text back unvalidated,
+    /// and using that would make an unbounded model-supplied string a metric dimension.
+    /// </remarks>
+    public static void RecordSheetQuery(string operation, string outcome, TimeSpan elapsed) =>
+        SheetQueryDuration.Record(
+            elapsed.TotalSeconds,
+            new KeyValuePair<string, object?>("sheet_query.operation", operation),
+            new KeyValuePair<string, object?>("sheet_query.outcome", outcome));
 }

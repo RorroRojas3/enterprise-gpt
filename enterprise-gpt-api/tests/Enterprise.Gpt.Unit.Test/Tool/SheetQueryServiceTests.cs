@@ -4,7 +4,6 @@ using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using System.Globalization;
 using Xunit;
 
@@ -36,6 +35,7 @@ public sealed class SheetQueryServiceTests : IDisposable
         Assert.Contains("not an operation", result.Note, StringComparison.Ordinal);
         Assert.Contains("sum", result.Note, StringComparison.Ordinal);
         Assert.Equal("median", result.Operation);
+        Assert.True(result.IsRefusal);
     }
 
     [Fact]
@@ -339,7 +339,7 @@ public sealed class SheetQueryServiceTests : IDisposable
     }
 
     private SheetQueryService CreateService() =>
-        new(NullLogger<SheetQueryService>.Instance, Options.Create(_options), _fixture.Context);
+        new(NullLogger<SheetQueryService>.Instance, new FakeSheetQueryOptionsProvider(_options), _fixture.Context);
 
     private Task<SheetQueryResult> QueryAsync(
         DocumentRetrievalScope scope,

@@ -3,11 +3,13 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Common.Observability;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Enums;
 using Enterprise.Gpt.Entity;
@@ -1394,11 +1396,85 @@ public sealed class DocumentServiceTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task CreateConversationDocumentAsync_Spreadsheet_RecordsWhatItReadAndWhatItCost()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpSheetPipeline();
+
+        using var sheets = Collect<int>("enterprise_gpt.sheet_ingestion.sheets");
+        using var rows = Collect<int>("enterprise_gpt.sheet_ingestion.rows");
+        using var columns = Collect<int>("enterprise_gpt.sheet_ingestion.columns");
+        using var duration = Collect<double>("enterprise_gpt.sheet_ingestion.duration");
+
+        await _service.CreateConversationDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.Contains(sheets.GetMeasurementSnapshot(), m => m.Value == 1 && Tagged(m, "xlsx", "success"));
+        Assert.Contains(rows.GetMeasurementSnapshot(), m => m.Value == 2 && Tagged(m, "xlsx", "success"));
+        Assert.Contains(columns.GetMeasurementSnapshot(), m => m.Value == 2 && Tagged(m, "xlsx", "success"));
+        Assert.Contains(duration.GetMeasurementSnapshot(), m => Tagged(m, "xlsx", "success"));
+    }
+
+    /// <summary>
+    /// A workbook turned away by an ingest ceiling is an outcome worth counting: it is the signal that
+    /// the ceilings are set where uploads actually land.
+    /// </summary>
+    [Fact]
+    public async Task CreateConversationDocumentAsync_SpreadsheetRefusedByTheExtractor_RecordsTheRefusal()
+    {
+        var conversation = await AddConversationAsync();
+        var extractor = SetUpSheetPipeline();
+
+        extractor
+            .ExtractSheetsAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ValidationException("The sheet has more rows than the configured limit."));
+
+        using var duration = Collect<double>("enterprise_gpt.sheet_ingestion.duration");
+
+        await Assert.ThrowsAsync<ValidationException>(() => _service.CreateConversationDocumentAsync(
+            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
+
+        Assert.Contains(duration.GetMeasurementSnapshot(), m => Tagged(m, "xlsx", "refused"));
+    }
+
+    /// <summary>
+    /// The instruments describe spreadsheet reads, so a format with no grid must not appear in them at
+    /// all — otherwise the row and column distributions are diluted by documents that have neither.
+    /// </summary>
+    [Fact]
+    public async Task CreateConversationDocumentAsync_ExtractorWithoutSheets_RecordsNoIngestion()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpPipeline(chunkCount: 2);
+
+        using var duration = Collect<double>("enterprise_gpt.sheet_ingestion.duration");
+
+        await _service.CreateConversationDocumentAsync(
+            "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(
+            duration.GetMeasurementSnapshot(),
+            m => m.Tags["document.type"] as string == "pdf");
+    }
+
+    private static MetricCollector<T> Collect<T>(string instrument) where T : struct =>
+        new(meterScope: null, TelemetryNames.ChatSource, instrument);
+
+    /// <remarks>
+    /// The instruments are process-global, so this looks for a matching measurement rather than
+    /// asserting on the only one.
+    /// </remarks>
+    private static bool Tagged<T>(CollectedMeasurement<T> measurement, string documentType, string outcome)
+        where T : struct =>
+        measurement.Tags["document.type"] as string == documentType
+            && measurement.Tags["sheet.outcome"] as string == outcome;
+
     /// <summary>
     /// Points the factory at an extractor that also reports a grid, which is the only way the sheet
     /// path is reached — every other extractor fails the type check the ingestion path makes.
     /// </summary>
-    private void SetUpSheetPipeline()
+    private ISheetStructureExtractor SetUpSheetPipeline()
     {
         SetUpPipeline(chunkCount: 2);
 
@@ -1423,6 +1499,8 @@ public sealed class DocumentServiceTests : IDisposable
             .Returns(new SheetExtractionResult(
                 [new DocumentSegmentDto { SourceNumber = 1, Text = "Sheet: Regional Revenue\nSKU | Revenue" }],
                 sheets));
+
+        return sheetExtractor;
     }
     #endregion
 }

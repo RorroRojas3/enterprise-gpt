@@ -5,7 +5,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
@@ -63,7 +62,7 @@ public interface ISheetQueryService
 /// </remarks>
 public sealed class SheetQueryService(
     ILogger<SheetQueryService> logger,
-    IOptions<SheetQueryOptions> options,
+    ISheetQueryOptionsProvider options,
     EnterpriseGptDbContext ctx) : ISheetQueryService
 {
     /// <summary>
@@ -92,7 +91,7 @@ public sealed class SheetQueryService(
     private static readonly DateTime TimeOnlyEpoch = new(1900, 1, 1);
 
     private readonly ILogger<SheetQueryService> _logger = logger;
-    private readonly SheetQueryOptions _options = options.Value;
+    private readonly SheetQueryOptions _options = options.Current;
     private readonly EnterpriseGptDbContext _ctx = ctx;
 
     /// <inheritdoc />
@@ -867,7 +866,8 @@ public sealed class SheetQueryService(
             SheetName = sheet?.SheetName,
             AvailableSheets = availableSheets,
             AvailableColumns = availableColumns,
-            Note = note
+            Note = note,
+            IsRefusal = true
         };
 
     /// <summary>
@@ -949,9 +949,13 @@ public sealed class SheetQueryService(
 
     #region Parsing
 
-    private static bool TryParseOperation(string value, out SheetQueryOperation operation)
+    /// <summary>
+    /// Maps the model's own operation text onto the closed set, so a caller can name the operation
+    /// without trusting the unvalidated string a result echoes back.
+    /// </summary>
+    internal static bool TryParseOperation(string? value, out SheetQueryOperation operation)
     {
-        operation = value.ToLowerInvariant() switch
+        operation = value?.Trim().ToLowerInvariant() switch
         {
             "sum" or "total" => SheetQueryOperation.Sum,
             "avg" or "average" or "mean" => SheetQueryOperation.Avg,

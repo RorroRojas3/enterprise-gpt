@@ -336,6 +336,23 @@ Named at the producer and the consumer rather than relying on the library's defa
 
 `Enterprise.Gpt.Chat` is registered as **both a source and a meter**, because `Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` builds an `ActivitySource` and a `Meter` from the same name. Registering only the source would have exported the spans and dropped `gen_ai.client.token.usage` — the metric that turns LLM spend into something observable.
 
+`gen_ai.client.token.usage` is the library's own instrument. Everything else the application exports rides the same `Enterprise.Gpt.Chat` meter for the same reason — the exporter registration above already adds it, so a second meter would go unexported with no error — but is defined in [`ChatMetrics`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs), the application's own instrument catalog:
+
+| Instrument | Kind | Tags | What it measures |
+|---|---|---|---|
+| `enterprise_gpt.chat.estimator.relative_error` | Histogram (ratio) | `provider.id`, `deployment.name` | Signed relative error of the local prompt-token estimate against the provider's reported input tokens, on turns with no tool calls — the only case the two measure the same prompt |
+| `enterprise_gpt.chat.budget.dropped_messages` | Counter (messages) | `deployment.name` | Messages trimmed from replayed history to fit the model's context window. Not recorded when nothing was dropped |
+| `enterprise_gpt.chat.budget.dropped_tokens` | Counter (tokens) | `deployment.name` | Estimated tokens held by the messages `dropped_messages` counted |
+| `enterprise_gpt.document_summary.run.duration` | Histogram (seconds) | `deployment.name`, `summary.path`, `summary.outcome` | Duration of one whole document-summarization run — map, collapse and reduce calls together, not per call. See [Document Summarization: Tool, Persistence and Billing §6](../summarization/tool-integration.md#6-telemetry) |
+| `enterprise_gpt.document_summary.run.map_units` | Histogram (count) | same tags | Window-sized map units one run split its document into; `0` on the single-pass path |
+| `enterprise_gpt.sheet_ingestion.duration` | Histogram (seconds) | `document.type`, `sheet.outcome` | Duration of one spreadsheet extraction. See [Document Upload and Ingestion §11.6](../documents/upload-workflow.md#116-telemetry-spreadsheet-extraction) |
+| `enterprise_gpt.sheet_ingestion.sheets` | Histogram (count) | same tags | Sheets read from one spreadsheet upload |
+| `enterprise_gpt.sheet_ingestion.rows` | Histogram (count) | same tags | Data rows read across every sheet of one upload |
+| `enterprise_gpt.sheet_ingestion.columns` | Histogram (count) | same tags | Columns of the **widest** sheet in one upload, not the total across sheets |
+| `enterprise_gpt.sheet_query.duration` | Histogram (seconds) | `sheet_query.operation`, `sheet_query.outcome` | Duration of one whole `sheet_query` invocation. See [Sheet Query §7.3](../documents/sheet-query.md#73-telemetry) |
+
+Ten instruments in total, all defined as `private static readonly` fields on one static class rather than scattered across their call sites, which is what makes `ChatMetrics` the place to look before assuming a metric does not exist. None of the ten carries a dimension this document's own redaction posture (§6.4) would object to: no conversation id, no user id, no message content, and — for the five spreadsheet instruments — nothing read out of an uploaded file itself, since a sheet name, a column name and a cell value are all file content the same way a prompt is.
+
 ### 7.4 Sampling — check this before relying on the access log
 
 The Azure Monitor distro applies **rate-limited sampling by default, capped at 5 traces per second**. Under load that is well below this API's request rate, so the `requests` and `dependencies` you see are a sample, not a census.

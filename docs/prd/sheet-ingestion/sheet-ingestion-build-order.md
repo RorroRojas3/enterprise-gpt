@@ -6,7 +6,7 @@ A dependency-resolved execution sequence for the 20 stories in [`sheet-ingestion
 
 A wave here is a **phase**, not a dependency depth: several waves contain internal chains, so a story's `Depends on` may name another story in the same wave. What no story does is depend on one scheduled in a **later** wave — every row was checked against that rule by hand against the full dependency list. Within a wave, the `Parallel with` column names the stories that are neither an ancestor nor a descendant of it in the dependency graph — those can be taken concurrently by however many people are available.
 
-**Progress: 17 / 20 done.**
+**Progress: 20 / 20 done.**
 
 **Critical path.** `US-101 → US-201 → US-202 → US-304 → US-401 → US-402 → US-403 → US-405 → US-504`, nine stories deep. EP-1's `US-102 → US-103` lane and EP-3's `US-301 → US-302 → US-303` lane both join the critical path only at `US-304` (which needs `US-201`, `US-202`, **and** `US-302`), so neither is itself the bottleneck — `US-304` is, since it is the single point every one of EP-4's stories sits behind. `US-404` (the filter/list verb) and EP-5's `US-501`/`US-502`/`US-503` all run beside the critical path's tail rather than on it. Useful concurrency peaks in wave 2, where `US-301`, `US-201`, `US-303`, `US-203`, `US-204`, and `US-304`'s siblings share no dependency edge with several other wave-2 stories at once — see each row's own `Parallel with` column rather than a single headline number, since the wave's internal chain means no two people should take adjacent links of it concurrently.
 
@@ -66,10 +66,10 @@ Four stories with no dependency edge between them — all mutually parallel — 
 | Wave | Order | Story | Depends on | Pri | Parallel with | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | 4 | 17 | US-501 `[enabler]` Cap rows and columns accepted per sheet | US-201, US-202 | P0 | US-502, US-503, US-504 | ✅ Done (2026-08-26) — pulled into wave 1 |
-| 4 | 18 | US-502 Re-tune retrieval defaults for row-window corpora | US-201, US-202 | P1 | US-501, US-503, US-504 | |
-| 4 | 19 | US-503 `[enabler]` Emit sheet ingestion and `sheet_query` telemetry | US-304, US-405 | P1 | US-501, US-502, US-504 | |
-| 4 | 20 | US-504 `[enabler]` Feature-flag `sheet_query` with a documented rollback | US-405 | P0 | US-501, US-502, US-503 | |
+| 4 | 18 | US-502 Re-tune retrieval defaults for row-window corpora | US-201, US-202 | P1 | US-501, US-503, US-504 | ✅ Done (2026-08-27) |
+| 4 | 19 | US-503 `[enabler]` Emit sheet ingestion and `sheet_query` telemetry | US-304, US-405 | P1 | US-501, US-502, US-504 | ✅ Done (2026-08-27) |
+| 4 | 20 | US-504 `[enabler]` Feature-flag `sheet_query` with a documented rollback | US-405 | P0 | US-501, US-502, US-503 | ✅ Done (2026-08-27) |
 
 ✅ **`US-501` did not wait for wave 4 — it was pulled into wave 1, at the user's explicit decision, and closed 2026-08-26.** A code review during Wave 1 measured reproducible unbounded-allocation vectors in the new extractors (up to 1.4 GB of peak managed heap from a file a few megabytes in size — a workbook is a deflate archive, so nothing upstream of extraction bounds what it inflates into) and treated that as a decompression-bomb exposure too real to leave open until wave 4. Wave 4 therefore has one fewer story left to schedule, not a story silently dropped — see wave 1's own note above for where it actually landed.
 
-⚠ **`US-504` is the true switch-on gate for `sheet_query`.** Until it lands, `SheetQuery:Enabled` has no wiring to default `false` deliberately — treat wave 3's stories as code-complete-but-not-yet-safe-to-enable until this closes.
+✅ **Wave 4 closed 2026-08-27**, the three remaining stories in one pass. This wave's own note about `US-504` being the switch-on gate is left corrected rather than deleted: it said `SheetQuery:Enabled` had "no wiring to default `false` deliberately", which had already stopped being true when `US-405` shipped the flag in wave 3. What `US-504` actually found was the opposite problem — the wiring existed and its *documented behaviour* did not, since the value was bound once at startup and the shipped remark promised it reached the next turn. Two deviations from what was locked, both recorded as shipped-behaviour notes on their own stories: `US-503` shipped metrics only, deferring the span half of FR-23; `US-502` confirmed `MaxDistance` at 0.62 and found that neither of the two knobs its own wording named is the one that matters for a mixed corpus.

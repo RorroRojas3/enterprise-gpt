@@ -1,8 +1,10 @@
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Service.Observability;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using System.ComponentModel;
+using System.Diagnostics;
 
 namespace Enterprise.Gpt.Service.Tool;
 
@@ -117,6 +119,14 @@ public static class SheetQueryTool
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(_toolTimeoutSeconds));
 
+            // The parsed operation, never the string the result echoes back: that one is the model's own
+            // text and would put an unbounded value on a metric dimension.
+            var measured = SheetQueryService.TryParseOperation(operation, out var parsed)
+                ? parsed.ToString().ToLowerInvariant()
+                : "unknown";
+
+            var started = Stopwatch.GetTimestamp();
+
             try
             {
                 var result = await _sheetQueryService
@@ -131,16 +141,27 @@ public static class SheetQueryTool
                     _ => "Nothing to compute"
                 });
 
+                // A refusal never throws, and its note is not what distinguishes it: a query that ran
+                // carries one too when it matched nothing, hit a cap, or read a mistyped column.
+                ChatMetrics.RecordSheetQuery(
+                    measured,
+                    result.IsRefusal ? "refused" : "success",
+                    Stopwatch.GetElapsedTime(started));
+
                 return result;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                ChatMetrics.RecordSheetQuery(measured, outcome: "cancelled", Stopwatch.GetElapsedTime(started));
+
                 // The turn is being torn down; let cancellation stay cancellation rather than turning it
                 // into a tool error the model would try to work around.
                 throw;
             }
             catch (Exception ex) when (ex is OperationCanceledException or SqlException { Number: SqlTimeoutError })
             {
+                ChatMetrics.RecordSheetQuery(measured, outcome: "timed-out", Stopwatch.GetElapsedTime(started));
+
                 // Either the deadline above or the statement's own command timeout, whichever came first.
                 // Reported to the model rather than thrown at the turn, because a query that took too long
                 // is something the user can be told.
@@ -155,6 +176,8 @@ public static class SheetQueryTool
             }
             catch (Exception ex)
             {
+                ChatMetrics.RecordSheetQuery(measured, outcome: "error", Stopwatch.GetElapsedTime(started));
+
                 // Function invocation is configured with detailed errors, so whatever is thrown here is
                 // handed to the model verbatim. The real exception goes to the log; the model gets a
                 // sentence it can act on and nothing about the database behind it.

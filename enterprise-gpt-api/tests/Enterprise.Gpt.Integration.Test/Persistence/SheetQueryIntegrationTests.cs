@@ -5,7 +5,6 @@ using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Tool;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Persistence;
@@ -312,6 +311,9 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         Assert.Equal(3, result.Rows!.Count);
         Assert.Equal(10, result.MatchedRowCount);
         Assert.True(result.Truncated);
+
+        // A trimmed result explains itself in Note, which is not the same fact as a refusal.
+        Assert.False(result.IsRefusal);
     }
 
     [Fact]
@@ -663,7 +665,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
 
         var service = new SheetQueryService(
             NullLogger<SheetQueryService>.Instance,
-            Options.Create(options ?? new SheetQueryOptions()),
+            new FakeSheetQueryOptionsProvider(options),
             container.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>());
 
         return await service.QueryAsync(

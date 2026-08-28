@@ -455,6 +455,12 @@ builder.Services.AddOptions<SheetQueryOptions>()
         "SheetQuery:ToolTimeoutSeconds must be at least SheetQuery:TimeoutSeconds.")
     .ValidateOnStart();
 
+// Read through this rather than IOptions, so switching the tool off reaches the next turn instead of
+// the next restart — where the setting arrives from a reloading file provider, since an environment
+// variable emits no change token. Singleton, because its consumers are scoped and could not otherwise
+// keep the last configuration that validated.
+builder.Services.AddSingleton<ISheetQueryOptionsProvider, SheetQueryOptionsProvider>();
+
 // Conversation export. DisabledFormats is validated against the tokens the route actually accepts,
 // so a typo withdraws nothing silently and instead fails the app at start, the same bargain
 // PermissionEndpointFilter.Require makes with a bad permission id.
@@ -713,6 +719,10 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies());
 
 var app = builder.Build();
+
+// Built now rather than on the first chat request: it validates the section as it constructs, and a
+// lazily-built singleton would turn a bad edit made after start into a 500 on every turn instead.
+app.Services.GetRequiredService<ISheetQueryOptionsProvider>();
 
 // Skipped in the "Testing" environment: integration tests create the schema themselves
 // via EnsureCreated (an ungated Migrate() would leave a DB with only __EFMigrationsHistory,

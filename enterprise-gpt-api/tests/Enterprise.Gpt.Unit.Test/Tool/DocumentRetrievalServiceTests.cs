@@ -723,6 +723,71 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
     #endregion
 
+    #region Row-window corpora
+
+    /// <summary>
+    /// A workbook is one document however many row windows it was chunked into, so the per-document cap
+    /// is what stops a header-repeating corpus crowding prose out of a mixed result set.
+    /// </summary>
+    [Fact]
+    public void SelectHits_EveryRowWindowOfAWorkbookMatching_StillLeavesRoomForProse()
+    {
+        var workbook = Guid.NewGuid();
+        var handbook = Guid.NewGuid();
+
+        List<ChunkCandidate> dense =
+        [
+            .. Enumerable.Range(0, 12)
+                .Select(i => Dense(new ChunkKey(workbook, DocumentSource.Conversation, i), 0.10 + (i * 0.001))),
+            Dense(new ChunkKey(handbook, DocumentSource.Conversation, 0), 0.30)
+        ];
+
+        var selected = CreateService().SelectHits(dense, [], termCount: 0);
+
+        Assert.Equal(_options.MaxPassagesPerDocument, selected.Count(s => s.Key.DocumentId == workbook));
+        Assert.Single(selected, s => s.Key.DocumentId == handbook);
+    }
+
+    /// <summary>
+    /// The gate is disjunctive, so lowering the distance threshold does not hold row windows back: they
+    /// are full of identifiers and enter through the keyword arm, which has no distance to test.
+    /// </summary>
+    [Fact]
+    public void SelectHits_RowWindowMatchedByKeyword_SurvivesHoweverTightTheDistanceGateIs()
+    {
+        _options.MaxDistance = 0.01;
+        var window = NewKey(index: 4);
+
+        var selected = CreateService().SelectHits([], [Lexical(window, matchCount: 2)], termCount: 2);
+
+        Assert.Equal([window], selected.Select(s => s.Key));
+    }
+
+    /// <summary>
+    /// Two adjacent row windows share their opening prefix, not a tail-to-head seam, so the merger has
+    /// nothing to strip and the header is replayed once per window inside one passage — the real cost a
+    /// row-window corpus imposes, and it is charged to the result token budget rather than to recall.
+    /// </summary>
+    [Fact]
+    public void BuildPassages_AdjacentRowWindows_ReplayTheHeaderOncePerWindow()
+    {
+        const string Header = "Sheet: Regional Revenue\nSKU | Region | Revenue";
+        var documentId = Guid.NewGuid();
+        var scope = ScopeWith(documentId, "budget.xlsx");
+        ScoredChunk[] hits = [new(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0)];
+        ChunkText[] chunks =
+        [
+            Chunk(documentId, 0, $"{Header}\nW-1 | East | 1200", page: null, distance: 0.2),
+            Chunk(documentId, 1, $"{Header}\nW-2 | West | 900", page: null, distance: 0.3)
+        ];
+
+        var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks));
+
+        Assert.Equal(2, passage.Text.Split(Header).Length - 1);
+    }
+
+    #endregion
+
     #region Token budget
 
     [Fact]

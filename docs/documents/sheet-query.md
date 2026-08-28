@@ -226,6 +226,18 @@ The tool reports progress through the same ambient `ChatProgress` reporter every
 
 `SheetQueryTool`'s invoker distinguishes three outcomes. A turn cancellation (`OperationCanceledException` matching the *caller's own* token) is rethrown as cancellation, never turned into a tool error the model would try to work around. A deadline elapsing — either the tool's own `ToolTimeoutSeconds` budget or a SQL command timeout (`SqlException` with error number `-2`) — is logged and replaced with a fixed sentence telling the model the spreadsheet was too large for that question and to offer a narrower one. Anything else is logged with the real exception and replaced with a generic, sanitized failure — nothing about the database ever reaches the model.
 
+### 7.3 Telemetry
+
+[`ChatMetrics.RecordSheetQuery`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs) adds one instrument to the existing `Meter`, recorded once per invocation from the same invoker §7.2 describes — the grain is the whole call the model waited on, not a SQL statement inside it:
+
+| Instrument | Kind | Tags |
+|---|---|---|
+| `enterprise_gpt.sheet_query.duration` | Histogram (seconds) | `sheet_query.operation` ∈ {`sum`, `avg`, `min`, `max`, `count`, `filter`, `unknown`}, `sheet_query.outcome` ∈ {`success`, `refused`, `timed-out`, `error`, `cancelled`} |
+
+Two things about the tags are load-bearing rather than incidental. **`sheet_query.operation` is always the parsed `SheetQueryOperation`** (`unknown` when the request named none `SheetQueryService.TryParseOperation` recognises) — never `SheetQueryResult.Operation`, which echoes the model's own request text back unvalidated (§3.6) and would put an unbounded, model-authored string on a metric dimension. **`sheet_query.outcome`'s `refused` is read off a new `SheetQueryResult.IsRefusal` flag, not off `Note`** — a query that ran perfectly well also carries a `Note` when it matched no rows, hit a cap, or read a column whose values disagreed with its sampled type (§6), so `Note` alone cannot tell a refusal from a successful, qualified answer. `IsRefusal` is `[JsonIgnore]`d and never reaches the model.
+
+No dimension carries a sheet name, a column name, a cell value, a document identity, a conversation id or a user id — the same posture the rest of this application's telemetry holds to. See [Observability: Request Logging and Application Insights §7.3](../observability/request-logging.md#73-llm-spans-and-token-metrics) for the full instrument inventory, including the ingestion-side counterparts this feature also added.
+
 ## 8. The model-facing prompt
 
 When the tool is attached, [`sheet-query-tool-prompt.md`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/sheet-query-tool-prompt.md) is rendered by [`ConversationPrompts.BuildSheetQueryToolPrompt`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/ConversationPrompts.cs) and appended to `ChatOptions.Instructions` alongside the retrieval prompt. It is a composite format string — `{0}` the sheet tool's name, `{1}` the attached spreadsheets, `{2}` the retrieval tool's name — and names the spreadsheets again even though the retrieval prompt already lists every attached file, because a model that cannot tell which files are *computable* falls back to adding up figures it read in a passage.
@@ -255,7 +267,7 @@ The `SheetQuery` section binds to [`SheetQueryOptions`](../../enterprise-gpt-api
 
 | Key | Default | Range | Meaning |
 |---|---|---|---|
-| `Enabled` | `false` | — | Whether the tool is ever attached to a turn. Off by default in every environment, including development — flipping it takes effect on the next turn with no redeploy, and affects nothing about upload, extraction, chunking or `document_search` |
+| `Enabled` | `false` | — | Whether the tool is ever attached to a turn. Off by default in every environment, including development, and affects nothing about upload, extraction, chunking or `document_search` either way — see §10 for exactly how, and how quickly, a flip reaches a running deployment |
 | `MaxResultRows` | `50` | 1 … 500 | Most rows a `filter` result may return, via `TOP (@maxRows)` |
 | `MaxResultCharacters` | `20,000` | 1,000 … 200,000 | Cap on the total cell text of one `filter` result. `MaxResultRows` bounds row *count*, not row *width* — a wide sheet's fifty rows can still be tens of thousands of characters competing with the answer for the model's context window. At least one row always survives this budget, so a single very wide row is shown rather than the result silently becoming empty |
 | `MaxGroups` | `200` | 1 … 2,000 | Most distinct groups a grouped aggregate returns, via `TOP (@maxGroups)` |
@@ -265,7 +277,41 @@ The `SheetQuery` section binds to [`SheetQueryOptions`](../../enterprise-gpt-api
 
 A filter's own **comparison value** carries a second, non-configurable bound: it is refused outright past 1,999 characters, because the bound `nvarchar` parameter behind every text comparison is sized at 4,000 characters and a substring match needs headroom for escaping plus two wildcard characters — silently truncating a value would turn a substring match into a prefix match without telling the model.
 
-## 10. Testing
+## 10. Rollback
+
+`SheetQuery:Enabled` is the entire rollback path, the same shape [`Summarization:Enabled` is for `document_summarize`](../summarization/tool-integration.md#7-governance-and-the-known-gap). With it `false`, the tool is never attached to any turn, so the model cannot discover or call it, and nothing about it costs anything. This section exists because that promise once did not hold: both `SheetQueryOptions.Enabled`'s own remark and this document's `Enabled` row (§9) used to claim flipping it "takes effect on the next turn with no redeploy," and it did not — `ConversationService` and `SheetQueryService` both resolved `IOptions<SheetQueryOptions>`, which is bound once from a singleton at startup, so the switch needed a restart like any other setting with no rollback story at all. What follows is what shipped to close that gap: not a corrected claim, but a true one.
+
+### 10.1 What changed
+
+[`ISheetQueryOptionsProvider`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/SheetQueryOptionsProvider.cs) is a singleton that rebuilds `SheetQueryOptions` through the registered `IOptionsFactory<SheetQueryOptions>` — the same construction and validation `Program.cs`'s `AddOptions<SheetQueryOptions>()` pipeline already runs — every time the bound `SheetQuery` configuration section signals a reload, and it keeps serving the **last configuration that validated** whenever a reload does not. `ConversationService` and `SheetQueryService`, both request-scoped, now read `.Current` in their constructors instead of `IOptions<SheetQueryOptions>.Value`, so one turn sees one consistent snapshot for its whole duration and the next turn sees whatever is current by the time it starts. `Program.cs` resolves the provider once, eagerly, right after `builder.Build()` — deliberately not on the first chat request — so a bad `SheetQuery` section fails the deploy at startup exactly as `ValidateOnStart` already does, rather than turning into a 500 on the first turn that needs it.
+
+### 10.2 Why not `IOptionsMonitor<SheetQueryOptions>`
+
+The obvious alternative — resolving `IOptionsMonitor<SheetQueryOptions>` and reading `.CurrentValue` — was rejected on purpose, and this is the reason the type's own remarks point here. In .NET 10, `OptionsMonitor<T>.InvokeChanged` calls `Get(name)` unconditionally whenever the section's change-token source fires, whether or not anything has actually subscribed to `OnChange` — merely *resolving* an `IOptionsMonitor<SheetQueryOptions>` anywhere is enough to wire this up. That call re-runs the full validation pipeline, and a value that fails it throws `OptionsValidationException` **on the configuration provider's own change-token callback thread**, where no application code is on the call stack to catch it. A typo in a configuration file nobody has even redeployed yet would surface as an unhandled exception in a background thread rather than as an edit the application quietly kept ignoring. `ISheetQueryOptionsProvider` reaches the same `IOptionsFactory<SheetQueryOptions>` an `IOptionsMonitor` uses internally, but wraps its own rebuild in a `try`/`catch` and logs a rejected reload instead of throwing from a callback nothing owns.
+
+### 10.3 What actually reaches the next turn — and what still needs a restart
+
+Only a **reloading file configuration provider** emits a change token `ISheetQueryOptionsProvider` can act on — in this application, `appsettings.json`, which `WebApplication.CreateBuilder` already wires with `reloadOnChange: true`. Editing that file on a running deployment reaches the next turn started after the edit, with nothing redeployed and nothing restarted.
+
+An **environment variable** — how a container's env var or an Azure App Service Application Setting actually arrives in a deployed environment — emits **no change token at all**, so the provider has nothing to rebuild from there. This does not cost the rollback its "no redeploy" guarantee in practice: changing an App Service Application Setting restarts the app on its own, and a container env var needs a new container regardless of anything this feature does. Either route needs no **redeploy** — only the file-provider route is also restart-free.
+
+### 10.4 What flipping the switch does not touch
+
+`SheetQueryOptions` is read in exactly three files in the whole application: `ConversationService`, `SheetQueryService`, and `Program.cs`'s own DI registration. No ingest path, no extractor, no migration, and no table reads this flag. Upload, extraction, chunking, storage and `document_search` over spreadsheet content behave identically whichever way it is set, in both directions of a flip, and every already-ingested sheet, column and row is untouched.
+
+### 10.5 Rehearsing it
+
+1. Set `SheetQuery:Enabled` to `true` (through a reloading file source, per §10.3) and take a turn in a conversation with an ingested spreadsheet. Confirm `sheet_query` attaches — the tool-call activity names it, or the answer is one only a computed lookup could have produced.
+2. Set it back to `false` and take another turn in the same conversation. Confirm `sheet_query` no longer attaches, while `document_search` still answers questions over the same workbook's content.
+3. Confirm the row count in `Core.ConversationDocumentSheetRow` for that workbook is the same before and after both flips — the flag never touches ingested data, and this is the check that proves it rather than assumes it.
+
+[`SheetQueryOptionsProviderTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsProviderTests.cs) covers the same rehearsal in code: a reload turning the switch on and back off, a reload carrying an invalid value being logged and ignored rather than applied, a corrected file recovering on its own once reloaded again, and disposal stopping the provider from following further reloads.
+
+### 10.6 A deliberately stricter default than `Summarization:Enabled`
+
+`Summarization:Enabled`'s property defaults to `false` in code, but the committed `appsettings.json` sets it to `true` for development — an environment's own choice, not a rule. `SheetQuery:Enabled` is `false` in **both** the class default and the committed file, on purpose: a deployment gets `sheet_query` only by asking for it, in every environment including development. [`SheetQueryOptionsTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsTests.cs) pins both halves of that — `Bind_TheShippedConfiguration_LeavesTheToolSwitchedOff` and `Bind_NoConfigurationAtAll_LeavesTheToolDisabled`.
+
+## 11. Testing
 
 The same split [Document Retrieval §12](retrieval.md#12-testing) documents for `document_search` applies here, for the identical reason: SQLite has no type mapping for the native `json` column any more than it does for `vector`.
 
@@ -277,6 +323,9 @@ Sheet and column resolution, refusal shapes, JSON-path rendering and rejection, 
 | [`SheetQueryServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/SheetQueryServiceTests.cs) | Sheet matching (exact, prefix, substring, ambiguous, unknown, the sole-sheet omission shortcut); column resolution and its refusal shape; `TryBuildJsonPath` accepting an ordinary name and refusing a quote/backslash/control character; filter parsing and validation (operation, comparator, filter count, value length, type coercion per `SheetColumnType`); the result shaping for an aggregate, a grouped aggregate, and a filter listing |
 | [`SheetQueryToolTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/SheetQueryToolTests.cs) | The tool name and its MCP-attribution rationale; the declared argument schema (`operation` the only required argument, `CancellationToken` not exposed); the turn's own scope reaching the service rather than anything from the arguments; filter objects reaching the service as supplied rather than as text; a query failure replaced with a safe message; the tool's own deadline elapsing reported to the model rather than failing the turn; cancellation staying cancellation |
 | `ConversationServiceTests.cs` (`#region Sheet query tool`) | Every row of §7's table: attaching beside retrieval when enabled with a queryable spreadsheet; the prompt naming the spreadsheets and when to prefer the tool; staying detached when disabled, when no spreadsheet is in scope, when no documents are in scope at all, when a spreadsheet has no ingested sheet, when the queryable-sheet check itself fails, on a non-tool-enabled model, when retrieval has stood down, and on an MCP name collision |
+| [`SheetQueryOptionsProviderTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsProviderTests.cs) | §10's rollback path, against the real options pipeline minus `ValidateOnStart`: the switch turning on and back off across a reload, an invalid reload logged and ignored while the last valid configuration keeps serving, a corrected file recovering on its own, and disposal releasing the change-token registration |
+| [`SheetQueryOptionsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings/SheetQueryOptionsTests.cs) | The shipped configuration validating and leaving the tool off; every numeric bound rejecting a value outside its range; the `ToolTimeoutSeconds >= TimeoutSeconds` cross-field rule; every settable bound carrying a `[Range]` |
+| [`ChatMetricsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Observability/ChatMetricsTests.cs) | `RecordSheetQuery` tagging the parsed operation and the outcome (§7.3), and the instrument carrying no dimension beyond those two |
 
 **Anything that actually executes `JSON_VALUE`/`OPENJSON` against the native `json` column has no unit coverage and cannot have any** — the same SQLite limitation [Document Retrieval §12](retrieval.md#12-testing) documents for the `vector` column applies here. Those statements are exercised only by [`SheetQueryIntegrationTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/SheetQueryIntegrationTests.cs) against a Testcontainers **SQL Server 2025** instance, seeded through [`SeedSheet`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/SeedSheet.cs). Those 39 tests include the PRD's fixed 20-query benchmark — every `sum`/`avg`/`min`/`max`/`count`, a grouped case and a filtered case, each checked against a hand-computed expected value — plus numeric/date/boolean comparison correctness, the group-separator strip, the time-only anchor, row and group truncation at their caps, the character budget (including the "one row always survives" rule), empty cells omitted rather than blank, and no matching rows returning an explicit empty result rather than an error.
 
@@ -286,7 +335,7 @@ dotnet test --filter "Category!=Integration"   # unit only
 dotnet test                                    # everything; Docker must be running
 ```
 
-## 11. Known limits
+## 12. Known limits
 
 - **One aggregate operation and one optional single-column grouping.** No multi-column `GROUP BY`, no joins across sheets, no window functions. A workbook-wide join or a multi-dimensional pivot is out of scope.
 - **A text comparison is bounded at 4,000 characters by its bound parameter**, and a filter value longer than 1,999 characters is refused outright before it reaches a statement (§9).
@@ -295,7 +344,7 @@ dotnet test                                    # everything; Docker must be runn
 - **No reranking, no cost governance beyond the existing per-turn tool-call bound.** `sheet_query` costs no embedding call and no model call of its own, so `MaximumIterationsPerRequest = 5` already bounds how many times a turn can call it.
 - **Results are not persisted.** Only the model's prose answer reaches the Cosmos transcript ([Document Retrieval §11.3](retrieval.md#113-cost-and-latency-are-per-search-not-per-turn)); reopening a conversation shows the answer, not the figures that produced it.
 
-## 12. Key files
+## 13. Key files
 
 | Concern | File |
 |---|---|
@@ -304,10 +353,12 @@ dotnet test                                    # everything; Docker must be runn
 | Tool surface | [`Enterprise.Gpt.Service/Tool/SheetQueryTool.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Tool/SheetQueryTool.cs) |
 | Contract shapes | [`Enterprise.Gpt.Service/Tool/SheetQueryModels.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Tool/SheetQueryModels.cs) |
 | Options | [`Enterprise.Gpt.Service/Settings/SheetQueryOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/SheetQueryOptions.cs) |
+| Rollback (§10) | [`Enterprise.Gpt.Service/Settings/SheetQueryOptionsProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Settings/SheetQueryOptionsProvider.cs) |
+| Telemetry (§7.3) | [`Enterprise.Gpt.Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs) — `RecordSheetQuery` |
 | Model-facing prompt | [`Enterprise.Gpt.Service/Prompts/sheet-query-tool-prompt.md`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/sheet-query-tool-prompt.md), [`ConversationPrompts.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/ConversationPrompts.cs) |
 | Attachment per turn | [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) — `CreateChatOptionsAsync`, `attachSheetQueryTool` |
 | The scope and citation this tool reuses | [Document Retrieval (RAG)](retrieval.md) — `DocumentRetrievalScope`, `BuildCitation`, `SpreadsheetExtensions` |
 | The sibling tool it stands beside | [Document Summarization: Tool, Persistence and Billing](../summarization/tool-integration.md) — `document_summarize` |
 | The sheet/column/row tables this tool reads | [Document Upload and Ingestion §10.3](upload-workflow.md#103-coreconversationprojectdocumentsheetcolumnrow) |
 | DI + options validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
-| Tests | [`Unit.Test/Tool/SheetQuery*Tests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool), [`Unit.Test/Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs), [`Integration.Test/Persistence/SheetQueryIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/SheetQueryIntegrationTests.cs), [`TestInfrastructure/SeedSheet.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/SeedSheet.cs) |
+| Tests | [`Unit.Test/Tool/SheetQuery*Tests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool), [`Unit.Test/Settings/SheetQueryOptions*Tests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Settings), [`Unit.Test/Observability/ChatMetricsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Observability/ChatMetricsTests.cs), [`Unit.Test/Services/ConversationServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ConversationServiceTests.cs), [`Integration.Test/Persistence/SheetQueryIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/SheetQueryIntegrationTests.cs), [`TestInfrastructure/SeedSheet.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/SeedSheet.cs) |
