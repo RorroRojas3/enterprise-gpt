@@ -177,15 +177,17 @@ This matters more than a mislabelled download, because the value is **signed int
 
 | Extension | Content type |
 |---|---|
+| `.csv` | `text/csv` |
 | `.doc` | `application/msword` |
 | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
 | `.md` | `text/markdown` |
 | `.pdf` | `application/pdf` |
 | `.pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` |
 | `.txt` | `text/plain` |
+| `.xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
 | anything else | `application/octet-stream` |
 
-Falling back to a byte stream is safe rather than a degradation: every link is an `attachment`, so the type only decides which application opens the saved file. The map is a `FrozenDictionary` with an ordinal-ignore-case comparer, and it covers the six formats ingestion accepts — an extension outside that set can only exist on a row that predates the current validator.
+Falling back to a byte stream is safe rather than a degradation: every link is an `attachment`, so the type only decides which application opens the saved file. The map is a `FrozenDictionary` with an ordinal-ignore-case comparer, and it covers the eight formats ingestion accepts — an extension outside that set can only exist on a row that predates the current validator.
 
 ### 4.4 Lifetime
 

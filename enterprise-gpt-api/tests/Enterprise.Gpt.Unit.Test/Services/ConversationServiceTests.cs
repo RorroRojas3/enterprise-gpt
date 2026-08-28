@@ -49,6 +49,7 @@ public sealed class ConversationServiceTests : IDisposable
     private readonly IMarkdownRenderer _markdownRenderer = Substitute.For<IMarkdownRenderer>();
     private readonly IDocumentSummaryService _documentSummaryService = Substitute.For<IDocumentSummaryService>();
     private readonly IUserGrantReader _userGrantReader = Substitute.For<IUserGrantReader>();
+    private readonly ISheetQueryService _sheetQueryService = Substitute.For<ISheetQueryService>();
     private readonly FakeChatClient _chatClient = new();
     private readonly IChatClient _trackedChatClient;
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
@@ -98,6 +99,12 @@ public sealed class ConversationServiceTests : IDisposable
             .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid> { PermissionIds.UploadFile });
 
+        // Sheets present by default, so a test that switches the sheet query on is testing the switch
+        // rather than whether the workbook was ever ingested.
+        _sheetQueryService
+            .HasQueryableSheetsAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+
         _service = new ConversationService(
             NullLogger<ConversationService>.Instance,
             _modelService,
@@ -119,6 +126,8 @@ public sealed class ConversationServiceTests : IDisposable
             _documentSummaryService,
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
+            _sheetQueryService,
+            new FakeSheetQueryOptionsProvider(),
             _fixture.Context);
     }
 
@@ -149,6 +158,8 @@ public sealed class ConversationServiceTests : IDisposable
             _documentSummaryService,
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
+            _sheetQueryService,
+            new FakeSheetQueryOptionsProvider(),
             _fixture.Context);
 
     /// <summary>
@@ -177,6 +188,37 @@ public sealed class ConversationServiceTests : IDisposable
             summaryService ?? _documentSummaryService,
             _userGrantReader,
             Options.Create(options ?? new SummarizationOptions { Enabled = true }),
+            _sheetQueryService,
+            new FakeSheetQueryOptionsProvider(),
+            _fixture.Context);
+
+    /// <summary>
+    /// Builds a service with the sheet query switched on. Options are captured at construction, so a
+    /// test that wants the tool cannot reuse the shared instance.
+    /// </summary>
+    private ConversationService CreateServiceWithSheetQueryTool(ISheetQueryOptionsProvider? options = null) =>
+        new(NullLogger<ConversationService>.Instance,
+            _modelService,
+            _chatClientResolver,
+            _mcpToolProvider,
+            _documentRetrievalService,
+            _lockService,
+            _tokenService,
+            _transcriptStore,
+            _tokenEstimatorResolver,
+            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            _markdownRenderer,
+            new CreateConversationActionDtoValidator(),
+            new CreateConversationStreamActionDtoValidator(),
+            new DeactivateConversationsBulkActionDtoValidator(),
+            new UpdateConversationActionDtoValidator(),
+            new SetMessageFeedbackActionDtoValidator(),
+            Options.Create(new WeatherToolOptions()),
+            _documentSummaryService,
+            _userGrantReader,
+            Options.Create(new SummarizationOptions()),
+            _sheetQueryService,
+            options ?? new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
             _fixture.Context);
 
     public void Dispose()
@@ -1246,6 +1288,248 @@ public sealed class ConversationServiceTests : IDisposable
         var tools = _chatClient.CapturedOptions?.Tools;
         Assert.NotNull(tools);
         Assert.Single(tools, t => t.Name == DocumentSummaryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+    #endregion
+
+    #region Sheet query tool
+    [Fact]
+    public async Task StreamConversationAsync_SheetQueryEnabledWithASpreadsheet_AttachesTheToolBesideRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Contains(tools, t => t.Name == SheetQueryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SheetQueryEnabled_NamesTheSpreadsheetsAndWhenToPreferItOverSearch()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx", "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        // A model that cannot tell which of the attached files are spreadsheets falls back to adding up
+        // figures it read in a passage.
+        var instructions = _chatClient.CapturedOptions?.Instructions;
+        Assert.NotNull(instructions);
+        Assert.Contains(SheetQueryTool.ToolName, instructions, StringComparison.Ordinal);
+        Assert.Contains(DocumentTool.ToolName, instructions, StringComparison.Ordinal);
+        Assert.Contains("- budget.xlsx", instructions, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The rollback: with the flag off the model cannot call the tool, so the feature costs nothing
+    /// whatever a user asks for, and everything else about a spreadsheet keeps working.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_SheetQueryDisabled_AttachesOnlyRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request);
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    /// <summary>
+    /// The other half of the rollback: the flag is read once per turn, so switching it off reaches the
+    /// next turn rather than the next restart.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_SheetQuerySwitchedOffBetweenTurns_StopsAttachingTheTool()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+        var options = new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true });
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool(options));
+
+        Assert.Contains(_chatClient.CapturedOptions?.Tools ?? [], t => t.Name == SheetQueryTool.ToolName);
+
+        options.Current = new SheetQueryOptions();
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool(options));
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SheetQueryEnabledWithNoSpreadsheet_AttachesOnlyRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        // A tool that is always present and always answers that there is nothing to query teaches the
+        // model to stop calling it.
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SheetQueryEnabledWithNoDocuments_AttachesNothing()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    /// <summary>
+    /// A file uploaded before the sheet tables existed has chunks and no rows, so naming it in the prompt
+    /// would advertise a workbook every call then denies exists.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_SpreadsheetWithNoIngestedSheet_AttachesOnlyRetrieval()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+
+        _sheetQueryService
+            .HasQueryableSheetsAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SheetLookupFails_RunsTheTurnWithoutTheSheetQuery()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+
+        _sheetQueryService
+            .HasQueryableSheetsAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<CancellationToken>())
+            .Returns<bool>(_ => throw new InvalidOperationException("boom"));
+
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        // Costs the tool, not the turn: a conversation that happens to hold a workbook must not become a
+        // new way for chat to fail.
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+    }
+
+    [Fact]
+    public async Task StreamConversationAsync_SheetQueryOnANonToolModel_RunsTheTurnWithoutIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: false);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        Assert.Null(_chatClient.CapturedOptions?.Tools);
+    }
+
+    /// <summary>
+    /// The sheet prompt names the retrieval tool and tells the model when to prefer one over the other,
+    /// so it cannot ship on a request retrieval itself is absent from.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_RetrievalStandsDown_TheSheetQueryStandsDownWithIt()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+
+        var server = await AddMcpServerAsync("Document");
+        SetUpLeaseSet(new FakeNamedTool(DocumentTool.ToolName), server);
+
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = server.Id }]
+        };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
+    }
+
+    /// <summary>
+    /// Two identically named functions on one request are rejected outright by OpenAI-shaped providers.
+    /// The user's explicit MCP selection wins; the sheet query is the implicit one.
+    /// </summary>
+    [Fact]
+    public async Task StreamConversationAsync_McpToolNamedLikeTheSheetQuery_StandsTheSheetQueryDown()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation.Id);
+        var model = SetUpModel(isToolEnabled: true);
+        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
+
+        var server = await AddMcpServerAsync("Sheet");
+        SetUpLeaseSet(new FakeNamedTool(SheetQueryTool.ToolName), server);
+
+        var request = new CreateConversationStreamActionDto
+        {
+            Prompt = "Hello",
+            ModelId = model.Id,
+            McpServers = [new McpServerSelectionDto { Id = server.Id }]
+        };
+
+        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
+
+        var tools = _chatClient.CapturedOptions?.Tools;
+        Assert.NotNull(tools);
+        Assert.Single(tools, t => t.Name == SheetQueryTool.ToolName);
         Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
     }
     #endregion

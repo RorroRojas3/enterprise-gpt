@@ -11,6 +11,7 @@ using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Prompts;
 using Enterprise.Gpt.Service.Tool;
+using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -517,10 +518,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
     /// <summary>
     /// Removes every project and conversation and, with them, every uploaded document and chunk. Called
-    /// per test for isolation. Deletes run in FK order (project chunks → project documents →
-    /// conversation chunks → conversation documents → message feedback → usage → conversations →
-    /// projects); conversations carry an optional foreign key to a project, so they have to go
-    /// before the projects do.
+    /// per test for isolation. Deletes run in FK order (summaries and sheets → project chunks →
+    /// project documents → conversation chunks → conversation documents → message feedback → usage →
+    /// conversations → projects); conversations carry an optional foreign key to a project, so they
+    /// have to go before the projects do.
     /// </summary>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetConversationsAndDocumentsAsync(CancellationToken cancellationToken = default)
@@ -531,6 +532,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         // Ahead of the documents they hang off, on the same terms as the chunks: the summary tables
         // carry a foreign key to their document with no cascade behind it.
         await ClearDocumentSummariesAsync(ctx, cancellationToken);
+        await ClearDocumentSheetsAsync(ctx, cancellationToken);
 
         await ctx.ProjectDocumentChunks.ExecuteDeleteAsync(cancellationToken);
         await ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
@@ -565,6 +567,23 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     {
         await ctx.ProjectDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes every ingested sheet, its columns and its rows, leaf first. Called from every reset
+    /// that deletes documents, because the chain hangs off them with no cascade behind it.
+    /// </summary>
+    /// <param name="ctx">The context to delete through.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    private static async Task ClearDocumentSheetsAsync(
+        EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
+    {
+        await ctx.ProjectDocumentSheetRows.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentSheetColumns.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentSheets.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSheetRows.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSheetColumns.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSheets.ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>
@@ -1012,6 +1031,188 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Inserts a sheet, with one column and one row, for an existing conversation document — so a
+    /// citation or a cascade can be arranged without running a whole workbook through ingestion.
+    /// </summary>
+    /// <param name="documentId">The document the sheet belongs to.</param>
+    /// <param name="sheetIndex">The sheet ordinal a chunk from it carries as its source number.</param>
+    /// <param name="sheetName">The sheet's name.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    public async Task AddConversationDocumentSheetAsync(
+        Guid documentId, int sheetIndex, string sheetName, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+
+        ctx.ConversationDocumentSheets.Add(new ConversationDocumentSheet
+        {
+            Id = Guid.NewGuid(),
+            ConversationDocumentId = documentId,
+            SheetIndex = sheetIndex,
+            SheetName = sheetName,
+            RowCount = 1,
+            ColumnCount = 1,
+            DateCreated = date,
+            DateModified = date,
+            Columns =
+            [
+                new ConversationDocumentSheetColumn
+                {
+                    Id = Guid.NewGuid(),
+                    ColumnIndex = 0,
+                    ColumnName = "SKU",
+                    InferredType = SheetColumnType.Text,
+                    DateCreated = date,
+                    DateModified = date
+                }
+            ],
+            Rows =
+            [
+                new ConversationDocumentSheetRow
+                {
+                    Id = Guid.NewGuid(),
+                    RowIndex = 0,
+                    Cells = """{"SKU":"W-1"}""",
+                    DateCreated = date,
+                    DateModified = date
+                }
+            ]
+        });
+
+        await ctx.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Inserts a fully specified sheet for an existing conversation document.
+    /// </summary>
+    /// <param name="documentId">The document the sheet belongs to.</param>
+    /// <param name="sheet">The sheet, its columns and its rows.</param>
+    /// <param name="deactivated">Whether the sheet is soft-deleted.</param>
+    /// <param name="rowsDeactivated">Whether every row is soft-deleted while the sheet is not.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted sheet.</returns>
+    public async Task<Guid> AddConversationDocumentSheetAsync(
+        Guid documentId,
+        SeedSheet sheet,
+        bool deactivated = false,
+        bool rowsDeactivated = false,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+
+        var row = new ConversationDocumentSheet
+        {
+            Id = Guid.NewGuid(),
+            ConversationDocumentId = documentId,
+            SheetIndex = sheet.SheetIndex,
+            SheetName = sheet.Name,
+            RowCount = sheet.Rows.Count,
+            ColumnCount = sheet.Columns.Count,
+            DateCreated = date,
+            DateModified = date,
+            DateDeactivated = deactivated ? date : null,
+            Columns =
+            [
+                .. sheet.Columns.Select((c, i) => new ConversationDocumentSheetColumn
+                {
+                    Id = Guid.NewGuid(),
+                    ColumnIndex = i,
+                    ColumnName = c.Name,
+                    InferredType = c.Type,
+                    DateCreated = date,
+                    DateModified = date,
+                    DateDeactivated = deactivated ? date : null
+                })
+            ],
+            Rows =
+            [
+                .. sheet.Rows.Select((cells, i) => new ConversationDocumentSheetRow
+                {
+                    Id = Guid.NewGuid(),
+                    RowIndex = i,
+                    Cells = SeedSheetCells(cells),
+                    DateCreated = date,
+                    DateModified = date,
+                    DateDeactivated = deactivated || rowsDeactivated ? date : null
+                })
+            ]
+        };
+
+        ctx.ConversationDocumentSheets.Add(row);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return row.Id;
+    }
+
+    /// <summary>
+    /// Inserts a fully specified sheet for an existing project document.
+    /// </summary>
+    /// <param name="documentId">The document the sheet belongs to.</param>
+    /// <param name="sheet">The sheet, its columns and its rows.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The id of the inserted sheet.</returns>
+    public async Task<Guid> AddProjectDocumentSheetAsync(
+        Guid documentId, SeedSheet sheet, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var date = DateTimeOffset.UtcNow;
+
+        var row = new ProjectDocumentSheet
+        {
+            Id = Guid.NewGuid(),
+            ProjectDocumentId = documentId,
+            SheetIndex = sheet.SheetIndex,
+            SheetName = sheet.Name,
+            RowCount = sheet.Rows.Count,
+            ColumnCount = sheet.Columns.Count,
+            DateCreated = date,
+            DateModified = date,
+            Columns =
+            [
+                .. sheet.Columns.Select((c, i) => new ProjectDocumentSheetColumn
+                {
+                    Id = Guid.NewGuid(),
+                    ColumnIndex = i,
+                    ColumnName = c.Name,
+                    InferredType = c.Type,
+                    DateCreated = date,
+                    DateModified = date
+                })
+            ],
+            Rows =
+            [
+                .. sheet.Rows.Select((cells, i) => new ProjectDocumentSheetRow
+                {
+                    Id = Guid.NewGuid(),
+                    RowIndex = i,
+                    Cells = SeedSheetCells(cells),
+                    DateCreated = date,
+                    DateModified = date
+                })
+            ]
+        };
+
+        ctx.ProjectDocumentSheets.Add(row);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return row.Id;
+    }
+
+    /// <summary>
+    /// Serializes one row's cells the way ingestion does — one string property per populated cell, and
+    /// nothing at all for an empty one.
+    /// </summary>
+    private static string SeedSheetCells(IReadOnlyDictionary<string, string> cells) =>
+        JsonSerializer.Serialize(cells.Where(c => c.Value.Length > 0).ToDictionary(c => c.Key, c => c.Value));
+
+    /// <summary>
     /// Inserts a project document and its chunks directly into the database, with embeddings the caller
     /// chooses, for arranging retrieval scenarios that span a project.
     /// </summary>
@@ -1149,6 +1350,27 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .AsNoTracking()
             .Where(x => x.ConversationDocumentId == documentId)
             .OrderBy(x => x.Index)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the persisted sheets of a document with their columns and rows, in workbook order.
+    /// </summary>
+    /// <param name="documentId">The document id.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked sheet entities.</returns>
+    public async Task<List<ConversationDocumentSheet>> FindDocumentSheetsAsync(
+        Guid documentId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ConversationDocumentSheets
+            .AsNoTracking()
+            .Include(x => x.Columns)
+            .Include(x => x.Rows)
+            .Where(x => x.ConversationDocumentId == documentId)
+            .OrderBy(x => x.SheetIndex)
             .ToListAsync(cancellationToken);
     }
 

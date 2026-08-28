@@ -207,6 +207,152 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.ToTable("ConversationDocumentChunk", "Core");
                 });
 
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<int>("ColumnCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ConversationDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SheetIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SheetName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationDocumentId", "SheetIndex")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("ConversationDocumentSheet", "Core");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheetColumn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<int>("ColumnIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ColumnName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid>("ConversationDocumentSheetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<int>("InferredType")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationDocumentSheetId", "ColumnIndex")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("ConversationDocumentSheetColumn", "Core");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheetRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<string>("Cells")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<Guid>("ConversationDocumentSheetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<int>("RowIndex")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationDocumentSheetId", "RowIndex")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("ConversationDocumentSheetRow", "Core");
+                });
+
             modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSummary", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1062,6 +1208,152 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.ToTable("ProjectDocumentChunk", "Core");
                 });
 
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<int>("ColumnCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<Guid>("ProjectDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SheetIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SheetName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectDocumentId", "SheetIndex")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("ProjectDocumentSheet", "Core");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheetColumn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<int>("ColumnIndex")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ColumnName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<int>("InferredType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ProjectDocumentSheetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectDocumentSheetId", "ColumnIndex")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("ProjectDocumentSheetColumn", "Core");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheetRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<string>("Cells")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<Guid>("ProjectDocumentSheetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RowIndex")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectDocumentSheetId", "RowIndex")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("ProjectDocumentSheetRow", "Core");
+                });
+
             modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSummary", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1359,6 +1651,39 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.Navigation("ConversationDocument");
                 });
 
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheet", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.ConversationDocument", "ConversationDocument")
+                        .WithMany("Sheets")
+                        .HasForeignKey("ConversationDocumentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ConversationDocument");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheetColumn", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.ConversationDocumentSheet", "ConversationDocumentSheet")
+                        .WithMany("Columns")
+                        .HasForeignKey("ConversationDocumentSheetId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ConversationDocumentSheet");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheetRow", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.ConversationDocumentSheet", "ConversationDocumentSheet")
+                        .WithMany("Rows")
+                        .HasForeignKey("ConversationDocumentSheetId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ConversationDocumentSheet");
+                });
+
             modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSummary", b =>
                 {
                     b.HasOne("Enterprise.Gpt.Entity.ConversationDocument", "ConversationDocument")
@@ -1607,6 +1932,39 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.Navigation("ProjectDocument");
                 });
 
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheet", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.ProjectDocument", "ProjectDocument")
+                        .WithMany("Sheets")
+                        .HasForeignKey("ProjectDocumentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ProjectDocument");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheetColumn", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.ProjectDocumentSheet", "ProjectDocumentSheet")
+                        .WithMany("Columns")
+                        .HasForeignKey("ProjectDocumentSheetId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ProjectDocumentSheet");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheetRow", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.ProjectDocumentSheet", "ProjectDocumentSheet")
+                        .WithMany("Rows")
+                        .HasForeignKey("ProjectDocumentSheetId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ProjectDocumentSheet");
+                });
+
             modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSummary", b =>
                 {
                     b.HasOne("Enterprise.Gpt.Entity.Model", "Model")
@@ -1671,6 +2029,15 @@ namespace Enterprise.Gpt.Repository.Migrations
             modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocument", b =>
                 {
                     b.Navigation("Chunks");
+
+                    b.Navigation("Sheets");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationDocumentSheet", b =>
+                {
+                    b.Navigation("Columns");
+
+                    b.Navigation("Rows");
                 });
 
             modelBuilder.Entity("Enterprise.Gpt.Entity.ConversationUsage", b =>
@@ -1707,6 +2074,15 @@ namespace Enterprise.Gpt.Repository.Migrations
             modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocument", b =>
                 {
                     b.Navigation("Chunks");
+
+                    b.Navigation("Sheets");
+                });
+
+            modelBuilder.Entity("Enterprise.Gpt.Entity.ProjectDocumentSheet", b =>
+                {
+                    b.Navigation("Columns");
+
+                    b.Navigation("Rows");
                 });
 
             modelBuilder.Entity("Enterprise.Gpt.Entity.User", b =>

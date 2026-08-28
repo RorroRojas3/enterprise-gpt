@@ -27,6 +27,12 @@ namespace Enterprise.Gpt.Repository
 
         public DbSet<ConversationDocumentSummary> ConversationDocumentSummaries { get; set; }
 
+        public DbSet<ConversationDocumentSheet> ConversationDocumentSheets { get; set; }
+
+        public DbSet<ConversationDocumentSheetColumn> ConversationDocumentSheetColumns { get; set; }
+
+        public DbSet<ConversationDocumentSheetRow> ConversationDocumentSheetRows { get; set; }
+
         public DbSet<Project> Projects { get; set; }
 
         public DbSet<ProjectDocument> ProjectDocuments { get; set; }
@@ -34,6 +40,12 @@ namespace Enterprise.Gpt.Repository
         public DbSet<ProjectDocumentChunk> ProjectDocumentChunks { get; set; }
 
         public DbSet<ProjectDocumentSummary> ProjectDocumentSummaries { get; set; }
+
+        public DbSet<ProjectDocumentSheet> ProjectDocumentSheets { get; set; }
+
+        public DbSet<ProjectDocumentSheetColumn> ProjectDocumentSheetColumns { get; set; }
+
+        public DbSet<ProjectDocumentSheetRow> ProjectDocumentSheetRows { get; set; }
 
         public DbSet<User> Users { get; set; }
 
@@ -62,10 +74,16 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new ConversationDocumentConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationDocumentChunkConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationDocumentSummaryConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationDocumentSheetConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationDocumentSheetColumnConfiguration());
+            modelBuilder.ApplyConfiguration(new ConversationDocumentSheetRowConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentChunkConfiguration());
             modelBuilder.ApplyConfiguration(new ProjectDocumentSummaryConfiguration());
+            modelBuilder.ApplyConfiguration(new ProjectDocumentSheetConfiguration());
+            modelBuilder.ApplyConfiguration(new ProjectDocumentSheetColumnConfiguration());
+            modelBuilder.ApplyConfiguration(new ProjectDocumentSheetRowConfiguration());
             modelBuilder.ApplyConfiguration(new MessageFeedbackConfiguration());
 
             // Configure global delete behavior

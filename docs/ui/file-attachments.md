@@ -28,7 +28,7 @@ Seven decisions shape everything here, and each looks removable until you know w
 4. **A 404 on the status route is `unknown`, not `failed`.** The server deliberately makes expired, evicted and another user's job indistinguishable, so the client does too — and says so in words that claim nothing (§3.5).
 5. **The signed download URL never lands anywhere.** Not in store state, not in `localStorage`, not in a router URL, not in a log. It is fetched at the click and gone when the function returns (§6).
 6. **`failed` and `unsupported` are separate chip states that look alike.** Only `failed` offers Retry, because re-posting a `.mov` produces the same refusal — the reasoning `canRetry` in `core/errors` already records. This is a deliberate departure from frame `4l` (§8).
-7. **The supported set is built from the endpoint, not from the board.** Frame `4l`'s example copy names XLSX and CSV, which the API does not accept, and omits PPTX, which it does. Nothing in the app quotes it (§8).
+7. **The supported set is built from the endpoint, not from the board.** Frame `4l`'s example copy names XLSX and CSV — both accepted today — and omits PPTX, which is also accepted. Nothing in the app quotes the board's string; it reads the deployment's actual list instead (§8).
 
 ### 1.1 Where each piece lives
 
@@ -209,7 +209,7 @@ A poll that fails for any *other* reason takes the same `unknown` state plus an 
 
 ### 3.6 The accepted extension list comes from the deployment
 
-`SupportedExtensionsStore` reads `GET api/documents/file-extensions`, which the server derives from its **registered extractors** rather than from configuration — so it cannot advertise a format nothing can parse. Today that is `.doc`, `.docx`, `.md`, `.pdf`, `.pptx`, `.txt`.
+`SupportedExtensionsStore` reads `GET api/documents/file-extensions`, which the server derives from its **registered extractors** rather than from configuration — so it cannot advertise a format nothing can parse. Today that is `.csv`, `.doc`, `.docx`, `.md`, `.pdf`, `.pptx`, `.txt`, `.xlsx`.
 
 Three behaviours worth knowing:
 
@@ -410,7 +410,7 @@ Four details make this safe rather than a place for a turn to get stuck:
 
 [`docs/design/`](../design/) is the visual authority and §9 of the [design system](design-system.md) gives the board the last word on everything but accessibility. EP-8 departs from frame `4l` twice, and both are recorded here because a departure nobody wrote down is drift.
 
-**1. The supported-formats copy comes from the API, not from the board.** Frame `4l`'s example chip reads `.mov isn’t supported — PDF, DOCX, XLSX, CSV, MD, TXT`. The API accepts neither XLSX nor CSV, and does accept PPTX, which the board omits. Rendering the board's string would tell a user that a spreadsheet would have worked. The app builds the string from `GET api/documents/file-extensions` instead, so it is right in every deployment including ones with different extractors registered. (The chip's *glyph* table stays wider than the accepted set on purpose — a `.xlsx` refused as unsupported should still look like a spreadsheet while it says so.)
+**1. The supported-formats copy comes from the API, not from the board.** Frame `4l`'s example chip reads `.mov isn’t supported — PDF, DOCX, XLSX, CSV, MD, TXT`. At the time this departure was written, the API accepted neither XLSX nor CSV, and did accept PPTX, which the board omits — rendering the board's string would have told a user that a spreadsheet would have worked. The app builds the string from `GET api/documents/file-extensions` instead, so it is right in every deployment including ones with different extractors registered, and needed no change when the API started accepting `.xlsx` and `.csv`: the board and the API now agree on those two, and PPTX is still the one accepted format the board's example string omits. (The chip's *glyph* table stays wider than the accepted set on purpose — a `.xlsx` refused as unsupported should still look like a spreadsheet while it says so; that fallback path now fires only for `.xls`, the one spreadsheet extension the table still glyphs but the API still refuses. `.xlsm` has no glyph entry of its own and draws the generic file icon.)
 
 **2. The `unsupported` chip carries no Retry, where the board draws one.** Re-posting a `.mov` produces the same refusal, so the control would be a button that cannot succeed — the reasoning `canRetry` in `core/errors` already records for `permission-required` and friends. US-802 ties Retry to `Failed`, and US-805 asks only that the unsupported chip name the extension and the supported set, so neither story's criteria are weakened. Retry stays on the `failed` arm, where a second attempt genuinely can succeed.
 

@@ -162,7 +162,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.PostAsync(
             $"api/documents/conversations/{conversationId}",
-            Upload("data.xlsx", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
+            Upload("macros.xlsm", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
             TestContext.Current.CancellationToken);
 
         var problem = await ProblemAssert.ReadValidationAsync(response);
@@ -354,6 +354,104 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
+    public async Task Upload_ExcelWorkbook_IsIngestedWithSheetNumbers()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var content = SpreadsheetFixture.CreateWorkbook(sheetCount: 3);
+
+        var job = await PostUploadAsync(client, conversationId,
+            Upload("budget.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.NotNull(status.DocumentId);
+
+        var document = await _fixture.FindDocumentAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.NotNull(document);
+        Assert.Equal(".xlsx", document.Extension);
+
+        var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.True(chunks.Count > 1);
+        Assert.All(chunks, chunk => Assert.True(chunk.SourceNumber is >= 1 and <= 3));
+        Assert.Contains(chunks, chunk => chunk.Text.Contains("SKU | Region | Revenue | Quarter", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Upload_ExcelWorkbook_PersistsEachSheetsColumnsAndRows()
+    {
+        // The only place the native json cells column is exercised: the unit-test fixture runs on SQLite,
+        // which derives its own store type for it.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var content = SpreadsheetFixture.CreateWorkbook(sheetCount: 2, rowsPerSheet: 5);
+
+        var job = await PostUploadAsync(client, conversationId,
+            Upload("budget.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.NotNull(status.DocumentId);
+
+        var sheets = await _fixture.FindDocumentSheetsAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+
+        Assert.Equal([1, 2], sheets.Select(s => s.SheetIndex));
+        Assert.Equal(["Region 1", "Region 2"], sheets.Select(s => s.SheetName));
+        Assert.All(sheets, sheet =>
+        {
+            Assert.Equal(5, sheet.RowCount);
+            Assert.Equal(4, sheet.ColumnCount);
+            Assert.Equal(
+                ["SKU", "Region", "Revenue", "Quarter"],
+                sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.ColumnName));
+            Assert.Equal([0, 1, 2, 3, 4], sheet.Rows.OrderBy(r => r.RowIndex).Select(r => r.RowIndex));
+        });
+
+        var first = sheets[0].Rows.Single(r => r.RowIndex == 0);
+        Assert.Equal("""{"SKU":"SKU-1-0001","Region":"West","Revenue":"137","Quarter":"Q2"}""", first.Cells);
+    }
+
+    [Fact]
+    public async Task Upload_CsvFile_PersistsOneSheetWithItsRows()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId,
+            Upload("orders.csv", SpreadsheetFixture.CreateCsv(rowCount: 4), "text/csv"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.NotNull(status.DocumentId);
+
+        var sheet = Assert.Single(await _fixture.FindDocumentSheetsAsync(status.DocumentId.Value, TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, sheet.SheetIndex);
+        Assert.Equal("orders", sheet.SheetName);
+        Assert.Equal(4, sheet.RowCount);
+        Assert.Equal(["SKU", "Region", "Revenue", "Quarter"], sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.ColumnName));
+    }
+
+    [Fact]
+    public async Task Upload_CsvFile_IsIngestedAsASingleSheet()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var job = await PostUploadAsync(client, conversationId,
+            Upload("orders.csv", SpreadsheetFixture.CreateCsv(), "text/csv"));
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+
+        Assert.Equal("Succeeded", status.State);
+        Assert.NotNull(status.DocumentId);
+
+        var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
+        Assert.True(chunks.Count > 1);
+        Assert.All(chunks, chunk => Assert.Equal(1, chunk.SourceNumber));
+        Assert.Contains(chunks, chunk => chunk.Text.Contains("SKU | Region | Revenue | Quarter", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Upload_FileWithoutReadableText_FailsTheJobWithAnExplanation()
     {
         // Whitespace passes the binary-content check but yields nothing to index.
@@ -425,7 +523,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.PostAsync(
             $"api/documents/projects/{projectId}",
-            Upload("data.xlsx", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
+            Upload("macros.xlsm", [0x50, 0x4B, 0x03, 0x04, 0x00, 0x00]),
             TestContext.Current.CancellationToken);
 
         var problem = await ProblemAssert.ReadValidationAsync(response);
@@ -939,7 +1037,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var extensions = await client.GetFromJsonAsync<List<string>>("api/documents/file-extensions", TestContext.Current.CancellationToken);
 
         Assert.NotNull(extensions);
-        Assert.Equal<string[]>([".doc", ".docx", ".md", ".pdf", ".pptx", ".txt"], [.. extensions.Order()]);
+        Assert.Equal<string[]>([".csv", ".doc", ".docx", ".md", ".pdf", ".pptx", ".txt", ".xlsx"], [.. extensions.Order()]);
     }
     #endregion
 }

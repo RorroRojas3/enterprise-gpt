@@ -24,6 +24,10 @@ namespace Enterprise.Gpt.Repository.Configurations
                 .WithOne(x => x.ConversationDocument)
                 .HasForeignKey(x => x.ConversationDocumentId);
 
+            builder.HasMany(x => x.Sheets)
+                .WithOne(x => x.ConversationDocument)
+                .HasForeignKey(x => x.ConversationDocumentId);
+
             // Serves the per-conversation listing: one conversation's documents, filtered to the
             // active ones.
             builder.HasIndex(x => new { x.ConversationId, x.DateDeactivated });

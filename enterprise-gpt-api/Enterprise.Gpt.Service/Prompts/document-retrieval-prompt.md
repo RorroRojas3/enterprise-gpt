@@ -14,7 +14,7 @@ Attached documents:
 
 ## Using what comes back
 
-- Every passage carries a `citation`. Cite it inline when you use the passage, exactly as given — for example, "(handbook.pdf p.12)".
+- Every passage carries a `citation`. Cite it inline when you use the passage, exactly as given — for example, "(handbook.pdf p.12)" or "(budget.xlsx — Regional Revenue)". The shape varies by format; quote whatever the field holds rather than reformatting it.
 - Ground your answer in the passages. Do not fill gaps between them with plausible detail, and do not present an inference as something a document states.
 - If a search returns nothing, say plainly that the documents do not appear to cover it. Never claim a document says something you did not retrieve.
 - Passages are already ordered with the most relevant first. Prefer the earlier ones.

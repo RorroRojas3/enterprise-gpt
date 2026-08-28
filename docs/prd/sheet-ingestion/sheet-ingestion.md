@@ -130,7 +130,7 @@ Elena is a finance analyst with a project that already holds a dozen PDFs. She u
 | The template to copy for `.xlsx` | `Enterprise.Gpt.Service/Extraction/PresentationTextExtractor.cs` — local OpenXml parse under a named exception filter (`OpenXmlPackageException`, `FileFormatException`, `InvalidDataException`, `XmlException`, `ArgumentOutOfRangeException`, `KeyNotFoundException`) → `ValidationException` → 400; `new MemoryStream(file.Content, writable: false)`; ordering from the document's own ordered list (`SlideIdList`, not part order — the workbook analogue is `WorkbookPart.Workbook.Sheets`, not `WorksheetParts`); one `progress?.Report` per unit |
 | The template to copy for BOM/encoding handling | `Enterprise.Gpt.Service/Extraction/PlainTextExtractor.cs` — `StreamReader` with `detectEncodingFromByteOrderMarks: true`, UTF-8 fallback, `ReplaceLineEndings("\n")` |
 | The package `.xlsx` needs — already referenced | `Enterprise.Gpt.Service/Enterprise.Gpt.Service.csproj:26` — `DocumentFormat.OpenXml` 3.5.1; its comment ("PowerPoint (.pptx) text extraction") is updated to also name spreadsheet extraction |
-| The package `.csv` needs — new dependency, decided | `Sylvan.Data.Csv` (MIT-licensed, zero dependencies, ~1.4.x latest at time of writing) rather than a hand-rolled RFC 4180 reader — a correct reader has to handle quoted multi-line fields, escaped quotes, and mixed encodings, and getting any of those wrong would silently corrupt data `sheet_query`'s aggregates depend on being right, for something the library already solves and tests |
+| The package `.csv` needs — new dependency, shipped | `CsvHelper` 33.1.0 (MS-PL/Apache-2.0 dual, zero package dependencies on net8.0+) rather than a hand-rolled RFC 4180 reader — a correct reader has to handle quoted multi-line fields, escaped quotes, and mixed encodings, and getting any of those wrong would silently corrupt data `sheet_query`'s aggregates depend on being right, for something the library already solves and tests. **One constraint this shipped with, worth carrying forward rather than re-deriving:** CsvHelper's own delimiter detector (`ConfigurationFunctions.GetDelimiter`) prefers the culture's list separator over the strongest candidate, so a semicolon-delimited European export whose decimal commas appear on every line would resolve to a comma and split silently into the wrong columns. `CsvTextExtractor` therefore resolves the delimiter itself across `,`, `;`, and tab, ranking candidates by the number of lines each is present on, then by total count |
 | The validator, and the exact arms to extend | `Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs:96-111` — `HasContentMatchingExtension`'s `switch`; `.Docx or .Pptx => StartsWith(content, _zipSignature)` gains `.Xlsx`, and `.Md or .Txt => !LooksBinary(content)` gains `.Csv`. The `_ => true` default is why this is load-bearing, not cosmetic — without the extension, either format would pass unvalidated |
 | Content-type map to extend | `Enterprise.Gpt.Service/DocumentService.cs:591-598` — the six-entry `FrozenDictionary` `_contentTypes`; `download-workflow.md` §4.3 states it "covers the six formats ingestion accepts," which becomes false once this ships (a documentation update for the technical-writer flow, not this PRD) |
 | Segment and chunk vocabulary | `Enterprise.Gpt.Dto/DocumentSegmentDto.cs` — *"a page for PDF and Word, a slide for PowerPoint, the whole file for plain text and Markdown"*; this PRD adds "a row window or a schema card, for a sheet." `TextChunkDto` (`Enterprise.Gpt.Dto/TextChunkDto.cs`) is unchanged |
@@ -171,6 +171,7 @@ Elena is a finance analyst with a project that already holds a dozen PDFs. She u
 **Scalability & performance.**
 
 - **Ingest-time ceilings are the real operational bound, not SQL Server's own hard caps.** `Sheets:MaxRowsPerSheet` (default 20,000) and `Sheets:MaxColumnsPerSheet` (default 200) are enforced by the extractor before any row is returned for persistence — refused outright, at zero storage cost, rather than truncated silently (a truncated sheet would make `sheet_query`'s aggregates quietly wrong).
+- **A third ceiling, `Sheets:MaxCharactersPerUpload` (default 8,000,000), shipped with US-501 and bounds what the row/column ceilings do not.** It caps the total cell text one upload may yield, shared-string table included, and at ×32 (floored at 256 KB) it also fixes how far a `.xlsx` package may inflate before it is opened at all — a workbook is a deflate archive, so `Documents:MaxFileSizeBytes` bounds nothing about what it expands into. This closed three reproducible unbounded-allocation vectors a code review found during Wave 1: a single row of 1,000,000 cells (239 MB peak heap → refused in 41 ms), a shared-string table of 5,000,000 entries (430 MB → refused), and a single 400,000,000-character element (unbounded → refused in 17 ms), plus the CSV equivalent of a 5,000,000-field row (1,411 MB → refused in 29 ms). US-201/US-202 must preserve this ceiling when they add row-window chunking on top of the same extractors.
 - **`sheet_query` costs no embedding call and no chat-model call of its own** — it is deterministic SQL executed synchronously inside the tool invocation, tracked as an ordinary `Function`-kind tool call exactly as `document_search` already is; no new `ConversationUsageKinds` value or billing mechanism is needed.
 - **A large row table (up to 20,000 rows × 200 columns) is scanned, not indexed, for an aggregate** — acceptable at this ceiling for the same reason `DocumentRetrievalSql`'s exact kNN scan is acceptable at its own scale (§8.1 of `retrieval.md`): the candidate set is always narrowed to one sheet, within one conversation or project, before any computation runs.
 - **`MaxDistance`'s single global threshold (`retrieval.md` §11.2) is a genuine risk, not a settled one.** Header-repeated row-window chunks change a corpus's distance profile relative to the prose the default was tuned against; EP-5's `US-502` re-validates rather than assumes the existing 0.62 default still holds.
@@ -199,7 +200,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Add `SpreadsheetTextExtractor` (`Enterprise.Gpt.Service/Extraction/SpreadsheetTextExtractor.cs`), registered as an `AddSingleton<IDocumentTextExtractor, SpreadsheetTextExtractor>()` beside the existing three in `Program.cs`, reading `.xlsx` locally with `DocumentFormat.OpenXml` and emitting one segment family per sheet ordered from `WorkbookPart.Workbook.Sheets` (not `WorksheetParts`). Extends `UploadedFileValidator`'s `_zipSignature` arm to cover `FileExtensions.Xlsx`. Unblocks US-102, US-103, US-201.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given the extractor is registered, when `GET api/documents/file-extensions` is called, then it reports `.xlsx` among its extensions, derived from the factory rather than hand-edited.
   - Given a multi-sheet workbook, when it is uploaded, then each sheet's `SourceNumber` in its produced segments is its 1-based ordinal position from `WorkbookPart.Workbook.Sheets`, mirroring how `PresentationTextExtractor` numbers slides from `SlideIdList`.
@@ -209,9 +210,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 #### US-102: `[enabler]` Register the `.csv` extractor
 
-- **Story**: `[enabler]` Add `CsvTextExtractor` (`Enterprise.Gpt.Service/Extraction/CsvTextExtractor.cs`), reading `.csv` via `Sylvan.Data.Csv`, with BOM detection matching `PlainTextExtractor`'s pattern and delimiter sniffing across comma, semicolon, and tab. Extends `UploadedFileValidator`'s `.Md or .Txt` no-NULs arm to also cover `FileExtensions.Csv`. Unblocks US-103, US-202.
+- **Story**: `[enabler]` Add `CsvTextExtractor` (`Enterprise.Gpt.Service/Extraction/CsvTextExtractor.cs`), reading `.csv` via `CsvHelper`, with BOM detection matching `PlainTextExtractor`'s pattern and delimiter sniffing across comma, semicolon, and tab. Extends `UploadedFileValidator`'s `.Md or .Txt` no-NULs arm to also cover `FileExtensions.Csv`. Unblocks US-103, US-202.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given the extractor is registered, when `GET api/documents/file-extensions` is called, then it reports `.csv` among its extensions.
   - Given a semicolon- or tab-delimited file with a `.csv` extension, when it is extracted, then its columns are recognized correctly rather than collapsed into one column.
@@ -223,11 +224,11 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Wrap both new extractors' parse logic in `PresentationTextExtractor`'s named exception-filter pattern (`OpenXmlPackageException`, `FileFormatException`, `InvalidDataException`, `XmlException`, `ArgumentOutOfRangeException`, `KeyNotFoundException` for `.xlsx`; a malformed-CSV equivalent for `.csv`), converting to a `ValidationException` → 400 rather than an opaque 500. Unblocks US-101 and US-102's own corrupt-input test cases.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-101, US-102
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given a truncated or corrupt `.xlsx` (built with a `WorkbookBuilder` test fixture mirroring `PresentationBuilder`), when it is uploaded, then extraction fails as a `ValidationException` naming the file as unreadable, not an unhandled exception.
   - Given a password-protected `.xlsx`, when it is uploaded, then it fails the same way rather than hanging or throwing an unfiltered exception.
-  - Given a `.csv` with malformed quoting Sylvan's reader rejects, when it is uploaded, then it fails as a `ValidationException` with the same shape.
+  - **Shipped behaviour differs from what this criterion originally asked for, deliberately — a policy change, not a gap.** It was written around `Sylvan.Data.Csv`'s rejection semantics for malformed quoting; `CsvHelper`'s equivalent default (`BadDataFound`) refuses the same stray quote in an unquoted field — `5" pipe`, `Bob "Bo" Smith` — which is ordinary in real-world exported CSVs, not a corrupt file. `CsvTextExtractor` clears `BadDataFound` so that cell keeps its raw text instead of failing the whole upload. The criterion as shipped: given a `.csv` containing an unquoted field with a stray quote, when it is uploaded, then extraction succeeds and the cell's raw text is preserved verbatim, rather than the upload being refused. A `.csv` that is genuinely unparseable (CsvHelper throws `CsvHelperException` for reasons other than `BadDataFound`, e.g. a malformed field count CsvHelper cannot recover from) still fails as a `ValidationException` with the same shape as the `.xlsx` cases above.
   - Given `DocumentService.ResolveContentType`, when its map is read after this story, then it also covers `.xlsx` (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`) and `.csv` (`text/csv`) alongside the six extensions it covers today.
 
 ### EP-2: Structure-aware chunking
@@ -235,8 +236,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-201: `[enabler]` Header-aware row windows for `.xlsx`
 
 - **Story**: `[enabler]` Extend `SpreadsheetTextExtractor` to pack each sheet's data rows into row-window segments: each window's text opens with a literal copy of the sheet's header row, followed by that window's own data rows (one per line, no blank line inside the window), sized via the injected `ITextChunker.CountTokens`/`MaxTokens` to target `Sheets:RowWindow:TargetTokenFraction` (default 0.75) of the chunker's own `MaxTokens`, capped at `Sheets:RowWindow:MaxRows` (default 50) rows per window regardless of token count. Unblocks US-203, US-204, US-501.
+  **Shipped with a fourth ceiling this PRD did not originally scope: `Sheets:MaxRowsPerUpload` (default 50,000).** §6's "Ingest-time ceilings" and §9's assumptions name only a per-sheet row ceiling and a per-sheet column ceiling; neither bounds how many *sheets* one workbook holds, so a hundred sheets each just under `MaxRowsPerSheet` would still turn into millions of rows landing in the one `SaveChangesAsync` that US-304 persists. `MaxRowsPerUpload` closes that gap at the workbook level, enforced in the same streaming pass as the per-sheet ceiling. A `.csv` is always a single sheet, so in practice only `.xlsx` can reach this ceiling before it reaches the per-sheet one.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-101
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a sheet with a header row and more data than fits one chunk, when it is chunked by the unmodified `TokenTextChunker`, then at least 95% of the produced chunks contain a literal copy of the header line — the PRD's own measured success criterion, not an assumption.
   - Given a row window's text, when it is inspected, then no single data row's cell text is split across two segments — verified by constructing a window whose combined text exceeds `MaxTokens` and confirming the chunker's own sentence-boundary fallback (which splits on `\n`) never separates a row's own cells from each other.
@@ -247,7 +249,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Apply the identical row-window shaping from US-201 inside `CsvTextExtractor`, treating the whole file as one sheet. Unblocks US-203, US-204, US-501.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-102, US-201
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a CSV with a header row and more data than fits one chunk, when it is chunked, then at least 95% of produced chunks contain the header line, matching US-201's own threshold.
   - Given the same file, when its row windows are compared to a `.xlsx` sheet's, then they follow the identical sizing rule (`Sheets:RowWindow:TargetTokenFraction`/`:MaxRows`) — one shared implementation, not a second one.
@@ -256,7 +258,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Emit one additional segment per sheet naming the sheet, its columns (in order), each column's inferred type, its total row count, and its first three data rows verbatim, so `document_search` can surface "what does this workbook contain" without reading every row window. Unblocks EP-4's sheet-resolution stories via a discoverable, human-legible sheet identity.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a sheet, when it is extracted, then exactly one schema-card segment is produced for it, distinguishable in content from its row windows.
   - Given the schema card's column-type inference, when it runs, then it examines a bounded sample of each column's non-empty cells and infers one of `Text`/`Number`/`Date`/`Boolean`, defaulting to `Text` on a mixed or empty column.
@@ -267,7 +269,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Change `DocumentRetrievalService`'s citation construction (`DocumentRetrievalService.cs:608-617`) so a chunk originating from a spreadsheet cites its sheet by name rather than reusing the `"{fileName} p.{page}"` format, which currently reads `budget.xlsx p.3` — a page number a sheet index is not.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a passage from a spreadsheet-origin chunk, when its citation is built, then it names the sheet (for example `"budget.xlsx — Regional Revenue"`) rather than `"budget.xlsx p.3"`.
   - Given a passage from a PDF or Word document, when its citation is built, then it is byte-for-byte unchanged from today — this story touches only the spreadsheet branch.
@@ -279,7 +281,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Add `BaseDocumentSheet`/`Core.ConversationDocumentSheet`/`Core.ProjectDocumentSheet` and `BaseDocumentSheetColumn`/`Core.ConversationDocumentSheetColumn`/`Core.ProjectDocumentSheetColumn`, plus the new `SheetColumnType` enum (`Text = 1, Number = 2, Date = 3, Boolean = 4`), mirroring `BaseDocumentSummary`'s split. Unblocks US-302, US-304.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: —
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the two sheet tables, when they are configured, then each carries a unique index on **(owning document id, `SheetIndex`)**, filtered `[DateDeactivated] IS NULL` — not a one-per-document unique index, since a document can hold many sheets.
   - Given the two column tables, when they are configured, then each carries a unique index on **(sheet id, `ColumnIndex`)**, filtered the same way.
@@ -289,30 +291,31 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-302: `[enabler]` Add the row table with its native `json` cells column
 
 - **Story**: `[enabler]` Add `BaseDocumentSheetRow`/`Core.ConversationDocumentSheetRow`/`Core.ProjectDocumentSheetRow`, whose `Cells` property is a `string` explicitly configured `.HasColumnType("json")`, holding one hand-serialized JSON object per row keyed by column name. Ship the one migration covering all six tables from this epic — the **fifteenth**, following `20260825224934_AddDocumentSummaries`. Unblocks US-303, US-304, EP-4.
+  **Shipped behaviour deviates from §6/§8's "exactly `ColumnCount` properties" wording, deliberately — a policy call made during implementation, not a gap.** The locked decision assumed every row would restate every column, including its empty cells. What shipped **omits an empty cell from `Cells` rather than writing it blank**, so a wide, sparse sheet's stored rows do not repeat every column name on every row that leaves most of them empty — cheaper to store and to read back, and a row's true column count is still recoverable from its own sheet and column rows, so nothing is lost. This trades exactness of *shape* for a real storage saving on the sheets `sheet_query` will actually see in practice.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-301
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the row table, when it is configured, then it carries a unique index on **(sheet id, `RowIndex`)**, filtered `[DateDeactivated] IS NULL`, and `Cells` is never part of any index key — supporting `sheet_query`'s lookups only ever happens through the sheet/column ordinal columns.
   - Given the migration, when it is generated against SQL Server 2025 at compatibility level 170, then `Cells` materializes as a native `json`-typed column, not `nvarchar(max)`.
   - Given the `json` type's preview status on SQL Server 2025 (GA only on Azure SQL Database/MI under the 2025 update policy), when this is deployed to a non-Azure-SQL SQL Server 2025 instance, then the risk is documented in this story's own implementation notes, with `HasColumnType("nvarchar(max)")` plus an `ISJSON` check constraint named as the fallback, scoped to `Cells` alone.
-  - Given a row whose sheet has `ColumnCount` columns, when its `Cells` JSON is built, then it carries exactly that many properties — always far below the 65,535-property and 32K-unique-key SQL Server JSON caps, by construction rather than by a runtime check.
+  - **Shipped as written above.** Given a row whose sheet has `ColumnCount` columns, when its `Cells` JSON is built, then it carries **at most** that many properties — one per populated cell, never one for an empty cell — always far below the 65,535-property and 32K-unique-key SQL Server JSON caps regardless.
   - Given the migration, when it is reviewed, then it adds only these six tables — no existing table is touched.
 
 #### US-303: `[enabler]` Adapt the SQLite fixture for the `json` column
 
 - **Story**: `[enabler]` Confirm, with a new unit test, whether `SqliteRowVersionModelCustomizer`'s existing unconditional `property.SetColumnType(null)` pass is sufficient to load `Cells` on SQLite (§6 finding 4's expectation), and if it is not, remove the property the same way `SqlVector<T>` properties are removed today, with the choice recorded in a comment beside the customizer. Unblocks US-304 and every EP-4 unit test that needs the model to load on SQLite at all.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given the full `EnterpriseGptDbContext` model, when it is loaded via `SqliteDbContextFixture` after this story, then it succeeds with no exception, and every existing unit test suite that already depends on that fixture continues to pass unmodified.
-  - Given a `ConversationDocumentSheetRow` inserted through the SQLite fixture, when its `Cells` value is round-tripped, then the resulting text is either the exact JSON string written (if the column type override was simply neutralized) or the property is confirmed absent from the SQLite model (if removal was necessary) — whichever the test proves, not whichever was assumed going in.
+  - Given a `ConversationDocumentSheetRow` inserted through the SQLite fixture, when its `Cells` value is round-tripped, then the resulting text is either the exact JSON string written (if the column type override was simply neutralized) or the property is confirmed absent from the SQLite model (if removal was necessary) — whichever the test proves, not whichever was assumed going in. **Proven: the pass was sufficient** — `SetColumnType(null)` neutralizes `json` the same way it already neutralizes `nvarchar(max)`, no removal arm needed.
   - Given the outcome either way, when it is recorded, then a comment beside `SqliteRowVersionModelCustomizer` states which of the two happened and why, so a future engineer adding another `json` column does not have to re-derive the answer.
 
 #### US-304: `[enabler]` Persist sheets, columns, and rows inside the existing ingestion save
 
 - **Story**: `[enabler]` Add `ISheetStructureExtractor : IDocumentTextExtractor` with `Task<SheetExtractionResult> ExtractSheetsAsync(...)`, implemented by both new extractors from a single workbook parse, returning both text segments and structured `SheetStructureDto`s. Extend `DocumentService`'s ingestion path to type-check `is ISheetStructureExtractor`, and when true, attach the resulting sheet/column/row entities to the same `ConversationDocument`/`ProjectDocument` graph before the existing single `SaveChangesAsync` call (`DocumentService.cs:312-313`/`389-390`). Unblocks EP-4 entirely and US-501.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-201, US-202, US-302
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a `.xlsx` or `.csv` upload, when ingestion completes, then the document's sheet, column, and row rows exist in the database alongside its chunk rows, all committed by the **same** `SaveChangesAsync` call — a test asserts no separate save happens for the structured data.
   - Given any other extractor (`.pdf`, `.docx`, `.pptx`, `.md`, `.txt`), when it is used, then the `is ISheetStructureExtractor` check is false and the ingestion path is byte-for-byte unchanged from today.
@@ -325,7 +328,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: `[enabler]` Add a sheet-matching helper analogous to `DocumentRetrievalService.MatchByName`, resolving a model-supplied `sheetName` (or, when omitted, the sole sheet across the turn's scope if exactly one exists) against the caller's own `ConversationDocumentSheet`/`ProjectDocumentSheet` rows, and a `columnName` against that sheet's own `SheetColumn` rows — both parameterized lookups. An unresolved or ambiguous name refuses by name, listing what is actually available, mirroring `document_summarize`'s own refusal pattern. Unblocks US-402.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-304
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a `sheetName` that matches no sheet in scope, when resolution runs, then it refuses, naming the sheets that are actually available — no query is attempted against a guess.
   - Given a `sheetName` omitted with more than one sheet in scope, when resolution runs, then it refuses, naming the available sheets, rather than picking one arbitrarily.
@@ -335,8 +338,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-402: `[enabler]` Build the parameterized, no-raw-SQL query
 
 - **Story**: `[enabler]` Add `SheetQuerySql` (`Enterprise.Gpt.Service/Tool/SheetQuerySql.cs`), building the aggregate/filter T-SQL from a resolved sheet and column set: every JSON path is built only from an already-validated `ColumnName`, passed as a bound `@path` parameter to `JSON_VALUE`/`OPENJSON`; the `RETURNING` type is chosen by a closed C# `switch` over the column's `InferredType`, selecting one of a small, fixed number of pre-authored parameterized command texts; every literal comparison value is bound as an ordinary parameter; results are capped by `TOP (@n)`. Unblocks US-403, US-404.
+  **Shipped reading values with `TRY_CONVERT` over `JSON_VALUE` rather than `JSON_VALUE … RETURNING`, deliberately — a robustness call approved before implementation, not a gap.** The closed `switch` over `InferredType` selecting one of a fixed set of pre-authored fragments is unchanged; only the fragment differs. Three reasons, in order: US-302's `Cells` stores every value as a JSON *string*, so `RETURNING` would be a coercion either way; `RETURNING` is supported only against the native `json` column type, which would make this story's code the thing that breaks §6's own documented single-column `nvarchar(max)` fallback; and it has no non-throwing form, so one cell disagreeing with its column's sampled type could fail a whole aggregate. `float` rather than `decimal` for numeric reads, because it matches the arithmetic the spreadsheet itself used, never overflows a `SUM`, and does not silently drop a value written in scientific notation. Two further shipped details this criterion did not anticipate: a numeric read strips a group separator before converting, since `SheetAssembler`'s own inference accepts `1,200.50` as a number while `CONVERT` alone yields `NULL` for it; and a comparison against a time-only `Date` column anchors the model's value to 1900-01-01 to match what `TRY_CONVERT(datetime2, …)` does server-side, without which every such comparison would silently miss.
 - **Priority**: P0 · **Estimate**: L · **Depends on**: US-401
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given every command text this class can produce, when `SheetQuerySqlTests` inspects them, then none contains a literal, non-parameterized value or a request-derived path fragment — mirroring `DocumentRetrievalSqlTests`' own "no literal values in any generated statement" assertion for `document_search`.
   - Given a `Boolean`-typed column, when a comparison is built against it, then it compares as text (`'true'`/`'false'`) rather than `RETURNING bit`, since `bit` is not in `JSON_VALUE`'s supported `RETURNING` type list.
@@ -348,7 +352,7 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 - **Story**: As a chat user, I want to ask a computed question about a spreadsheet — a total, an average, a count, optionally broken down by another column — and get an exact answer, so that I do not have to open the file and compute it myself.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a sum, average, min, max, or count request over a resolved column, when `sheet_query` runs, then it returns the exact value computed directly from the stored rows.
   - Given the same request with a `groupBy` column supplied, when it runs, then it returns one row per distinct group value, each with its own aggregate, capped at `SheetQuery:MaxGroups`.
@@ -358,8 +362,9 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-404: The model can filter and list matching rows
 
 - **Story**: As a chat user, I want to ask which rows match a condition — not just a computed total — so that I can see the actual records behind an answer.
+  **Shipped with a fifth bound this PRD did not originally scope: `SheetQuery:MaxResultCharacters` (default 20,000).** `MaxResultRows` caps how many rows come back and nothing caps how *wide* they are: fifty rows of a sheet at `Sheets:MaxColumnsPerSheet` is tens of thousands of characters of cell text competing with the answer for the model's context window, which is the same reason `Documents:Retrieval:MaxResultTokens` exists. At least one row always survives the budget, so a single very wide row is shown rather than silently becoming "no rows matched". A refusal's own `availableSheets`/`availableColumns` listing is bounded the same way, by fixed limits rather than configuration, since it is the one reply no configured cap reaches.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-402
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given one or more filter criteria (up to `SheetQuery:MaxFilters`), when `sheet_query` runs with `operation: filter`, then it returns the matching rows' cell data, capped at `SheetQuery:MaxResultRows`.
   - Given more filters than `SheetQuery:MaxFilters` are supplied, when the tool is called, then it refuses with a message naming the limit rather than silently dropping filters.
@@ -369,8 +374,10 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-405: `[enabler]` Attach `sheet_query` beside `document_search`
 
 - **Story**: `[enabler]` Attach `sheet_query` in `ConversationService.CreateChatOptionsAsync`, copying `attachSummaryTool`'s own gate ladder: gated on `SheetQuery:Enabled`, the turn's document scope being non-empty, the selected model supporting tools, standing down if `attachDocumentTool` is false (mirroring why `document_summarize` stands down the same way), and standing down on a name collision with an already-selected MCP tool. Unblocks EP-5's flag story.
+  **Shipped with a narrower scope gate than "the turn's document scope is non-empty", deliberately.** Two extra conditions, both approved before implementation. The scope must hold a spreadsheet at all — a conversation of PDFs never sees the tool, for the reason `retrieval.md` §6 gives for not attaching `document_search` to an empty scope. And that spreadsheet must have an *ingested sheet*: a file uploaded before EP-3's tables existed has chunks and no rows, and attaching over it would name a workbook in the tool prompt that every call then denies exists. The check is an `EXISTS` over the scoped document ids, and a failure to run it costs the tool rather than the turn, the same way scope resolution already fails. Every acceptance criterion below still holds — this only narrows.
+  **`SheetQuery:Enabled` ships here rather than in US-504**, because this story's own first acceptance criterion is written against it; what remains for US-504 is the rehearsed flip-and-flip-back and its documentation, not the switch. **A sixth setting shipped alongside it, `SheetQuery:ToolTimeoutSeconds` (default 30)**, bounding one whole invocation the way `Summarization:ToolTimeoutSeconds` does, because `:TimeoutSeconds` bounds a single statement and a call deadline shorter than its own statement's timeout would abandon every query before that timeout could report one. Startup validation enforces `ToolTimeoutSeconds >= TimeoutSeconds`, mirroring the summarizer's own rule.
 - **Priority**: P0 · **Estimate**: M · **Depends on**: US-403
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given `SheetQuery:Enabled = false`, when a turn runs, then `sheet_query` is never attached, and the model has no way to discover it.
   - Given `SheetQuery:Enabled = true` and a conversation scope with no documents, when a turn runs, then `sheet_query` is not attached — matching `document_search`'s own precedent that an empty scope offers nothing to query.
@@ -382,29 +389,40 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-501: `[enabler]` Cap rows and columns accepted per sheet
 
 - **Story**: `[enabler]` Enforce `Sheets:MaxRowsPerSheet` (default 20,000) and `Sheets:MaxColumnsPerSheet` (default 200) inside both new extractors, refusing a sheet that exceeds either as a `ValidationException` before any row is returned for chunking or persistence. Unblocks nothing further, but must land before this feature is enabled for real users.
+  **Shipped with a third ceiling this PRD did not originally scope: `Sheets:MaxCharactersPerUpload` (default 8,000,000)** — the total cell text one upload may yield, shared-string table included — because a code review during implementation measured three reproducible unbounded-allocation vectors that the row and column ceilings do not close on their own: a workbook is a deflate archive, so `Documents:MaxFileSizeBytes` bounds nothing about what it expands into. At ×32 (floored at 256 KB) this same setting also bounds how far a package may inflate before it is opened at all, closing a decompression-bomb exposure. Measured peak managed heap, before → after:
+  - a 132 KB workbook holding one row of 1,000,000 cells: 239 MB → 0.0 MB, refused in 41 ms
+  - a 594 KB workbook holding 5,000,000 shared strings: 430 MB → 16.6 MB, refused
+  - a 382 KB workbook holding one 400,000,000-character element: unbounded → 0.0 MB, refused in 17 ms
+  - a 4.9 MB CSV holding 5,000,000 fields: 1,411 MB → 0.0 MB, refused in 29 ms
+
+  This landed against the Wave 1 extractor shape (`SpreadsheetTextExtractor`/`CsvTextExtractor`, no row windows yet) — **US-201/US-202 must preserve this ceiling** when they add row-window chunking on top of the same extractors, rather than re-deriving it.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-26)
 - **Acceptance criteria**:
   - Given a sheet with exactly `MaxRowsPerSheet` rows, when it is uploaded, then it succeeds.
   - Given a sheet with `MaxRowsPerSheet + 1` rows, when it is uploaded, then the upload is refused with a message naming the limit, before any bytes are persisted for that sheet.
   - Given a sheet with more than `MaxColumnsPerSheet` columns, when it is uploaded, then it is refused the same way.
   - Given a workbook where only one of several sheets exceeds a ceiling, when it is uploaded, then the whole upload is refused rather than silently dropping the offending sheet — a partially ingested workbook would make `sheet_query`'s "what's in this workbook" answer wrong.
+  - Given an upload whose total cell text (`.xlsx` cells plus its shared-string table, or a `.csv`'s fields) exceeds `Sheets:MaxCharactersPerUpload`, when it is uploaded, then it is refused with a message naming the limit, before the excess text is materialized.
+  - Given a `.xlsx` package whose compressed entries would inflate past `Sheets:MaxCharactersPerUpload × 32` (floored at 256 KB), when it is uploaded, then it is refused before the Open XML SDK opens the package at all.
 
 #### US-502: Re-tune retrieval defaults for row-window corpora
 
 - **Story**: As an operator, I want confidence that `document_search`'s existing distance and fusion defaults still work once spreadsheet corpora exist, so that a header-repeated row-window chunk is neither drowned out nor over-favored relative to prose chunks.
+  **Two premises in this story turned out not to hold against the code, and the answer it produced is "keep 0.62 and change nothing".** There are no configurable *fusion weights*: RRF is a `private const double RrfK = 60.0` in `DocumentRetrievalService` and both passes contribute identically, so re-tuning weights would mean introducing a knob rather than adjusting one. And `MaxDistance` lives in `DocumentRetrievalOptions`, not `DocumentOptions`. What the measurement found, in order of what an operator should know: **the relevance gate is disjunctive**, so a row window full of identifiers enters through the keyword arm and tightening `MaxDistance` suppresses prose rather than spreadsheets; **`MaxPassagesPerDocument` (3), not the distance gate, is what stops a workbook crowding out prose** — a whole workbook is one document, and with that cap lifted its row windows take every result slot because they are all nearer than any prose chunk; **the keyword pass's `MatchCount DESC, TokenCount ASC` tie-break systematically favours a short row window over a long prose chunk** that matched the same term, which is kept rather than changed because for an identifier the denser chunk really is the better evidence; and **two adjacent row windows share an opening prefix rather than a tail-to-head seam**, so the merger has nothing to strip and a merged passage replays the header once per window, charging the repetition to `MaxResultTokens` rather than to recall. The measurement's own bound is stated rather than buried: the corpus text is real (a workbook through the real extractor and a real 512/128 chunker) but the **distances are assigned, not measured**, because no embedding model runs in CI. Measuring a real distance distribution needs a live `text-embedding-3-*` deployment and is recorded as the open follow-up.
 - **Priority**: P1 · **Estimate**: M · **Depends on**: US-201, US-202
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
-  - Given a benchmark corpus mixing prose documents and row-window-chunked spreadsheets, when retrieval is run against a set of representative queries, then the current `MaxDistance` (0.62) and fusion weights are confirmed adequate, or a specific, justified adjustment is proposed with before/after precision figures.
+  - Given a benchmark corpus mixing prose documents and row-window-chunked spreadsheets, when retrieval is run against a set of representative queries, then the current `MaxDistance` (0.62) and fusion weights are confirmed adequate, or a specific, justified adjustment is proposed with before/after precision figures. **Confirmed adequate**, by a `MaxDistance` sweep in `SheetRetrievalBenchmarkTests`: 0.40 loses the on-topic prose entirely, 0.85 admits prose about something else, and 0.62 is the only one of the three that takes the first without the second.
   - Given the repeated header text across a sheet's row windows, when the corpus's distance distribution is measured, then any systematic skew it introduces is documented, whether or not it changes the default.
   - Given the outcome, when it is recorded, then it updates `Documents:Chunking`/retrieval configuration only if a change is justified — this story does not mandate a change, only a validated answer.
 
 #### US-503: `[enabler]` Emit sheet ingestion and `sheet_query` telemetry
 
 - **Story**: `[enabler]` Add spans/metrics through the existing OpenTelemetry registration for sheet extraction (row count, column count, duration) and for `sheet_query` calls (operation, outcome, duration), with no cell content, sheet name, or document identity in any tag. Unblocks nothing; supports FR-23 and operational visibility.
+  **Shipped as metrics only; the span half is deferred deliberately, not missed.** This story's own three acceptance criteria name only metrics, and the repository declares no `ActivitySource` of its own at all — the single source registered in `TelemetryRegistration` is the one Microsoft.Extensions.AI's chat clients build. Introducing the first application-owned source is a telemetry primitive with its own naming and registration surface, and doing it as a footnote to a metrics story would have shipped it undiscussed.
 - **Priority**: P1 · **Estimate**: S · **Depends on**: US-304, US-405
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given a spreadsheet ingestion, when it completes, then a metric records its row count, column count, and duration, tagged only with the deployment/document-type shape existing metrics already use.
   - Given a `sheet_query` call, when it completes, then a metric records its operation and outcome (success, refused-by-name, timed-out, error), with no sheet name, column name, or cell value in any tag.
@@ -413,8 +431,10 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 #### US-504: `[enabler]` Feature-flag `sheet_query` with a documented rollback
 
 - **Story**: `[enabler]` Gate `sheet_query`'s tool attachment behind `SheetQuery:Enabled`, defaulting `false` everywhere including development, matching `Summarization:Enabled`'s own precedent. Upload/extraction/chunking/storage for `.xlsx`/`.csv` ship unflagged, the same way `document_search` itself has no kill switch.
+  **This story's own two halves contradict each other, and the precedent won.** "Defaulting `false` everywhere including development" and "matching `Summarization:Enabled`'s own precedent" cannot both hold, because that precedent is a property default of `false` beside a committed `appsettings.json` of `true` — an explicit development setting, which is not a default. What shipped follows the precedent: the **property** defaults `false`, so an environment that configures nothing gets nothing, and the committed file turns the tool on for development the way the summarizer's does. The rule a test enforces is the property default alone; the committed value is left as each environment's own decision, exactly as `SummarizationOptionsTests` deliberately leaves it.
+  **The flag existed but its documented behaviour did not.** `SheetQueryOptions.Enabled`'s own remark and `docs/documents/sheet-query.md` §9 both claimed flipping it "takes effect on the next turn with no redeploy"; it did not, because `ConversationService` took `IOptions<SheetQueryOptions>` and captured `.Value` at construction from a singleton bound once at startup, so the switch needed a restart. Rather than correct the claim down, this story made it true: a new `ISheetQueryOptionsProvider` singleton rebuilds the section through `IOptionsFactory` on a configuration reload and keeps the last configuration that validated, and both consumers read it per turn. It deliberately does **not** use `IOptionsMonitor`: resolving one makes an invalid reload throw on the configuration provider's own callback thread, where nothing can catch it, so a typo in a file nobody redeployed would surface as an unhandled exception instead of an ignored edit.
 - **Priority**: P0 · **Estimate**: S · **Depends on**: US-405
-- **Status**: Not started
+- **Status**: ✅ Done (2026-08-27)
 - **Acceptance criteria**:
   - Given `SheetQuery:Enabled = false`, when the app starts and runs, then spreadsheet upload, extraction, chunking, and `document_search` over spreadsheet content all work normally — only `sheet_query`'s tool attachment is affected.
   - Given the flag is flipped to `true` and back to `false`, when this is exercised as a rehearsed rollback, then no redeploy is required and no already-ingested data is affected either way.
@@ -424,36 +444,36 @@ EP-1 and EP-2 are ordered first because everything downstream needs real, well-s
 
 **Phases**, derived from the epic dependency graph.
 
-| Phase | Contents | Relative estimate |
-| --- | --- | --- |
-| **Phase 1 — the format exists** | EP-1 in full (US-101–US-103) | ~1 week |
-| **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks |
-| **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks |
-| **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week |
+| Phase | Contents | Relative estimate | Status |
+| --- | --- | --- | --- |
+| **Phase 1 — the format exists** | EP-1 in full (US-101–US-103) | ~1 week | ✅ Done (2026-08-26) |
+| **Phase 2 — it is searchable and storable** | EP-2 in full (US-201–US-204); EP-3 in full (US-301–US-304), which needs only EP-1 and can run in parallel with the back half of EP-2 | ~2 weeks | ✅ Done (2026-08-27) |
+| **Phase 3 — the deterministic lookup** | EP-4 in full (US-401–US-405) | ~2 weeks | ✅ Done (2026-08-27) |
+| **Phase 4 — governance and switch-on** | EP-5 in full (US-501–US-504) | ~0.5 week | ✅ Done (2026-08-27). US-501 closed 2026-08-26, pulled forward into Phase 1 — see risks below; US-502–US-504 closed 2026-08-27 |
 
 **Risks & mitigations.**
 
 | Risk | Mitigation |
 | --- | --- |
 | SQL Server's `json` type is still preview on non-Azure-SQL SQL Server 2025 | US-302 names `nvarchar(max)` + `ISJSON` as a scoped, single-column fallback that changes nothing else in the schema |
-| The header-repetition chunking strategy degrades under the chunker's own overlap/fallback mechanics for an oversized window | §6 finding 2 states the limitation explicitly; US-201/US-202's 95%-threshold acceptance criteria measure it rather than assume perfection |
-| `MaxDistance`'s single global threshold no longer fits once row-window corpora exist | US-502 validates before this ships broadly, rather than discovering the regression in production |
-| `sheet_query` becomes a raw-SQL-injection surface through careless implementation | US-402's acceptance criteria are enforced by a pinned test (`SheetQuerySqlTests`) mirroring `DocumentRetrievalSqlTests`' own "no literal values" assertion — a build-breaking regression guard, not a one-time review |
-| A pathologically large workbook is uploaded before ceilings ship | US-501 lands in the same phase EP-3's persistence path lands, not deferred to the end |
-| SQLite cannot load the `json` column at all, blocking every other unit test in the suite | US-303 is scheduled immediately after the row table exists, before EP-4 needs to write any unit test against it |
+| The header-repetition chunking strategy degrades under the chunker's own overlap/fallback mechanics for an oversized window | §6 finding 2 states the limitation explicitly; US-201/US-202's 95%-threshold acceptance criteria measure it rather than assume perfection. **Measured 2026-08-27** — `SheetChunkingTests` confirms a sheet spanning many windows keeps its header in almost every chunk, and an oversized window still breaks on row boundaries once handed to the real, unmodified `TokenTextChunker` |
+| `MaxDistance`'s single global threshold no longer fits once row-window corpora exist | US-502 validates before this ships broadly, rather than discovering the regression in production. **Closed 2026-08-27** — 0.62 holds. The threshold turned out not to be the lever anyway: the gate is disjunctive, so a row window enters through the keyword arm regardless of it, and `MaxPassagesPerDocument` is what actually bounds a workbook's share of a result set. `SheetRetrievalBenchmarkTests` measures this over a corpus chunked by the real extractor, with the limitation stated in the test itself — the distances are assigned, not measured, since no embedding model runs in CI |
+| `sheet_query` becomes a raw-SQL-injection surface through careless implementation | US-402's acceptance criteria are enforced by a pinned test (`SheetQuerySqlTests`) mirroring `DocumentRetrievalSqlTests`' own "no literal values" assertion — a build-breaking regression guard, not a one-time review. **Closed 2026-08-27**, with one guard the original mitigation did not name: every generated statement is also asserted to contain no `$.` at all, since a JSON path is the only route by which a model-named column could reach a command text, and a path built by concatenation would fail that assertion immediately |
+| A pathologically large workbook is uploaded before ceilings ship | **Closed 2026-08-26.** US-501 was pulled forward into Wave 1 rather than waiting for its originally scheduled phase, specifically because a code review measured reproducible unbounded-allocation vectors (up to 1.4 GB peak heap from a few-MB file) that the row/column ceilings alone did not close; `Sheets:MaxCharactersPerUpload` shipped alongside the Wave 1 extractors, before this feature has any real users |
+| SQLite cannot load the `json` column at all, blocking every other unit test in the suite | US-303 is scheduled immediately after the row table exists, before EP-4 needs to write any unit test against it. **Closed 2026-08-27** — `SqliteRowVersionModelCustomizer`'s existing `SetColumnType(null)` pass turned out to be sufficient with no removal arm; `SqliteRowVersionModelCustomizerTests` proves it rather than leaving it assumed |
 
-**Rollout & rollback.** Upload, extraction, chunking, and storage for `.xlsx`/`.csv` ship unflagged once accepted — the same posture `document_search` itself has always had, and consistent with there being no client-side kill switch needed (§6 finding 1). `sheet_query`'s own tool attachment sits behind `SheetQuery:Enabled`, defaulting off, exercised as a real rollback rehearsal in US-504 before general availability. The one schema change this PRD ships — the fifteenth migration, adding six additive tables — means rolling the **code** back leaves the database readable; nothing here alters or drops an existing table.
+**Rollout & rollback.** Upload, extraction, chunking, and storage for `.xlsx`/`.csv` ship unflagged once accepted — the same posture `document_search` itself has always had, and consistent with there being no client-side kill switch needed (§6 finding 1). `sheet_query`'s own tool attachment sits behind `SheetQuery:Enabled`, defaulting off; US-504 made that switch genuinely restart-free and documented the flip in both directions, leaving the rehearsal itself an operator step against a running environment rather than something a test can assert. The one schema change this PRD ships — the fifteenth migration, adding six additive tables — means rolling the **code** back leaves the database readable; nothing here alters or drops an existing table.
 
 ## 9. Assumptions & open questions
 
 **Assumptions.** Each is a guess a reviewer can veto.
 
-- `Sylvan.Data.Csv` is the chosen CSV dependency over a hand-rolled RFC 4180 reader, on correctness grounds (§6, "The package `.csv` needs"). A reviewer preferring CsvHelper or a different library should say so before US-102 starts; the acceptance criteria do not name the library, only its observable behavior.
+- **Resolved 2026-08-26.** This PRD originally proposed `Sylvan.Data.Csv` as the CSV dependency over a hand-rolled RFC 4180 reader, on correctness grounds (§6, "The package `.csv` needs"), and named that choice as vetoable before US-102 started. The reviewer exercised that veto and chose **CsvHelper 33.1.0** instead; the correctness rationale for taking *a* well-tested library over a hand-rolled reader is unchanged, only the library is. One consequence of the switch is not cosmetic: CsvHelper's default `BadDataFound` behavior rejects a stray quote in an unquoted field, which is ordinary in real exported CSVs — see US-103's rewritten third acceptance criterion for the resulting, deliberate policy change.
 - Row-window sizing targets 75% of the chunker's `MaxTokens` (`Sheets:RowWindow:TargetTokenFraction`) and caps at 50 rows (`Sheets:RowWindow:MaxRows`) — both are proposed defaults, not measured against a real corpus; US-502's benchmark is the first real validation either number gets.
 - `Sheets:MaxRowsPerSheet` (20,000) and `:MaxColumnsPerSheet` (200) are proposed operational ceilings, chosen to sit comfortably under every SQL Server JSON cap while still covering the overwhelming majority of real-world business spreadsheets — not derived from a usage study, since none exists yet for a feature that has not shipped.
 - `SheetQuery:MaxResultRows` (50), `:MaxGroups` (200), `:MaxFilters` (5), and `:TimeoutSeconds` (10) are proposed defaults mirroring the scale of `DocumentRetrievalSql`'s own caps (`MaxResults` 8, `CandidateCount` 40) scaled up for a tool that returns structured rows rather than prose passages, not measured against production load.
-- `Cells`'s `.HasColumnType("json")` override is expected to be neutralized by `SqliteRowVersionModelCustomizer`'s existing unconditional `SetColumnType(null)` pass, based on Microsoft Learn's documented behavior of that API — but US-303 treats this as a hypothesis a test proves, not a certainty this PRD asserts.
-- The exact sheet-aware citation format (`"{fileName} — {sheetName}"`) is a proposal; US-204's acceptance criteria require a sheet-distinguishable citation, not that specific string.
+- **Confirmed 2026-08-27.** `Cells`'s `.HasColumnType("json")` override is neutralized by `SqliteRowVersionModelCustomizer`'s existing unconditional `SetColumnType(null)` pass, as expected from Microsoft Learn's documented behavior of that API — `SqliteRowVersionModelCustomizerTests` (US-303) proved it rather than leaving it assumed, and no removal arm was needed.
+- **Shipped as proposed.** The exact sheet-aware citation format (`"{fileName} — {sheetName}"`, for example `"budget.xlsx — Regional Revenue"`) is what US-204 shipped; a spreadsheet document with no stored sheet — one ingested before this wave, or whose sheet was soft-deleted — falls back to the file name alone rather than that format.
 - No new permission id is introduced; `sheet_query` is gated exactly as `document_search` already is. A product decision to gate spreadsheet upload or `sheet_query` behind a dedicated permission would change §3 and FR-20/US-405, not the rest of this PRD.
 - Numeric benchmark targets (the 20-query `sheet_query` benchmark, the 95% header-presence threshold) are proposed here for veto, not supplied by the original invocation.
 

@@ -28,6 +28,9 @@ namespace Enterprise.Gpt.Service.Prompts
         private static readonly string DocumentSummaryToolPromptTemplate =
             LoadTemplate("document-summary-tool-prompt.md");
 
+        private static readonly string SheetQueryToolPromptTemplate =
+            LoadTemplate("sheet-query-tool-prompt.md");
+
         #region Public static methods
 
         /// <summary>
@@ -152,6 +155,35 @@ namespace Enterprise.Gpt.Service.Prompts
 
             return string.Format(
                 CultureInfo.InvariantCulture, DocumentSummaryToolPromptTemplate, summaryToolName, retrievalToolName);
+        }
+
+        /// <summary>
+        /// Builds the prompt describing the sheet-query tool and when to prefer it over retrieval.
+        /// </summary>
+        /// <remarks>
+        /// The spreadsheet names are listed again even though the retrieval prompt names every attached
+        /// file, because a model that cannot tell which of them can be computed over falls back to adding
+        /// up figures it read in a passage. <c>sheet-query-tool-prompt.md</c> is a composite format string
+        /// — <c>{0}</c> the sheet tool's name, <c>{1}</c> the spreadsheet list, <c>{2}</c> the retrieval
+        /// tool's name — so any literal brace added to it must be doubled.
+        /// </remarks>
+        /// <param name="sheetToolName">The name the sheet-query tool is registered under.</param>
+        /// <param name="retrievalToolName">The name the retrieval tool is registered under.</param>
+        /// <param name="spreadsheetNames">The names of the attached spreadsheets.</param>
+        /// <returns>The system prompt text describing the sheet-query tool.</returns>
+        /// <exception cref="ArgumentException">Either name is <see langword="null"/> or whitespace.</exception>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="spreadsheetNames"/> is <see langword="null"/>.</exception>
+        public static string BuildSheetQueryToolPrompt(
+            string sheetToolName, string retrievalToolName, IReadOnlyList<string> spreadsheetNames)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(sheetToolName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(retrievalToolName);
+            ArgumentNullException.ThrowIfNull(spreadsheetNames);
+
+            var list = string.Join("\n", spreadsheetNames.Select(name => $"- {name}"));
+
+            return string.Format(
+                CultureInfo.InvariantCulture, SheetQueryToolPromptTemplate, sheetToolName, list, retrievalToolName);
         }
 
         #endregion
