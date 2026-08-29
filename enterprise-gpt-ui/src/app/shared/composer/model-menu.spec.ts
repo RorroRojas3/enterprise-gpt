@@ -91,6 +91,12 @@ describe('ModelMenu', () => {
     await menu.fixture.whenStable();
 
     expect(menu.pillText()).toContain('GPT-5 Enterprise');
+    // The name is in a hook of its own because the stylesheet truncates it there and
+    // hides the context beside it below 768px. jsdom loads no stylesheet, so pinning
+    // the class is the only guard against a rename silently undoing both.
+    expect(menu.host.querySelector('.model-menu__pill-name')?.textContent?.trim()).toBe(
+      'GPT-5 Enterprise',
+    );
     expect(menu.host.querySelector('.model-menu__pill-context')?.textContent).toBe('400k');
     expect(
       menu.host.querySelector('.model-menu__pill-context')?.classList.contains('font-mono'),

@@ -15,17 +15,35 @@
 
 .project-card__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
+.project-card__identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+}
+
+// The same brand-tinted folder the sidebar row and the detail header lead with; the
+// picker and the composer pill tint theirs only for the project in hand.
+.project-card__glyph {
+  flex: 0 0 auto;
+  color: var(--brand);
+  font-size: 15px;
+}
+
 .project-card__name {
+  overflow: hidden;
   font-family: var(--font-display);
   font-size: 14.5px;
   font-weight: 600;
   color: var(--bs-body-color);
   text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   &:hover {
     color: var(--bs-link-hover-color);

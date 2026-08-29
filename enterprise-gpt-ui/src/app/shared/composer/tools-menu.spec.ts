@@ -112,6 +112,13 @@ describe('ToolsMenu', () => {
     await loadServers([mcpFixture({ name: 'Jira Cloud' }), mcpFixture({ name: 'Weather' })]);
 
     expect(menu.pillText()).toBe('Tools');
+    // The label carries a class only so the stylesheet can hide it below 768px, and
+    // jsdom loads no stylesheet — so a rename would drop the mobile compaction with
+    // every gate still green unless this pins the hook.
+    expect(menu.host.querySelector('.tools-menu__pill-label')?.textContent?.trim()).toBe('Tools');
+    expect(
+      menu.host.querySelector('.tools-menu__pill')?.classList.contains('tools-menu__pill--armed'),
+    ).toBe(false);
     await menu.open();
 
     await menu.toggle(0);
@@ -125,6 +132,12 @@ describe('ToolsMenu', () => {
     await menu.toggle(1);
     expect(menu.panel()).not.toBeNull();
     expect(menu.pillText()).toBe('2 Tools');
+    // The count is the only visible sign that servers are armed, so below 768px the
+    // stylesheet keeps the label on this class and hides it without. jsdom loads no
+    // stylesheet; the class binding is the half that can be pinned.
+    expect(
+      menu.host.querySelector('.tools-menu__pill')?.classList.contains('tools-menu__pill--armed'),
+    ).toBe(true);
 
     await menu.toggle(0);
     expect(menu.rows()[0]?.getAttribute('aria-checked')).toBe('false');

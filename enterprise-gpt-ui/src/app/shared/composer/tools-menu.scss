@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: inline-flex;
 }
@@ -81,4 +83,17 @@
   padding: 6px 9px 4px;
   color: var(--muted);
   font-size: 11px;
+}
+
+// The label is a count, not a word — it is the only visible sign that servers are armed
+// for the next turn — so it is given up only when it has nothing to report, and the
+// model name takes the width back.
+@include bp.mobile {
+  .tools-menu__pill {
+    padding: 0 8px;
+  }
+
+  .tools-menu__pill:not(.tools-menu__pill--armed) .tools-menu__pill-label {
+    display: none;
+  }
 }

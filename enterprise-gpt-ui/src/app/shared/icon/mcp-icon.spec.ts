@@ -6,6 +6,9 @@ describe('MCP icon registry (US-418)', () => {
   it('resolves a known key to its mark', () => {
     expect(mcpBrandIcon('microsoft')).toBe('brand-microsoft');
     expect(mcpBrandIcon('context7')).toBe('brand-context7');
+    expect(mcpBrandIcon('azure')).toBe('brand-azure');
+    expect(mcpBrandIcon('github')).toBe('brand-github');
+    expect(mcpBrandIcon('salesforce')).toBe('brand-salesforce');
   });
 
   it('degrades an absent or unknown key rather than rendering a blank symbol', () => {
@@ -19,6 +22,11 @@ describe('MCP icon registry (US-418)', () => {
 
   it('offers only marks the sprite actually holds, with "None" first', () => {
     expect(MCP_ICON_OPTIONS[0]).toEqual({ value: '', label: 'None', icon: null });
+
+    // Source order is the admin form's <select> order, so the docstring's "file it,
+    // don't append it" needs something behind it.
+    const labels = MCP_ICON_OPTIONS.slice(1).map((option) => option.label);
+    expect(labels).toEqual([...labels].sort());
 
     for (const option of MCP_ICON_OPTIONS.slice(1)) {
       expect(option.value).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);

@@ -1,6 +1,11 @@
 <article class="project-card" [attr.aria-labelledby]="headingId" [attr.aria-busy]="pending()">
   <div class="project-card__head">
-    <a class="project-card__name" [id]="headingId" [routerLink]="link()">{{ name() }}</a>
+    <!-- Grouped rather than a third child of the head, so `space-between` still puts the
+         actions at the far edge and the link's hit area stays the name itself. -->
+    <div class="project-card__identity">
+      <app-icon class="project-card__glyph" name="bi-folder-fill" />
+      <a class="project-card__name" [id]="headingId" [routerLink]="link()">{{ name() }}</a>
+    </div>
 
     <div class="project-card__actions">
       @if (showFavorite()) {

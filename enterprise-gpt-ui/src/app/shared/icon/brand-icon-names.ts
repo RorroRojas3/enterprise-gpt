@@ -13,7 +13,13 @@
  * re-run `npm run assets:icons`, or the mark will be typed but absent from the
  * sprite and render blank.
  */
-export const BRAND_ICON_NAMES = ['brand-context7', 'brand-microsoft'] as const;
+export const BRAND_ICON_NAMES = [
+  'brand-azure',
+  'brand-context7',
+  'brand-github',
+  'brand-microsoft',
+  'brand-salesforce',
+] as const;
 
 /**
  * Every brand mark in the sprite, as a literal union. `strictTemplates` rejects

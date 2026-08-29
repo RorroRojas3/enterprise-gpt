@@ -17,6 +17,9 @@ export interface McpIconOption {
  * failing, which is also what a server registered by a newer client looks like
  * to an older one.
  *
+ * "None" first and the marks alphabetical after it — this array is the admin form's
+ * `<select>` in source order, so a new entry is filed, not appended.
+ *
  * Lives beside the artwork rather than in `core/catalog/` beside
  * `mcp-server-form.ts`, because dependencies run one way — `core` may not import
  * from `shared`, and this list is typed by {@link BrandIconName}. It is off the
@@ -26,8 +29,11 @@ export interface McpIconOption {
  */
 export const MCP_ICON_OPTIONS: readonly McpIconOption[] = [
   { value: '', label: 'None', icon: null },
-  { value: 'microsoft', label: 'Microsoft', icon: 'brand-microsoft' },
+  { value: 'azure', label: 'Azure', icon: 'brand-azure' },
   { value: 'context7', label: 'Context7', icon: 'brand-context7' },
+  { value: 'github', label: 'GitHub', icon: 'brand-github' },
+  { value: 'microsoft', label: 'Microsoft', icon: 'brand-microsoft' },
+  { value: 'salesforce', label: 'Salesforce', icon: 'brand-salesforce' },
 ];
 
 /** Drawn for a server with no icon, or one whose key this build does not know. */
