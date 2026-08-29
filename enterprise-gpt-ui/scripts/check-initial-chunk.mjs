@@ -55,6 +55,16 @@ const FORBIDDEN = [
   // would catch it: a spec-only dependency is invisible to the budgets, which measure the
   // build rather than the test target.
   { label: 'the axe auditor (US-1405)', match: /(^|\/)node_modules\/axe-core\// },
+  // Browser telemetry is reached only through `await import()` behind a `config.json`
+  // block most deployments leave out. The SDK is several times the initial graph's
+  // headroom, so one static import would regress the budget for every visitor —
+  // including the ones whose deployment sends no telemetry at all. `expect` catches the
+  // opposite failure: a chunk that has quietly stopped being built.
+  {
+    label: 'browser telemetry',
+    match: /(^|\/)node_modules\/@microsoft\/applicationinsights[^/]*\//,
+    expect: true,
+  },
 ];
 
 function die(...lines) {

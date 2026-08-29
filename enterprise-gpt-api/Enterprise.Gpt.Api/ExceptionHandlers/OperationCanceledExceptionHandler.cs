@@ -35,9 +35,10 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 return ValueTask.FromResult(false);
             }
 
-            _logger.LogInformation(
-                "Request was cancelled. TraceId: {TraceId}",
-                httpContext.TraceIdentifier);
+            // See GlobalExceptionHandler: the trace id comes from the hosting log scope, not the
+            // template. TraceIdentifier under that same name only correlates within this process, and
+            // disagreed with the id every problem response hands the caller.
+            _logger.LogInformation("Request was cancelled.");
 
             // If the response has already started (e.g. mid-stream SSE), headers are immutable.
             if (!httpContext.Response.HasStarted)
