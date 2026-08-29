@@ -265,6 +265,20 @@ The three-tab strip becomes `PillSubnav` below 768px, with the same links, the s
 
 The 52px header collapses, its controls move into the navbar (§5.1), and the transcript and composer take frame `1d`'s gutters — 16px and 12px respectively, each with the matching safe-area inset **added rather than substituted**, because `viewport-fit=cover` puts both edges under the device's rounded corners in landscape.
 
+#### 8.4.1 The composer's compact control row
+
+A follow-on fix, closing a gap this story's own criterion 6 (no horizontal scrollbar at any width) left in the composer specifically. `.composer__controls` is a single non-wrapping flex row — the project pill, the model pill, the tools pill, the microphone and Send — and only the project pill had ever been let shrink: the model and tools pills are `:host { display: inline-flex }` with `white-space: nowrap` and no `min-width: 0` anywhere in their chain, so each sat at its intrinsic text width. At 390px the row asked for roughly 625px against roughly 342px of card content, and `composer.scss` carried no `@media` and no `@use 'breakpoints'` at all — the gutters in §8.4 above never reached inside the composer's own row. The overflow ran past the card, and `Shell`'s `:host { overflow: hidden }` (§9.2's rule, applied to itself) clipped whatever fell off the end, which was Send.
+
+The fix follows the design bundle's `compact` variant of `Composer.dc.html`:
+
+- **the download control is hidden outright**, `app-conversation-download-menu { display: none }` — the mobile navbar (§5) already renders the same export menu through `ShellChrome`, so the action stays one press away rather than gone
+- **the project pill drops its label**, leaving the icon and caret. On the project screen the static `.composer__project--fixed` chip — a plain `<span>` whose only content is that label — is hidden **entirely** below 768px rather than losing just its text: a pill with an icon and nothing to read announces nothing to a screen reader, and that screen's own header already names the project
+- **the model pill drops its context figure** (`400k`)
+- **the tools pill drops its label only while nothing is armed.** `toolsLabel()` is a count — `Tools`, `1 Tool`, `2 Tools` — so it is the row's only visible sign that MCP servers will be sent on the next turn. A `.tools-menu__pill--armed` class, set from `settings.effectiveMcpServerIds().length > 0`, keeps the label whenever that count is non-zero
+- **the model name is made to actually shrink and ellipsis.** That needed `min-width: 0` at four levels, each owned by a different stylesheet, because the shrink has to travel down through a projected trigger: `model-menu.scss`'s `:host`, the `app-menu` host it wraps (granted from `model-menu.scss` rather than from `menu.scss` itself, since most menu triggers are fixed 28px kebabs that must never shrink), `menu.scss`'s `.menu__trigger--content`, and `.model-menu__pill`. The project pill and the model pill are the row's only two elastic items, and with the project name hidden below 768px, all of the shrink lands on the model name — unconditionally, because the name comes from the catalog and no width is wide enough for every one of them
+
+Measured with a Playwright harness driven against the compiled CSS, at nine widths from 320px to 430px plus 768/900/1100/1400px: before the fix, Send's right edge sat 105px past the card's own right edge at 390px, and the document body scrolled sideways at every width under 768px. After, Send is visible at every measured width, the row's `scrollWidth` equals its `clientWidth`, and the model name ellipsises below roughly 393px — a 39-character name truncates from 232px down to 22px at 320px and still leaves the tools count showing beside it.
+
 ### 8.5 The one departure from the boards
 
 Frame `4e`'s caption asks for the project-detail tabs to become **stacked accordions** below 768px. They become the pill strip instead. This is a deliberate departure, agreed with the product owner before implementation, and the reason is not layout:
@@ -327,6 +341,7 @@ npm run lint        # includes the breakpoint gates in §3.2 and §3.3
 | A screen's content is cut off at the bottom and will not scroll                       | The routed host has no scroll container, and `.shell__main` is `overflow: hidden` (§9.2)                                                                                        |
 | Tab reaches the content behind the tablet overlay                                     | `inert` came off `.shell__main`. The backdrop stops the pointer and nothing else (§4.1)                                                                                         |
 | A picker opens partly off the right edge                                              | `anchoredPosition` was given `window.innerWidth`, or the panel's measured width. Pass `documentElement.clientWidth` and the intended width (§6.2, §6.3)                         |
+| The composer's Send button is clipped or the row scrolls sideways below 768px         | A pill in `.composer__controls` regained a fixed width — check the four-level `min-width: 0` chain on the model pill, and that the tools and project labels still collapse (§8.4.1) |
 | The chat kebab appears over the projects screen                                       | A publisher did not `clear()` on destroy (§5)                                                                                                                                  |
 | Safe-area padding has no effect on a device with a notch                              | `viewport-fit=cover` came off the viewport meta tag; every inset then resolves to 0px (§7)                                                                                      |
 

@@ -10,9 +10,10 @@
     appMenuTriggerContent
     class="tools-menu__pill"
     [class.tools-menu__pill--disabled]="settings.toolsDisabled()"
+    [class.tools-menu__pill--armed]="settings.effectiveMcpServerIds().length > 0"
   >
     <app-icon class="tools-menu__icon" name="bi-tools" />
-    <span>{{ settings.toolsLabel() }}</span>
+    <span class="tools-menu__pill-label">{{ settings.toolsLabel() }}</span>
     <app-icon class="tools-menu__chevron" name="bi-chevron-down" />
   </span>
 

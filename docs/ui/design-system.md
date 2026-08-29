@@ -11,7 +11,7 @@ Companion to [Frontend Foundation](frontend-foundation.md), which covers configu
 Four stories landed together, and they solve one problem each:
 
 1. **Theming** (US-105). Two themes, one token vocabulary, and a pre-paint contract that gets the right one on screen before the first frame (§2, §3).
-2. **Assets** (US-109). Three type faces, 75 icons, two multi-colour brand marks (US-418) and four brand images, all served from our own origin. The application issues **zero third-party requests at runtime** — no Google Fonts, no CDN, no icon font (§4, §5, §6).
+2. **Assets** (US-109). Three type faces, 75 icons, five multi-colour brand marks (US-418, grown from two) and four brand images, all served from our own origin. The application issues **zero third-party requests at runtime** — no Google Fonts, no CDN, no icon font (§4, §5, §6).
 3. **The kit** (US-106). Twenty-odd presentational components with the accessibility contracts written into them rather than left to each screen (§7, §8).
 4. **The gates** (US-108). ESLint plus five Node checks that keep all of the above from drifting (§10).
 
@@ -247,7 +247,7 @@ Supplying `label` promotes the icon from decoration to content. Leave it unset w
 
 ```bash
 $ npm run assets:icons
-icon sprite OK — 75 glyphs + 2 brand marks, 33.5 kB → public/icons/sprite.svg
+icon sprite OK — 75 glyphs + 5 brand marks, 37.6 kB → public/icons/sprite.svg
 ```
 
 The build refuses a name that is malformed, duplicated, out of order, or absent from `bootstrap-icons` 1.13.1 — the last with the URL to check the spelling against. Adding the name without rebuilding leaves the glyph *typed* but absent from the sprite, where it renders blank; `prestart`, `prebuild` and `pretest` all rebuild it, so that only bites someone serving `dist/` by hand.
@@ -262,12 +262,19 @@ Three layers catch a wrong name, deliberately, because each sees something the o
 
 ### 5.4 Brand marks: a second lane in the same sprite (US-418)
 
-A tool server registered with an icon ([Administration §11.3.1](administration.md#1131-icon-a-select-a-live-preview-and-a-key-nobody-typed-us-1210)) needs its own logo, not a `bi-*` glyph tinted to `currentColor` — a brand mark has to keep the colours its owner specifies. `build-icon-sprite.mjs` therefore reads a **second** manifest, [`shared/icon/brand-icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon-names.ts), against sources checked in under `shared/icon/brand/` rather than resolved from `node_modules`, and emits those `<symbol>` elements into the same `sprite.svg` **without** the `fill="currentColor"` rewrite the `bi-*` lane gets. Two names, `brand-microsoft` and `brand-context7` today: the Microsoft mark is bootstrap-icons' own `microsoft.svg`, its four-subpath `d` split one path per quadrant and coloured with the brand hexes so it sits at the same optical weight and the same 16-unit grid as every other glyph; Context7's is the project's own MIT-licensed mark, kept at its native 28-unit `viewBox` — a `<symbol>` establishes its own viewport, so a differently-scaled source still renders at whatever `font-size` the caller sets.
+A tool server registered with an icon ([Administration §11.3.1](administration.md#1131-icon-a-select-a-live-preview-and-a-key-nobody-typed-us-1210)) needs its own logo, not a `bi-*` glyph tinted to `currentColor` — a brand mark has to keep the colours its owner specifies. `build-icon-sprite.mjs` therefore reads a **second** manifest, [`shared/icon/brand-icon-names.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon-names.ts), against sources checked in under `shared/icon/brand/` rather than resolved from `node_modules`, and emits those `<symbol>` elements into the same `sprite.svg` **without** the `fill="currentColor"` rewrite the `bi-*` lane gets. `BRAND_ICON_NAMES` fails the build if it is out of sorted order, exactly like `ICON_NAMES` (§5.3) — its diffs have to stay readable the same way.
+
+Five names today, `brand-azure`, `brand-context7`, `brand-github`, `brand-microsoft` and `brand-salesforce`. Four carry a brand hex, each kept at its source's native `viewBox` — a `<symbol>` establishes its own viewport, so a differently-scaled source still renders at whatever `font-size` the caller sets: the Microsoft mark is bootstrap-icons' own `microsoft.svg`, its four-subpath `d` split one path per quadrant and coloured with the brand hexes so it sits at the same optical weight and the same 16-unit grid as every other glyph; Azure and Salesforce are Simple Icons' CC0 marks on their native 24-unit grid, coloured Azure blue (`#0078D4`) and Salesforce blue (`#00A1E0`) respectively; Context7's is the project's own MIT-licensed mark, kept at its native 28-unit `viewBox`. **`brand-github` is the one exception, and the only mark in the set on `fill="currentColor"` rather than a hex** — the Octocat is monochrome by GitHub's own brand guidelines, shipped in black or white, and a hardcoded `#181717` would be invisible against the dark theme's surface.
 
 ```html
-<app-brand-icon name="brand-microsoft" />                  <!-- decorative -->
+<app-brand-icon name="brand-azure" />                      <!-- decorative -->
 <app-brand-icon name="brand-context7" label="Context7" />  <!-- content -->
+<app-brand-icon name="brand-github" />                     <!-- decorative, currentColor -->
+<app-brand-icon name="brand-microsoft" />                  <!-- decorative -->
+<app-brand-icon name="brand-salesforce" />                 <!-- decorative -->
 ```
+
+All five are in the `/ui-kit` gallery's Brand marks row.
 
 `<app-brand-icon>` ([`shared/icon/brand-icon.ts`](../../enterprise-gpt-ui/src/app/shared/icon/brand-icon.ts)) is a **sibling** of `Icon`, not a widening of it: `icon.scss` forces `fill: currentColor` on the sprite reference, which is exactly what a brand mark must not inherit, so the two components — and the two manifests behind them — stay independently checkable. `strictTemplates` rejects a misspelled `name` at compile time for a static reference; the one run-time lookup, `mcpBrandIcon` resolving a server's stored `iconKey` to a `BrandIconName`, is covered instead by a dev-mode `effect` that logs a miss rather than failing silently, the same pattern §5.3's table uses for `Icon`.
 

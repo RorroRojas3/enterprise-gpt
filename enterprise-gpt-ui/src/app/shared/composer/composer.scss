@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: block;
 }
@@ -296,4 +298,39 @@ app-icon.composer__project-caret {
 
 .composer__mic-elapsed {
   font-size: 11.5px;
+}
+
+// Below 768px this row wants about twice the width it has, and Send — last in it —
+// is what fell off the card. Every pill whose glyph already says what its label says
+// gives the label up; the model name is the one piece of text that survives.
+@include bp.mobile {
+  .composer__controls {
+    gap: 5px;
+  }
+
+  // The 290px cap is wider than the card's own content box on a phone.
+  .composer__chips li {
+    max-width: 100%;
+  }
+
+  // Absent rather than dimmed: the narrow navbar renders this same menu, so the export
+  // stays one press away. The project screen's composer never offered one.
+  app-conversation-download-menu {
+    display: none;
+  }
+
+  .composer__project {
+    padding: 0 8px;
+  }
+
+  .composer__project-name {
+    display: none;
+  }
+
+  // The chip, not just its label: this arm is a plain <span> whose only content is that
+  // label, so hiding the text alone leaves a pill with nothing to read and nothing to
+  // announce — and the screen it renders on is the project's own, named in the header.
+  .composer__project--fixed {
+    display: none;
+  }
 }
