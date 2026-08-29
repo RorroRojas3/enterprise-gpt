@@ -68,8 +68,21 @@ describe('Documents (US-1002, US-1003)', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
+  /**
+   * The unfiltered drain. It refuses a request carrying `type=`, so a regression that
+   * kept the origin filter after the URL dropped it fails here rather than passing.
+   */
   function expectDrain(): TestRequest {
-    return backend.expectOne((request) => request.url === DOCUMENTS_URL);
+    return backend.expectOne(
+      (request) => request.url === DOCUMENTS_URL && !request.params.has('type'),
+    );
+  }
+
+  /** The drain a screen with the assistant-created filter on issues. */
+  function expectGeneratedDrain(): TestRequest {
+    return backend.expectOne(
+      (request) => request.url === DOCUMENTS_URL && request.params.get('type') === 'generated',
+    );
   }
 
   function url(): string {
@@ -155,7 +168,7 @@ describe('Documents (US-1002, US-1003)', () => {
       formatShortDate(doc.dateCreated, true),
     );
 
-    // An `Uploaded` badge on every row: US-1004 is what makes it data-driven.
+    // The badge reads the row's own origin rather than a constant.
     for (const row of rows) {
       expect(row.querySelector('app-source-badge')?.textContent?.trim()).toBe('Uploaded');
     }
@@ -358,6 +371,149 @@ describe('Documents (US-1002, US-1003)', () => {
 
       expect(url()).toContain('name=alpha');
       expect(url()).toContain('view=flat');
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
+    });
+  });
+
+  describe('the assistant-created filter', () => {
+    function sourceSwitch(): HTMLInputElement {
+      const input = element().querySelector<HTMLInputElement>('.documents__source-toggle input');
+      expect(input).not.toBeNull();
+      return input!;
+    }
+
+    it('is off by default and sends no origin with the drain', async () => {
+      // `open` flushes through `expectDrain`, which refuses a request carrying `type=`.
+      await open('/documents', twoConversations());
+
+      expect(sourceSwitch().checked).toBe(false);
+      expect(sourceSwitch().getAttribute('role')).toBe('switch');
+    });
+
+    it('names the narrowed set in the count', async () => {
+      await harness.navigateByUrl('/documents?source=generated', Documents);
+      expectGeneratedDrain().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      );
+      await harness.fixture.whenStable();
+
+      // "1 document" would describe the library rather than the set on screen.
+      expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
+        '1 generated document',
+      );
+    });
+
+    it('narrows the listing at the server, records only the deviation, and always pushes', async () => {
+      await open('/documents', twoConversations());
+
+      sourceSwitch().click();
+      await harness.fixture.whenStable();
+
+      expect(url()).toBe('/documents?source=generated');
+      expectGeneratedDrain().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      );
+      await harness.fixture.whenStable();
+
+      expect(sourceSwitch().checked).toBe(true);
+      const rows = [...element().querySelectorAll('app-document-row')];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.querySelector('app-source-badge')?.textContent?.trim()).toBe('Generated');
+
+      sourceSwitch().click();
+      await harness.fixture.whenStable();
+
+      // Toggling back removes the key rather than writing `source=uploaded`.
+      expect(url()).toBe('/documents');
+      expectDrain().flush(documentPage(twoConversations()));
+      await harness.fixture.whenStable();
+
+      await goBack();
+      expect(url()).toBe('/documents?source=generated');
+      expectGeneratedDrain().flush(documentPage([]));
+      await harness.fixture.whenStable();
+    });
+
+    it('filters on first render from a deep link', async () => {
+      await harness.navigateByUrl('/documents?source=generated', Documents);
+      expectGeneratedDrain().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      );
+      await harness.fixture.whenStable();
+
+      expect(sourceSwitch().checked).toBe(true);
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
+    });
+
+    it('reads any value it never writes as unfiltered', async () => {
+      await open('/documents?source=uploaded', twoConversations());
+
+      expect(sourceSwitch().checked).toBe(false);
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
+    });
+
+    it('explains an empty filtered set and offers the whole library back', async () => {
+      await harness.navigateByUrl('/documents?source=generated', Documents);
+      expectGeneratedDrain().flush(documentPage([]));
+      await harness.fixture.whenStable();
+
+      const empty = element().querySelector('app-empty-state');
+      expect(empty?.textContent).toContain('No generated documents yet');
+      expect(empty?.textContent).not.toContain('Nothing uploaded yet');
+
+      empty?.querySelector<HTMLButtonElement>('button')?.click();
+      await harness.fixture.whenStable();
+
+      // The button removed itself with its branch, so focus has to land somewhere real.
+      expect(document.activeElement).toBe(sourceSwitch());
+      expect(url()).toBe('/documents');
+      expectDrain().flush(documentPage(twoConversations()));
+      await harness.fixture.whenStable();
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
+    });
+
+    it('drops a name term with the filter, so the way out shows every document', async () => {
+      await harness.navigateByUrl('/documents?source=generated&name=summary', Documents);
+      expectGeneratedDrain().flush(documentPage([]));
+      await harness.fixture.whenStable();
+
+      element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
+      await harness.fixture.whenStable();
+
+      // Leaving `?name=` behind would land the reader on the no-matches card instead.
+      expect(url()).toBe('/documents');
+      expectDrain().flush(documentPage(twoConversations()));
+      await harness.fixture.whenStable();
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
+    });
+
+    it('does not re-drain when only the term changes', async () => {
+      await harness.navigateByUrl('/documents?source=generated', Documents);
+      expectGeneratedDrain().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      );
+      await harness.fixture.whenStable();
+
+      await type('summary');
+
+      // Every `?name=` navigation re-sets the `source` input; input equality is what
+      // stops that re-running the drain, and `afterEach`'s verify() is what proves it.
+      expect(url()).toContain('source=generated');
+    });
+
+    it('lets the term and the origin survive each other', async () => {
+      await open('/documents?name=summary', twoConversations());
+
+      sourceSwitch().click();
+      await harness.fixture.whenStable();
+
+      expect(url()).toContain('name=summary');
+      expect(url()).toContain('source=generated');
+      expectGeneratedDrain().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      );
+      await harness.fixture.whenStable();
+
       expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
     });
   });

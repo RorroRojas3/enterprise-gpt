@@ -16,6 +16,19 @@ export const VIEW_PARAM = 'view';
 export const VIEW_FLAT = 'flat';
 
 /**
+ * The query parameter the origin filter lives in.
+ *
+ * Same rule as {@link VIEW_PARAM}, and the same reason: every origin is the default, so
+ * only the narrowing is written and anything but the one value below reads as
+ * unfiltered. That is also what keeps the client from ever sending the server a
+ * `?type=` it would reject.
+ */
+export const SOURCE_PARAM = 'source';
+
+/** The only value {@link SOURCE_PARAM} is ever written with. */
+export const SOURCE_GENERATED = 'generated';
+
+/**
  * Re-exported so this screen's route contract still reads from one file, the shape
  * `conversations-route.ts` set. The view toggle does not use it: on/off is the
  * add-or-remove transition the function exists to push at, so the toggle always

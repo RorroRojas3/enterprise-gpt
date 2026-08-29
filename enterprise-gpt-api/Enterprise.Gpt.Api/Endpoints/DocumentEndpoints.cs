@@ -68,11 +68,12 @@ namespace Enterprise.Gpt.Api.Endpoints
 
             // A bare GET on the group root, so it collides with none of the multi-segment routes below.
             // Not gated on Upload File, like the downloads: that permission is about adding documents,
-            // and this is a read scoped to the caller. The 400 is a binding failure on ?skip= or
-            // ?take=, so it carries no errors dictionary — ProducesProblem(400), not
-            // ProducesValidationProblem().
+            // and this is a read scoped to the caller. ProducesValidationProblem() because ?type= is
+            // rejected by the service with an errors dictionary naming the parameter; a binding
+            // failure on ?skip= or ?take= still returns a 400 without one, and OpenAPI allows a single
+            // schema per status, so the richer of the two is declared.
             group.MapGet("", GetUserDocumentsAsync)
-                .ProducesProblem(StatusCodes.Status400BadRequest);
+                .ProducesValidationProblem();
 
             // Three segments, so neither route collides with upload-status/{jobId} or file-extensions.
             // Not gated on Upload File: that permission is about adding documents, and owning the
@@ -135,10 +136,10 @@ namespace Enterprise.Gpt.Api.Endpoints
         // would otherwise fail binding with a 400 — which forces them behind the injected service,
         // as C# requires optional parameters last.
         internal static async Task<Ok<PaginatedResponseDto<UserDocumentDto>>> GetUserDocumentsAsync(
-            IDocumentService documentService, int skip = 0, int take = 20,
+            IDocumentService documentService, int skip = 0, int take = 20, string? type = null,
             CancellationToken cancellationToken = default)
         {
-            var response = await documentService.GetUserDocumentsAsync(skip, take, cancellationToken);
+            var response = await documentService.GetUserDocumentsAsync(skip, take, type, cancellationToken);
 
             return TypedResults.Ok(response);
         }

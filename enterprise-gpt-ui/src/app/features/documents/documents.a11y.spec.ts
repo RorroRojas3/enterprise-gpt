@@ -4,7 +4,16 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
+import {
+  THEMES,
+  VIEWPORTS,
+  applyTheme,
+  atViewport,
+  clearTheme,
+  expectNoSeriousViolations,
+  expectScrollsToItsLastRow,
+  mountLikeShell,
+} from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
 import { afterEach, beforeEach, describe, it } from 'vitest';
@@ -64,7 +73,10 @@ describe('documents accessibility (US-1405)', () => {
     return element;
   }
 
-  /** Rows from two conversations, so the grouped default has two groups to draw. */
+  /**
+   * Rows from two conversations, so the grouped default has two groups to draw — and one
+   * of each origin, so both source badges are measured rather than only the muted one.
+   */
   function flushListing(): void {
     backend
       .expectOne((request) => request.url === DOCUMENTS_URL)
@@ -75,10 +87,45 @@ describe('documents accessibility (US-1405)', () => {
             name: 'migration-plan.docx',
             extension: '.docx',
             mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            type: 'Generated',
             conversationName: 'Migration plan',
           }),
         ]),
       );
+  }
+
+  /** More rows than any viewport this app supports can show at once. */
+  function manyDocuments(count: number): ReturnType<typeof userDocumentFixture>[] {
+    return Array.from({ length: count }, (_, index) =>
+      userDocumentFixture({ name: `document-${index}.pdf`, conversationName: 'One conversation' }),
+    );
+  }
+
+  /** The filtered screen with nothing to show — the one empty state with an action in it. */
+  function flushNoGeneratedDocuments(): void {
+    backend
+      .expectOne(
+        (request) => request.url === DOCUMENTS_URL && request.params.get('type') === 'generated',
+      )
+      .flush(documentPage([]));
+  }
+
+  for (const viewport of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
+    it(`scrolls to its last row at the ${viewport} width`, async () => {
+      await atViewport(viewport);
+      applyTheme('light');
+      await harness.navigateByUrl('/documents?view=flat');
+
+      const element = harness.routeNativeElement as HTMLElement;
+      attached = mountLikeShell(element);
+      backend
+        .expectOne((request) => request.url === DOCUMENTS_URL)
+        .flush(documentPage(manyDocuments(40)));
+      await harness.fixture.whenStable();
+
+      const rows = element.querySelectorAll<HTMLElement>('app-document-row');
+      expectScrollsToItsLastRow(element, rows[rows.length - 1]!, `/documents (${viewport})`);
+    });
   }
 
   for (const theme of THEMES) {
@@ -98,6 +145,15 @@ describe('documents accessibility (US-1405)', () => {
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/documents?view=flat (${theme})`);
+    });
+
+    it(`finds nothing serious on the empty generated listing in the ${theme} theme`, async () => {
+      const element = await open('/documents?source=generated', theme);
+
+      flushNoGeneratedDocuments();
+      await harness.fixture.whenStable();
+
+      await expectNoSeriousViolations(element, `/documents?source=generated (${theme})`);
     });
   }
 });

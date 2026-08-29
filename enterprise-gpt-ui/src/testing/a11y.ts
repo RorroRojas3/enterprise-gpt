@@ -109,6 +109,51 @@ export function expectNoHorizontalOverflow(root: HTMLElement, label: string): vo
   ).toEqual([]);
 }
 
+/**
+ * Mounts a routed screen the way the signed-in shell does, so a layout fact measured
+ * against it is the one a reader meets.
+ *
+ * `.shell__main` is a clipped flex column of definite height, and that is exactly the
+ * context a screen's own scrolling depends on: appended to a bare `document.body` every
+ * host simply grows and the page scrolls, so a screen that cannot scroll inside the
+ * shell still passes. The class name is not reused — this stands in for the shell rather
+ * than importing its stylesheet.
+ */
+export function mountLikeShell(element: HTMLElement): HTMLElement {
+  const main = document.createElement('div');
+  main.style.cssText = 'display:flex;flex-direction:column;height:100dvh;overflow:hidden';
+  main.append(element);
+  document.body.append(main);
+
+  return main;
+}
+
+/**
+ * Every row of a screen taller than its container is reachable by scrolling it.
+ *
+ * The failure this exists to catch is silent and total: a card that clips its own
+ * overflow while shrinking inside a flex column leaves the host nothing to scroll, so the
+ * rows past the fold cannot be reached at any width, by pointer, keyboard or otherwise.
+ * Only a real browser can answer it, and only inside {@link mountLikeShell}.
+ */
+export function expectScrollsToItsLastRow(
+  host: HTMLElement,
+  lastRow: HTMLElement,
+  label: string,
+): void {
+  expect(
+    host.scrollHeight,
+    `nothing scrolls on ${label}: content is clipped rather than reachable`,
+  ).toBeGreaterThan(host.clientHeight);
+
+  host.scrollTop = host.scrollHeight;
+
+  expect(
+    Math.round(lastRow.getBoundingClientRect().bottom),
+    `the last row is unreachable on ${label} even scrolled to the end`,
+  ).toBeLessThanOrEqual(Math.round(host.getBoundingClientRect().bottom) + 1);
+}
+
 function describeViolation(violation: Result): string {
   const where = violation.nodes
     .slice(0, 4)

@@ -16,6 +16,7 @@ export function userDocumentFixture(overrides: Partial<UserDocumentDto> = {}): U
     extension: '.pdf',
     mimeType: 'application/pdf',
     size: 2_411_724,
+    type: 'Uploaded',
     dateCreated: '2026-08-11T09:00:00+00:00',
     conversationName: `Conversation ${index}`,
     ...overrides,

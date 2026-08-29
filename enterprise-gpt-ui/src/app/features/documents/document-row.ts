@@ -1,13 +1,18 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { UserDocumentDto } from '@domain/api/document';
+import { DocumentType, UserDocumentDto } from '@domain/api/document';
 import { formatBytes } from '@domain/format/bytes';
 import { formatShortDate } from '@domain/format/relative-time';
 import { CHAT_ROUTE } from '@core/auth/auth-routes';
 import { DocumentDownloadStore } from '@core/documents/document-download-store';
-import { SourceBadge } from '@shared/badge/source-badge/source-badge';
+import { DocumentSource, SourceBadge } from '@shared/badge/source-badge/source-badge';
 import { fileGlyph } from '@shared/chip/attachment-chip/attachment.model';
 import { Icon } from '@shared/icon/icon';
+
+const BADGE_SOURCES = {
+  Uploaded: 'uploaded',
+  Generated: 'generated',
+} as const satisfies Record<DocumentType, DocumentSource>;
 
 /**
  * One row of the documents library (US-1002, frame `4j`) — the same anatomy as
@@ -47,6 +52,13 @@ export class DocumentRow {
 
   protected readonly glyph = fileGlyph;
   protected readonly chatRoute = CHAT_ROUTE;
+
+  /** The badge's own vocabulary, which `domain/` cannot name without reaching into `shared/`. */
+  // Defaulted: the table is exhaustive against the union, not against a wire that could
+  // add a member before the union does.
+  protected readonly source = computed<DocumentSource>(
+    () => BADGE_SOURCES[this.document().type] ?? 'uploaded',
+  );
 
   protected sizeLabel(): string {
     return formatBytes(this.document().size);

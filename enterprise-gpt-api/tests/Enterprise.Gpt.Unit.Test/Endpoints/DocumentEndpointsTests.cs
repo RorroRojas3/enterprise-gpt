@@ -129,10 +129,10 @@ public sealed class DocumentEndpointsTests
             PageSize = 20,
             CurrentPage = 1
         };
-        _documentService.GetUserDocumentsAsync(0, 20, Arg.Any<CancellationToken>()).Returns(expected);
+        _documentService.GetUserDocumentsAsync(0, 20, null, Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await DocumentEndpoints.GetUserDocumentsAsync(
-            _documentService, 0, 20, TestContext.Current.CancellationToken);
+            _documentService, 0, 20, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Same(expected, result.Value);
     }
@@ -140,12 +140,24 @@ public sealed class DocumentEndpointsTests
     [Fact]
     public async Task GetUserDocumentsAsync_NoQueryString_UsesTheDefaultPage()
     {
-        _documentService.GetUserDocumentsAsync(0, 20, Arg.Any<CancellationToken>())
+        _documentService.GetUserDocumentsAsync(0, 20, null, Arg.Any<CancellationToken>())
             .Returns(new PaginatedResponseDto<UserDocumentDto>());
 
         await DocumentEndpoints.GetUserDocumentsAsync(_documentService, cancellationToken: TestContext.Current.CancellationToken);
 
-        await _documentService.Received(1).GetUserDocumentsAsync(0, 20, Arg.Any<CancellationToken>());
+        await _documentService.Received(1).GetUserDocumentsAsync(0, 20, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_TypeQueryString_IsPassedToTheService()
+    {
+        _documentService.GetUserDocumentsAsync(0, 20, "generated", Arg.Any<CancellationToken>())
+            .Returns(new PaginatedResponseDto<UserDocumentDto>());
+
+        await DocumentEndpoints.GetUserDocumentsAsync(
+            _documentService, type: "generated", cancellationToken: TestContext.Current.CancellationToken);
+
+        await _documentService.Received(1).GetUserDocumentsAsync(0, 20, "generated", Arg.Any<CancellationToken>());
     }
 
     [Fact]

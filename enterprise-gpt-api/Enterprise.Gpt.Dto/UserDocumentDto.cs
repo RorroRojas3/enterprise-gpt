@@ -8,7 +8,7 @@ namespace Enterprise.Gpt.Dto;
 /// </summary>
 public class UserDocumentDto : ConversationDocumentDto
 {
-    /// <summary>Gets or sets the name of the conversation the document was uploaded into.</summary>
+    /// <summary>Gets or sets the name of the conversation the document belongs to.</summary>
     [JsonPropertyName("conversationName")]
     public string ConversationName { get; set; } = null!;
 }

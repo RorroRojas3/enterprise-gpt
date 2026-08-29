@@ -26,6 +26,7 @@ public static class ConversationDocumentMapper
             Extension = document.Extension,
             MimeType = document.MimeType,
             Size = document.Size,
+            Type = document.Type,
             DateCreated = document.DateCreated
         };
     }
@@ -47,6 +48,7 @@ public static class ConversationDocumentMapper
             Extension = document.Extension,
             MimeType = document.MimeType,
             Size = document.Size,
+            Type = document.Type,
             DateCreated = document.DateCreated
         };
 
@@ -69,6 +71,7 @@ public static class ConversationDocumentMapper
             Extension = document.Extension,
             MimeType = document.MimeType,
             Size = document.Size,
+            Type = document.Type,
             DateCreated = document.DateCreated
         };
 }

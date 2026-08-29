@@ -1,9 +1,10 @@
 ﻿using System.Text.Json.Serialization;
+using Enterprise.Gpt.Dto.Enums;
 
 namespace Enterprise.Gpt.Dto
 {
     /// <summary>
-    /// A document uploaded into a conversation, as returned by the conversation document listing and
+    /// A document held by a conversation, as returned by the conversation document listing and
     /// the upload pipeline. Carries no chunk or embedding data.
     /// </summary>
     public class ConversationDocumentDto
@@ -39,7 +40,17 @@ namespace Enterprise.Gpt.Dto
         [JsonPropertyName("size")]
         public long Size { get; set; }
 
-        /// <summary>Gets or sets when the document finished ingesting.</summary>
+        /// <summary>Gets or sets whether a user uploaded this document or the assistant produced it.</summary>
+        /// <remarks>
+        /// Serialized as the member name, for the reason <see cref="ConversationMessageDto.TokenAccuracy"/>
+        /// records. Defaulted rather than left unset, because the converter writes an undefined value as a
+        /// number and the enum has no zero member.
+        /// </remarks>
+        [JsonPropertyName("type")]
+        [JsonConverter(typeof(JsonStringEnumConverter<ConversationDocumentTypes>))]
+        public ConversationDocumentTypes Type { get; set; } = ConversationDocumentTypes.Uploaded;
+
+        /// <summary>Gets or sets when the document was stored.</summary>
         [JsonPropertyName("dateCreated")]
         public DateTimeOffset DateCreated { get; set; }
     }
