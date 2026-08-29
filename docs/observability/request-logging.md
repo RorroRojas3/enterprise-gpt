@@ -44,6 +44,21 @@ dotnet user-secrets set "AzureMonitor:ConnectionString" "InstrumentationKey=…;
 
 In a deployed environment set the `APPLICATIONINSIGHTS_CONNECTION_STRING` environment variable instead; App Service sets it for you when an Application Insights resource is linked. With neither configured the exporter is not registered at all (§7.1).
 
+**Everything else under `AzureMonitor` is a non-secret deployment setting**, and ships with defaults in `appsettings.json` — only `ConnectionString` is excluded:
+
+```json
+"AzureMonitor": {
+  "RoleName": "enterprise-gpt-api",
+  "TracesPerSecond": 5.0,
+  "SamplingRatio": null,
+  "EnableTraceBasedLogsSampler": false,
+  "EnableLiveMetrics": true,
+  "CaptureUserId": true
+}
+```
+
+`RoleName` is the Application Insights cloud role every telemetry item reports under; the rest govern sampling (§7.4) and whether a server span carries the caller's Entra object id (§7.2). All six are safe to check in and safe to override per environment.
+
 **To quieten the log in production**, filter the category — it sits outside the `Microsoft.AspNetCore` prefix precisely so it can be tuned on its own:
 
 ```json
@@ -109,7 +124,7 @@ The practical payoff is that severity carries the meaning. `Enterprise.Gpt.Api.M
 
 **A failure on an excluded path is still logged.** The completion record is written whenever an exception escaped or the status is ≥ 400. Silencing a health probe is worth doing; silencing a health probe that has started returning 500 is not.
 
-There is no `/health` endpoint in this build. The default anticipates one; `/openapi` and `/scalar` are mapped in Development only.
+`/health` and `/health/ready` now exist and are mapped anonymously in every environment (see the [KQL cookbook](kql-cookbook.md#readiness-and-liveness) for what each returns); `/openapi` and `/scalar` remain Development-only.
 
 ## 4. Where it sits in the pipeline
 
@@ -284,21 +299,56 @@ The same posture applies at every other edge: a body that could not be read beco
 
 ### 7.1 Registration
 
-[`TelemetryRegistration.AddEnterpriseTelemetry`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs) is the only place in the API that names a telemetry backend:
+[`TelemetryRegistration.AddEnterpriseTelemetry`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs) is the only place in the API that names a telemetry backend. It binds and validates [`TelemetryOptions`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryOptions.cs) from the `AzureMonitor` section unconditionally, before checking whether a connection string exists — so a malformed value fails the deployment that wrote it rather than the first request that happens to configure one:
+
+```csharp
+services.AddOptions<TelemetryOptions>()
+    .Bind(section)
+    .Validate(options => !string.IsNullOrWhiteSpace(options.RoleName), "AzureMonitor:RoleName is required.")
+    .Validate(options => options.TracesPerSecond is null || options.SamplingRatio is null,
+        "AzureMonitor:TracesPerSecond and AzureMonitor:SamplingRatio select different samplers — set at most one.")
+    .Validate(options => options.TracesPerSecond is null or > 0, "AzureMonitor:TracesPerSecond must be greater than zero.")
+    .Validate(options => options.SamplingRatio is null or (> 0 and <= 1),
+        "AzureMonitor:SamplingRatio must be greater than zero and at most one.")
+    .ValidateOnStart();
+```
+
+Once a connection string is found (below), the exporter itself is wired:
 
 ```csharp
 services.AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService("enterprise-gpt-api"))
-    .UseAzureMonitor(options => options.ConnectionString = connectionString)
-    .WithTracing(tracing => tracing.AddSource(ChatTelemetrySourceName))
-    .WithMetrics(metrics => metrics.AddMeter(ChatTelemetrySourceName));
+    .ConfigureResource(resource => resource.AddService(telemetry.RoleName, serviceVersion: BuildVersion))
+    // Ahead of UseAzureMonitor: that call appends the exporter, and a processor added after it
+    // would run against spans the exporter had already been handed.
+    .WithTracing(tracing => tracing
+        .AddSource(ChatTelemetrySourceName)
+        .AddProcessor<EndUserEnrichingProcessor>())
+    .WithMetrics(metrics => metrics.AddMeter(ChatTelemetrySourceName))
+    .UseAzureMonitor(options =>
+    {
+        options.ConnectionString = connectionString;
+        options.EnableLiveMetrics = telemetry.EnableLiveMetrics;
+        options.EnableTraceBasedLogsSampler = telemetry.EnableTraceBasedLogsSampler;
+        options.TracesPerSecond = telemetry.TracesPerSecond;   // null clears rate-limited sampling — see §7.4
+        if (telemetry.SamplingRatio is { } ratio)
+        {
+            options.SamplingRatio = ratio;
+        }
+    });
 ```
+
+**`WithTracing`/`WithMetrics` now run before `UseAzureMonitor`, not after — the order is load-bearing.** `UseAzureMonitor` appends the Azure Monitor exporter to the pipeline being built; a processor registered afterward would sit downstream of that exporter and see spans only once they had already been exported, which behaves less like "added" than "silently ignored." Registering the source, the meter and the processor first and calling `UseAzureMonitor` last is what makes all three actually take effect.
+
+Two things ride the resource and the pipeline that did not before:
+
+- **`ConfigureResource` now also sets `serviceVersion`**, read once from the assembly's `AssemblyInformationalVersionAttribute` (`BuildVersion`, a `private static readonly` on `TelemetryRegistration`). That populates `application_Version` on every telemetry item, so an exception in Application Insights can be attributed to the build that produced it, not only to a timestamp.
+- **[`EndUserEnrichingProcessor`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/EndUserEnrichingProcessor.cs) stamps the caller's Entra object id onto server spans as `enduser.id`**, which Application Insights surfaces as `user_AuthenticatedId` on the `requests` row — and only there: an `exceptions` row comes from a log record, which inherits no span attributes from the request it happened during. It reads `HttpContext.User` on `OnEnd` rather than `OnStart`, because authentication runs inside the server span and the principal is still anonymous when the span begins. Gated by `AzureMonitor:CaptureUserId` (default `true`); registered as a singleton and added with `AddProcessor<T>()` rather than a lambda so its own dependency (`IHttpContextAccessor`) is visible at the registration site.
 
 The package is `Azure.Monitor.OpenTelemetry.AspNetCore` 1.6.0 — the OpenTelemetry distro, not the classic `Microsoft.ApplicationInsights.AspNetCore` SDK. The distro is [Microsoft's current guidance for new ASP.NET Core applications](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-enable?tabs=aspnetcore), the two must not coexist, and only the distro exports the `UseOpenTelemetry()` spans the chat clients already emit.
 
-The connection string is read from `APPLICATIONINSIGHTS_CONNECTION_STRING` first, then `AzureMonitor:ConnectionString`. It carries an ingestion key, so it is treated as a secret: an environment variable in deployed environments, user secrets locally, **never `appsettings.json`**. Authentication is by connection string only — no `Credential`/`DefaultAzureCredential` is configured, so moving to Entra-authenticated ingestion is a change here.
+The connection string is resolved by [`TelemetryRegistration.ResolveConnectionString`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs): `APPLICATIONINSIGHTS_CONNECTION_STRING` first, then the bound `TelemetryOptions.ConnectionString` (i.e. `AzureMonitor:ConnectionString`). It carries an ingestion key, so it is treated as a secret: an environment variable in deployed environments, user secrets locally, **never `appsettings.json`**. Authentication is by connection string only — no `Credential`/`DefaultAzureCredential` is configured, so moving to Entra-authenticated ingestion is a change here.
 
-**With no connection string configured the distro is not registered at all.** Not registered with nowhere to send to — skipped entirely. That is what keeps local runs and the integration test host free of an exporter retrying in the background, and it means "I see no telemetry" has exactly one first thing to check.
+**With no connection string configured, the exporter registration is skipped entirely** — the options above are still bound and validated (so a bad `RoleName` or an invalid sampling combination still fails startup), but nothing calls `AddOpenTelemetry()`. That is what keeps local runs and the integration test host free of an exporter retrying in the background, and it means "I see no telemetry" has exactly one first thing to check.
 
 Note that `UseAzureMonitor()` may be called only once per `IServiceCollection`; a second call throws `NotSupportedException`.
 
@@ -322,17 +372,22 @@ union traces, requests, dependencies, exceptions
 | order by timestamp asc
 ```
 
-That correlation is why the middleware's own templates carry no trace-id field (§3.1): the hosting layer already puts one on the log scope, and a second one under the same name with a different value is precisely the defect to avoid. The cloud role name is `enterprise-gpt-api`, set through `ConfigureResource`.
+That correlation is why the middleware's own templates carry no trace-id field (§3.1): the hosting layer already puts one on the log scope, and a second one under the same name with a different value is precisely the defect to avoid. The cloud role name defaults to `enterprise-gpt-api`, set through `ConfigureResource` from `AzureMonitor:RoleName` (§2) — override it per deployment slot if you need to tell one apart from another in the same Application Insights resource.
+
+Two more fields ride every item now: `application_Version` (§7.1's `serviceVersion`, on everything) and `user_AuthenticatedId` (§7.1's `EndUserEnrichingProcessor`, on `requests` only — an `exceptions` row inherits no span attributes).
 
 ### 7.3 LLM spans and token metrics
 
-Both chat clients now name their telemetry source explicitly:
+Every keyed chat-client registration in `Program.cs` shares one telemetry step:
 
 ```csharp
-.UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)   // "Enterprise.Gpt.Chat"
+internal static ChatClientBuilder UseEnterpriseTelemetry(this ChatClientBuilder builder) =>
+    builder.UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName);   // "Enterprise.Gpt.Chat"
 ```
 
-Named at the producer and the consumer rather than relying on the library's default, because the two must agree for the spans to be exported — and a default that changes with a package bump would take the LLM traces off the map with no build error.
+[`ChatClientTelemetryExtensions.UseEnterpriseTelemetry`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/ChatClientTelemetryExtensions.cs) is now the only place any provider names the telemetry source — replacing five separate call sites for the five keyed clients `Program.cs` builds: **Azure OpenAI, the File Agent's own client, Azure AI Foundry, Amazon Bedrock and Anthropic**. Named at the producer and the consumer rather than relying on the library's default, because the two must agree for the spans to be exported — and a default that changes with a package bump would take the LLM traces off the map with no build error. It must run before `UseToolTracking`, which must in turn run before `UseFunctionInvocation`, in every registration.
+
+That consolidation fixed a real gap, not a hypothetical one: the Anthropic registration used to call the bare `.UseOpenTelemetry()`, with no `sourceName`. That builds an `ActivitySource`/`Meter` under the library's own default name — a source nothing here subscribes to — so every Anthropic-served turn's LLM span and `gen_ai.client.token.usage` reading was silently dropped, with no build error and no runtime failure. `ChatClientTelemetryTests` now pins that the shared step emits on the exported source, so a sixth provider calling `UseOpenTelemetry()` directly instead of `UseEnterpriseTelemetry()` is the only way to reintroduce that gap.
 
 `Enterprise.Gpt.Chat` is registered as **both a source and a meter**, because `Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` builds an `ActivitySource` and a `Meter` from the same name. Registering only the source would have exported the spans and dropped `gen_ai.client.token.usage` — the metric that turns LLM spend into something observable.
 
@@ -350,31 +405,43 @@ Named at the producer and the consumer rather than relying on the library's defa
 | `enterprise_gpt.sheet_ingestion.rows` | Histogram (count) | same tags | Data rows read across every sheet of one upload |
 | `enterprise_gpt.sheet_ingestion.columns` | Histogram (count) | same tags | Columns of the **widest** sheet in one upload, not the total across sheets |
 | `enterprise_gpt.sheet_query.duration` | Histogram (seconds) | `sheet_query.operation`, `sheet_query.outcome` | Duration of one whole `sheet_query` invocation. See [Sheet Query §7.3](../documents/sheet-query.md#73-telemetry) |
+| `enterprise_gpt.file_agent.run.duration` | Histogram (seconds) | `file_agent.outcome` | Duration of one whole File Agent run — pre-flight, every sandbox round trip, verification and the store, together |
+| `enterprise_gpt.file_agent.verification` | Counter (artifacts) | `file_agent.outcome`, `document.type` | One increment per generated artifact re-opened and checked before it was stored |
+| `enterprise_gpt.file_agent.sandbox.duration` | Histogram (seconds) | `file_agent.outcome` | Duration of one sandbox round trip, the only observable proxy for billed session seconds on this route |
+| `enterprise_gpt.file_agent.sandbox.active` | UpDownCounter (sessions) | none | Sandbox legs in flight right now, across every conversation this instance is serving |
 
-Ten instruments in total, all defined as `private static readonly` fields on one static class rather than scattered across their call sites, which is what makes `ChatMetrics` the place to look before assuming a metric does not exist. None of the ten carries a dimension this document's own redaction posture (§6.4) would object to: no conversation id, no user id, no message content, and — for the five spreadsheet instruments — nothing read out of an uploaded file itself, since a sheet name, a column name and a cell value are all file content the same way a prompt is.
+Fourteen instruments in total, all defined as `private static readonly` fields on one static class rather than scattered across their call sites, which is what makes `ChatMetrics` the place to look before assuming a metric does not exist. None of the fourteen carries a dimension this document's own redaction posture (§6.4) would object to: no conversation id, no user id, no message content, and — for the five spreadsheet instruments and the File Agent's own — nothing read out of an uploaded or generated file itself, since a sheet name, a column name and a cell value are all file content the same way a prompt is.
 
-### 7.4 Sampling — check this before relying on the access log
+### 7.4 Sampling: a deployment decision, not a library default
 
-The Azure Monitor distro applies **rate-limited sampling by default, capped at 5 traces per second**. Under load that is well below this API's request rate, so the `requests` and `dependencies` you see are a sample, not a census.
+`AzureMonitor:TracesPerSecond` ships **`5.0`** — the Azure Monitor distro's own rate-limited-sampling default, restated in [`TelemetryOptions`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryOptions.cs) and in `appsettings.json` (§2) so the number is a choice this deployment made rather than a library default nobody looked at. Under load that is well below this API's request rate, so the `requests` and `dependencies` you see are a sample, not a census.
 
-Sampling for ASP.NET Core is [not configurable from a configuration file](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-configuration#enable-sampling). Change it in `AddEnterpriseTelemetry`:
+Sampling for ASP.NET Core is [not configurable from a configuration file](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-configuration#enable-sampling) — the distro reads only code or the `OTEL_TRACES_SAMPLER*` environment variables, never `IConfiguration` directly — which is why `AddEnterpriseTelemetry` binds `TracesPerSecond`/`SamplingRatio` itself and assigns them into `AzureMonitorOptions` by hand (§7.1). Two ways to change the posture, and startup validation rejects setting both at once:
 
-```csharp
-.UseAzureMonitor(options =>
-{
-    options.ConnectionString = connectionString;
-    options.TracesPerSecond = 20.0;   // or: options.SamplingRatio = 0.5F; options.TracesPerSecond = null;
-})
+```json
+"AzureMonitor": {
+  "TracesPerSecond": 20.0        // raise or lower the rate ceiling — the default sampler
+}
 ```
 
-or with environment variables, which take precedence over code:
+```bash
+# switch to fixed-ratio sampling: clear the ceiling and set a ratio. ConfigurationBinder cannot
+# un-set a value appsettings.json already supplies, so clearing it from the environment needs an
+# explicit empty assignment, not simply leaving the variable out.
+AzureMonitor__TracesPerSecond=
+AzureMonitor__SamplingRatio=0.5
+```
+
+or with the environment variables the distro itself reads, which take precedence over both:
 
 ```bash
 OTEL_TRACES_SAMPLER=microsoft.rate_limited
 OTEL_TRACES_SAMPLER_ARG=20
 ```
 
-Two things follow. **Metrics are never sampled**, so alert on `customMetrics` and the standard request metrics rather than on span counts. And whether the `traces` records follow a span's sampling decision is governed by `AzureMonitorOptions.EnableTraceBasedLogsSampler`, which this build leaves at the distro's default — Microsoft documents that default as varying by language and distro version, so confirm it against the version you deploy before treating the access log as complete.
+Two things follow. **Metrics are never sampled**, so alert on `customMetrics` and the standard request metrics rather than on span counts — and because sampling drops whole rows rather than marking them, any count over `requests` or `dependencies` in Log Analytics has to weight by `itemCount` rather than count rows, or it undercounts by roughly the sampling rate (the [KQL cookbook](kql-cookbook.md#a-note-on-sampling-and-itemcount) has the pattern). `traces` needs no such weighting — see the next paragraph.
+
+And **`AzureMonitor:EnableTraceBasedLogsSampler` ships `false`** — a decided setting now, not "confirm this against the version you deploy." Left off, the access log's `traces` rows stay a **census**, independent of whether the span they were written under got sampled: a request whose trace was sampled out is still findable end-to-end by the `traceId` its Problem Details response handed the caller (§7.2), because the log record survives even though the span did not. Turning the switch on would make `traces` follow the same 5-per-second sample as the trace, and a caller's `traceId` would then have only a rough chance of finding anything at all.
 
 ## 8. Operating it
 
@@ -428,8 +495,8 @@ The middleware uses `ILogger<T>` and nothing else. Application Insights, Serilog
 - **The `SafeQueryKeys` default is generic.** It covers pagination and sorting. A new endpoint with a non-sensitive query parameter — a status filter, say — logs `[redacted]` until the key is added, and adding it means re-listing the whole default (§5.2).
 - **`ResponseContentLength` is `null` for anything chunked**, which is every streamed response, so it is not a usable field for bandwidth accounting.
 - **A truncated capture can end mid-UTF-8-sequence** and decode to a replacement character. Cutting on a character boundary would mean decoding incrementally on the write path — real work on every response, to tidy up the last glyph of a payload already marked `Truncated`.
-- **The excluded-path defaults name endpoints that do not all exist.** There is no `/health` route in this build, and `/openapi` and `/scalar` are Development-only.
-- **Nothing yet consumes the log.** There are no Application Insights alert rules, no workbook and no saved queries checked into this repository; §7.2 is a starting point, not a dashboard.
+- **The excluded-path defaults now name real routes.** `/health` and `/health/ready` are mapped anonymously in every environment (§3.3, and see [`Api/Health/`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Health)); `/openapi` and `/scalar` remain Development-only.
+- **Queries exist; alerting and a workbook do not.** The [KQL cookbook](kql-cookbook.md) checks in runnable queries against this schema, but there are still no Application Insights alert rules and no workbook in this repository — turning a cookbook query into an alert is a deployment task, not a documentation one.
 
 ## 11. Key files
 
@@ -442,9 +509,18 @@ The middleware uses `ILogger<T>` and nothing else. Application Insights, Serilog
 | Response capture | [`ResponseCaptureStream.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/ResponseCaptureStream.cs), [`ResponseCaptureBodyFeature.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/ResponseCaptureBodyFeature.cs) |
 | Redaction | [`Api/Middleware/JsonPropertyRedactor.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/JsonPropertyRedactor.cs) |
 | DI and pipeline registration | [`Api/Middleware/RequestLoggingRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/RequestLoggingRegistration.cs) |
-| Application Insights | [`Api/Observability/TelemetryRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs) |
+| Application Insights registration | [`Api/Observability/TelemetryRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs) |
+| Application Insights options | [`Api/Observability/TelemetryOptions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryOptions.cs) |
+| Caller identity on server spans | [`Api/Observability/EndUserEnrichingProcessor.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/EndUserEnrichingProcessor.cs) |
+| Shared chat-client telemetry step | [`Api/Observability/ChatClientTelemetryExtensions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Observability/ChatClientTelemetryExtensions.cs) |
+| The chat-pipeline instrument catalog | [`Service/Observability/ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs) |
+| Liveness/readiness registration and routes | [`Api/Health/HealthRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Health/HealthRegistration.cs) |
+| Readiness caching and single-flight | [`Api/Health/ReadinessProbe.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Health/ReadinessProbe.cs) |
+| The Cosmos readiness check | [`Api/Health/CosmosHealthCheck.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Health/CosmosHealthCheck.cs) |
 | Wiring and pipeline order | [`Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
 | Defaults shipped | [`Api/appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) |
 | `traceId` on problem responses | [`Api/Problems/ProblemDetailsRegistration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemDetailsRegistration.cs) |
-| Unit tests | [`tests/Enterprise.Gpt.Unit.Test/Middleware/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Middleware) |
-| Integration tests | [`tests/Enterprise.Gpt.Integration.Test/Middleware/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Middleware) |
+| Unit tests | [`tests/Enterprise.Gpt.Unit.Test/Middleware/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Middleware), [`.../Observability/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Observability), [`.../Health/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Health) |
+| Integration tests | [`tests/Enterprise.Gpt.Integration.Test/Middleware/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Middleware), [`.../Health/`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Health) |
+| Query cookbook | [`docs/observability/kql-cookbook.md`](kql-cookbook.md) |
+| Browser telemetry (separate story) | [`docs/observability/browser-telemetry.md`](browser-telemetry.md) |

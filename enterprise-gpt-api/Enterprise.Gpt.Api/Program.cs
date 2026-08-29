@@ -21,6 +21,7 @@ using Enterprise.Gpt.Api.Chat;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.Export;
 using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Api.Health;
 using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Api.Observability;
 using Enterprise.Gpt.Api.Problems;
@@ -90,7 +91,10 @@ builder.Services.AddCors(builder => builder.AddPolicy("AllowSpecificOrigins", po
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()
-            .WithExposedHeaders("Content-Disposition");
+            // Request-Context is exposed, not merely allowed: without it the browser SDK
+            // silently skips resolving which Application Insights resource a dependency
+            // reached, and reports the failure nowhere.
+            .WithExposedHeaders("Content-Disposition", "Request-Context");
 }));
 
 // Registered before the chat clients because UseToolTracking() collects every IChatProgressObserver
@@ -196,10 +200,7 @@ builder.Services.AddKeyedChatClient(
 #pragma warning restore OPENAI001, MEAI001
         }
     )
-    // Named source rather than the library's default: TelemetryRegistration has to register the same
-    // name for these spans to be exported, and a default that changes with a package bump would take
-    // the LLM traces off the Application Insights map without any build error.
-    .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+    .UseEnterpriseTelemetry()
     // Must precede UseFunctionInvocation. The tracker works by wrapping the tools before the
     // function-invoking client executes them; reversed, that client runs the unwrapped tools and
     // the tracker sees nothing but text — no scopes, no per-tool usage, no progress.
@@ -237,7 +238,7 @@ builder.Services.AddKeyedChatClient(
 #pragma warning restore OPENAI001, MEAI001
         }
     )
-    .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+    .UseEnterpriseTelemetry()
     // Constructed rather than configured through UseFunctionInvocation, because that callback is
     // handed no service provider and the iteration bound belongs to FileAgentOptions — read off
     // IConfiguration directly it would skip its own [Range] and duplicate its default.
@@ -295,7 +296,7 @@ if (builder.Configuration.GetValue<bool>($"{AzureAIFoundryOptions.SectionName}:E
                     .AsIChatClient();
             }
         )
-        .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+        .UseEnterpriseTelemetry()
         .UseToolTracking(ConfigureToolTracking)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation)
         // Last in the chain, which is innermost, so its ChatOptions are the ones the bridge reads —
@@ -351,7 +352,7 @@ if (builder.Configuration.GetValue<bool>($"{AmazonBedrockOptions.SectionName}:En
             sp => sp.GetRequiredService<IAmazonBedrockRuntime>()
                     .AsIChatClient(sp.GetRequiredService<IOptions<AmazonBedrockOptions>>().Value.DefaultModelId)
         )
-        .UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName)
+        .UseEnterpriseTelemetry()
         .UseToolTracking(ConfigureToolTracking)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation);
 }
@@ -423,7 +424,7 @@ if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enable
                          .AsIChatClient(anthropicOptions.DefaultModelId, anthropicOptions.DefaultMaxOutputTokens);
             }
         )
-        .UseOpenTelemetry()
+        .UseEnterpriseTelemetry()
         .UseToolTracking(ConfigureToolTracking)
         .UseFunctionInvocation(null, ConfigureFunctionInvocation)
         // Last in the chain, which is innermost: ChatClientBuilder applies its factories in reverse,
@@ -763,6 +764,7 @@ builder.Services.AddEnterpriseProblemDetails();
 // the one place Application Insights appears, and no-ops when no connection string is configured.
 builder.Services.AddRequestLogging(builder.Configuration);
 builder.Services.AddEnterpriseTelemetry(builder.Configuration);
+builder.Services.AddEnterpriseHealthChecks();
 
 // Singletons
 // TimeProvider is injected rather than read statically so the permission cache's absolute expiry
@@ -900,6 +902,10 @@ app.UseStatusCodePages();
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+// Ahead of the authenticated routes only for readability; both health routes are anonymous, and the
+// access log already excludes /health on success while still reporting it when it fails.
+app.MapEnterpriseHealthChecks();
 
 app.MapConversationEndpoints();
 

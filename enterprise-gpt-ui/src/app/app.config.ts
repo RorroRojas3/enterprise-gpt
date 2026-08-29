@@ -17,6 +17,7 @@ import { authInterceptor } from './core/auth/interceptors/auth.interceptor';
 import { provideStartupShellHandoff } from './core/config/startup-shell-handoff';
 import { providePreventDropNavigation } from './core/dnd/prevent-drop-navigation';
 import { retryInterceptor } from './core/http/interceptors/retry.interceptor';
+import { provideBrowserTelemetry } from './core/telemetry/browser-telemetry';
 import { ThemeService } from './core/theme/theme-service';
 
 export const appConfig: ApplicationConfig = {
@@ -59,5 +60,8 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => {
       inject(AuthService);
     }),
+    // Order relative to the initializers above is arbitrary: the account is read per
+    // telemetry item, not captured here.
+    provideBrowserTelemetry(),
   ],
 };

@@ -12,6 +12,8 @@ export interface AppConfig {
   readonly apiBaseUrl: string;
   readonly auth: AuthConfig;
   readonly features: FeatureFlags;
+  /** Absent switches browser telemetry off; nothing is loaded and nothing is sent. */
+  readonly telemetry?: TelemetryConfig;
 }
 
 /**
@@ -31,6 +33,18 @@ export interface AuthConfig {
   readonly postLogoutRedirectUri: string;
   /** Scopes requested for the API access token. At least one is required. */
   readonly apiScopes: readonly string[];
+}
+
+/** Application Insights, for the browser half of a request's telemetry. */
+export interface TelemetryConfig {
+  /**
+   * Connection string for the browser's Application Insights resource.
+   *
+   * It ships in `config.json` and is therefore public, and Entra-authenticated
+   * ingestion has no browser story — so this must name a resource whose ingestion
+   * you are willing to leave open, separate from the API's.
+   */
+  readonly connectionString: string;
 }
 
 /** Deployment switches for capabilities that are chunked out of the initial bundle. */
@@ -98,6 +112,14 @@ export function assertAppConfig(value: unknown): asserts value is AppConfig {
   assertBoolean(features['diagrams'], 'features.diagrams');
   assertBoolean(features['math'], 'features.math');
   assertBoolean(features['rawStreamCodec'], 'features.rawStreamCodec');
+
+  // Optional rather than required, so an environment that predates browser telemetry
+  // keeps booting on a newer bundle. Validated only once it is there: a block written
+  // by hand and left half-finished must fail here, not silently send nothing.
+  if (root['telemetry'] !== undefined) {
+    const telemetry = requireRecord(root['telemetry'], 'telemetry');
+    assertNonEmptyString(telemetry['connectionString'], 'telemetry.connectionString');
+  }
 }
 
 /**
@@ -112,6 +134,7 @@ export function normalizeAppConfig(config: AppConfig): AppConfig {
     apiBaseUrl: config.apiBaseUrl.replace(/\/+$/, ''),
     auth: Object.freeze({ ...config.auth, apiScopes: Object.freeze([...config.auth.apiScopes]) }),
     features: Object.freeze({ ...config.features }),
+    ...(config.telemetry ? { telemetry: Object.freeze({ ...config.telemetry }) } : {}),
   });
 }
 
