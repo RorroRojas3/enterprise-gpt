@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   inject,
   input,
@@ -17,23 +18,28 @@ import { SearchInput } from '@shared/form/search-input/search-input';
 import { Icon } from '@shared/icon/icon';
 import { DocumentGroup, DocumentLibraryStore } from './document-library-store';
 import { DocumentRow } from './document-row';
-import { NAME_PARAM, VIEW_FLAT, VIEW_PARAM, shouldReplaceHistory } from './documents-route';
+import {
+  NAME_PARAM,
+  SOURCE_GENERATED,
+  SOURCE_PARAM,
+  VIEW_FLAT,
+  VIEW_PARAM,
+  shouldReplaceHistory,
+} from './documents-route';
 
 /** How many skeleton rows stand in for the list while the first drain runs. */
 const SKELETON_ROWS = 6;
 
 /**
- * The documents library, frame `4j` (US-1002/US-1003): every document the signed-in
- * user has uploaded, newest first, grouped by conversation by default with a flat
- * listing behind `?view=flat`.
+ * The documents library: every document the signed-in user holds in a conversation —
+ * uploaded or assistant-produced — newest first, grouped by conversation by default.
  *
  * **The URL is the source of truth for the query**, on the conversations library's
- * contract: `withComponentInputBinding()` binds `?name=` and `?view=` to the inputs,
- * {@link _applyQuery} is the only writer, and the loop cannot feed itself because a
- * navigation re-seeds `SearchInput`'s `linkedSignal`, whose debounce finds the text
- * unchanged and emits nothing. The one structural difference: the filter is
- * **client-side** — `bindQuery` narrows rows the store already holds, so typing
- * navigates but never issues a request.
+ * contract: `withComponentInputBinding()` binds `?name=`, `?view=` and `?source=` to the
+ * inputs, {@link _applyQuery} is the only writer, and the loop cannot feed itself because
+ * a navigation re-seeds `SearchInput`'s `linkedSignal`, whose debounce finds the text
+ * unchanged and emits nothing. Only the name filter is client-side; the origin is served,
+ * for the reason `DocumentLibraryState.generatedOnly` records.
  */
 @Component({
   selector: 'app-documents',
@@ -65,6 +71,19 @@ export class Documents {
     transform: (value: string | undefined) => value === VIEW_FLAT,
   });
 
+  /**
+   * Bound from `?source=` by `withComponentInputBinding()`, so it is named for the query
+   * key rather than for what it means — {@link generatedOnly} is the readable half, as
+   * {@link grouped} is for {@link view}.
+   *
+   * Same rule as {@link view}: anything but the one value the screen writes reads as
+   * unfiltered, so a hand-edited `?source=uploaded` narrows nothing rather than asking
+   * the server for something the switch cannot represent.
+   */
+  readonly source = input(false, {
+    transform: (value: string | undefined) => value === SOURCE_GENERATED,
+  });
+
   protected readonly library = inject(DocumentLibraryStore);
 
   private readonly _router = inject(Router);
@@ -72,6 +91,9 @@ export class Documents {
   // Optional, unlike the conversations screen's: the toolbar — and the field with
   // it — is withheld in the error branch here, so `required` would be a lie.
   private readonly _search = viewChild(SearchInput);
+  // Optional for the same reason, and the control the filtered empty state hands focus
+  // back to: it outlives the branch the button that moved focus lives in.
+  private readonly _sourceSwitch = viewChild<ElementRef<HTMLInputElement>>('sourceSwitch');
 
   /** A 403 answers the same however often it is asked; a 502 does not. */
   protected readonly canRetry = canRetry;
@@ -86,6 +108,8 @@ export class Documents {
   protected readonly skeletonRows = Array.from({ length: SKELETON_ROWS });
 
   protected readonly grouped = computed(() => !this.view());
+
+  protected readonly generatedOnly = computed(() => this.source());
 
   /**
    * Frame `4b`'s heading shape, naming the term.
@@ -111,10 +135,11 @@ export class Documents {
   protected readonly trackGroup = (group: DocumentGroup): string => group.conversationId;
 
   constructor() {
-    this.library.load();
     // The constructor is an injection context, which a signal-valued reactive method
-    // requires. Handing over the signal — not its value — is what makes a deep link
-    // filter on its first render rather than flashing the unfiltered set.
+    // requires. Handing over the signals — not their values — is what makes a deep link
+    // filter on its first render rather than flashing the unfiltered set. Binding the
+    // origin is also what starts the listing: its first value runs the first drain.
+    this.library.bindSource(this.source);
     this.library.bindQuery(this.name);
   }
 
@@ -154,12 +179,29 @@ export class Documents {
     this._applyQuery({ [VIEW_PARAM]: this.grouped() ? VIEW_FLAT : null }, false);
   }
 
+  protected toggleGenerated(): void {
+    // Never replaces, for the reason the view toggle does not.
+    this._applyQuery({ [SOURCE_PARAM]: this.generatedOnly() ? null : SOURCE_GENERATED }, false);
+  }
+
   protected clearFilter(): void {
     this.onSearched('');
     // The button removes itself the moment rows come back, and focus would fall to
     // `<body>` inside a list the reader then has to find again. The field is outside
     // every branch of the non-error template, so it is still connected.
     this._search()?.focusField();
+  }
+
+  /**
+   * The filtered empty state's way out. It drops the name term too, because the label
+   * promises every document and leaving a term behind would land the reader on the
+   * no-matches card instead.
+   */
+  protected showEveryDocument(): void {
+    this._applyQuery({ [SOURCE_PARAM]: null, [NAME_PARAM]: null }, false);
+    // The button is inside the branch this navigation tears down, so focus would fall to
+    // `<body>`; the switch it just turned off is where the state now lives.
+    this._sourceSwitch()?.nativeElement.focus();
   }
 
   /**
@@ -171,7 +213,7 @@ export class Documents {
     void this._router.navigate([], {
       relativeTo: this._route,
       queryParams,
-      // The term has to survive the view toggle, and vice versa.
+      // Every filter has to survive a change to any other.
       queryParamsHandling: 'merge',
       replaceUrl,
     });

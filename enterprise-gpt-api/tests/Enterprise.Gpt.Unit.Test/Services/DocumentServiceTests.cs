@@ -1261,7 +1261,7 @@ public sealed class DocumentServiceTests : IDisposable
         await AddConversationDocumentAsync(conversation, dateCreated: date.AddMinutes(-1));
         await AddConversationDocumentAsync(conversation, dateCreated: date);
 
-        var result = await _service.GetUserDocumentsAsync(skip: 2, take: 2, TestContext.Current.CancellationToken);
+        var result = await _service.GetUserDocumentsAsync(skip: 2, take: 2, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(oldest.Id, Assert.Single(result.Items).Id);
         Assert.Equal(3, result.TotalCount);
@@ -1278,8 +1278,8 @@ public sealed class DocumentServiceTests : IDisposable
         await AddConversationDocumentAsync(conversation, dateCreated: date);
         await AddConversationDocumentAsync(conversation, dateCreated: date);
 
-        var firstPage = await _service.GetUserDocumentsAsync(skip: 0, take: 2, TestContext.Current.CancellationToken);
-        var secondPage = await _service.GetUserDocumentsAsync(skip: 2, take: 2, TestContext.Current.CancellationToken);
+        var firstPage = await _service.GetUserDocumentsAsync(skip: 0, take: 2, cancellationToken: TestContext.Current.CancellationToken);
+        var secondPage = await _service.GetUserDocumentsAsync(skip: 2, take: 2, cancellationToken: TestContext.Current.CancellationToken);
 
         var seen = firstPage.Items.Concat(secondPage.Items).Select(x => x.Id).ToList();
         Assert.Equal(3, seen.Count);
@@ -1293,10 +1293,93 @@ public sealed class DocumentServiceTests : IDisposable
     {
         await AddConversationDocumentAsync(await AddConversationAsync());
 
-        var result = await _service.GetUserDocumentsAsync(skip: 0, take: take, TestContext.Current.CancellationToken);
+        var result = await _service.GetUserDocumentsAsync(skip: 0, take: take, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Single(result.Items);
         Assert.InRange(result.PageSize, 1, 100);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NoTypeRequested_ReturnsUploadedAndGeneratedDocumentsAlike()
+    {
+        var conversation = await AddConversationAsync();
+        var uploaded = await AddConversationDocumentAsync(conversation, "notes.pdf");
+        var generated = await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Contains(result.Items, x => x.Id == uploaded.Id && x.Type == ConversationDocumentTypes.Uploaded);
+        Assert.Contains(result.Items, x => x.Id == generated.Id && x.Type == ConversationDocumentTypes.Generated);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_GeneratedRequested_ReturnsOnlyGeneratedDocumentsAndCountsThem()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "notes.pdf");
+        var generated = await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(type: "generated", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        var item = Assert.Single(result.Items);
+        Assert.Equal(generated.Id, item.Id);
+        Assert.Equal(ConversationDocumentTypes.Generated, item.Type);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_UploadedRequested_ReturnsOnlyUploadedDocuments()
+    {
+        var conversation = await AddConversationAsync();
+        var uploaded = await AddConversationDocumentAsync(conversation, "notes.pdf");
+        await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(type: "uploaded", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(uploaded.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Theory]
+    [InlineData("GENERATED")]
+    [InlineData(" generated ")]
+    public async Task GetUserDocumentsAsync_TypeInAnyCasingOrPadding_ResolvesToTheSameOrigin(string type)
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "notes.pdf");
+        var generated = await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(type: type, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(generated.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetUserDocumentsAsync_BlankType_NarrowsNothing(string type)
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "notes.pdf");
+        await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(type: type, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_UnsupportedType_ThrowsNamingTheParameter()
+    {
+        await AddConversationDocumentAsync(await AddConversationAsync());
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => _service.GetUserDocumentsAsync(type: "assistant", cancellationToken: TestContext.Current.CancellationToken));
+
+        var failure = Assert.Single(exception.Errors);
+        Assert.Equal("type", failure.PropertyName);
+        Assert.Contains("'uploaded', 'generated'", failure.ErrorMessage);
     }
     #endregion
 

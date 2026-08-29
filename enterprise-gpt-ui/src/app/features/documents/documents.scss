@@ -44,7 +44,8 @@
   min-width: 0;
 }
 
-.documents__group-toggle {
+.documents__group-toggle,
+.documents__source-toggle {
   flex: none;
   margin: 0;
   color: var(--muted);
@@ -70,7 +71,12 @@
   }
 }
 
+// `flex: none` is load-bearing, not tidiness. The host is a flex column that scrolls,
+// so this card would otherwise shrink to the space left over and — because `overflow`
+// is `hidden` for the corner radius — clip its own rows instead of overflowing the
+// host. Nothing then scrolls anywhere and every row past the fold is unreachable.
 .documents__card {
+  flex: none;
   background: var(--surface);
   border: 1px solid var(--bs-border-color);
   border-radius: 12px;

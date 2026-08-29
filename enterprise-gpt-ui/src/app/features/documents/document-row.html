@@ -14,10 +14,7 @@
   <span class="document-row__size">{{ sizeLabel() }}</span>
   <span class="document-row__date">{{ dateLabel() }}</span>
 
-  <!-- Hard-coded: every document on this route is an upload today. US-1004 is the
-       story that puts assistant-generated files on the wire and makes this
-       data-driven. -->
-  <app-source-badge source="uploaded" />
+  <app-source-badge [source]="source()" />
 
   <!-- The flat view's link column (US-1002): every row names and links its owning
        conversation. US-1003's grouped view moves the conversation into the group

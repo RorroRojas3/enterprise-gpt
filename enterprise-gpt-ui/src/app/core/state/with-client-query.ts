@@ -32,8 +32,11 @@ export interface ClientQueryConfig<T, K extends string> {
    * is telling the user: in place of a sort control, and beside a result count that
    * was computed over part of the data. Naming the limit is the point; a silently
    * disabled control reads as a bug, and an unqualified "No matches" is a lie.
+   *
+   * A signal where the sentence depends on what was loaded — a listing the caller
+   * narrowed server-side has a different shortfall to describe than the whole one.
    */
-  readonly incompleteSetReason: string;
+  readonly incompleteSetReason: string | Signal<string>;
 }
 
 /**
@@ -84,6 +87,10 @@ export function withClientQuery<T, K extends string>(
     ? config.isAuthoritative
     : computed(() => config.isAuthoritative as boolean);
 
+  const incompleteSetReason: Signal<string> = isSignal(config.incompleteSetReason)
+    ? config.incompleteSetReason
+    : computed(() => config.incompleteSetReason as string);
+
   return signalStoreFeature(
     withState<ClientQueryState<K>>({ query: '', sortKey: null, sortDirection: 'asc' }),
     withComputed(({ query, sortKey, sortDirection }) => {
@@ -107,7 +114,7 @@ export function withClientQuery<T, K extends string>(
 
       return {
         canSort,
-        sortUnavailableReason: computed(() => (canSort() ? null : config.incompleteSetReason)),
+        sortUnavailableReason: computed(() => (canSort() ? null : incompleteSetReason())),
         /** Rows to render: filtered always, sorted only where sorting is honest. */
         results: computed(() => {
           const items = matches();
@@ -126,9 +133,7 @@ export function withClientQuery<T, K extends string>(
         hasQuery,
         isEmptyResult: computed(() => matches().length === 0),
         isResultPartial,
-        resultsPartialReason: computed(() =>
-          isResultPartial() ? config.incompleteSetReason : null,
-        ),
+        resultsPartialReason: computed(() => (isResultPartial() ? incompleteSetReason() : null)),
       };
     }),
   );

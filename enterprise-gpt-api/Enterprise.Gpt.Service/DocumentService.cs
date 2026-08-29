@@ -17,6 +17,7 @@ using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.Chunking;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Extraction;
+using Enterprise.Gpt.Service.Filtering;
 using Enterprise.Gpt.Service.Mappers;
 using Enterprise.Gpt.Service.Observability;
 using Enterprise.Gpt.Service.Settings;
@@ -128,18 +129,21 @@ namespace Enterprise.Gpt.Service
         Task<DocumentDownloadDto> GetProjectDocumentDownloadAsync(Guid projectId, Guid documentId, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Lists the caller's active conversation documents across every conversation, most recently
-        /// uploaded first, as one page for the documents library.
+        /// Lists the caller's active conversation documents across every conversation, newest first,
+        /// as one page for the documents library.
         /// </summary>
         /// <remarks>
         /// Paging arguments are clamped rather than rejected — <paramref name="skip"/> to zero or
-        /// above and <paramref name="take"/> to 1..100.
+        /// above and <paramref name="take"/> to 1..100 — while an unrecognised
+        /// <paramref name="type"/> is rejected.
         /// </remarks>
         /// <param name="skip">The number of documents to skip.</param>
         /// <param name="take">The maximum number of documents to return.</param>
+        /// <param name="type">The origin to narrow to; <see langword="null"/> or blank for every document.</param>
         /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
         /// <returns>A page of the caller's conversation documents.</returns>
-        Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, CancellationToken cancellationToken = default);
+        /// <exception cref="ValidationException">Thrown when <paramref name="type"/> names no supported origin.</exception>
+        Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -506,8 +510,12 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public async Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, CancellationToken cancellationToken = default)
+        public async Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, CancellationToken cancellationToken = default)
         {
+            // Resolved before any database work, so a misspelled origin costs a round trip to nothing
+            // rather than a page the caller then has to distrust.
+            var origin = DocumentTypeNames.Resolve(type);
+
             // Clamped rather than validated: the paging arguments come straight off the query
             // string, and take = 0 would divide by zero when computing CurrentPage below.
             skip = Math.Max(skip, 0);
@@ -520,15 +528,16 @@ namespace Enterprise.Gpt.Service
             // the conversation after persisting, so an active document implies an active conversation.
             // The Conversation join in the projection exists only to carry the name, and the
             // (UserId, DateDeactivated) index serves this filter.
-            // Uploads only, for the reason the per-conversation listing filters the same way: this
-            // library's rows are captioned as uploads, and a generated file listed among them would
-            // be labelled as something it is not. The invariant above holds for a generated row too —
-            // its own write path re-checks the conversation after persisting.
+            // Both origins: a generated row's own write path re-checks the conversation after
+            // persisting, so the invariant above holds for it too.
             var query = _ctx.ConversationDocuments
                 .AsNoTracking()
-                .Where(x => x.UserId == userId
-                    && !x.DateDeactivated.HasValue
-                    && x.Type == ConversationDocumentTypes.Uploaded);
+                .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+
+            if (origin.HasValue)
+            {
+                query = query.Where(x => x.Type == origin.Value);
+            }
 
             var totalCount = await query.CountAsync(cancellationToken);
 

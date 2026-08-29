@@ -968,6 +968,113 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         Assert.Equal(conversationId, userDocument.ConversationId);
         Assert.Equal("Ingestion Conversation", userDocument.ConversationName);
     }
+
+    [Fact]
+    public async Task GetDocuments_UploadedAndGeneratedDocuments_ReturnsBothCarryingTheirOrigin()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var uploadedId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "brief.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        var generatedId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "summary.docx", [],
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(ConversationDocumentTypes.Uploaded, Assert.Single(page.Items, x => x.Id == uploadedId).Type);
+        Assert.Equal(ConversationDocumentTypes.Generated, Assert.Single(page.Items, x => x.Id == generatedId).Type);
+    }
+
+    [Fact]
+    public async Task GetDocuments_Serialized_CarriesTheOriginAsItsMemberName()
+    {
+        // The TypeScript mirror in the client is written against these exact tokens, and the
+        // converter that produces them is applied per property rather than to the serializer.
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "summary.docx", [],
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var payload = await client.GetStringAsync("api/documents?type=generated", TestContext.Current.CancellationToken);
+
+        Assert.Contains("\"type\":\"Generated\"", payload);
+    }
+
+    [Fact]
+    public async Task GetDocuments_AnotherUsersGeneratedDocument_IsExcluded()
+    {
+        var theirConversation = await _fixture.AddConversationAsync(
+            TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            theirConversation, "theirs.docx", [], userId: TestUsers.AdminUserId,
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
+    public async Task GetDocuments_GeneratedRequested_ReturnsOnlyGeneratedDocuments()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "brief.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        var generatedId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "summary.docx", [],
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?type=generated", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(generatedId, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetDocuments_UnsupportedType_ReturnsValidationProblemNamingTheParameter()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.GetAsync("api/documents?type=assistant", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadValidationAsync(response);
+        Assert.Equal("/problems/validation-error", problem.Type);
+        Assert.Single(Assert.Contains("type", problem.Errors));
+    }
+
+    [Fact]
+    public async Task GetConversationDocuments_GeneratedDocument_IsNotListedAmongTheConversationsUploads()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var uploadedId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "brief.pdf", [new SeedChunk(0, "chunk", SeedChunk.UnitVector(0))],
+            cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "summary.docx", [],
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var documents = await client.GetFromJsonAsync<List<ConversationDocumentDto>>(
+            $"api/conversations/{conversationId}/documents", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(documents);
+        var listed = Assert.Single(documents);
+        Assert.Equal(uploadedId, listed.Id);
+        Assert.Equal(ConversationDocumentTypes.Uploaded, listed.Type);
+    }
     #endregion
 
     #region Status

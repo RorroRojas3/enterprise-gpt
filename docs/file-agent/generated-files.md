@@ -38,6 +38,17 @@ does not define. Migration `20260828050720_AddConversationDocumentType` adds the
 `Tool/DocumentRetrievalSql.cs`'s hand-written SQL depends on there being no `HasColumnName` override —
 worth knowing if you ever touch that configuration.
 
+**It left the server on 2026-08-29 (US-1004).** The discriminator existed here from the start but had
+never crossed the wire; `ConversationDocumentDto.Type` (inherited by `UserDocumentDto`) now projects it,
+serialized as the enum **member name** — `"Uploaded"` / `"Generated"` — through a per-property
+`JsonStringEnumConverter<ConversationDocumentTypes>` rather than a global converter, so every other enum
+this API sends is still a number. `GET api/documents` also gained `?type=uploaded|generated` and lost its
+hard-coded `Uploaded`-only predicate the same day; see [Documents Library §3.2](../ui/documents-library.md#32-get-apidocumentsskiptaketype)
+for the query and [§3.2.1](../ui/documents-library.md#321-the-type-filter-and-why-it-moved-the-route-onto-producesvalidationproblem)
+for the token table. The per-conversation listing, `GET api/conversations/{id}/documents`, kept its
+`Uploaded`-only filter and gained no parameter — a generated file reaches its reader through the chip on
+the message that produced it (§8), not through that route.
+
 ## 2. The second blob container
 
 A generated file never lands in the `documents` container an upload uses. `AzureStorage:GeneratedContainer`
@@ -197,11 +208,11 @@ backward-compatible by construction — a transcript document written before thi
 field is excluded from the Cosmos indexing policy (`CosmosBootstrapper`'s `/attachments/*` entry) the
 same way `/content/*` and `/htmlContent/*` already are, since nothing ever queries by attachment content.
 
-## 8. Two ways a client learns about a generated file
+## 8. Three ways a client learns about a generated file
 
-The identity of a file a turn produced reaches the client through two different paths, and both read
-from the same underlying fact — the persisted `TranscriptMessageDocument.Attachments` — so they can never
-disagree about what a turn made.
+The identity of a file a turn produced reaches the client through three different paths. The first two
+read from the same underlying fact — the persisted `TranscriptMessageDocument.Attachments` — so they can
+never disagree about what a turn made; the third reads the row's own `Type` instead (§8.2).
 
 **Live, on the turn that made it.** The stream's closing `Finished` event carries a
 `generatedAttachments` key in its `metadata` bag, a JSON-serialized array of `MessageAttachmentDto`. It
@@ -242,6 +253,17 @@ input rather than a second chip component:
   stored.
 - Clicking it calls the existing `DocumentDownloadStore`, unmodified: a link is minted at the moment of
   the click and handed straight to a detached anchor, never prefetched, never written to state.
+
+### 8.2 The third path: the documents library lists them
+
+Since US-1004/US-1005, `GET api/documents` — the `/documents` screen's route, not the transcript at all —
+answers with both origins by default and can be narrowed to `?type=generated`. This is a *listing* rather
+than a per-turn identity: it does not carry which message produced a file, only that the caller holds it,
+which is why it never replaced either path above — a chat transcript still needs to say *this turn made
+this file*, and the library only ever says *this file exists*. `UserDocumentDto.type` is the same
+`ConversationDocumentTypes` value serialized the same way (§1); the library's source badge and its
+**Generated only** toggle read it directly. See [Documents Library](../ui/documents-library.md), which
+owns this path and the screen built on it.
 
 ## 9. Configuration
 
@@ -306,6 +328,7 @@ the agent existed. Specifically out of scope here:
 | The discriminator | [`Enterprise.Gpt.Dto/Enums/ConversationDocumentTypes.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ConversationDocumentTypes.cs) |
 | Its entity and configuration | [`Enterprise.Gpt.Entity/ConversationDocument.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationDocument.cs), [`Enterprise.Gpt.Repository/Configurations/ConversationDocumentConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ConversationDocumentConfiguration.cs) |
 | The migration | [`Enterprise.Gpt.Repository/Migrations/20260828050720_AddConversationDocumentType.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260828050720_AddConversationDocumentType.cs) |
+| Where it crosses the wire (§1, §8.2) | [`Enterprise.Gpt.Dto/ConversationDocumentDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/ConversationDocumentDto.cs), [`Enterprise.Gpt.Service/Filtering/DocumentTypeNames.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Filtering/DocumentTypeNames.cs) — see [Documents Library](../ui/documents-library.md) for the route and the screen |
 | The shared container/content-type helper | [`Enterprise.Gpt.Service/DocumentStorage.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/DocumentStorage.cs) |
 | The write path | [`Enterprise.Gpt.Service/GeneratedDocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/GeneratedDocumentService.cs) (`StoreAsync`) |
 | The withdrawal path | [`Enterprise.Gpt.Service/GeneratedDocumentService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/GeneratedDocumentService.cs) (`DiscardAsync`), [`Enterprise.Gpt.Api/Agents/FileAgentToolProvider.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentToolProvider.cs) (`DiscardGeneratedAsync`), [`Enterprise.Gpt.Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) (the streaming `finally`) |

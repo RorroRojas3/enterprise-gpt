@@ -43,6 +43,21 @@
       <label class="form-check-label" for="documents-group-switch">Group by conversation</label>
     </div>
 
+    <!-- A switch rather than a pressed button: two filters that look alike beat one that
+         invents a second idiom for the same toolbar. -->
+    <div class="form-check form-switch documents__source-toggle">
+      <input
+        #sourceSwitch
+        id="documents-source-switch"
+        class="form-check-input"
+        type="checkbox"
+        role="switch"
+        [checked]="generatedOnly()"
+        (change)="toggleGenerated()"
+      />
+      <label class="form-check-label" for="documents-source-switch">Generated only</label>
+    </div>
+
     <!--
       aria-hidden because the same string is handed to the status region below, which
       announces it once when it changes. Withheld before the first response, where
@@ -74,18 +89,38 @@
   } @else if (library.isEmpty()) {
     <!--
       Before the no-matches branch, deliberately: on a zero-document deep link that
-      carries `?name=`, "Nothing uploaded yet" is the truth — there is nothing a
-      cleared filter would reveal.
-
-      No action: uploading happens in a conversation's composer, and a button here
-      could only restate the sentence below it.
+      carries `?name=`, the empty set is the truth — there is nothing a cleared name
+      term would reveal. The origin filter is the exception, because it is served: it
+      really is why nothing came back, and it is the one thing here worth undoing.
     -->
-    <app-empty-state
-      heading="Nothing uploaded yet"
-      [headingLevel]="2"
-      illustration="ridgeline"
-      message="Attach files in any conversation and they’ll appear here."
-    />
+    @if (generatedOnly()) {
+      <app-empty-state
+        heading="No generated documents yet"
+        [headingLevel]="2"
+        illustration="ridgeline"
+        message="Files the assistant creates in a conversation appear here."
+      >
+        <button
+          emptyStateAction
+          type="button"
+          class="btn btn-outline-secondary btn-sm"
+          (click)="showEveryDocument()"
+        >
+          Show every document
+        </button>
+      </app-empty-state>
+    } @else {
+      <!--
+        No action: uploading happens in a conversation's composer, and a button here
+        could only restate the sentence below it.
+      -->
+      <app-empty-state
+        heading="Nothing uploaded yet"
+        [headingLevel]="2"
+        illustration="ridgeline"
+        message="Attach files in any conversation and they’ll appear here."
+      />
+    }
   } @else if (library.hasNoMatches()) {
     <!-- Frame 4b's shape: the term named, the scope stated, one clear way out. Over a
          truncated drain the scope line yields to the partial-set qualifier — an

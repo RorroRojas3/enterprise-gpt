@@ -80,7 +80,25 @@ export interface DocumentDownloadDto {
 }
 
 /**
- * A document the signed-in user uploaded, as `GET api/documents` returns one.
+ * Where a document came from.
+ *
+ * Mirrors `ConversationDocumentTypes`, which travels as its **member name** rather than
+ * its stored number — the converter is applied to that one property, so every other
+ * enum this API sends is still a number.
+ */
+export type DocumentType = 'Uploaded' | 'Generated';
+
+/**
+ * The `?type=` token that narrows a listing to assistant-produced documents.
+ *
+ * Lower-cased, unlike the value a row carries: the route resolves it case-insensitively,
+ * and this is the spelling its rejection message advertises.
+ */
+export const GENERATED_DOCUMENT_TYPE = 'generated';
+
+/**
+ * A document the signed-in user holds in a conversation, as `GET api/documents` returns
+ * one — uploaded by them or produced by the assistant.
  *
  * Mirrors `Enterprise.Gpt.Dto.UserDocumentDto`. The route answers with the standard
  * `PaginatedResponseDto` envelope, ordered by **`dateCreated` descending** (with `id`
@@ -91,9 +109,9 @@ export interface DocumentDownloadDto {
  */
 export interface UserDocumentDto {
   readonly id: string;
-  /** The conversation the document was uploaded into. */
+  /** The conversation the document belongs to. */
   readonly conversationId: string;
-  /** The original file name as uploaded. */
+  /** The original file name. */
   readonly name: string;
   /** Lower-cased, **including the leading dot** — `.pdf`, not `pdf`. */
   readonly extension: string;
@@ -101,6 +119,8 @@ export interface UserDocumentDto {
   readonly mimeType: string;
   /** Bytes. */
   readonly size: number;
+  /** Whether the user uploaded this document or the assistant produced it. */
+  readonly type: DocumentType;
   /** ISO 8601 with offset — when ingestion finished, not when the upload started. */
   readonly dateCreated: string;
   /** The owning conversation's name — present only on the cross-conversation route. */
