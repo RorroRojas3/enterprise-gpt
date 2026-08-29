@@ -365,7 +365,7 @@ The app registration therefore needs the **application** permission `User.Read.A
 
 Without consent, `POST /api/users/me` fails for every new user and `POST /api/users` cannot resolve an object id. Note that `User.ReadBasic.All` is *not* sufficient for the app-only list query used by the by-email filter.
 
-The client secret is read from configuration. Per the repo standard, move it to Azure Key Vault (or switch the credential to a managed identity) before any deployed environment.
+The client secret is read from configuration. Per the repo standard, move it to Azure Key Vault (or switch the credential to a managed identity) before any deployed environment — see [Azure Key Vault Configuration](../configuration/key-vault.md) for how `AzureAd--ClientSecret` maps onto this setting.
 
 ### 11.2 Database migrations
 
