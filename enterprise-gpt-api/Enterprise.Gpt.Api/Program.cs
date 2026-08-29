@@ -18,6 +18,7 @@ using Microsoft.Identity.Web;
 using OpenAI;
 using Enterprise.Gpt.Api.Agents;
 using Enterprise.Gpt.Api.Chat;
+using Enterprise.Gpt.Api.Configuration;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Api.Export;
 using Enterprise.Gpt.Api.ExceptionHandlers;
@@ -49,6 +50,10 @@ using Scalar.AspNetCore;
 using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Ahead of every other line here: builder.Configuration rebuilds on each source added, so this
+// both loads the vault and fails the host if it cannot, before anything reads a secret from it.
+var keyVault = builder.AddEnterpriseKeyVault();
 
 // Add services to the container.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -807,6 +812,8 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies());
 
 var app = builder.Build();
+
+KeyVaultConfiguration.LogStatus(keyVault, app.Logger);
 
 // Built now rather than on the first chat request: it validates the section as it constructs, and a
 // lazily-built singleton would turn a bad edit made after start into a 500 on every turn instead.

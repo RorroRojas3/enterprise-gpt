@@ -497,7 +497,7 @@ Keys outside the `Documents` section that ingestion depends on — none of them 
 | `AzureOpenAI:EmbeddingModel` | embedding client **and** `TokenTextChunker` | Must be a 1536-dimension model (§6); also selects the tokenizer (§5.4). Validated at startup |
 | `Permissions:Cache:EntryLifetime` | [`UserPermissionCache`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs), behind the `Upload File` gate (§3.1) | `TimeSpan`, default `00:05:00`, validated at startup. How long a revoked `Upload File` grant can still be honoured on an instance that did not serve the revoke — see [Permission Cache](../permissions/permission-cache.md) |
 
-The repository's [`appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) ships the `Documents`, `Sheets` and `BackgroundJobs` sections committed with their defaults — the Azure sections come from user secrets or environment configuration. Per the repo standard, prefer Key Vault or a managed identity over API keys in any deployed environment.
+The repository's [`appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) ships the `Documents`, `Sheets` and `BackgroundJobs` sections committed with their defaults — the Azure sections come from user secrets or environment configuration. Per the repo standard, prefer Key Vault or a managed identity over API keys in any deployed environment — see [Azure Key Vault Configuration](../configuration/key-vault.md) for how these settings map onto vault secret names.
 
 ## 10. Database schema
 
