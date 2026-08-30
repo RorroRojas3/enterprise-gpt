@@ -8,8 +8,9 @@ import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@test
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { projectFixture, projectPage } from '@testing/projects';
-import { afterEach, beforeEach, describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Conversations } from '../conversations/conversations';
+import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
 import { Projects } from './projects';
 
 /**
@@ -99,6 +100,64 @@ describe('library accessibility (US-1405)', () => {
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/conversations (${theme})`);
+    });
+
+    it(`finds nothing serious with the Load more control present in the ${theme} theme`, async () => {
+      const element = await open('/projects', theme);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage(
+            Array.from({ length: PROJECT_LIST_PAGE_SIZE }, (_, index) =>
+              projectFixture({ name: `Project ${index}` }),
+            ),
+            { totalCount: 312, pageSize: PROJECT_LIST_PAGE_SIZE },
+          ),
+        );
+      await harness.fixture.whenStable();
+
+      const button = element.querySelector<HTMLButtonElement>('.projects__more button');
+      expect(button).not.toBeNull();
+
+      await expectNoSeriousViolations(element, `/projects with Load more (${theme})`);
+    });
+
+    it(`finds nothing serious with the Load more control busy in the ${theme} theme`, async () => {
+      const element = await open('/projects', theme);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage(
+            Array.from({ length: PROJECT_LIST_PAGE_SIZE }, (_, index) =>
+              projectFixture({ name: `Project ${index}` }),
+            ),
+            { totalCount: 312, pageSize: PROJECT_LIST_PAGE_SIZE },
+          ),
+        );
+      await harness.fixture.whenStable();
+
+      element.querySelector<HTMLButtonElement>('.projects__more button')?.click();
+      await harness.fixture.whenStable();
+
+      // `aria-disabled`, never the native attribute: a disabled button would drop focus
+      // mid-press, which is the state this case exists to audit.
+      const busy = element.querySelector('.projects__more button');
+      expect(busy?.getAttribute('aria-disabled')).toBe('true');
+
+      await expectNoSeriousViolations(element, `/projects loading more (${theme})`);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage([], {
+            totalCount: 312,
+            pageSize: PROJECT_LIST_PAGE_SIZE,
+            skip: PROJECT_LIST_PAGE_SIZE,
+          }),
+        );
+      await harness.fixture.whenStable();
     });
   }
 });

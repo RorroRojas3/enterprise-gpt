@@ -137,9 +137,9 @@ namespace Enterprise.Gpt.Api.Endpoints
         // as C# requires optional parameters last.
         internal static async Task<Ok<PaginatedResponseDto<UserDocumentDto>>> GetUserDocumentsAsync(
             IDocumentService documentService, int skip = 0, int take = 20, string? type = null,
-            CancellationToken cancellationToken = default)
+            string? name = null, CancellationToken cancellationToken = default)
         {
-            var response = await documentService.GetUserDocumentsAsync(skip, take, type, cancellationToken);
+            var response = await documentService.GetUserDocumentsAsync(skip, take, type, name, cancellationToken);
 
             return TypedResults.Ok(response);
         }

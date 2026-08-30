@@ -16,7 +16,8 @@ import {
 } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
-import { afterEach, beforeEach, describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DOCUMENT_PAGE_SIZE } from './document-library-store';
 import { Documents } from './documents';
 
 /**
@@ -81,16 +82,36 @@ describe('documents accessibility (US-1405)', () => {
     backend
       .expectOne((request) => request.url === DOCUMENTS_URL)
       .flush(
-        documentPage([
-          userDocumentFixture({ name: 'q3-report.pdf', conversationName: 'Quarterly review' }),
-          userDocumentFixture({
-            name: 'migration-plan.docx',
-            extension: '.docx',
-            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            type: 'Generated',
-            conversationName: 'Migration plan',
-          }),
-        ]),
+        documentPage(
+          [
+            userDocumentFixture({ name: 'q3-report.pdf', conversationName: 'Quarterly review' }),
+            userDocumentFixture({
+              name: 'migration-plan.docx',
+              extension: '.docx',
+              mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              type: 'Generated',
+              conversationName: 'Migration plan',
+            }),
+          ],
+          { pageSize: DOCUMENT_PAGE_SIZE },
+        ),
+      );
+  }
+
+  /** A full first page with more behind it, so the Load more control renders. */
+  function flushPagedListing(): void {
+    backend
+      .expectOne((request) => request.url === DOCUMENTS_URL)
+      .flush(
+        documentPage(
+          Array.from({ length: DOCUMENT_PAGE_SIZE }, (_, index) =>
+            userDocumentFixture({
+              name: `document-${index}.pdf`,
+              conversationName: 'One conversation',
+            }),
+          ),
+          { totalCount: 312, pageSize: DOCUMENT_PAGE_SIZE },
+        ),
       );
   }
 
@@ -120,7 +141,7 @@ describe('documents accessibility (US-1405)', () => {
       attached = mountLikeShell(element);
       backend
         .expectOne((request) => request.url === DOCUMENTS_URL)
-        .flush(documentPage(manyDocuments(40)));
+        .flush(documentPage(manyDocuments(40), { pageSize: 40 }));
       await harness.fixture.whenStable();
 
       const rows = element.querySelectorAll<HTMLElement>('app-document-row');
@@ -154,6 +175,46 @@ describe('documents accessibility (US-1405)', () => {
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/documents?source=generated (${theme})`);
+    });
+
+    it(`finds nothing serious with the Load more control present in the ${theme} theme`, async () => {
+      const element = await open('/documents', theme);
+
+      flushPagedListing();
+      await harness.fixture.whenStable();
+
+      expect(element.querySelector('.documents__more button')).not.toBeNull();
+
+      await expectNoSeriousViolations(element, `/documents with Load more (${theme})`);
+    });
+
+    it(`finds nothing serious with the Load more control busy in the ${theme} theme`, async () => {
+      const element = await open('/documents', theme);
+
+      flushPagedListing();
+      await harness.fixture.whenStable();
+
+      element.querySelector<HTMLButtonElement>('.documents__more button')?.click();
+      await harness.fixture.whenStable();
+
+      // `aria-disabled`, never the native attribute: a disabled button would drop focus
+      // mid-press, which is the state this case exists to audit.
+      expect(element.querySelector('.documents__more button')?.getAttribute('aria-disabled')).toBe(
+        'true',
+      );
+
+      await expectNoSeriousViolations(element, `/documents loading more (${theme})`);
+
+      backend
+        .expectOne((request) => request.url === DOCUMENTS_URL)
+        .flush(
+          documentPage([], {
+            totalCount: 312,
+            pageSize: DOCUMENT_PAGE_SIZE,
+            skip: DOCUMENT_PAGE_SIZE,
+          }),
+        );
+      await harness.fixture.whenStable();
     });
   }
 });

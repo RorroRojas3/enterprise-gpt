@@ -269,4 +269,105 @@ public sealed class MarkdownBlockMapperTests
 
         Assert.Equal("https://example.test/a", Assert.Single(paragraph.Runs).LinkUrl);
     }
+
+    [Fact]
+    public void Map_EmailFence_ReturnsQuotedParagraphsRatherThanCode()
+    {
+        var blocks = _mapper.Map(
+            """
+            ```email
+            To: alice@contoso.com
+            Subject: Q3
+
+            Hi Alice,
+            ```
+            """);
+
+        Assert.Equal(
+            ["To: alice@contoso.com", "Subject: Q3", "Hi Alice,"],
+            ParagraphsOf(Assert.IsType<QuoteBlock>(Assert.Single(blocks))));
+    }
+
+    [Theory]
+    [InlineData("EMAIL")]
+    [InlineData("Email")]
+    public void Map_EmailFence_MatchesTheInfoStringCaseInsensitively(string info)
+    {
+        Assert.IsType<QuoteBlock>(Assert.Single(_mapper.Map($"```{info}\nHi.\n```")));
+    }
+
+    /// <summary>
+    /// Markdig splits an info string at the first space, so a wider server-side match would render
+    /// the same message as prose here and as a code block in the client, which requires the whole
+    /// info string.
+    /// </summary>
+    [Theory]
+    [InlineData("ts")]
+    [InlineData("emails")]
+    [InlineData("email draft")]
+    public void Map_FenceThatIsNotExactlyAnEmail_StaysCode(string info)
+    {
+        Assert.IsType<CodeBlock>(Assert.Single(_mapper.Map($"```{info}\nconst a = 1;\n```")));
+    }
+
+    [Fact]
+    public void Map_TildeFencedEmail_IsRecognisedToo()
+    {
+        Assert.IsType<QuoteBlock>(Assert.Single(_mapper.Map("~~~email\nHi.\n~~~")));
+    }
+
+    [Fact]
+    public void Map_EmptyEmailFence_StillReturnsABlock()
+    {
+        Assert.IsType<ParagraphBlock>(Assert.Single(_mapper.Map("```email\n\n```")));
+    }
+
+    [Fact]
+    public void Map_EmailFenceInsideAQuote_IsMappedThere()
+    {
+        var outer = Assert.IsType<QuoteBlock>(Assert.Single(_mapper.Map("> ```email\n> Hi.\n> ```")));
+
+        Assert.Equal(["Hi."], ParagraphsOf(Assert.IsType<QuoteBlock>(Assert.Single(outer.Children))));
+    }
+
+    [Fact]
+    public void Map_EmailFenceBetweenProse_KeepsDocumentOrder()
+    {
+        var blocks = _mapper.Map(
+            """
+            Here you go:
+
+            ```email
+            Subject: Hi
+
+            Body.
+            ```
+
+            Want edits?
+            """);
+
+        Assert.Collection(
+            blocks,
+            first => Assert.Equal("Here you go:", TextOf(Assert.IsType<ParagraphBlock>(first).Runs)),
+            email => Assert.Equal(["Subject: Hi", "Body."], ParagraphsOf(Assert.IsType<QuoteBlock>(email))),
+            last => Assert.Equal("Want edits?", TextOf(Assert.IsType<ParagraphBlock>(last).Runs)));
+    }
+
+    /// <summary>
+    /// The fence bypasses inline mapping entirely, so markup inside it stays inert text rather than
+    /// becoming a live link in a Word or PDF document.
+    /// </summary>
+    [Fact]
+    public void Map_EmailFence_KeepsItsContentLiteral()
+    {
+        var quote = Assert.IsType<QuoteBlock>(
+            Assert.Single(_mapper.Map("```email\n[click](javascript:alert(1)) **bold**\n```")));
+
+        var run = Assert.Single(Assert.IsType<ParagraphBlock>(Assert.Single(quote.Children)).Runs);
+        Assert.Equal("[click](javascript:alert(1)) **bold**", run.Text);
+        Assert.Null(run.LinkUrl);
+    }
+
+    private static IEnumerable<string> ParagraphsOf(QuoteBlock quote) =>
+        quote.Children.Select(child => TextOf(Assert.IsType<ParagraphBlock>(child).Runs));
 }

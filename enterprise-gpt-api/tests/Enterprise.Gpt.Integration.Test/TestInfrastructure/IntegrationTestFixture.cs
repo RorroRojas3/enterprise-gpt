@@ -994,6 +994,54 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Inserts many chunk-less conversation documents in one round trip, for a listing larger than a
+    /// page.
+    /// </summary>
+    /// <param name="conversationId">The conversation the documents belong to.</param>
+    /// <param name="names">One file name per document, newest first.</param>
+    /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The ids of the inserted documents, in the order the names were given.</returns>
+    /// <remarks>
+    /// Creation timestamps descend by one second per name, so the listing's newest-first order is the
+    /// order they were given in — a batch sharing one instant would be ordered by id instead.
+    /// </remarks>
+    public async Task<IReadOnlyList<Guid>> AddConversationDocumentsAsync(
+        Guid conversationId, IReadOnlyList<string> names, Guid? userId = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        var now = DateTimeOffset.UtcNow;
+        var documents = names
+            .Select((name, index) =>
+            {
+                var date = now.AddSeconds(-index);
+
+                return new ConversationDocument
+                {
+                    Id = Guid.NewGuid(),
+                    ConversationId = conversationId,
+                    UserId = userId ?? TestUsers.RegularUserId,
+                    Name = name,
+                    Extension = Path.GetExtension(name),
+                    MimeType = "application/octet-stream",
+                    Size = 1024,
+                    Path = $"integration/{name}",
+                    DateCreated = date,
+                    DateModified = date
+                };
+            })
+            .ToList();
+
+        ctx.ConversationDocuments.AddRange(documents);
+        await ctx.SaveChangesAsync(cancellationToken);
+
+        return [.. documents.Select(x => x.Id)];
+    }
+
+    /// <summary>
     /// Inserts a conversation document and its chunks directly into the database, with embeddings the
     /// caller chooses, for arranging retrieval scenarios.
     /// </summary>

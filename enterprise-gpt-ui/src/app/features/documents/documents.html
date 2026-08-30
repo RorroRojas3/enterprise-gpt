@@ -2,14 +2,12 @@
 
 @if (library.error(); as error) {
   <!--
-    Instead of the list rather than beside it: a drain that failed part-way holds a
-    set that is neither complete nor knowably incomplete, and showing it would be the
-    silently-partial listing regime A exists to avoid.
+    Instead of the list rather than beside it: the rows on screen belong to a query that
+    failed, so leaving them up would show a stale result set as if it were the answer. A
+    failed *page* is the other case, and it keeps its rows and toasts.
 
-    The toolbar is withheld here too — a divergence from the conversations library,
-    whose field stays up beside its panel. That field drives a *server* query a retry
-    can re-run; this one narrows rows the store holds client-side, and over a failed
-    load there is nothing to narrow. Frame 4k draws the error card alone.
+    The toolbar is withheld too — a divergence from the conversations library, whose field
+    stays up beside its panel. Frame 4k draws the error card alone.
   -->
   <app-error-panel
     [error]="error"
@@ -19,8 +17,8 @@
   />
 } @else {
   <div class="documents__toolbar">
-    <!-- "Filter", not "Search": the criterion's own wording, and honest about the
-         mechanics — it narrows what is already here rather than asking the server. -->
+    <!-- "Filter", not "Search": the board's own wording, kept even though the term now
+         reaches the server, because it is what the reader is doing to the listing. -->
     <app-search-input
       class="documents__search"
       label="Filter documents by name"
@@ -68,12 +66,12 @@
     }
   </div>
 
-  <!-- Present from first render so a changing count is announced. -->
-  <p class="visually-hidden" role="status">
-    @if (!library.isFirstLoad()) {
-      {{ library.countSummary() }}
-    }
-  </p>
+  <!--
+    Present from first render so a changing count is announced. The busy state rides the
+    same region rather than a second one: two live regions describing one list would have
+    a screen reader announce the change twice.
+  -->
+  <p class="visually-hidden" role="status">{{ announcement() }}</p>
 
   @if (library.isFirstLoad()) {
     <div class="documents__card" aria-busy="true">
@@ -86,12 +84,29 @@
         </div>
       }
     </div>
+  } @else if (library.hasNoMatches()) {
+    <!-- Frame 4b's shape: the term named, the scope stated, one clear way out. The scope
+         line is unqualified because the server searched the whole library, not the rows
+         this screen happens to hold. -->
+    <app-empty-state
+      [heading]="noMatchHeading()"
+      [headingLevel]="2"
+      message="Filters cover file names only."
+    >
+      <button
+        emptyStateAction
+        type="button"
+        class="btn btn-outline-secondary btn-sm"
+        (click)="clearFilter()"
+      >
+        Clear filter
+      </button>
+    </app-empty-state>
   } @else if (library.isEmpty()) {
     <!--
-      Before the no-matches branch, deliberately: on a zero-document deep link that
-      carries `?name=`, the empty set is the truth — there is nothing a cleared name
-      term would reveal. The origin filter is the exception, because it is served: it
-      really is why nothing came back, and it is the one thing here worth undoing.
+      After the no-matches branch, now that the term is served: with a term in play the
+      server has already told us nothing matches it, so "Nothing uploaded yet" would be a
+      claim about the library made from an answer about the search.
     -->
     @if (generatedOnly()) {
       <app-empty-state
@@ -121,24 +136,6 @@
         message="Attach files in any conversation and they’ll appear here."
       />
     }
-  } @else if (library.hasNoMatches()) {
-    <!-- Frame 4b's shape: the term named, the scope stated, one clear way out. Over a
-         truncated drain the scope line yields to the partial-set qualifier — an
-         unqualified "no matches" would claim rows the store never loaded. -->
-    <app-empty-state
-      [heading]="noMatchHeading()"
-      [headingLevel]="2"
-      [message]="library.resultsPartialReason() ?? 'Filters cover file names only.'"
-    >
-      <button
-        emptyStateAction
-        type="button"
-        class="btn btn-outline-secondary btn-sm"
-        (click)="clearFilter()"
-      >
-        Clear filter
-      </button>
-    </app-empty-state>
   } @else {
     <div class="documents__card">
       @if (grouped()) {
@@ -188,7 +185,7 @@
         }
       } @else {
         <ul class="documents__list" role="list" aria-label="Documents">
-          @for (doc of library.results(); track doc.id) {
+          @for (doc of library.entities(); track doc.id) {
             <li><app-document-row [document]="doc" /></li>
           }
         </ul>
@@ -196,14 +193,32 @@
     </div>
 
     <!--
-      One qualifier, never both: unfiltered, the ceiling notice states what the card
-      is showing; filtered, the partial-set reason qualifies the *result* instead,
-      because a count over part of the data is the claim that needs the caveat.
+      Below the card and outside it, so it serves the grouped and flat views alike.
+
+      Gone rather than disabled once everything is loaded: a disabled control still reads
+      as "there is more, but not for you".
     -->
-    @if (library.truncated() && !library.hasQuery()) {
-      <p class="documents__ceiling">{{ library.ceilingNotice() }}</p>
-    } @else if (library.resultsPartialReason(); as reason) {
-      <p class="documents__ceiling">{{ reason }}</p>
-    }
+    <div class="documents__more">
+      @if (library.hasMore()) {
+        <!--
+          Both halves of `loadMore()`'s own guard, so the control cannot look operable
+          while a press would be a silent no-op — which is what it would be during a
+          narrowing search, where the rows and this button both stay up.
+        -->
+        <button
+          class="btn btn-outline-secondary btn-sm"
+          type="button"
+          [attr.aria-disabled]="library.loadingMore() || library.isPending() ? 'true' : null"
+          (click)="onLoadMore()"
+        >
+          @if (library.loadingMore()) {
+            <span class="kit-spinner" aria-hidden="true"></span>
+            <span>Loading…</span>
+          } @else {
+            <span>Load more</span>
+          }
+        </button>
+      }
+    </div>
   }
 }

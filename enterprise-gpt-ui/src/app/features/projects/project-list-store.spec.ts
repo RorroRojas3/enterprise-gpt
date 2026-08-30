@@ -12,9 +12,10 @@ import { ProjectSummaryDto } from '@domain/api/project';
 import { projectEvents } from '@core/events/project-events';
 import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { ToastStore } from '@core/notifications/toast-store';
 import { projectDetailFixture, projectFixture, projectPage } from '@testing/projects';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE, ProjectListStore } from './project-list-store';
+import { PROJECT_LIST_PAGE_SIZE, ProjectListStore } from './project-list-store';
 import { DEFAULT_PROJECT_SORT, PROJECT_SORTS, ProjectSortOption } from './projects-route';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
@@ -66,16 +67,25 @@ describe('ProjectListStore (US-901)', () => {
     return backend.expectOne((request) => request.url === PROJECTS_URL);
   }
 
-  /** A full page, so the drain asks for another. */
-  function fullPage(count = PROJECT_PAGE_SIZE): ProjectSummaryDto[] {
+  /** A full page, so more is left behind and `hasMore()` is true. */
+  function fullPage(count = PROJECT_LIST_PAGE_SIZE): ProjectSummaryDto[] {
     return Array.from({ length: count }, () => projectFixture());
+  }
+
+  /** A first page that leaves more behind, answered the way the server would. */
+  function loadFirstPage(totalCount = 60): void {
+    bind();
+    expectRequest().flush(
+      projectPage(fullPage(), { totalCount, pageSize: PROJECT_LIST_PAGE_SIZE }),
+    );
+    TestBed.tick();
   }
 
   it('asks for the first page at the take the server clamps to', () => {
     bind();
 
     const request = expectRequest();
-    expect(request.request.params.get('take')).toBe(String(PROJECT_PAGE_SIZE));
+    expect(request.request.params.get('take')).toBe(String(PROJECT_LIST_PAGE_SIZE));
     expect(request.request.params.get('skip')).toBe('0');
     // Omitted, never sent empty: a blank `name=` still takes the server down its LIKE
     // branch.
@@ -94,68 +104,149 @@ describe('ProjectListStore (US-901)', () => {
     request.flush(projectPage([projectFixture()]));
   });
 
-  it('drains every page of a result set larger than one page', () => {
-    bind();
+  it('fetches only the first page, leaving the rest behind the control', () => {
+    loadFirstPage(250);
 
-    expectRequest().flush(projectPage(fullPage(), { totalCount: 250 }));
-    TestBed.tick();
-
-    const second = expectRequest();
-    expect(second.request.params.get('skip')).toBe(String(PROJECT_PAGE_SIZE));
-    second.flush(projectPage(fullPage(), { totalCount: 250, skip: PROJECT_PAGE_SIZE }));
-    TestBed.tick();
-
-    const third = expectRequest();
-    expect(third.request.params.get('skip')).toBe(String(PROJECT_PAGE_SIZE * 2));
-    third.flush(projectPage(fullPage(50), { totalCount: 250, skip: PROJECT_PAGE_SIZE * 2 }));
-    TestBed.tick();
-
-    expect(store.entities().length).toBe(250);
-    expect(store.truncated()).toBe(false);
+    // One request, not the five a drain would fire before the reader asked for anything.
+    backend.verify();
+    expect(store.entities().length).toBe(PROJECT_LIST_PAGE_SIZE);
+    expect(store.hasMore()).toBe(true);
     expect(store.isFulfilled()).toBe(true);
   });
 
-  it('stops at the ceiling and says so, rather than draining a whole tenant', () => {
-    bind();
+  it('appends the next page and moves the offset by what came back', () => {
+    loadFirstPage(60);
 
-    for (let page = 0; page * PROJECT_PAGE_SIZE < PROJECT_LOAD_CEILING; page++) {
-      expectRequest().flush(
-        projectPage(fullPage(), { totalCount: 1284, skip: page * PROJECT_PAGE_SIZE }),
-      );
-      TestBed.tick();
-    }
-
-    // No sixth request: the ceiling is the whole point.
-    backend.verify();
-    expect(store.entities().length).toBe(PROJECT_LOAD_CEILING);
-    expect(store.truncated()).toBe(true);
-    expect(store.ceilingNotice()).toBe(
-      'Showing the first 500 of 1284 projects, most recently updated first.',
-    );
-  });
-
-  it('supersedes an in-flight drain rather than letting its pages land', () => {
-    bind();
-
-    const first = expectRequest();
-    first.flush(projectPage(fullPage(), { totalCount: 250 }));
+    store.loadMore();
     TestBed.tick();
 
-    const secondPage = expectRequest();
+    const next = expectRequest();
+    expect(next.request.params.get('skip')).toBe(String(PROJECT_LIST_PAGE_SIZE));
+    expect(next.request.params.get('take')).toBe(String(PROJECT_LIST_PAGE_SIZE));
+    next.flush(
+      projectPage([projectFixture()], {
+        totalCount: 60,
+        pageSize: PROJECT_LIST_PAGE_SIZE,
+        skip: PROJECT_LIST_PAGE_SIZE,
+      }),
+    );
+    TestBed.tick();
+
+    expect(store.entities().length).toBe(PROJECT_LIST_PAGE_SIZE + 1);
+    expect(store.skip()).toBe(PROJECT_LIST_PAGE_SIZE + 1);
+    expect(store.countSummary()).toBe('Showing 26 of 60 projects');
+  });
+
+  it('carries the term and the order onto an appended page', () => {
+    term.set('helios');
+    sort.set(option('name'));
+    loadFirstPage(60);
+
+    store.loadMore();
+    TestBed.tick();
+
+    const next = expectRequest();
+    expect(next.request.params.get('name')).toBe('helios');
+    expect(next.request.params.get('sort')).toBe('name');
+    expect(next.request.params.get('dir')).toBe('asc');
+
+    next.flush(projectPage([], { totalCount: 60, pageSize: PROJECT_LIST_PAGE_SIZE, skip: 25 }));
+    TestBed.tick();
+  });
+
+  it('ignores a second press while a page is on the wire', () => {
+    loadFirstPage();
+
+    store.loadMore();
+    TestBed.tick();
+    const inFlight = expectRequest();
+    expect(store.loadingMore()).toBe(true);
+
+    store.loadMore();
+    TestBed.tick();
+    // `skip` has not moved yet, so a second request would fetch the same window twice
+    // and `addEntities` would silently no-op on every id.
+    backend.expectNone(() => true);
+
+    inFlight.flush(projectPage([], { totalCount: 60, pageSize: PROJECT_LIST_PAGE_SIZE, skip: 25 }));
+    TestBed.tick();
+    expect(store.loadingMore()).toBe(false);
+  });
+
+  it('refuses a press once everything is loaded', () => {
+    loadFirstPage(PROJECT_LIST_PAGE_SIZE);
+
+    expect(store.hasMore()).toBe(false);
+
+    store.loadMore();
+    TestBed.tick();
+
+    backend.verify();
+  });
+
+  it('keeps the loaded cards when a page fails, and toasts instead', async () => {
+    loadFirstPage();
+    const toasts = TestBed.inject(ToastStore);
+
+    store.loadMore();
+    TestBed.tick();
+    expectRequest().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+    TestBed.tick();
+    await Promise.resolve();
+
+    // The cards already on screen belong to a query that succeeded, so swapping the grid
+    // for an error panel would throw away a usable result set.
+    expect(store.entities().length).toBe(PROJECT_LIST_PAGE_SIZE);
+    expect(store.error()).toBeNull();
+    expect(store.loadingMore()).toBe(false);
+    expect(toasts.toasts()).toHaveLength(1);
+  });
+
+  it('drops a page whose result set a newer query replaced', () => {
+    loadFirstPage(250);
+
+    store.loadMore();
+    TestBed.tick();
+    const page = expectRequest();
 
     term.set('helios');
     TestBed.tick();
 
-    expect(secondPage.cancelled).toBe(true);
+    // Without `_querySuperseded$` this page would land after the new query's
+    // `setAllEntities` and append a window from a grid that no longer exists.
+    expect(page.cancelled).toBe(true);
+    expect(store.loadingMore()).toBe(false);
 
     const narrowed = expectRequest();
     expect(narrowed.request.params.get('name')).toBe('helios');
     expect(narrowed.request.params.get('skip')).toBe('0');
-    narrowed.flush(projectPage([projectFixture({ name: 'Helios' })]));
+    narrowed.flush(
+      projectPage([projectFixture({ name: 'Helios' })], { pageSize: PROJECT_LIST_PAGE_SIZE }),
+    );
     TestBed.tick();
 
     expect(store.entities().length).toBe(1);
-    expect(store.truncated()).toBe(false);
+  });
+
+  it('drops a page when a card is deleted out from under its offset', () => {
+    loadFirstPage(250);
+    const doomed = store.entities()[0];
+
+    store.loadMore();
+    TestBed.tick();
+    const page = expectRequest();
+
+    TestBed.inject(Dispatcher).dispatch(projectEvents.deleted(doomed?.id ?? ''));
+    TestBed.tick();
+
+    // The page's URL was built against the pre-removal offset, so letting it land would
+    // skip the card that slid into the gap — a hole the reader could never scroll to.
+    expect(page.cancelled).toBe(true);
+    expect(store.loadingMore()).toBe(false);
+    expect(store.skip()).toBe(PROJECT_LIST_PAGE_SIZE - 1);
   });
 
   it('replaces the grid with an error and keeps Retry meaningful', () => {
@@ -263,21 +354,20 @@ describe('ProjectListStore (US-901)', () => {
       request.flush(projectPage([projectFixture()]));
     });
 
-    it('carries the order on every drained page, not only the first', () => {
+    it('carries the order onto an appended page, not only the first', () => {
       sort.set(option('favorites'));
-      bind();
+      loadFirstPage(60);
 
-      expectRequest().flush(projectPage(fullPage(), { totalCount: 250 }));
+      store.loadMore();
       TestBed.tick();
 
-      // A page fetched without it would splice a differently-ordered run into the middle
-      // of the grid, which is the exact failure a drain has and a single request does not.
+      // A page fetched without it would splice a differently-ordered run underneath the
+      // first, which is the failure the control was refused over until US-706.
       const second = expectRequest();
       expect(second.request.params.get('sort')).toBe('favorite');
       expect(second.request.params.get('dir')).toBe('desc');
 
-      // 150 of 150, so the drain stops here rather than leaving a third request in flight.
-      second.flush(projectPage(fullPage(50), { totalCount: 150, skip: PROJECT_PAGE_SIZE }));
+      second.flush(projectPage([], { totalCount: 60, pageSize: PROJECT_LIST_PAGE_SIZE, skip: 25 }));
       TestBed.tick();
     });
 
@@ -295,20 +385,6 @@ describe('ProjectListStore (US-901)', () => {
       TestBed.tick();
 
       expect(store.entities().length).toBe(1);
-    });
-
-    it('names the order in the ceiling notice, because "most recent" is only one of four', () => {
-      sort.set(option('name'));
-      bind();
-
-      for (let page = 0; page * PROJECT_PAGE_SIZE < PROJECT_LOAD_CEILING; page++) {
-        expectRequest().flush(
-          projectPage(fullPage(), { totalCount: 1284, skip: page * PROJECT_PAGE_SIZE }),
-        );
-        TestBed.tick();
-      }
-
-      expect(store.ceilingNotice()).toBe('Showing the first 500 of 1284 projects, A–Z.');
     });
 
     it('retries the order the cards on screen belong to', () => {
@@ -345,17 +421,20 @@ describe('ProjectListStore (US-901)', () => {
     });
   });
 
-  it('cancels its drain on sign-out and empties', () => {
-    bind();
-    expectRequest().flush(projectPage(fullPage(), { totalCount: 250 }));
-    TestBed.tick();
+  it('cancels an appended page on sign-out and empties', () => {
+    loadFirstPage(250);
 
+    store.loadMore();
+    TestBed.tick();
     const inFlight = expectRequest();
+
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     TestBed.tick();
 
+    // Clearing state is not cancelling work: `withResetOnSignOut` empties the store and
+    // the response would write the previous user's cards straight back over it.
     expect(inFlight.cancelled).toBe(true);
     expect(store.entities()).toEqual([]);
-    expect(store.truncated()).toBe(false);
+    expect(store.loadingMore()).toBe(false);
   });
 });

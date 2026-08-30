@@ -1,4 +1,6 @@
 using Markdig;
+using Markdig.Renderers;
+using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 
@@ -102,11 +104,71 @@ public static class MarkdownPipelines
             .UseAutoLinks()
             .UseTaskLists();
 
+        // A composed email is fenced so a client can offer to open it in a mail client, not because
+        // it is code. Rendered here rather than only in the export mapper, because the stored HTML is
+        // what the HTML export re-serves and it would otherwise show the message as source.
+        builder.Extensions.Add(new EmailFenceExtension());
+
         // DisableHtml does not touch link targets, so a javascript: href written as ordinary
         // markdown survives it. This is the pass that removes them.
         builder.DocumentProcessed += RestrictLinkSchemes;
 
         return builder.Build();
+    }
+
+    private sealed class EmailFenceExtension : IMarkdownExtension
+    {
+        public void Setup(MarkdownPipelineBuilder pipeline)
+        {
+        }
+
+        public void Setup(MarkdownPipeline pipeline, Markdig.Renderers.IMarkdownRenderer renderer)
+        {
+            if (renderer is HtmlRenderer html)
+            {
+                html.ObjectRenderers.Replace<CodeBlockRenderer>(new EmailFenceCodeBlockRenderer());
+            }
+        }
+    }
+
+    private sealed class EmailFenceCodeBlockRenderer : CodeBlockRenderer
+    {
+        protected override void Write(HtmlRenderer renderer, CodeBlock obj)
+        {
+            // The base renderer owns indented code blocks as well as fenced ones, so anything that
+            // is not an email fence has to reach it untouched.
+            if (obj is not FencedCodeBlock fenced || !EmailFence.Matches(fenced))
+            {
+                base.Write(renderer, obj);
+
+                return;
+            }
+
+            renderer.EnsureLine();
+
+            // Markup is skipped in plain-text mode, where escaping is off too — emitting these
+            // elements there would put raw, unescaped tags into the output.
+            if (!renderer.EnableHtmlForBlock)
+            {
+                foreach (var text in EmailFence.Lines(fenced))
+                {
+                    renderer.WriteLine(text);
+                }
+
+                return;
+            }
+
+            renderer.Write("<div class=\"email\">");
+
+            foreach (var line in EmailFence.Lines(fenced))
+            {
+                // Escaped, not written raw: the fence's content is model output and the surrounding
+                // pipeline's DisableHtml never sees inside a code block.
+                renderer.Write("<p>").WriteEscape(line).Write("</p>");
+            }
+
+            renderer.WriteLine("</div>");
+        }
     }
 
     private static void RestrictLinkSchemes(MarkdownDocument document)

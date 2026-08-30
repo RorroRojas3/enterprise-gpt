@@ -1,3 +1,5 @@
+import { scanFences } from './fences';
+
 /**
  * A streaming answer cut into the part that has stopped changing and the part
  * that is still arriving (US-602).
@@ -19,53 +21,6 @@ export interface StreamSplit {
 }
 
 const EMPTY_SPLIT: StreamSplit = { head: '', tail: '' };
-
-/**
- * A line-start code fence. CommonMark allows up to three spaces of indent before
- * a fence stops being a fence, and allows either marker character.
- */
-const FENCE = /^ {0,3}(`{3,}|~{3,})/gm;
-
-interface Fence {
-  readonly start: number;
-  readonly marker: string;
-}
-
-/** Half-open `[start, end)` spans of closed blocks, and the open one if any. */
-interface FenceScan {
-  readonly closed: readonly (readonly [number, number])[];
-  readonly open: Fence | null;
-}
-
-/**
- * Pairs fences the way CommonMark does: a block is closed only by a later fence
- * of the *same* character that is at least as long. Anything else on a fence line
- * is content — which is exactly how a four-backtick block quotes a three-backtick
- * one without the inner pair being mistaken for its terminator.
- */
-function scanFences(text: string): FenceScan {
-  const closed: (readonly [number, number])[] = [];
-  let open: Fence | null = null;
-
-  for (const match of text.matchAll(FENCE)) {
-    const marker = match[1] ?? '';
-    const start = match.index;
-
-    if (open === null) {
-      open = { start, marker };
-      continue;
-    }
-
-    const closes = marker[0] === open.marker[0] && marker.length >= open.marker.length;
-    if (closes) {
-      const lineEnd = text.indexOf('\n', start);
-      closed.push([open.start, lineEnd === -1 ? text.length : lineEnd]);
-      open = null;
-    }
-  }
-
-  return { closed, open };
-}
 
 /**
  * Splits accumulated answer text at the last point where one block ends and the
@@ -110,7 +65,7 @@ export function splitStreamingMarkdown(text: string): StreamSplit {
   }
 
   const inFence = (offset: number): boolean =>
-    closed.some(([start, end]) => offset >= start && offset < end);
+    closed.some(({ start, end }) => offset >= start && offset < end);
 
   // A boundary whose next line has not arrived yet counts as indented. The
   // verdict has to be one-way — refused until proven otherwise — or a boundary
@@ -131,7 +86,7 @@ export function splitStreamingMarkdown(text: string): StreamSplit {
 
   const afterBlankLine = boundary === -1 ? 0 : boundary + 2;
   const lastClosed = closed[closed.length - 1];
-  const afterFence = lastClosed === undefined ? 0 : Math.min(lastClosed[1] + 1, text.length);
+  const afterFence = lastClosed === undefined ? 0 : Math.min(lastClosed.end + 1, text.length);
   const split = Math.max(afterBlankLine, afterFence);
 
   return split <= 0

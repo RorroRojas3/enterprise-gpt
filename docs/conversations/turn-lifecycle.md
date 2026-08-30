@@ -439,7 +439,9 @@ That is a statement about _this_ application, not about the browser. Several eng
 
 While a turn streams, **starting** is disabled and **stopping** is not: a user must always be able to release the microphone. The idle microphone carries `composer__aux`, so US-407's in-flight dimming applies to it and that rule finally matches a control; the recording pill deliberately does not, because a dimmed control that still works reads as broken.
 
-The empty state (frame `1a`) closes US-303's deferral: the four suggested prompt chips — _Summarize a document_, _Draft a status update_, _Find open Jira blockers_, _Explain a code change_ — render on the landing screen only, and a chip's entire behaviour is seeding the composer's text. No focus is moved on arrival, because this is the application's landing screen rather than a state transition, and taking focus would jump a keyboard user past the shell's skip link on every cold start.
+The empty state (frame `1a`) closes US-303's deferral: the four suggested prompt chips — _Summarize a document_, _Draft a status update_, _Draft an email_, _Generate a document_ — render on the landing screen only, and a chip's entire behaviour is seeding the composer's text. No focus is moved on arrival, because this is the application's landing screen rather than a state transition, and taking focus would jump a keyboard user past the shell's skip link on every cold start.
+
+The last two chips replaced _Find open Jira blockers_ and _Explain a code change_ once [Composed Email](composed-email.md) gave the platform a capability worth pointing first-time prompts at. Frame `1a` in the Claude Design handoff bundle still draws the retired pair — that bundle is a record of the design as delivered, not a living copy, so a content-only change like this one is not pushed upstream into it the way an accessibility correction is (see [Design System §9](../ui/design-system.md#9-corrections-made-against-the-design-boards)).
 
 ## 10. Testing
 

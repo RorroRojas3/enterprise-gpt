@@ -1,0 +1,67 @@
+.email-card {
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.email-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bs-border-color);
+  background: var(--surface-2);
+}
+
+.email-card__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.email-card__fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 10px 12px;
+
+  &:empty {
+    display: none;
+  }
+
+  dt {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  dd {
+    margin: 0;
+    font-size: 13px;
+    // An address list has no spaces to break on and would otherwise widen the
+    // whole transcript column.
+    overflow-wrap: anywhere;
+  }
+}
+
+.email-card__body {
+  margin: 0;
+  padding: 12px;
+  // Only when a field row separates it from the head, whose own border would
+  // otherwise stack with this one into a 2px rule.
+  .email-card__fields:not(:empty) + & {
+    border-top: 1px solid var(--bs-border-color);
+  }
+
+  // The body is already plain text; the source's own line breaks are the layout.
+  white-space: pre-wrap;
+}

@@ -1,0 +1,37 @@
+<!--
+  Named for the recipient when there is one: the compact form in the transcript
+  footer shows no address of its own, and who an email is addressed to is the
+  thing a reader needs before activating this. Null otherwise, leaving the
+  visible text as the name rather than restating it.
+-->
+<a
+  class="email-open-menu__open"
+  [class.email-open-menu__open--compact]="compact()"
+  [attr.aria-label]="openLabel()"
+  [href]="mailtoUrl()"
+  (click)="onOpenDefault()"
+>
+  <app-brand-icon name="brand-outlook" />
+  Open Email
+</a>
+
+<!--
+  `stayOpen` is deliberately off: every row here leaves for somewhere else, so the
+  panel has nothing left to show once one is chosen.
+-->
+<app-menu icon="bi-chevron-down" [label]="menuLabel()" [panelWidth]="232" [(open)]="menuOpen">
+  <a
+    appMenuItem
+    class="email-open-menu__item"
+    target="_blank"
+    rel="noopener"
+    [href]="outlookWebUrl()"
+  >
+    <app-brand-icon name="brand-outlook" />
+    Outlook on the web
+  </a>
+  <button appMenuItem type="button" class="email-open-menu__item" (click)="onCopy()">
+    <app-icon name="bi-copy" />
+    Copy email
+  </button>
+</app-menu>

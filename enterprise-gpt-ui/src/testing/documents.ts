@@ -19,6 +19,9 @@ export function userDocumentFixture(overrides: Partial<UserDocumentDto> = {}): U
     type: 'Uploaded',
     dateCreated: '2026-08-11T09:00:00+00:00',
     conversationName: `Conversation ${index}`,
+    // One, matching a fixture that is its conversation's only document. A group label
+    // reads "N of M" only where the server says the conversation holds more.
+    conversationDocumentCount: 1,
     ...overrides,
   };
 }
@@ -28,8 +31,9 @@ export function userDocumentFixture(overrides: Partial<UserDocumentDto> = {}): U
  *
  * `pageSize` echoes the clamped `take` and `currentPage` is `(skip / take) + 1`, both
  * computed server-side — a fixture that invents them would let a store pass against a
- * shape the API never sends. The default `pageSize` is the documents drain's own
- * `take=100`, which is the server's clamp ceiling.
+ * shape the API never sends. The default `pageSize` is the server's clamp ceiling rather
+ * than the screen's page size, so a paging test must pass its own: `setFirstPage` adopts
+ * whatever the envelope reports and would otherwise widen `take` on the next page.
  */
 export function documentPage(
   items: UserDocumentDto[],

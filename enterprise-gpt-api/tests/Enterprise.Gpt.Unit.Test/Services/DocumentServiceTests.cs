@@ -1381,6 +1381,177 @@ public sealed class DocumentServiceTests : IDisposable
         Assert.Equal("type", failure.PropertyName);
         Assert.Contains("'uploaded', 'generated'", failure.ErrorMessage);
     }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameRequested_ReturnsOnlyMatchingDocumentsAndCountsThem()
+    {
+        var conversation = await AddConversationAsync();
+        var quarterly = await AddConversationDocumentAsync(conversation, "quarterly report.pdf");
+        await AddConversationDocumentAsync(conversation, "budget.pdf");
+
+        var result = await _service.GetUserDocumentsAsync(name: "quarterly", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(quarterly.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameMatchingASubstringInTheMiddle_StillMatches()
+    {
+        var conversation = await AddConversationAsync();
+        var target = await AddConversationDocumentAsync(conversation, "2026-migration-plan.docx");
+        await AddConversationDocumentAsync(conversation, "budget.pdf");
+
+        var result = await _service.GetUserDocumentsAsync(name: "migration", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(target.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameRequested_ReachesADocumentPastTheFirstPage()
+    {
+        var conversation = await AddConversationAsync();
+        var date = DateTimeOffset.UtcNow;
+        for (var index = 0; index < 30; index++)
+        {
+            await AddConversationDocumentAsync(conversation, $"filler-{index}.pdf", dateCreated: date.AddMinutes(-index));
+        }
+        var oldest = await AddConversationDocumentAsync(conversation, "quarterly report.pdf", dateCreated: date.AddDays(-1));
+
+        var result = await _service.GetUserDocumentsAsync(skip: 0, take: 25, name: "quarterly", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(oldest.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetUserDocumentsAsync_BlankName_NarrowsNothing(string name)
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "notes.pdf");
+        await AddConversationDocumentAsync(conversation, "budget.pdf");
+
+        var result = await _service.GetUserDocumentsAsync(name: name, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameAndType_NarrowTheSameQueryTogether()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "quarterly report.pdf");
+        var generated = await AddConversationDocumentAsync(conversation, "quarterly summary.docx", type: ConversationDocumentTypes.Generated);
+        await AddConversationDocumentAsync(conversation, "budget summary.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(type: "generated", name: "quarterly", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(generated.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameMatchingNothing_ReturnsAnEmptyPageWithAZeroCount()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "notes.pdf");
+
+        var result = await _service.GetUserDocumentsAsync(name: "nothing-is-called-this", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.TotalCount);
+        Assert.Empty(result.Items);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameRequested_StillExcludesAnotherUsersMatchingDocuments()
+    {
+        var otherUser = await AddUserAsync();
+        await AddConversationDocumentAsync(await AddConversationAsync(userId: otherUser.Id), "quarterly report.pdf");
+        var mine = await AddConversationDocumentAsync(await AddConversationAsync(), "quarterly plan.pdf");
+
+        var result = await _service.GetUserDocumentsAsync(name: "quarterly", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(mine.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NoFilters_CountsEveryActiveDocumentOfTheOwningConversation()
+    {
+        var conversation = await AddConversationAsync();
+        for (var index = 0; index < 8; index++)
+        {
+            await AddConversationDocumentAsync(conversation, $"file-{index}.pdf");
+        }
+
+        var result = await _service.GetUserDocumentsAsync(skip: 0, take: 3, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, result.Items.Count);
+        Assert.All(result.Items, item => Assert.Equal(8, item.ConversationDocumentCount));
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_NameFilter_CountsOnlyTheConversationsMatchingDocuments()
+    {
+        var conversation = await AddConversationAsync();
+        for (var index = 0; index < 5; index++)
+        {
+            await AddConversationDocumentAsync(conversation, $"budget-{index}.pdf");
+        }
+        for (var index = 0; index < 3; index++)
+        {
+            await AddConversationDocumentAsync(conversation, $"quarterly-{index}.pdf");
+        }
+
+        var result = await _service.GetUserDocumentsAsync(name: "quarterly", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, result.TotalCount);
+        Assert.All(result.Items, item => Assert.Equal(3, item.ConversationDocumentCount));
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_TypeFilter_CountsOnlyThatOriginWithinTheConversation()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "notes.pdf");
+        await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
+        await AddConversationDocumentAsync(conversation, "forecast.docx", type: ConversationDocumentTypes.Generated);
+
+        var result = await _service.GetUserDocumentsAsync(type: "generated", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.All(result.Items, item => Assert.Equal(2, item.ConversationDocumentCount));
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_DeactivatedSibling_IsNotCounted()
+    {
+        var conversation = await AddConversationAsync();
+        await AddConversationDocumentAsync(conversation, "live.pdf");
+        await AddConversationDocumentAsync(conversation, "removed.pdf", deactivated: DateTimeOffset.UtcNow);
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, Assert.Single(result.Items).ConversationDocumentCount);
+    }
+
+    [Fact]
+    public async Task GetUserDocumentsAsync_DocumentsFromSeveralConversations_EachCountsItsOwn()
+    {
+        var planning = await AddConversationAsync(name: "Planning");
+        var research = await AddConversationAsync(name: "Research");
+        await AddConversationDocumentAsync(planning, "budget.pdf");
+        await AddConversationDocumentAsync(planning, "forecast.pdf");
+        await AddConversationDocumentAsync(research, "findings.pdf");
+
+        var result = await _service.GetUserDocumentsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.All(
+            result.Items.Where(x => x.ConversationId == planning.Id),
+            item => Assert.Equal(2, item.ConversationDocumentCount));
+        Assert.Equal(1, Assert.Single(result.Items, x => x.ConversationId == research.Id).ConversationDocumentCount);
+    }
     #endregion
 
     #region Sheet ingestion

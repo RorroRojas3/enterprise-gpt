@@ -1,0 +1,45 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.email-open-menu__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--bs-body-color);
+  font-size: 12px;
+  text-decoration: none;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+// The footer is a row of bare 12px controls; a bordered button would tower over
+// Copy and the feedback pair beside it.
+.email-open-menu__open--compact {
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+
+  &:hover {
+    background: none;
+    color: var(--bs-body-color);
+  }
+}
+
+.email-open-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}

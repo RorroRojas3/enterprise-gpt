@@ -135,15 +135,16 @@ namespace Enterprise.Gpt.Service
         /// <remarks>
         /// Paging arguments are clamped rather than rejected — <paramref name="skip"/> to zero or
         /// above and <paramref name="take"/> to 1..100 — while an unrecognised
-        /// <paramref name="type"/> is rejected.
+        /// <paramref name="type"/> is rejected. A blank <paramref name="name"/> narrows nothing.
         /// </remarks>
         /// <param name="skip">The number of documents to skip.</param>
         /// <param name="take">The maximum number of documents to return.</param>
         /// <param name="type">The origin to narrow to; <see langword="null"/> or blank for every document.</param>
+        /// <param name="name">An optional case-insensitive substring of the document name to filter on.</param>
         /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
         /// <returns>A page of the caller's conversation documents.</returns>
         /// <exception cref="ValidationException">Thrown when <paramref name="type"/> names no supported origin.</exception>
-        Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, CancellationToken cancellationToken = default);
+        Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, string? name = null, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -510,7 +511,7 @@ namespace Enterprise.Gpt.Service
         }
 
         /// <inheritdoc />
-        public async Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, CancellationToken cancellationToken = default)
+        public async Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, string? name = null, CancellationToken cancellationToken = default)
         {
             // Resolved before any database work, so a misspelled origin costs a round trip to nothing
             // rather than a page the caller then has to distrust.
@@ -539,6 +540,14 @@ namespace Enterprise.Gpt.Service
                 query = query.Where(x => x.Type == origin.Value);
             }
 
+            // Before the count, so TotalCount describes the filtered set rather than the whole listing.
+            // Server-side rather than in the client, because a name filter over whatever page happened
+            // to be loaded cannot reach a document ranked past it.
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                query = query.Where(x => EF.Functions.Like(x.Name, $"%{name}%"));
+            }
+
             var totalCount = await query.CountAsync(cancellationToken);
 
             var items = await query
@@ -548,7 +557,7 @@ namespace Enterprise.Gpt.Service
                 .ThenByDescending(x => x.Id)
                 .Skip(skip)
                 .Take(take)
-                .Select(ConversationDocumentMapper.MapToUserDocumentDtoExpression)
+                .Select(ConversationDocumentMapper.MapToUserDocumentDtoExpression(origin, name))
                 .ToListAsync(cancellationToken);
 
             return new PaginatedResponseDto<UserDocumentDto>

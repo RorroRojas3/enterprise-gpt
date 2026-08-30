@@ -14,6 +14,7 @@ import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectFixture, projectPage } from '@testing/projects';
+import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
 import { Projects } from './projects';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
@@ -203,22 +204,188 @@ describe('Projects (US-901)', () => {
     expect(TestBed.inject(ProjectActionsStore).formMode()).toBe('create');
   });
 
-  it('states the ceiling rather than letting the grid quietly stop', async () => {
-    await open();
+  describe('paging', () => {
+    function loadMoreButton(): HTMLButtonElement | null {
+      return element().querySelector<HTMLButtonElement>('.projects__more button');
+    }
 
-    for (let page = 0; page < 5; page++) {
+    function cards(): HTMLElement[] {
+      return [...element().querySelectorAll<HTMLElement>('app-project-card')];
+    }
+
+    /** Opens with a full first page that leaves more behind. */
+    async function openPaged(totalCount = 60): Promise<void> {
+      await open();
       expectRequest().flush(
         projectPage(
-          Array.from({ length: 100 }, () => projectFixture()),
-          { totalCount: 1284, skip: page * 100 },
+          Array.from({ length: PROJECT_LIST_PAGE_SIZE }, (_, index) =>
+            projectFixture({ name: `Project ${index}` }),
+          ),
+          { totalCount, pageSize: PROJECT_LIST_PAGE_SIZE },
         ),
       );
       await harness.fixture.whenStable();
     }
 
-    expect(element().querySelector('.projects__ceiling')?.textContent).toContain(
-      'Showing the first 500 of 1284 projects, most recently updated first.',
-    );
+    it('renders one page of cards from one request, not a drained set', async () => {
+      await openPaged(1284);
+
+      // The whole point: 25 cards in the DOM and one round trip, where the drain put up
+      // to 500 there over five requests nobody asked for.
+      expect(cards()).toHaveLength(PROJECT_LIST_PAGE_SIZE);
+      backend.verify();
+    });
+
+    it('appends the next page in server order', async () => {
+      await openPaged();
+
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+
+      const request = expectRequest();
+      expect(request.request.params.get('skip')).toBe(String(PROJECT_LIST_PAGE_SIZE));
+      request.flush(
+        projectPage([projectFixture({ name: 'Project 25' })], {
+          totalCount: 60,
+          pageSize: PROJECT_LIST_PAGE_SIZE,
+          skip: PROJECT_LIST_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      const names = cards().map((card) =>
+        card.querySelector('.project-card__name')?.textContent?.trim(),
+      );
+      expect(names).toHaveLength(PROJECT_LIST_PAGE_SIZE + 1);
+      expect(names.at(0)).toBe('Project 0');
+      expect(names.at(-1)).toBe('Project 25');
+    });
+
+    it('removes the control rather than disabling it once everything is loaded', async () => {
+      await openPaged(PROJECT_LIST_PAGE_SIZE);
+
+      expect(loadMoreButton()).toBeNull();
+    });
+
+    it('marks the control busy while a page is on the wire', async () => {
+      await openPaged();
+
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+      expect(loadMoreButton()?.getAttribute('aria-disabled')).toBe('true');
+
+      expectRequest().flush(
+        projectPage([], { totalCount: 60, pageSize: PROJECT_LIST_PAGE_SIZE, skip: 25 }),
+      );
+      await harness.fixture.whenStable();
+    });
+
+    it('marks it busy during a narrowing search too, when pressing it would do nothing', async () => {
+      await openPaged();
+
+      await type('helios');
+      // The cards and the button both stay up while the query runs, and `loadMore()`
+      // refuses while `isPending()`. A control that looks operable and silently does
+      // nothing is the failure `aria-disabled` exists to prevent.
+      expect(loadMoreButton()?.getAttribute('aria-disabled')).toBe('true');
+
+      expectRequest().flush(projectPage([], { pageSize: PROJECT_LIST_PAGE_SIZE }));
+      await harness.fixture.whenStable();
+    });
+
+    it('fires the same request from the keyboard as from a click', async () => {
+      await openPaged();
+
+      const button = loadMoreButton()!;
+      button.focus();
+      // What Enter and Space do on a real `<button>`: the browser synthesises a click.
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await harness.fixture.whenStable();
+
+      const request = expectRequest();
+      expect(request.request.params.get('skip')).toBe(String(PROJECT_LIST_PAGE_SIZE));
+      request.flush(
+        projectPage([], { totalCount: 60, pageSize: PROJECT_LIST_PAGE_SIZE, skip: 25 }),
+      );
+      await harness.fixture.whenStable();
+    });
+
+    it('moves focus to the last card when the control removes itself', async () => {
+      await openPaged(PROJECT_LIST_PAGE_SIZE + 1);
+
+      const button = loadMoreButton()!;
+      button.focus();
+      button.click();
+      await harness.fixture.whenStable();
+
+      expectRequest().flush(
+        projectPage([projectFixture({ name: 'Last' })], {
+          totalCount: PROJECT_LIST_PAGE_SIZE + 1,
+          pageSize: PROJECT_LIST_PAGE_SIZE,
+          skip: PROJECT_LIST_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      // The button the reader pressed is gone; without this, focus falls to `<body>` and
+      // most screen readers reset to the top of the document.
+      expect(loadMoreButton()).toBeNull();
+      expect(document.activeElement?.textContent?.trim()).toBe('Last');
+    });
+
+    it('leaves focus on the control while there is still more to load', async () => {
+      await openPaged(100);
+
+      const button = loadMoreButton()!;
+      button.focus();
+      button.click();
+      await harness.fixture.whenStable();
+
+      expectRequest().flush(
+        projectPage([projectFixture()], {
+          totalCount: 100,
+          pageSize: PROJECT_LIST_PAGE_SIZE,
+          skip: PROJECT_LIST_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      // Moving focus off a control the reader is repeatedly pressing would be the worse
+      // defect of the two.
+      expect(document.activeElement).toBe(loadMoreButton());
+    });
+
+    it('leaves focus where the reader put it while the page was on the wire', async () => {
+      await openPaged(PROJECT_LIST_PAGE_SIZE + 1);
+
+      loadMoreButton()!.focus();
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+
+      // The reader moved on mid-flight. Yanking them back out of the field they are
+      // typing in is worse than the focus loss the fallback exists to fix.
+      const field = element().querySelector<HTMLInputElement>('.search__field')!;
+      field.focus();
+
+      expectRequest().flush(
+        projectPage([projectFixture({ name: 'Last' })], {
+          totalCount: PROJECT_LIST_PAGE_SIZE + 1,
+          pageSize: PROJECT_LIST_PAGE_SIZE,
+          skip: PROJECT_LIST_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(document.activeElement).toBe(field);
+    });
+
+    it('announces the loaded count against the envelope total', async () => {
+      await openPaged(312);
+
+      expect(element().querySelector('[role="status"]')?.textContent?.trim()).toBe(
+        'Showing 25 of 312 projects',
+      );
+    });
   });
 
   describe('the sort control (US-902)', () => {
@@ -386,21 +553,19 @@ describe('Projects (US-901)', () => {
       await harness.fixture.whenStable();
     });
 
-    it("stays enabled past the load ceiling, because the order is the server's", async () => {
+    it("stays enabled over a partially loaded grid, because the order is the server's", async () => {
       await open();
+      expectRequest().flush(
+        projectPage(
+          Array.from({ length: PROJECT_LIST_PAGE_SIZE }, () => projectFixture()),
+          { totalCount: 1284, pageSize: PROJECT_LIST_PAGE_SIZE },
+        ),
+      );
+      await harness.fixture.whenStable();
 
-      for (let page = 0; page < 5; page++) {
-        expectRequest().flush(
-          projectPage(
-            Array.from({ length: 100 }, () => projectFixture()),
-            { totalCount: 1284, skip: page * 100 },
-          ),
-        );
-        await harness.fixture.whenStable();
-      }
-
-      // Frame `4d` disables it. That state described a client-side sort over a partial
-      // set; the 500 on screen are now the correct first 500 in this order.
+      // Frame `4d` disables it past a load ceiling. That state described a client-side
+      // sort over a partial set; the order is the server's, so every page is a
+      // continuation of the same run and there is nothing to disable.
       expect(select().disabled).toBe(false);
     });
   });

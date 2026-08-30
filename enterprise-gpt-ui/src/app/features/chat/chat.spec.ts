@@ -655,8 +655,8 @@ describe('Chat', () => {
     expect(labels).toEqual([
       'Summarize a document',
       'Draft a status update',
-      'Find open Jira blockers',
-      'Explain a code change',
+      'Draft an email',
+      'Generate a document',
     ]);
 
     // An open conversation's body is not the landing screen (frame 1a).
