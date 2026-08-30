@@ -78,8 +78,21 @@
                  the untouched source, highlighting included.
                  `appMarkdownExtras` (US-605) is here and not on the live pair
                  above: a half-written diagram is not a diagram, and the tail's
-                 fences have had their info strings stripped anyway. -->
-            <markdown class="assistant-turn__md" appMarkdownExtras [data]="node.text" />
+                 fences have had their info strings stripped anyway.
+
+                 Segments are the whole node unless the model marked an email in
+                 it, so the ordinary answer still renders as exactly one
+                 `<markdown>` and re-parses no more often than it used to. Only
+                 the settled branch splits: a fence still arriving is not yet a
+                 closed block, and a card that appeared halfway through a body
+                 would have to take it back. -->
+            @for (segment of node.segments; track segment.start) {
+              @if (segment.kind === 'email') {
+                <app-email-card [draft]="segment.draft" />
+              } @else {
+                <markdown class="assistant-turn__md" appMarkdownExtras [data]="segment.text" />
+              }
+            }
           }
         }
         @case ('activity') {
@@ -127,6 +140,12 @@
             [pending]="ratingPending()"
             (rated)="rated.emit($event)"
           />
+        }
+        <!-- Fixed for the entry's life on the same reasoning as the guard above:
+             a settled turn's text no longer changes, so what it was detected as
+             cannot change either. -->
+        @if (footerDraft(); as draft) {
+          <app-email-open-menu [compact]="true" [draft]="draft" />
         }
         @if (usageLine(); as usage) {
           <span class="assistant-turn__usage font-mono">{{ usage }}</span>

@@ -96,6 +96,21 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
 
         foreach (var block in container)
         {
+            // A composed email is fenced so the client can offer to open it in a mail client,
+            // not because it is code. Exported, it is the message itself and reads as prose —
+            // quoted, so a reader can still see where the email starts and stops.
+            if (block is FencedCodeBlock fenced && EmailFence.Matches(fenced))
+            {
+                var lines = EmailFence.Lines(fenced)
+                    .Select(ExportBlock (line) => new ParagraphBlock([new ExportRun(line)]))
+                    .ToList();
+
+                // An empty fence would otherwise map to nothing at all, and a message whose whole
+                // text was one would export blank.
+                blocks.Add(lines.Count == 0 ? new ParagraphBlock([]) : new QuoteBlock(lines));
+                continue;
+            }
+
             var mapped = MapBlock(block, depth);
 
             if (mapped is not null)

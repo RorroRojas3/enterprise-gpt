@@ -427,6 +427,59 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
 
     (reference.nativeElement as HTMLElement).remove();
   });
+
+  describe('a composed email', () => {
+    const FENCED = [
+      '```email',
+      'To: alice@contoso.com',
+      'Subject: Q3',
+      '',
+      'Hi Alice,',
+      '```',
+    ].join('\n');
+
+    it('renders a marked email as a card, with the recipient on show', async () => {
+      await show(FENCED, false);
+
+      const card = host.querySelector('app-email-card');
+      expect(card).not.toBeNull();
+      expect(card?.textContent).toContain('alice@contoso.com');
+      expect(card?.textContent).toContain('Q3');
+    });
+
+    it('leaves the prose around the block as markdown', async () => {
+      await show(`Here you go:\n\n${FENCED}\n\nWant edits?`, false);
+
+      expect(renderers()).toHaveLength(2);
+      expect(host.querySelector('app-email-card')).not.toBeNull();
+    });
+
+    it('does not offer the footer control as well as the card', async () => {
+      await show(FENCED, false);
+
+      expect(host.querySelector('.assistant-turn__footer app-email-open-menu')).toBeNull();
+    });
+
+    it('waits for the block to close rather than showing half a card', async () => {
+      await show('```email\nSubject: Q3\n\nHi Ali', true);
+
+      expect(host.querySelector('app-email-card')).toBeNull();
+    });
+
+    it('offers the footer control for an email the model never marked', async () => {
+      await show('Subject: Q3 review\n\nHi Alice,\n\nThanks.\n\nBest regards,', false);
+
+      expect(host.querySelector('.assistant-turn__footer app-email-open-menu')).not.toBeNull();
+      expect(host.querySelector('app-email-card')).toBeNull();
+    });
+
+    it('offers nothing on an answer that merely talks about email', async () => {
+      await show('A good subject line is short and specific.', false);
+
+      expect(host.querySelector('app-email-open-menu')).toBeNull();
+      expect(host.querySelector('app-email-card')).toBeNull();
+    });
+  });
 });
 
 describe('AssistantTurn generated files', () => {

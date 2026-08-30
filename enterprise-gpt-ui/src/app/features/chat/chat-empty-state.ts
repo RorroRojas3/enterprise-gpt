@@ -39,11 +39,11 @@ export class ChatEmptyState {
   /** A suggested prompt was chosen; the payload is the text to seed the composer with. */
   readonly suggested = output<string>();
 
-  /** Frame 1a's four suggestions, verbatim. */
+  /** Each seeds the composer verbatim, so a chip must name something the platform does. */
   protected readonly chips: readonly { icon: IconName; label: string }[] = [
     { icon: 'bi-file-text', label: 'Summarize a document' },
     { icon: 'bi-pencil-square', label: 'Draft a status update' },
-    { icon: 'bi-kanban', label: 'Find open Jira blockers' },
-    { icon: 'bi-code-slash', label: 'Explain a code change' },
+    { icon: 'bi-envelope', label: 'Draft an email' },
+    { icon: 'bi-file-earmark-plus', label: 'Generate a document' },
   ];
 }

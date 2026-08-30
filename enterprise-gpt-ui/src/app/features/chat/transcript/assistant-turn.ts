@@ -9,11 +9,14 @@ import {
   splitStreamingMarkdown,
   stripFenceInfo,
 } from '@domain/markdown/streaming-split';
+import { EmailSegment, detectEmailDraft, splitEmailSegments } from '@domain/email/email-draft';
 import { TurnTimeline } from '@domain/stream/turn-timeline';
 import { MarkdownComponent } from 'ngx-markdown';
 import { BrandLogo } from '@shared/brand-logo/brand-logo';
 import { MarkdownExtras } from '../markdown/markdown-extras';
 import { ActivityCard } from './activity-card';
+import { EmailCard } from './email-card';
+import { EmailOpenMenu } from './email-open-menu';
 import { GeneratedFiles } from './generated-files';
 import { MessageCopy } from './message-copy';
 import { MessageFeedback } from './message-feedback';
@@ -23,7 +26,12 @@ import { formatTurnUsage } from './turn-usage';
 type RenderedNode =
   // `start` is carried through only as a stable identity for the template's
   // `track`: the offset a block begins at never changes once it exists.
-  | { readonly kind: 'text'; readonly text: string; readonly start: number }
+  | {
+      readonly kind: 'text';
+      readonly text: string;
+      readonly start: number;
+      readonly segments: readonly EmailSegment[];
+    }
   | { readonly kind: 'activity'; readonly activity: AssistantActivity };
 
 /**
@@ -46,6 +54,8 @@ type RenderedNode =
   imports: [
     ActivityCard,
     BrandLogo,
+    EmailCard,
+    EmailOpenMenu,
     GeneratedFiles,
     MarkdownComponent,
     MarkdownExtras,
@@ -124,7 +134,17 @@ export class AssistantTurn {
 
     for (const node of this.timeline().nodes) {
       if (node.kind === 'text') {
-        nodes.push({ kind: 'text', text: text.slice(node.start, node.end), start: node.start });
+        const slice = text.slice(node.start, node.end);
+        // Split per node rather than over the whole answer: the slices are what
+        // the template renders, and an email interrupted by a tool call lands in
+        // neither half as a closed fence, so it stays markdown — the honest
+        // rendering of a block that was never completed in one piece.
+        nodes.push({
+          kind: 'text',
+          text: slice,
+          start: node.start,
+          segments: splitEmailSegments(slice),
+        });
       } else {
         const activity = roots.get(node.scopeId)?.shift();
         if (activity !== undefined) {
@@ -155,6 +175,25 @@ export class AssistantTurn {
    * clipboard fault rather than a rendering one.
    */
   protected readonly copySource = computed(() => this.snapshot().text ?? '');
+
+  /**
+   * The footer's Open Email control, for an answer that is an email the model
+   * never marked as one — an older transcript, or a model that ignored the
+   * instruction.
+   *
+   * Null whenever a card already rendered: the card carries the same control,
+   * and offering it twice would ask the reader which of two identical buttons is
+   * the real one. Like the feedback guard beside it in the template, this is
+   * fixed for the life of a settled entry, so the `@if` it drives cannot toggle
+   * under the transcript's ResizeObserver.
+   */
+  protected readonly footerDraft = computed(() => {
+    const hasCard = this.renderedNodes().some(
+      (node) => node.kind === 'text' && node.segments.some((part) => part.kind === 'email'),
+    );
+
+    return hasCard ? null : detectEmailDraft(this.copySource());
+  });
 
   /**
    * Whether the answer is still accumulating, for the live region's own

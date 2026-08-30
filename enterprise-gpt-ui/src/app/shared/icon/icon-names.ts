@@ -3,17 +3,10 @@
  * truth for three things: the sprite `scripts/build-icon-sprite.mjs` emits, the
  * `IconName` template type, and the build check in `scripts/check-icon-names.mjs`.
  *
- * 75 entries: the 71 still-used glyphs of the 73 the design boards under
- * `docs/design/project/`
- * reference — the PRD's figure of 60 is stale — plus `bi-file-earmark`, which the
- * attachment chip falls back to for an extension it does not recognise,
- * `bi-file-earmark-ppt`, which the boards never drew because their example set omits
- * `.pptx` — a format the API does accept — and the two thumbs-`fill` variants, which
- * the boards never drew either because they draw no selected state at all, and which
- * US-1103 needs so a rating is not signalled by colour alone (SC 1.4.1). The two the
- * boards drew that are gone are `bi-square` and `bi-check-square-fill`, whose only
- * consumer was the Tools menu's checkbox pair before US-417 made those rows switches.
- * All 75 exist in bootstrap-icons 1.13.1.
+ * The list tracks what the application actually renders rather than what the design
+ * boards under `docs/design/project/` drew: a glyph whose last consumer goes away is
+ * removed, so the sprite never carries dead weight. Every name must exist in
+ * bootstrap-icons 1.13.1, which is what the sprite build resolves against.
  *
  * The multi-colour brand marks are a separate lane — see `brand-icon-names.ts`.
  *
@@ -38,18 +31,19 @@ export const ICON_NAMES = [
   'bi-chevron-right',
   'bi-chevron-up',
   'bi-clock-history',
-  'bi-code-slash',
   'bi-copy',
   'bi-cpu',
   'bi-dash-circle',
   'bi-dash-square-fill',
   'bi-download',
+  'bi-envelope',
   'bi-exclamation-octagon',
   'bi-exclamation-triangle-fill',
   'bi-file-earmark',
   'bi-file-earmark-arrow-up',
   'bi-file-earmark-excel',
   'bi-file-earmark-pdf',
+  'bi-file-earmark-plus',
   'bi-file-earmark-ppt',
   'bi-file-earmark-text',
   'bi-file-earmark-word',
@@ -68,7 +62,6 @@ export const ICON_NAMES = [
   'bi-hand-thumbs-up-fill',
   'bi-hourglass-split',
   'bi-info-circle',
-  'bi-kanban',
   'bi-list',
   'bi-lock',
   'bi-mic',

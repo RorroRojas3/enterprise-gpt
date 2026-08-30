@@ -1,0 +1,16 @@
+<!--
+  The Microsoft Outlook mark.
+
+  Drawn here rather than lifted from a package: bootstrap-icons has no Outlook
+  glyph and Simple Icons is not a dependency. Geometry follows the current
+  Outlook logo — the message panel behind a card carrying the "O" — on the 24x24
+  grid `brand-azure` established, and the fills are Outlook's own brand blues.
+  The counter of the "O" is a hole in the same path, so the panel behind shows
+  through it at any size.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path fill="#28A8EA" d="M22.5 4.9a1.5 1.5 0 0 1 1.5 1.5v11.2a1.5 1.5 0 0 1-1.5 1.5H10.5V4.9z"/>
+  <path fill="#0078D4" d="M24 6.4v.6l-6.8 4.4-6.7-4.4V4.9h12A1.5 1.5 0 0 1 24 6.4"/>
+  <path fill="#0364B8" d="M2 3h9.6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1"/>
+  <path fill="#fff" fill-rule="evenodd" d="M6.8 7.6c1.9 0 3.3 1.8 3.3 4.4s-1.4 4.4-3.3 4.4-3.3-1.8-3.3-4.4S4.9 7.6 6.8 7.6m0 1.9c-.8 0-1.4 1-1.4 2.5s.6 2.5 1.4 2.5 1.4-1 1.4-2.5-.6-2.5-1.4-2.5"/>
+</svg>

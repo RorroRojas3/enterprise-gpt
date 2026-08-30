@@ -18,6 +18,7 @@ export const BRAND_ICON_NAMES = [
   'brand-context7',
   'brand-github',
   'brand-microsoft',
+  'brand-outlook',
   'brand-salesforce',
 ] as const;
 

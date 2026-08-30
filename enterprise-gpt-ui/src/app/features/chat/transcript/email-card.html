@@ -1,0 +1,30 @@
+<div class="email-card">
+  <div class="email-card__head">
+    <h3 class="email-card__title">
+      <app-icon name="bi-envelope" />
+      Email
+    </h3>
+    <app-email-open-menu [draft]="draft()" />
+  </div>
+
+  <!--
+    A description list, not a table: three optional name/value pairs where a
+    table would promise rows and columns that are not there.
+  -->
+  <dl class="email-card__fields">
+    @if (draft().to.length > 0) {
+      <dt>To</dt>
+      <dd>{{ to() }}</dd>
+    }
+    @if (draft().cc.length > 0) {
+      <dt>Cc</dt>
+      <dd>{{ cc() }}</dd>
+    }
+    @if (draft().subject; as subject) {
+      <dt>Subject</dt>
+      <dd>{{ subject }}</dd>
+    }
+  </dl>
+
+  <p class="email-card__body">{{ draft().body }}</p>
+</div>

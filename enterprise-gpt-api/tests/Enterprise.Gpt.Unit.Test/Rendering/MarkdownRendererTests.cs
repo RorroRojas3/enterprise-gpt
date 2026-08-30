@@ -124,4 +124,51 @@ public sealed class MarkdownRendererTests
 
         Assert.Contains("href=\"https://example.com\"", html, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Render_EmailFence_IsProseRatherThanACodeBlock()
+    {
+        var html = Renderer.Render("```email\nTo: alice@contoso.com\nSubject: Q3\n```");
+
+        Assert.DoesNotContain("<pre>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("language-email", html, StringComparison.Ordinal);
+        Assert.Contains("<p>To: alice@contoso.com</p>", html, StringComparison.Ordinal);
+        Assert.Contains("<p>Subject: Q3</p>", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Render_EmailFence_EscapesItsContent()
+    {
+        // Inside a fence the pipeline's DisableHtml never runs, so the renderer that replaces the
+        // code block is the only thing standing between model output and live markup.
+        var html = Renderer.Render("```email\n<script>alert(1)</script>\n```");
+
+        Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("&lt;script&gt;", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The renderer that carves out the email fence is registered for code blocks generally, so
+    /// every other shape it owns has to reach the base renderer untouched.
+    /// </summary>
+    [Theory]
+    [InlineData("```ts\nconst a = 1;\n```", "language-ts")]
+    [InlineData("```email draft\nHi.\n```", "language-email")]
+    [InlineData("```emails\nHi.\n```", "language-emails")]
+    public void Render_CodeFenceThatIsNotAnEmail_StaysACodeBlock(string markdown, string expected)
+    {
+        var html = Renderer.Render(markdown);
+
+        Assert.Contains("<pre>", html, StringComparison.Ordinal);
+        Assert.Contains(expected, html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Render_IndentedCodeBlock_StaysACodeBlock()
+    {
+        var html = Renderer.Render("    const a = 1;");
+
+        Assert.Contains("<pre><code>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("class=\"email\"", html, StringComparison.Ordinal);
+    }
 }
