@@ -156,7 +156,7 @@ public sealed class PdfFontFixture
 {
     /// <summary>
     /// Why the PDF tests skip when they do — a machine with no font PDFsharp can read is exactly the
-    /// deployment US-1501's <c>export-renderer-not-configured</c> problem exists for, so it is a skip
+    /// deployment the <c>export-renderer-not-configured</c> problem exists for, so it is a skip
     /// rather than a failure.
     /// </summary>
     public const string SkipReason =

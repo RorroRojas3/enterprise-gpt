@@ -12,8 +12,7 @@ namespace Enterprise.Gpt.Service.Exceptions;
 /// Derived from <see cref="Exception"/> rather than <see cref="InvalidOperationException"/> on
 /// purpose — the handler maps the latter to 400, which would report a deployment gap as a bad request
 /// and send the client into a retry loop over a state no retry can change. The distinct problem type
-/// is what lets the client say "not available here" instead of "try again", which is the whole point
-/// of US-1501's fifth criterion.
+/// is what lets the client say "not available here" instead of "try again".
 /// </remarks>
 /// <param name="format">The format that has no renderer.</param>
 public class ExportRendererNotConfiguredException(ConversationExportFormats format)

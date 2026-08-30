@@ -8,12 +8,13 @@ namespace Enterprise.Gpt.Service.Export;
 /// </summary>
 /// <param name="Role">Who produced the message.</param>
 /// <param name="Label">The heading an export writes above it — <c>You</c> or <c>Assistant</c>.</param>
-/// <param name="Markdown">The message text as authored, which a markdown export emits verbatim.</param>
-/// <param name="Html">
-/// The HTML stored beside the message at persist time, or <see langword="null"/> for a message written
-/// before server-side rendering existed.
-/// </param>
-public sealed record ConversationExportMessage(ChatRoles Role, string Label, string Markdown, string? Html);
+/// <param name="Markdown">The message text as authored, which every rendered format is built from.</param>
+/// <remarks>
+/// The transcript's stored <c>htmlContent</c> is deliberately not carried. Rendering the HTML export
+/// from it as well would have made one of the four formats disagree with the other three about what a
+/// message contains — images in particular, which the block model drops.
+/// </remarks>
+public sealed record ConversationExportMessage(ChatRoles Role, string Label, string Markdown);
 
 /// <summary>
 /// A conversation as the export renderers see it.
@@ -47,7 +48,6 @@ public sealed record ConversationExportDocument(
         .. Stored.Select(message => new ConversationExportMessage(
             message.Role,
             message.Role is ChatRoles.User ? "You" : "Assistant",
-            message.Content,
-            message.HtmlContent))
+            message.Content))
     ];
 }

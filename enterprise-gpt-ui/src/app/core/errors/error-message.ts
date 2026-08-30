@@ -130,8 +130,8 @@ export function userMessage(error: AppError): string {
       return 'The selected model is not available in this environment.';
     case 'storage-not-configured':
       return 'File storage is not available in this environment.';
-    // Names the format, because the download menu offers three and only one of them
-    // is unavailable — "downloads are unavailable" would be wrong about the other two.
+    // Names the format, because the download menu offers several and only one of them
+    // is unavailable — "downloads are unavailable" would be wrong about the rest.
     case 'export-renderer-not-configured':
       return error.format
         ? `${EXPORT_FORMAT_LABELS[error.format] ?? error.format.toUpperCase()} download isn’t available in this environment.`

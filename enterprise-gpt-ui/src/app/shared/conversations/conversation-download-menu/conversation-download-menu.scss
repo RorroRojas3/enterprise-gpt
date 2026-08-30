@@ -11,13 +11,13 @@
 // Bound on every row so the two states have one selector to share; the layout is
 // `menu__item`'s.
 .download-menu__item--dimmed {
-  // Frame `2f`'s dimming for the two formats not being prepared. Opacity rather than a
-  // colour, so the glyph and the label fade together and neither has to know a token.
+  // Dimming for the formats not being prepared. Opacity rather than a colour, so the glyph
+  // and the label fade together and neither has to know a token.
   opacity: 0.45;
 }
 
-// Frame `2f` colours the three glyphs, which is the only thing distinguishing the rows at
-// a glance once the labels wrap.
+// Each glyph gets its own colour, which is the only thing distinguishing the rows at a
+// glance once the labels wrap.
 .download-menu__glyph--md {
   color: var(--muted);
 }
@@ -30,6 +30,10 @@
   color: var(--fail);
 }
 
+.download-menu__glyph--html {
+  color: var(--ok);
+}
+
 .download-menu__spinner {
   flex: none;
   width: 14px;
@@ -38,8 +42,8 @@
   border-top-color: transparent;
   border-radius: 50%;
   // `spin` is the shared keyframe from `_motion.scss`; declaring a fifth one here is what
-  // US-1404's build gate refuses, and reusing this one is what puts the reduced-motion
-  // block over this element without it opting in.
+  // the build's keyframe gate refuses, and reusing this one is what puts the
+  // reduced-motion block over this element without it opting in.
   animation: spin 0.9s linear infinite;
 }
 

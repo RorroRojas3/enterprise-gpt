@@ -22,7 +22,7 @@ public static class ExportFontFamilies
 /// <para>
 /// PDFsharp's cross-platform build ships no fonts and reads none from the operating system unless it
 /// is told to; with no resolver it throws on the first glyph. A PDF export therefore genuinely depends
-/// on this deployment having faces available, which is what makes US-1501's
+/// on this deployment having faces available, which is what makes the
 /// <c>export-renderer-not-configured</c> problem a real state rather than dead code: when
 /// <see cref="IsUsable"/> is false the PDF renderer is never registered and the route answers 503
 /// rather than throwing at render time, halfway into a response.

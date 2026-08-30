@@ -42,6 +42,37 @@ public sealed class ExportFontResolverTests : IDisposable
         return path;
     }
 
+    /// <summary>
+    /// The five role-named faces are committed and copied beside the assembly, so a deployment that
+    /// provisioned nothing still renders a PDF — see <c>Export/Fonts/README.md</c>.
+    /// </summary>
+    /// <remarks>
+    /// The directory is named rather than defaulted, and the files are asserted directly: an
+    /// unqualified resolver falls back to the platform's own fonts, so it reports five roles on any
+    /// developer machine whether or not the csproj glob copied anything.
+    /// </remarks>
+    [Fact]
+    public void ShippedDirectory_ResolvesEveryRole()
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "Fonts");
+
+        foreach (var role in new[]
+        {
+            "export-sans-regular", "export-sans-bold", "export-sans-italic",
+            "export-sans-bold-italic", "export-mono-regular"
+        })
+        {
+            Assert.True(
+                File.Exists(Path.Combine(directory, role + ".ttf")),
+                $"{role}.ttf did not reach the output directory.");
+        }
+
+        var resolver = new ExportFontResolver(directory);
+
+        Assert.True(resolver.IsUsable);
+        Assert.Equal(5, resolver.ResolvedFaces.Count);
+    }
+
     [Fact]
     public void IsUsable_ConfiguredDirectoryWithARegularFace_IsTrue()
     {

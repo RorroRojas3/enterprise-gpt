@@ -88,8 +88,8 @@ describe('ConversationDownloadMenu', () => {
     };
   }
 
-  /** Frame `2f`: three items, in this order, each with its own glyph. */
-  it('offers Markdown, Word and PDF with their glyphs', async () => {
+  /** One item per offered format, in this order, each with its own glyph. */
+  it('offers Markdown, Word, PDF and HTML with their glyphs', async () => {
     const menu = await render();
     await menu.open();
 
@@ -98,13 +98,32 @@ describe('ConversationDownloadMenu', () => {
       'Markdown (.md)',
       'Word (.docx)',
       'PDF',
+      'HTML',
     ]);
     expect(menu.host.querySelector('.download-menu__glyph--md')).not.toBeNull();
     expect(menu.host.querySelector('.download-menu__glyph--docx')).not.toBeNull();
     expect(menu.host.querySelector('.download-menu__glyph--pdf')).not.toBeNull();
+    expect(menu.host.querySelector('.download-menu__glyph--html')).not.toBeNull();
   });
 
-  /** The note is a note, not a fourth stop in the panel's roving focus. */
+  /** The row-to-token wiring, which is the whole of what choosing a format does. */
+  it.each([
+    ['Markdown (.md)', 'md'],
+    ['Word (.docx)', 'docx'],
+    ['PDF', 'pdf'],
+    ['HTML', 'html'],
+  ])('requests %s as format=%s', async (label, format) => {
+    const menu = await render();
+    await menu.open();
+    await menu.choose(label);
+
+    const request = backend.expectOne((candidate) => candidate.url === EXPORT_URL);
+
+    expect(request.request.params.get('format')).toBe(format);
+    request.flush(new Blob(['x']));
+  });
+
+  /** The note is a note, not another stop in the panel's roving focus. */
   it('carries the unsaved-answer note outside the item list', async () => {
     const menu = await render();
     await menu.open();
@@ -112,10 +131,10 @@ describe('ConversationDownloadMenu', () => {
     const note = menu.host.querySelector('.download-menu__note');
     expect(note?.textContent).toContain('stopped, unsaved answer');
     expect(note?.hasAttribute('appMenuItem')).toBe(false);
-    expect(menu.items()).toHaveLength(3);
+    expect(menu.items()).toHaveLength(4);
   });
 
-  /** Criterion 3: the chosen item names itself, the other two dim, the panel stays up. */
+  /** The chosen item names itself, the rest dim, and the panel stays up. */
   it('shows the chosen format preparing and dims the rest, without closing', async () => {
     const menu = await render();
     await menu.open();
@@ -151,7 +170,7 @@ describe('ConversationDownloadMenu', () => {
 
   /**
    * The store takes one export at a time. A second menu — after moving to another
-   * conversation while the first is still rendering — must say so, or it offers three
+   * conversation while the first is still rendering — must say so, or it offers
    * live-looking items that the store silently drops.
    */
   it('dims every item while another conversation is exporting', async () => {
@@ -178,7 +197,7 @@ describe('ConversationDownloadMenu', () => {
    * contradict the pixels — and it is the row the reader just chose. Busy is the state
    * that is true of it.
    */
-  it('marks the working item busy and the other two disabled', async () => {
+  it('marks the working item busy and the rest disabled', async () => {
     const menu = await render();
     await menu.open();
     await menu.choose('PDF');
@@ -194,8 +213,8 @@ describe('ConversationDownloadMenu', () => {
   });
 
   /**
-   * A screen reader in menu mode visits the three `menuitem`s and nothing else, so the
-   * caveat has to reach them as a description or it is visual-only.
+   * A screen reader in menu mode visits the `menuitem`s and nothing else, so the caveat
+   * has to reach them as a description or it is visual-only.
    */
   it('describes every item with the unsaved-answer note', async () => {
     const menu = await render();
@@ -208,7 +227,7 @@ describe('ConversationDownloadMenu', () => {
     );
   });
 
-  /** Criterion 4: on a failure the panel stays up, so another format is one click away. */
+  /** On a failure the panel stays up, so another format is one click away. */
   it('returns to idle but stays open when the export fails', async () => {
     const menu = await render();
     await menu.open();
@@ -239,7 +258,7 @@ describe('ConversationDownloadMenu', () => {
     requests[0]?.flush(new Blob(['x']));
   });
 
-  /** Criterion 5, frame `2g`. */
+  /** The trigger owes a reason when it is unavailable, not just a dimmed look. */
   it('disables the trigger with a reason while a turn streams', async () => {
     const menu = await render();
     menu.fixture.componentInstance.disabled.set(true);

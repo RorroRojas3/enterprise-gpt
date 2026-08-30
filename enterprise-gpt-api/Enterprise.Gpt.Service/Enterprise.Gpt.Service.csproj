@@ -72,9 +72,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- ExportFontResolver probes {BaseDirectory}/Fonts, so faces committed under Export/Fonts have to
-         land there. Link flattens the folder, and the glob deliberately matches nothing today: the
-         repository ships no font binaries, and this is what makes dropping one in take effect. -->
+    <!-- ExportFontResolver probes {BaseDirectory}/Fonts, so the five role-named faces committed under
+         Export/Fonts have to land there; Link flattens the folder. A glob rather than five entries,
+         because Export/Fonts/README.md documents dropping a re-branded set in as a file copy. -->
     <None Include="Export\Fonts\*.ttf;Export\Fonts\*.otf;Export\Fonts\*.ttc"
           Link="Fonts\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />

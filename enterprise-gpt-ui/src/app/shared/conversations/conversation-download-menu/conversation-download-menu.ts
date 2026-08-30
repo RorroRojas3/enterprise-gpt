@@ -20,7 +20,7 @@ import { MenuItem } from '@shared/overlay/menu/menu-item';
 
 let nextId = 0;
 
-/** One row of the menu: what frame `2f` draws, in the order it draws it. */
+/** One row of the menu, in the order the panel draws them. */
 interface DownloadOption {
   readonly format: ExportFormat;
   readonly label: string;
@@ -28,17 +28,17 @@ interface DownloadOption {
 }
 
 /**
- * The download control, and the one menu behind both of its triggers (US-1502, frame `2f`).
+ * The download control, and the one menu behind both of its triggers.
  *
  * Rendered in the composer's control row and in the conversation header, which is why it
- * lives in `shared/`: `features/chat` may be imported by neither, and the criterion asks
- * for *one* menu offered from both places rather than two that agree.
+ * lives in `shared/`: `features/chat` may be imported by neither, and what is wanted is
+ * *one* menu offered from both places rather than two that agree.
  *
- * Three behaviours are the whole story, and each is a criterion:
+ * Three behaviours are the whole of it:
  *
  * - **The menu stays open while a format is preparing.** That is `Menu`'s own `stayOpen`,
  *   built for the multi-select tools picker and exactly right here: the chosen item shows
- *   its ring and the other two dim, which requires the panel to still be on screen.
+ *   its ring and the rest dim, which requires the panel to still be on screen.
  * - **It closes when the download starts, and not when it fails.** The store reports an
  *   outcome per settle; this closes on a successful one and leaves the panel up otherwise,
  *   so the reader can try another format without reopening.
@@ -58,7 +58,7 @@ export class ConversationDownloadMenu {
   readonly conversationId = input.required<string>();
   /** Named in the trigger's accessible name, so the control says what it acts on. */
   readonly conversationName = input.required<string>();
-  /** True while a turn is in flight (frame `2g`). */
+  /** True while a turn is in flight. */
   readonly disabled = input<boolean>(false);
   /** `up` in the composer, which sits at the bottom of the screen. */
   readonly direction = input<'down' | 'up'>('down');
@@ -87,7 +87,7 @@ export class ConversationDownloadMenu {
    *
    * The store takes one at a time, and the dimming has to say so however the export was
    * started. Keying only on this conversation's would leave a second menu — after
-   * navigating away from a conversation whose PDF is still rendering — offering three
+   * navigating away from a conversation whose PDF is still rendering — offering
    * live-looking items that the store silently drops.
    */
   protected readonly exportInFlight = computed(() => this.exports.pending() !== null);
@@ -118,7 +118,7 @@ export class ConversationDownloadMenu {
       this.lastHandledOutcome = outcome.seq;
 
       // Only this conversation's, and only a success: a failure keeps the panel open so
-      // the toast and the menu are on screen together (criterion 4).
+      // the toast and the menu are on screen together.
       if (outcome.ok && outcome.conversationId === this.conversationId()) {
         this.open.set(false);
       }
@@ -136,9 +136,10 @@ export class ConversationDownloadMenu {
   }
 }
 
-/** Frame `2f`'s glyphs. All three are already in the sprite. */
+/** Each name must also be in `icon-names.ts`, or the sprite has no glyph to reference. */
 const ICONS: Readonly<Record<ExportFormat, IconName>> = {
   md: 'bi-filetype-md',
   docx: 'bi-file-earmark-word',
   pdf: 'bi-file-earmark-pdf',
+  html: 'bi-filetype-html',
 };

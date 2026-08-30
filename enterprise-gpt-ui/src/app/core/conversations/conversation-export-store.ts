@@ -22,8 +22,8 @@ export interface ExportRequest {
 /**
  * How a request settled, replaced rather than consumed.
  *
- * The menu closes on a success and stays open on a failure (US-1502's criteria 3 and 4),
- * which it cannot decide from `pending` going null alone. A one-shot the reader nulls
+ * The menu closes on a success and stays open on a failure, which it cannot decide from
+ * `pending` going null alone. A one-shot the reader nulls
  * back would not do either: the composer and the conversation header both mount a menu at
  * desktop widths, and whichever effect ran first would swallow the outcome for the other.
  * So this is a replaced record with a sequence number, and each menu tracks the last it
@@ -39,8 +39,8 @@ interface ExportState {
   /**
    * The export in flight, or null.
    *
-   * One at a time, because the menu dims the other two items while one is preparing —
-   * there is no surface for a second concurrent export to render into.
+   * One at a time, because the menu dims its other items while one is preparing — there is
+   * no surface for a second concurrent export to render into.
    */
   readonly pending: ExportRequest | null;
   readonly outcome: ExportOutcome | null;
@@ -49,7 +49,7 @@ interface ExportState {
 const initialState: ExportState = { pending: null, outcome: null };
 
 /**
- * Downloads a conversation as a file (US-1502).
+ * Downloads a conversation as a file.
  *
  * Shaped after `DocumentDownloadStore`, which is this repository's reference for "fetch on
  * click, never on render, and let go of the artefact immediately" — but the transport is
@@ -156,8 +156,7 @@ export const ConversationExportStore = signalStore(
               error: (cause: unknown) => {
                 settle(request, false);
                 // Awaited nowhere: the toast is raised when the body has been read, and
-                // nothing downstream waits on it. `fromError` carries the traceId line,
-                // which is US-1502's fourth criterion.
+                // nothing downstream waits on it. `fromError` is what carries the traceId.
                 void toAppErrorFromBlobError(cause, url).then((error) =>
                   store._toasts.fromError(error),
                 );
