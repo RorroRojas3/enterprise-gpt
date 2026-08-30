@@ -1,6 +1,11 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import {
+  NARROW_VIEWPORT,
+  TABLET_VIEWPORT_QUERY,
+  resetMediaQueries,
+  setMediaQuery,
+} from '@testing/media-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BulkActionBar } from './bulk-action-bar/bulk-action-bar';
 import { DataTable } from './data-table/data-table';
@@ -263,6 +268,141 @@ describe('DataTable', () => {
     const live = host.querySelector('[aria-live="polite"]');
     expect(live?.textContent?.trim()).toBe('Showing 2 of 312 conversations');
     expect(live?.textContent).not.toContain('2 results');
+  });
+});
+
+interface SlotRow {
+  readonly id: string;
+  readonly name: string;
+  readonly updated: string;
+  readonly size: string;
+  readonly retired: boolean;
+}
+
+const SLOT_ROWS: readonly SlotRow[] = [
+  { id: 'a', name: 'Helios', updated: '2 days ago', size: '1.4 MB', retired: false },
+  { id: 'b', name: 'Atlas', updated: 'yesterday', size: '820 kB', retired: true },
+];
+
+const SLOT_COLUMNS: readonly TableColumn<SlotRow>[] = [
+  { key: 'name', header: 'Name', width: '1.4fr', text: (row) => row.name, mobile: 'title' },
+  { key: 'updated', header: 'Updated', width: '110px', text: (row) => row.updated, mobile: 'meta' },
+  {
+    key: 'size',
+    header: 'Size',
+    width: '90px',
+    text: (row) => row.size,
+    mobile: 'meta',
+    hideOnTablet: true,
+  },
+  { key: 'menu', header: 'Actions', headerHidden: true, width: '44px', mobile: 'trailing' },
+];
+
+@Component({
+  selector: 'app-slot-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DataTable, TableCell],
+  template: `
+    <app-data-table
+      label="Documents"
+      [rows]="rows"
+      [columns]="columns"
+      [trackKey]="trackKey"
+      [rowLabel]="rowLabel"
+    >
+      <ng-template appTableCell="menu" [appTableCellFor]="rows" let-row>
+        @if (!row.retired) {
+          <button class="row-menu" type="button">More</button>
+        }
+      </ng-template>
+    </app-data-table>
+  `,
+})
+class SlotHost {
+  readonly columns = SLOT_COLUMNS;
+  readonly rows = SLOT_ROWS;
+  readonly trackKey = (row: SlotRow): string => row.id;
+  readonly rowLabel = (row: SlotRow): string => row.name;
+}
+
+describe('DataTable card slots', () => {
+  beforeEach(() => {
+    resetMediaQueries();
+    setMediaQuery(NARROW_VIEWPORT, false);
+    setMediaQuery(TABLET_VIEWPORT_QUERY, false);
+    TestBed.configureTestingModule({});
+  });
+
+  afterEach(() => resetMediaQueries());
+
+  async function render() {
+    const fixture = TestBed.createComponent(SlotHost);
+    await fixture.whenStable();
+    return { fixture, host: fixture.nativeElement as HTMLElement };
+  }
+
+  async function renderNarrow() {
+    const rendered = await render();
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await rendered.fixture.whenStable();
+    return rendered;
+  }
+
+  it('labels every meta value with the header the table would have shown', async () => {
+    const { host } = await renderNarrow();
+
+    const [first] = [...host.querySelectorAll('app-card-row')];
+    const labels = [...(first?.querySelectorAll('.card-meta__label') ?? [])].map(
+      (node) => node.textContent,
+    );
+    const values = [...(first?.querySelectorAll('.card-meta__value') ?? [])].map((node) =>
+      node.textContent?.trim(),
+    );
+
+    // Without the label a card shows "2 days ago" and "1.4 MB" as two bare lines, and
+    // the column header that told the reader which was which is gone.
+    expect(labels).toEqual(['Updated', 'Size']);
+    expect(values).toEqual(['2 days ago', '1.4 MB']);
+  });
+
+  it('puts a trailing column beside the title rather than in the action foot', async () => {
+    const { host } = await renderNarrow();
+
+    const [first] = [...host.querySelectorAll('app-card-row')];
+    expect(first?.querySelector('.card-row__trailing .row-menu')).not.toBeNull();
+    expect(first?.querySelector('.card-row__actions .row-menu')).toBeNull();
+  });
+
+  it('leaves a slot genuinely empty when its column renders nothing', async () => {
+    const { host } = await renderNarrow();
+
+    // The collapse itself is `:has(> :empty)` in the stylesheet, which jsdom applies no
+    // layout for; what is pinned here is the precondition that rule matches on.
+    const [, second] = [...host.querySelectorAll('app-card-row')];
+    const projected = second?.querySelector('.card-row__trailing')?.firstElementChild;
+
+    expect(projected).not.toBeNull();
+    expect(projected?.childElementCount).toBe(0);
+  });
+
+  it('drops a hideOnTablet column from the table but keeps it on the card', async () => {
+    const { fixture, host } = await render();
+
+    setMediaQuery(TABLET_VIEWPORT_QUERY, true);
+    await fixture.whenStable();
+
+    const headers = [...host.querySelectorAll('[role="columnheader"]')].map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(headers).toEqual(['Name', 'Updated', 'Actions']);
+    expect(host.textContent).not.toContain('1.4 MB');
+
+    setMediaQuery(TABLET_VIEWPORT_QUERY, false);
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await fixture.whenStable();
+
+    // A phone is a different layout, not a narrower tablet: the card has room for it.
+    expect(host.textContent).toContain('1.4 MB');
   });
 });
 

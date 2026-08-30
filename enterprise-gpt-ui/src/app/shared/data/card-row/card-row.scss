@@ -34,10 +34,20 @@
   font-size: 12px;
 }
 
-.card-row__subtitle:empty,
-.card-row__meta:empty,
-.card-row__badges:empty {
-  display: none;
+// `:empty` alone is not enough: a consumer that projects one wrapper per slot — as
+// `DataTable` does — leaves the slot holding an empty element rather than nothing, and a
+// collapsed slot is the difference between a card and a card with a 44px blank bar.
+// `:only-child`, because a slot may hold several projected nodes and one of them being
+// empty says nothing about the rest — and a bare `<input>` is always `:empty`.
+.card-row__subtitle,
+.card-row__meta,
+.card-row__badges,
+.card-row__trailing,
+.card-row__actions {
+  &:empty,
+  &:has(> :only-child:empty) {
+    display: none;
+  }
 }
 
 .card-row__badges {
@@ -46,18 +56,29 @@
   gap: 6px;
 }
 
+// A single icon control belongs beside the title, where the table put it at the row's end.
+.card-row__trailing {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+
+  // Every control here, not the kebab alone: a card is a touch surface, and the slot also
+  // takes the favourite star, which is a 21px box at its own metrics.
+  ::ng-deep button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .card-row__actions {
   display: flex;
   gap: 8px;
 
-  &:empty {
-    display: none;
-  }
-
-  // The board's own caption asks for 44px targets at this breakpoint; its pills are
-  // roughly 31px, so this is a correction rather than a reproduction.
+  // The foot is for labelled buttons, which share the width evenly. Their height is the
+  // consumer's, because the button lives in the consumer's own stylesheet and a
+  // `min-height` here would land on whatever wrapper it happens to project.
   ::ng-deep > * {
     flex: 1 1 0;
-    min-height: 44px;
   }
 }

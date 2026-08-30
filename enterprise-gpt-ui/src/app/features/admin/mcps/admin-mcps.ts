@@ -89,12 +89,24 @@ export class AdminMcps {
    */
   protected readonly columns: readonly TableColumn<McpServerDto>[] = [
     { key: 'server', header: 'Server', width: 'minmax(0, 1.1fr)', mobile: 'title' },
-    { key: 'description', header: 'Description', width: 'minmax(0, 1.7fr)', mobile: 'subtitle' },
+    {
+      key: 'description',
+      header: 'Description',
+      width: 'minmax(0, 1.7fr)',
+      mobile: 'subtitle',
+      hideOnTablet: true,
+    },
     { key: 'url', header: 'URL', width: 'minmax(0, 1.7fr)', mobile: 'meta' },
     // 150px, not frame `5g`'s 90: "Entra ID (on behalf of)" is one of only two values
     // this column can hold, and a narrower track ellipsises it permanently.
-    { key: 'auth', header: 'Auth', width: '150px', mobile: 'meta' },
-    { key: 'scope', header: 'Scope', width: 'minmax(0, 0.9fr)', mobile: 'meta' },
+    { key: 'auth', header: 'Auth', width: '150px', mobile: 'meta', hideOnTablet: true },
+    {
+      key: 'scope',
+      header: 'Scope',
+      width: 'minmax(0, 0.9fr)',
+      mobile: 'meta',
+      hideOnTablet: true,
+    },
     { key: 'permission', header: 'Permission', width: 'minmax(0, 1fr)', mobile: 'badges' },
     { key: 'status', header: 'Status', width: '100px', mobile: 'badges' },
     // headerHidden rather than an empty header: the column still needs a name for a
@@ -105,7 +117,7 @@ export class AdminMcps {
       headerHidden: true,
       width: '44px',
       align: 'end',
-      mobile: 'actions',
+      mobile: 'trailing',
     },
   ];
 

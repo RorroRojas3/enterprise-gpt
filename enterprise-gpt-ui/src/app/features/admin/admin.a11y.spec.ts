@@ -21,6 +21,7 @@ import {
 } from '@testing/a11y';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
 import { emptyUsageReportFixture, usageReportFixture } from '@testing/reports';
+import { UPLOAD_FILE_GRANT } from '@testing/session';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adminRoutes } from './admin.routes';
@@ -219,6 +220,92 @@ describe('administration accessibility (US-1405)', () => {
       await harness.fixture.whenStable();
 
       await expectNoSeriousViolations(element, `/admin/reports empty (${theme})`);
+    });
+  }
+
+  /**
+   * What the shell keeps for itself at each width, and so never hands the routed screen:
+   * the sidebar is 260px in the flow at desktop, a 60px strip at tablet, and lives in a
+   * drawer below that. Auditing against the bare viewport would give the fitting tests
+   * below room production does not have, which is the wrong direction for a fitting test.
+   */
+  const SIDEBAR_TRACK: Record<ViewportName, number> = { desktop: 260, tablet: 60, mobile: 0 };
+
+  /** {@link open}, narrowed to the width the shell would actually leave. */
+  async function openInShell(url: string, width: ViewportName): Promise<HTMLElement> {
+    await atViewport(width);
+    const element = await open(url, 'light');
+    element.style.width = `calc(100% - ${SIDEBAR_TRACK[width]}px)`;
+    return element;
+  }
+
+  // The three list screens at each width. `DataTable` restructures twice — the full table,
+  // the table minus its `hideOnTablet` columns, then cards — and only a real browser can say
+  // whether any of the three fits. Each screen is flushed with the widest values it can
+  // actually hold: an unbounded permission name, a long deployment, a long URL and scope.
+  for (const width of Object.keys(VIEWPORTS) as ViewportName[]) {
+    it(`keeps the user directory inside the viewport at the ${width} width`, async () => {
+      const element = await openInShell('/admin/users', width);
+
+      flushPermissions(backend);
+      backend
+        .expectOne((request) => request.url === USERS_URL)
+        .flush(
+          userPage([
+            directoryUserFixture({ firstName: 'Ada', lastName: 'Lovelace' }),
+            directoryUserFixture({
+              firstName: 'Grace',
+              lastName: 'Hopper',
+              email: 'grace.hopper_a_very_long_guest_address#EXT#@contoso.onmicrosoft.com',
+              // The badge's whole reason for shrinking: this name is administrator-authored
+              // and the column that holds it is not.
+              permissions: [
+                {
+                  ...UPLOAD_FILE_GRANT,
+                  name: 'A deliberately long administrator-authored permission name',
+                },
+              ],
+            }),
+          ]),
+        );
+      await harness.fixture.whenStable();
+
+      expectNoHorizontalOverflow(element, `/admin/users ${width}`);
+    });
+
+    it(`keeps the model catalog inside the viewport at the ${width} width`, async () => {
+      const element = await openInShell('/admin/models', width);
+
+      backend
+        .expectOne((request) => request.url === MODELS_URL)
+        .flush([
+          modelFixture({ name: 'gpt-4o' }),
+          modelFixture({
+            name: 'A deliberately long administrator-authored model name',
+            deploymentName: 'contoso-eastus2-gpt-5-6-luna-provisioned-deployment',
+          }),
+        ]);
+      await harness.fixture.whenStable();
+
+      expectNoHorizontalOverflow(element, `/admin/models ${width}`);
+    });
+
+    it(`keeps the MCP registry inside the viewport at the ${width} width`, async () => {
+      const element = await openInShell('/admin/mcps', width);
+
+      backend
+        .expectOne((request) => request.url === MCPS_URL)
+        .flush([
+          mcpServerFixture({ name: 'Andes Test MCP' }),
+          mcpServerFixture({
+            name: 'Azure DevOps',
+            url: 'https://mcp.dev.azure.com/a-long-organisation-name/_apis/mcp/v1/endpoint',
+            scope: 'https://mcp.dev.azure.com/a-long-organisation-name/.default',
+          }),
+        ]);
+      await harness.fixture.whenStable();
+
+      expectNoHorizontalOverflow(element, `/admin/mcps ${width}`);
     });
   }
 

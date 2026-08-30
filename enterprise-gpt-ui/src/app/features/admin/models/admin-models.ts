@@ -83,10 +83,30 @@ export class AdminModels {
   protected readonly columns: readonly TableColumn<ModelDto>[] = [
     { key: 'model', header: 'Model', width: 'minmax(0, 1.5fr)', mobile: 'title' },
     { key: 'provider', header: 'Provider', width: 'minmax(0, 1.1fr)', mobile: 'subtitle' },
-    { key: 'deployment', header: 'Deployment', width: 'minmax(0, 1.5fr)', mobile: 'meta' },
+    {
+      key: 'deployment',
+      header: 'Deployment',
+      width: 'minmax(0, 1.5fr)',
+      mobile: 'meta',
+      hideOnTablet: true,
+    },
     { key: 'context', header: 'Context', width: '90px', align: 'end', mobile: 'meta' },
-    { key: 'output', header: 'Max output', width: '110px', align: 'end', mobile: 'meta' },
-    { key: 'tools', header: 'Tools', width: '80px', align: 'center', mobile: 'badges' },
+    {
+      key: 'output',
+      header: 'Max output',
+      width: '110px',
+      align: 'end',
+      mobile: 'meta',
+      hideOnTablet: true,
+    },
+    {
+      key: 'tools',
+      header: 'Tools',
+      width: '80px',
+      align: 'center',
+      mobile: 'badges',
+      hideOnTablet: true,
+    },
     // Not in frame `5e`, which draws no status at all. It is here because this route
     // returns retired models and the frame's table has no other way to tell one apart.
     { key: 'status', header: 'Status', width: '100px', mobile: 'badges' },
@@ -98,7 +118,7 @@ export class AdminModels {
       headerHidden: true,
       width: '44px',
       align: 'end',
-      mobile: 'actions',
+      mobile: 'trailing',
     },
   ];
 

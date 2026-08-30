@@ -2,7 +2,7 @@
   @if (managedBy()) {
     <app-icon name="bi-lock" />
   }
-  {{ name() }}
+  <span class="permission-badge__name" [title]="name()">{{ name() }}</span>
   @if (managedBy()) {
     <span class="visually-hidden">— managed by {{ managedBy() }}</span>
   }

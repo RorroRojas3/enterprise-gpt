@@ -97,10 +97,25 @@ export function expectNoHorizontalOverflow(root: HTMLElement, label: string): vo
       return false;
     }
 
+    const style = getComputedStyle(node);
+
+    // An element that both declares the ellipsis pattern and is a pure text run is
+    // *contained* — the pattern doing its job, pushing nothing sideways. `nowrap` is what
+    // holds the line: `td` sets `overflow: hidden` and `text-overflow` but wraps, so a cell
+    // clipping content it cannot ellipsise is still reported. This bounds containment only;
+    // whether the surviving text is still worth reading is not a question of overflow.
+    if (
+      node.childElementCount === 0 &&
+      style.textOverflow === 'ellipsis' &&
+      style.whiteSpace === 'nowrap'
+    ) {
+      return false;
+    }
+
     // Only a container that *clips* is a defect. `overflow-x: auto` or `scroll` is a
     // deliberate scroll region — the code block, the pill strip, a wide table — and
     // reporting those would be reporting the design.
-    return node.scrollWidth > node.clientWidth + 1 && getComputedStyle(node).overflowX === 'hidden';
+    return node.scrollWidth > node.clientWidth + 1 && style.overflowX === 'hidden';
   });
 
   expect(

@@ -9,7 +9,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { Skeleton } from '@shared/feedback/skeleton/skeleton';
 import { CardRow } from '@shared/data/card-row/card-row';
-import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/layout/breakpoints';
 import { injectMediaQuery } from '@shared/layout/media-query';
 import { toggleRow } from '../row-selection';
 import { TableCell } from './table-cell';
@@ -96,6 +96,18 @@ export class DataTable<T> {
    */
   protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
 
+  /** Between the two edges the table stays a table, minus the columns that cannot fit. */
+  protected readonly isTablet = injectMediaQuery(TABLET_VIEWPORT);
+
+  /**
+   * What the table renders. The card branch deliberately reads `columns()` instead: a
+   * phone is a different layout, not a narrower tablet, and a column dropped for want of
+   * a grid track still has room on a card.
+   */
+  protected readonly visibleColumns = computed<readonly TableColumn<T>[]>(() =>
+    this.isTablet() ? this.columns().filter((column) => !column.hideOnTablet) : this.columns(),
+  );
+
   protected readonly cellTemplates = computed(
     () => new Map(this.cells().map((cell) => [cell.appTableCell(), cell.template])),
   );
@@ -138,6 +150,7 @@ export class DataTable<T> {
       subtitle: [],
       meta: [],
       badges: [],
+      trailing: [],
       actions: [],
       hidden: [],
     };
@@ -149,7 +162,7 @@ export class DataTable<T> {
 
   protected readonly gridTemplate = computed(() =>
     (this.selectable() ? ['40px'] : [])
-      .concat(this.columns().map((column) => column.width))
+      .concat(this.visibleColumns().map((column) => column.width))
       .join(' '),
   );
 

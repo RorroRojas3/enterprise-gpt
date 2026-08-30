@@ -11,6 +11,7 @@ import { signal } from '@angular/core';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { ModelDto } from '@domain/api/model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
@@ -1107,5 +1108,19 @@ describe('Conversations (US-701)', () => {
       expect(request.request.body).toEqual({ id: row.id, name: row.name, projectId: null });
       request.flush({ ...row, projectId: null });
     });
+  });
+
+  it('puts both row controls beside the card title rather than across its foot', async () => {
+    await open();
+
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await harness.fixture.whenStable();
+    resetMediaQueries();
+
+    // The star and the kebab are icon controls: stretched across the card's foot they read
+    // as two broken bars rather than as the row's actions.
+    const trailing = element().querySelector('.card-row__trailing');
+    expect(trailing?.querySelectorAll('button')).toHaveLength(2);
+    expect(element().querySelector('.card-row__actions button')).toBeNull();
   });
 });

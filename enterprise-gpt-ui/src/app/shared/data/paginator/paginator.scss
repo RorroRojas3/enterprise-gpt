@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 .paginator {
   display: flex;
   align-items: center;
@@ -47,6 +49,11 @@
   font-size: 12px;
   cursor: pointer;
 
+  @include bp.mobile {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   &:hover:not(:disabled) {
     background: var(--surface-2);
   }
@@ -66,6 +73,11 @@
   color: var(--bs-body-color);
   font-size: 12.5px;
   cursor: pointer;
+
+  @include bp.mobile {
+    min-width: 44px;
+    min-height: 44px;
+  }
 
   &:hover {
     background: var(--surface-2);

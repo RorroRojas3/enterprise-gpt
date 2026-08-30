@@ -6,6 +6,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { ModelDto } from '@domain/api/model';
 import { PROVIDER_ID } from '@domain/api/provider';
 import { ModelActionsStore } from '@core/catalog/model-actions-store';
@@ -294,5 +295,31 @@ describe('AdminModels (US-1207)', () => {
 
     await type('gpt');
     expect(rowText()).toContain('Showing 1 of 2 models');
+  });
+
+  it('puts the row menu beside the card title rather than across its foot', async () => {
+    await open([modelFixture({ name: 'GPT-5 Enterprise' })]);
+
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await harness.fixture.whenStable();
+    resetMediaQueries();
+
+    // A lone kebab in the action foot is stretched the width of the card, which reads as a
+    // broken button rather than a menu.
+    expect(element().querySelector('.card-row__trailing app-menu')).not.toBeNull();
+    expect(element().querySelector('.card-row__actions app-menu')).toBeNull();
+  });
+
+  it('labels every card meta value with its column header', async () => {
+    await open([modelFixture({ deploymentName: 'gpt-5-ent-eastus2' })]);
+
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await harness.fixture.whenStable();
+    resetMediaQueries();
+
+    const labels = [...element().querySelectorAll('.card-meta__label')].map(
+      (node) => node.textContent,
+    );
+    expect(labels).toEqual(['Deployment', 'Context', 'Max output']);
   });
 });

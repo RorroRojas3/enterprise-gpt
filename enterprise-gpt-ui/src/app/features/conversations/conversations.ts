@@ -188,7 +188,7 @@ export class Conversations {
       headerHidden: true,
       width: '36px',
       align: 'center',
-      mobile: 'actions',
+      mobile: 'trailing',
     },
     {
       key: 'actions',
@@ -196,7 +196,7 @@ export class Conversations {
       headerHidden: true,
       width: '36px',
       align: 'center',
-      mobile: 'actions',
+      mobile: 'trailing',
     },
   ];
 

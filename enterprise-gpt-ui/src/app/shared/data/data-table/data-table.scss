@@ -80,6 +80,33 @@ td {
   list-style: none;
 }
 
+// Projected into `CardRow`'s meta slot, and styled from here because this template
+// declares it — the label column sizes to its widest header so the values line up.
+.card-meta {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 3px;
+  margin: 4px 0 0;
+}
+
+.card-meta__pair {
+  display: contents;
+}
+
+.card-meta__label {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.card-meta__value {
+  min-width: 0;
+  margin: 0;
+  color: var(--bs-body-color);
+  font-size: 12px;
+}
+
 .table-skeleton {
   display: flex;
   flex-direction: column;

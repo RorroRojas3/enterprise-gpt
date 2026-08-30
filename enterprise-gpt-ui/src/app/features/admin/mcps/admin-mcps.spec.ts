@@ -6,6 +6,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { MCP_AUTH_TYPE, McpServerDto } from '@domain/api/mcp';
 import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
@@ -270,5 +271,29 @@ describe('AdminMcps (US-1208)', () => {
 
     await type('jira');
     expect(rowText()).toContain('Showing 1 of 2 servers');
+  });
+
+  it('puts the row menu beside the card title rather than across its foot', async () => {
+    await open([mcpServerFixture({ name: 'Andes Test MCP' })]);
+
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await harness.fixture.whenStable();
+    resetMediaQueries();
+
+    expect(element().querySelector('.card-row__trailing app-menu')).not.toBeNull();
+    expect(element().querySelector('.card-row__actions app-menu')).toBeNull();
+  });
+
+  it('labels every card meta value with its column header', async () => {
+    await open([mcpServerFixture({ name: 'Andes Test MCP' })]);
+
+    setMediaQuery(NARROW_VIEWPORT, true);
+    await harness.fixture.whenStable();
+    resetMediaQueries();
+
+    const labels = [...element().querySelectorAll('.card-meta__label')].map(
+      (node) => node.textContent,
+    );
+    expect(labels).toEqual(['URL', 'Auth', 'Scope']);
   });
 });

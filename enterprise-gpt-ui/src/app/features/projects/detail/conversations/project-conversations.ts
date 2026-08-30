@@ -87,7 +87,7 @@ export class ProjectConversations {
       headerHidden: true,
       width: '32px',
       align: 'center',
-      mobile: 'actions',
+      mobile: 'trailing',
     },
     {
       key: 'actions',
@@ -95,7 +95,7 @@ export class ProjectConversations {
       headerHidden: true,
       width: '36px',
       align: 'center',
-      mobile: 'actions',
+      mobile: 'trailing',
     },
   ];
 

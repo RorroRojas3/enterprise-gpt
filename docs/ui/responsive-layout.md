@@ -253,6 +253,8 @@ Five consumers: the mobile navbar, the chat composer, the transcript gutters, th
 
 The 190px rail becomes frame `5m`'s scrollable pill strip below 768px, and `DataTable` renders `CardRow`s instead of a grid at the same width. Both predate this story; what changed is that they read the breakpoint from the record now instead of spelling `(max-width: 767px)` themselves — which also closed a real 0.98px gap between the rail's old whole-number query and the record's fractional one. See [Administration §3.3](administration.md#33-below-768px).
 
+"Already held" is a claim about the collapse **firing**, not about what it produced. A later bug-fix pass found six defects in the card anatomy that mechanism renders — unlabelled `meta` values, a lone kebab stretched into a full-width bar, the 44px target rule landing on a wrapper instead of a button, an empty slot still costing space, an unrecoverable ellipsis, and the 768–1023px tablet range rendering every column of an eight-column table. None of it touches the breakpoint or the collapse this section covers; see [Administration §3.3.1](administration.md#331-six-defects-in-the-card-anatomy-and-four-bugs-found-while-fixing-them).
+
 ### 8.2 The conversation library and the projects grid
 
 Both already dropped their 1440px gutters to `18px 14px` below the breakpoint. Both now scroll themselves (§9.2), and the projects grid is a real grid for the first time (§9.1).
@@ -306,6 +308,7 @@ Conversations, projects, project detail and the admin layout each gained `overfl
 - **Criterion 6 is gated in the browser only.** `shell.a11y.spec.ts` checks it at three widths in both themes; jsdom cannot answer it at all, so the jsdom suite pins the structure instead.
 - **The overflow check reports only containers that clip.** `overflow-x: auto` or `scroll` is a deliberate scroll region — a code block, the pill strip, a wide table — and reporting those would be reporting the design. Elements 1px wide or narrower are skipped too, because a `visually-hidden` box is a clipped 1×1 whose content is _meant_ to overflow it; without that skip the check's first run reported three of them and nothing real.
 - **The project-detail pills are a departure the boards do not describe** (§8.5), recorded in [the build order](../prd/enterprise-ui-rebuild-build-order.md)'s interim-behaviours table so it is not later mistaken for drift.
+- **Only the admin routes audit against the shell's own width.** `openInShell` narrows a routed element by the sidebar track the shell actually leaves (260/60/0px) before checking overflow on it; `shell.a11y.spec.ts` and every other route's overflow check still audit the bare viewport, which is roomier than production and let two card-anatomy defects through a first pass (§8.1, [Accessibility audit §4](accessibility-audit.md#4-the-harness)).
 - **Nothing here has been exercised on a real phone or tablet** (§11).
 
 ## 11. Testing
@@ -320,8 +323,8 @@ Conversations, projects, project detail and the admin layout each gained `overfl
 
 ```bash
 # from enterprise-gpt-ui/
-npm test            # Vitest in jsdom — 1750 specs
-npm run test:a11y   # Vitest in Chromium — 32 audits, including criterion 6
+npm test            # Vitest in jsdom — 2288 specs
+npm run test:a11y   # Vitest in Chromium — 80 audits, including criterion 6
 npm run lint        # includes the breakpoint gates in §3.2 and §3.3
 ```
 
