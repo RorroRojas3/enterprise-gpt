@@ -111,6 +111,17 @@ describe('chat accessibility (US-1405)', () => {
       .flush([
         mcpFixture({ name: 'Microsoft Learn', iconKey: 'microsoft' }),
         mcpFixture({ name: 'Jira Cloud', iconKey: null }),
+        // Both arms of the per-user key state. The configured one puts two menu items
+        // on one line, which is what `aria-required-children` and `nested-interactive`
+        // are for; the pending one is the row that is a plain `menuitem`.
+        mcpFixture({ name: 'GitHub', iconKey: 'github', requiresUserApiKey: true }),
+        mcpFixture({
+          name: 'GitLab',
+          iconKey: null,
+          requiresUserApiKey: true,
+          hasUserApiKey: true,
+          apiKeyHint: 'wxyz',
+        }),
       ]);
     await Promise.all([models, mcps]);
     await harness.fixture.whenStable();

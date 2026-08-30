@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  PartialStateUpdater,
   patchState,
   signalStore,
   withHooks,
@@ -11,9 +12,10 @@ import {
 } from '@ngrx/signals';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { firstValueFrom, takeUntil, tap } from 'rxjs';
-import { McpDto } from '@domain/api/mcp';
+import { McpCredentialStatusDto, McpDto } from '@domain/api/mcp';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
+import { mcpEvents } from '@core/events/mcp-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
 import {
@@ -30,6 +32,29 @@ interface McpCatalogState {
 }
 
 const initialState: McpCatalogState = { servers: [] };
+
+/**
+ * Applies one server's confirmed credential state to the catalogue.
+ *
+ * A standalone updater rather than an inline literal, as `withRequestStatus`'s setters are:
+ * it tree-shakes and tests without a `TestBed`. Returns the state unchanged when the event
+ * names a server this user cannot see, so an unrelated event does not invalidate every
+ * downstream computed by allocating a new array.
+ */
+function applyCredentialStatus(
+  status: McpCredentialStatusDto,
+): PartialStateUpdater<McpCatalogState> {
+  return (state) =>
+    state.servers.some((server) => server.id === status.mcpServerId)
+      ? {
+          servers: state.servers.map((server) =>
+            server.id === status.mcpServerId
+              ? { ...server, hasUserApiKey: status.hasApiKey, apiKeyHint: status.apiKeyHint }
+              : server,
+          ),
+        }
+      : {};
+}
 
 /**
  * The MCP tool servers the signed-in user may use, from `GET api/mcps`.
@@ -120,8 +145,14 @@ export const McpCatalogStore = signalStore(
   // administrator can change anything, so the memoized call would hand back the stale
   // list — and `reload()` also replaces the memo, so a later `ensureLoaded()` sees the
   // fresh one. Mirrors `ModelCatalogStore`.
+  //
+  // The credential event patches one row instead, because unlike the catalogue events it
+  // arrives carrying the server's own answer for exactly the server it names.
   withEventHandlers((store, events = inject(Events)) => [
     events.on(adminEvents.mcpCatalogChanged).pipe(tap(() => void store.reload())),
+    events
+      .on(mcpEvents.credentialChanged)
+      .pipe(tap(({ payload }) => patchState(store, applyCredentialStatus(payload)))),
   ]),
   withResetOnSignOut(),
 );

@@ -11,6 +11,7 @@ namespace Enterprise.Gpt.Unit.Test.Endpoints;
 public class McpEndpointsTests
 {
     private readonly IMcpServerService _mcpServerService = Substitute.For<IMcpServerService>();
+    private readonly IUserMcpCredentialService _credentialService = Substitute.For<IUserMcpCredentialService>();
 
     private static McpServerDto CreateServerDto(string name = "docs-server")
     {
@@ -107,5 +108,29 @@ public class McpEndpointsTests
         await McpEndpoints.DeactivateMcpServerAsync(id, _mcpServerService, TestContext.Current.CancellationToken);
 
         await _mcpServerService.Received(1).DeactivateMcpServerAsync(id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveMcpCredentialAsync_ServiceStoresKey_ReturnsOkWithStatus()
+    {
+        var id = Guid.NewGuid();
+        var request = new SaveMcpCredentialActionDto { ApiKey = "github_pat_abcdefgh" };
+        var expected = new McpCredentialStatusDto { McpServerId = id, HasApiKey = true, ApiKeyHint = "efgh" };
+        _credentialService.SaveAsync(id, request, Arg.Any<CancellationToken>()).Returns(expected);
+
+        var result = await McpEndpoints.SaveMcpCredentialAsync(
+            id, request, _credentialService, TestContext.Current.CancellationToken);
+
+        Assert.Same(expected, result.Value);
+    }
+
+    [Fact]
+    public async Task DeleteMcpCredentialAsync_ServiceRemovesKey_ReturnsNoContent()
+    {
+        var id = Guid.NewGuid();
+
+        await McpEndpoints.DeleteMcpCredentialAsync(id, _credentialService, TestContext.Current.CancellationToken);
+
+        await _credentialService.Received(1).DeleteAsync(id, Arg.Any<CancellationToken>());
     }
 }

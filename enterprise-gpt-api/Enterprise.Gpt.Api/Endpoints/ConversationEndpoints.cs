@@ -104,6 +104,8 @@ public static class ConversationEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
+            // A selected server may need an API key the caller supplies and has not.
+            .ProducesProblem(StatusCodes.Status428PreconditionRequired)
             .ProducesProblem(StatusCodes.Status502BadGateway)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 

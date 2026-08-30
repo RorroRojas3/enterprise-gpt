@@ -251,4 +251,47 @@ public class McpServerActionValidatorTests
 
     private static Dictionary<string, string> BuildSet(int count, string value) =>
         Enumerable.Range(1, count).ToDictionary(i => $"X-MCP-Header-{i}", _ => value);
+
+    private static IReadOnlyList<string> ScopeErrors(McpAuthTypes authType, string? scope)
+    {
+        var create = CreateRequest(iconKey: null) with { AuthType = authType, Scope = scope };
+        var update = UpdateRequest(iconKey: null) with { AuthType = authType, Scope = scope };
+
+        var createMessages = new CreateMcpServerActionDtoValidator().Validate(create)
+            .Errors.Where(e => e.PropertyName == nameof(CreateMcpServerActionDto.Scope))
+            .Select(e => e.ErrorMessage)
+            .ToList();
+        var updateMessages = new UpdateMcpServerActionDtoValidator().Validate(update)
+            .Errors.Where(e => e.PropertyName == nameof(UpdateMcpServerActionDto.Scope))
+            .Select(e => e.ErrorMessage)
+            .ToList();
+
+        Assert.Equal(createMessages, updateMessages);
+
+        return createMessages;
+    }
+
+    [Theory]
+    [InlineData(McpAuthTypes.None)]
+    [InlineData(McpAuthTypes.UserApiKey)]
+    public void Scope_OnAnAuthTypeThatDoesNotUseOne_IsRejected(McpAuthTypes authType)
+    {
+        Assert.NotEmpty(ScopeErrors(authType, "api://client-id/access_as_user"));
+        Assert.Empty(ScopeErrors(authType, null));
+    }
+
+    [Fact]
+    public void Scope_OnAnOnBehalfOfServer_IsRequired()
+    {
+        Assert.NotEmpty(ScopeErrors(McpAuthTypes.EntraIdOnBehalfOf, null));
+        Assert.Empty(ScopeErrors(McpAuthTypes.EntraIdOnBehalfOf, "api://client-id/access_as_user"));
+    }
+
+    [Fact]
+    public void AuthType_UserApiKey_IsAccepted()
+    {
+        var request = CreateRequest(iconKey: null) with { AuthType = McpAuthTypes.UserApiKey };
+
+        Assert.True(new CreateMcpServerActionDtoValidator().Validate(request).IsValid);
+    }
 }

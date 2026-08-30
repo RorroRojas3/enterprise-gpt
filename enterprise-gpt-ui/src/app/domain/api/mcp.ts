@@ -19,6 +19,49 @@ export interface McpDto {
    * the sprite, so a key this build does not know degrades — see `mcpBrandIcon`.
    */
   readonly iconKey: string | null;
+  /**
+   * Whether using this server requires an API key the caller supplies themselves.
+   *
+   * The auth type itself stays off this shape, for the reason `url` and `scope` do:
+   * which mechanism authenticates a server is a connection detail. What the caller
+   * has to know is only whether they must act.
+   */
+  readonly requiresUserApiKey: boolean;
+  /**
+   * Whether the caller has a usable key stored. False once the server has rejected
+   * the stored one, which is what puts the row back into its "needs a key" state.
+   */
+  readonly hasUserApiKey: boolean;
+  /** Last four characters of the stored key, or null when none is held. */
+  readonly apiKeyHint: string | null;
+}
+
+/**
+ * What `PUT api/mcps/{id}/credential` returns about the caller's own key.
+ *
+ * Carries neither the key nor its stored form — only enough to render which one is
+ * held.
+ */
+export interface McpCredentialStatusDto {
+  readonly mcpServerId: string;
+  readonly hasApiKey: boolean;
+  readonly apiKeyHint: string | null;
+  readonly dateModified: string | null;
+}
+
+/** The body `PUT api/mcps/{id}/credential` takes. */
+export interface McpCredentialWriteBody {
+  readonly apiKey: string;
+}
+
+/**
+ * Whether the caller still has to supply an API key before this server can be used.
+ *
+ * A rejected key already reads as absent server-side, so this covers "never supplied one"
+ * and "the server refused the one stored" without the client having to tell them apart.
+ */
+export function needsUserApiKey(server: McpDto): boolean {
+  return server.requiresUserApiKey && !server.hasUserApiKey;
 }
 
 /**
@@ -26,13 +69,20 @@ export interface McpDto {
  *
  * **These travel as numbers, not strings.** The API registers no
  * `JsonStringEnumConverter`, so the enum serializes as its underlying `int` — and
- * the validator's `IsInEnum` rejects `0`, so a form must always send one of the two.
+ * the validator's `IsInEnum` rejects `0`, so a form must always send one of the three.
  */
 export const MCP_AUTH_TYPE = {
   /** The server requires no authentication, and must carry no scope. */
   none: 1,
   /** A Microsoft Entra ID token acquired on behalf of the signed-in user. */
   entraIdOnBehalfOf: 2,
+  /**
+   * A bearer credential each user issues and supplies themselves, such as a GitHub
+   * personal access token. Not the refused "Header key" type: that was one shared
+   * secret an administrator typed in, readable by the next administrator to open the
+   * row. This one belongs to the user, is stored encrypted, and no route returns it.
+   */
+  userApiKey: 3,
 } as const;
 
 /** One of {@link MCP_AUTH_TYPE}'s values. */

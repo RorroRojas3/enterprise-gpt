@@ -39,6 +39,10 @@ export function mcpFixture(overrides: Partial<McpDto> = {}): McpDto {
     name: `Tool Server ${index}`,
     description: null,
     iconKey: null,
+    // A server needing no key of the caller's own, which is what most of them are.
+    requiresUserApiKey: false,
+    hasUserApiKey: false,
+    apiKeyHint: null,
     ...overrides,
   };
 }

@@ -13,7 +13,9 @@ using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
 using Enterprise.Gpt.Service.Settings;
+using System.Net;
 using System.Net.Sockets;
 
 namespace Enterprise.Gpt.Service
@@ -60,6 +62,8 @@ namespace Enterprise.Gpt.Service
         /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
         /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
         /// <exception cref="McpServerUnavailableException">Connecting to a server, listing its tools, or acquiring an on-behalf-of token for it failed — including a consent or Conditional Access requirement, which for a tenant-consented server means a broken registration rather than a user-actionable state.</exception>
+        /// <exception cref="McpCredentialRequiredException">A selected server takes a user-supplied API key and the caller has no usable one stored.</exception>
+        /// <exception cref="McpCredentialRejectedException">A selected server refused the API key the caller stored.</exception>
         Task<IMcpToolLeaseSet> AcquireToolsAsync(IReadOnlyCollection<Guid> mcpServerIds, CancellationToken cancellationToken);
     }
 
@@ -70,6 +74,8 @@ namespace Enterprise.Gpt.Service
         ILoggerFactory loggerFactory,
         IOptions<McpClientCacheOptions> options,
         IMcpClientCache mcpClientCache,
+        IUserSecretProtector secretProtector,
+        IUserMcpCredentialService credentialService,
         EnterpriseGptDbContext ctx) : IMcpToolProvider
     {
         /// <summary>
@@ -85,6 +91,8 @@ namespace Enterprise.Gpt.Service
         private readonly ILoggerFactory _loggerFactory = loggerFactory;
         private readonly McpClientCacheOptions _options = options.Value;
         private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
+        private readonly IUserSecretProtector _secretProtector = secretProtector;
+        private readonly IUserMcpCredentialService _credentialService = credentialService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
         /// <inheritdoc />
@@ -112,7 +120,14 @@ namespace Enterprise.Gpt.Service
                 {
                     Server = s,
                     IsPermitted = s.Permissions.Any(p => !p.DateDeactivated.HasValue
-                        && p.UserPermissions.Any(up => up.UserId == oid && !up.DateDeactivated.HasValue))
+                        && p.UserPermissions.Any(up => up.UserId == oid && !up.DateDeactivated.HasValue)),
+                    // Joined onto the query that had to run anyway rather than read per server as
+                    // each lease is acquired. A rejected row is excluded, so a key the server has
+                    // already refused reads as absent and the user is asked for a new one.
+                    Ciphertext = s.UserCredentials
+                        .Where(c => c.UserId == oid && !c.DateDeactivated.HasValue && !c.DateRejected.HasValue)
+                        .Select(c => c.Ciphertext)
+                        .FirstOrDefault()
                 })
                 .ToListAsync(cancellationToken);
 
@@ -129,7 +144,9 @@ namespace Enterprise.Gpt.Service
                 throw new ForbiddenException($"You do not have permission to use MCP server '{denied.Server.Name}'.");
             }
 
-            var leaseTasks = servers.Select(x => AcquireLeaseAsync(x.Server, oid, cancellationToken)).ToArray();
+            var leaseTasks = servers
+                .Select(x => AcquireLeaseAsync(x.Server, x.Ciphertext, oid, cancellationToken))
+                .ToArray();
             try
             {
                 var leases = await Task.WhenAll(leaseTasks);
@@ -145,12 +162,69 @@ namespace Enterprise.Gpt.Service
                     await lease.DisposeAsync();
                 }
 
+                await MarkRejectedCredentialsAsync(leaseTasks, oid, cancellationToken);
+
                 throw;
             }
         }
 
-        private async Task<IMcpToolLease> AcquireLeaseAsync(McpServer server, Guid oid, CancellationToken cancellationToken)
+        /// <summary>
+        /// Records every credential a server refused during this acquisition, so the next request
+        /// asks the user for a new one instead of failing the same way.
+        /// </summary>
+        /// <remarks>
+        /// Here rather than inside the cache factory: the singleton cache single-flights creation,
+        /// so a factory can run on behalf of a request whose scope is not the one writing this.
+        /// </remarks>
+        private async Task MarkRejectedCredentialsAsync(
+            IReadOnlyList<Task<IMcpToolLease>> leaseTasks, Guid oid, CancellationToken cancellationToken)
         {
+            foreach (var task in leaseTasks)
+            {
+                if (task.Exception?.InnerExceptions.OfType<McpCredentialRejectedException>().FirstOrDefault()
+                    is not { } rejected)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await _credentialService.MarkRejectedAsync(rejected.McpServerId, oid, cancellationToken);
+                }
+                // Bookkeeping, not the outcome: the caller sees the rejection either way, and
+                // losing this write costs them one more failed turn, nothing more.
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Could not record that MCP server {McpServerId} rejected the API key of user {UserId}",
+                        rejected.McpServerId, oid);
+                }
+            }
+        }
+
+        private async Task<IMcpToolLease> AcquireLeaseAsync(
+            McpServer server, string? ciphertext, Guid oid, CancellationToken cancellationToken)
+        {
+            if (server.AuthType == McpAuthTypes.UserApiKey)
+            {
+                // Decrypted here for the reason the on-behalf-of token is acquired here: the cache
+                // is a singleton and must never touch scoped services, so the credential is
+                // resolved in scoped code and captured by the factory closure.
+                if (ciphertext is null
+                    || !_secretProtector.TryUnprotect(oid, server.Id, ciphertext, out var apiKey)
+                    || apiKey is null)
+                {
+                    throw new McpCredentialRequiredException(server.Id, server.Name);
+                }
+
+                return await _mcpClientCache.GetOrCreateAsync(
+                    McpCacheKey.ForUser(server.Id, oid),
+                    // No expiry: a user-issued token carries none, so the entry lives to the
+                    // cache's age cap and a replaced key depends on explicit invalidation.
+                    token => CreateEntrySourceAsync(server, apiKey, tokenExpiresOn: null, token),
+                    cancellationToken);
+            }
+
             if (server.AuthType == McpAuthTypes.EntraIdOnBehalfOf)
             {
                 // The token is acquired here — in scoped code with the user's assertion —
@@ -272,7 +346,7 @@ namespace Enterprise.Gpt.Service
             catch (Exception ex) when (IsConnectivityFailure(ex, cancellationToken))
             {
                 await DisposeTransportAsync(transport).ConfigureAwait(false);
-                throw new McpServerUnavailableException(server.Name, ex);
+                throw Classify(server, ex);
             }
             catch
             {
@@ -336,7 +410,7 @@ namespace Enterprise.Gpt.Service
             catch (Exception ex) when (IsConnectivityFailure(ex, cancellationToken))
             {
                 await client.DisposeAsync().ConfigureAwait(false);
-                throw new McpServerUnavailableException(server.Name, ex);
+                throw Classify(server, ex);
             }
             catch
             {
@@ -344,6 +418,53 @@ namespace Enterprise.Gpt.Service
                 await client.DisposeAsync().ConfigureAwait(false);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Turns a connect or list failure into the exception that names who can fix it: a refused
+        /// user-supplied key, or an unavailable server.
+        /// </summary>
+        /// <remarks>
+        /// Only servers holding a user's own credential can produce the first: a 401 from an
+        /// on-behalf-of or anonymous server is a registration fault, and telling that user to
+        /// replace a key they never supplied would send them nowhere.
+        ///
+        /// <c>internal</c> for the reason <see cref="BuildTransportHeaders"/> is: this is the
+        /// branch that decides who is told to fix a failure, and a unit test is the only way to
+        /// pin it.
+        /// </remarks>
+        internal static Exception Classify(McpServer server, Exception exception)
+        {
+            if (server.AuthType != McpAuthTypes.UserApiKey)
+            {
+                return new McpServerUnavailableException(server.Name, exception);
+            }
+
+            return Flatten(exception).Any(e => e is HttpRequestException
+            {
+                StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+            })
+                ? new McpCredentialRejectedException(server.Id, server.Name, exception)
+                : new McpServerUnavailableException(server.Name, exception);
+        }
+
+        /// <summary>
+        /// Every exception reachable from one, across both edges of the graph.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="AggregateException.InnerExceptions"/> as well as
+        /// <see cref="Exception.InnerException"/>, because the SDK falls back from Streamable HTTP
+        /// to SSE and reports both failures together — and <c>InnerException</c> on an aggregate
+        /// returns only the first, so a 401 raised on the other transport would be invisible.
+        /// </remarks>
+        private static IEnumerable<Exception> Flatten(Exception exception)
+        {
+            return exception switch
+            {
+                AggregateException aggregate => aggregate.InnerExceptions.SelectMany(Flatten).Prepend(aggregate),
+                { InnerException: { } inner } => Flatten(inner).Prepend(exception),
+                _ => [exception]
+            };
         }
 
         /// <summary>
@@ -357,6 +478,11 @@ namespace Enterprise.Gpt.Service
             {
                 OperationCanceledException => !cancellationToken.IsCancellationRequested,
                 HttpRequestException or McpException or TimeoutException or IOException or SocketException => true,
+                // The SDK reports a Streamable-HTTP failure and its SSE fallback together. Without
+                // this arm the aggregate matches nothing and reaches the handler's 500 default —
+                // a worse answer than the 502 either branch alone would have produced.
+                AggregateException aggregate => aggregate.InnerExceptions.Count > 0
+                    && aggregate.InnerExceptions.All(e => IsConnectivityFailure(e, cancellationToken)),
                 // The SDK's `CopyAdditionalHeaders` throws this when `HttpRequestHeaders` refuses a
                 // header name. `_reservedNames` now covers every name it refuses and
                 // `BuildTransportHeaders` drops them, so this is unreachable today — it is the net
@@ -400,23 +526,16 @@ namespace Enterprise.Gpt.Service
             return string.Concat(serverName.Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
         }
 
-        private sealed class McpToolLeaseSet : IMcpToolLeaseSet
+        private sealed class McpToolLeaseSet(IReadOnlyList<IMcpToolLease> leases, IReadOnlyList<McpServerReference> servers) : IMcpToolLeaseSet
         {
-            private readonly IReadOnlyList<IMcpToolLease> _leases;
+            private readonly IReadOnlyList<IMcpToolLease> _leases = leases;
             private int _disposed;
-
-            public McpToolLeaseSet(IReadOnlyList<IMcpToolLease> leases, IReadOnlyList<McpServerReference> servers)
-            {
-                _leases = leases;
-                Servers = servers;
-                Tools = [.. leases.SelectMany(l => l.Tools)];
-            }
 
             public static McpToolLeaseSet Empty { get; } = new([], []);
 
-            public IReadOnlyList<AITool> Tools { get; }
+            public IReadOnlyList<AITool> Tools { get; } = [.. leases.SelectMany(l => l.Tools)];
 
-            public IReadOnlyList<McpServerReference> Servers { get; }
+            public IReadOnlyList<McpServerReference> Servers { get; } = servers;
 
             public async ValueTask DisposeAsync()
             {

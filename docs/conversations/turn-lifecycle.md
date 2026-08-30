@@ -257,7 +257,7 @@ Any change of conversation — another sidebar row, "New conversation", a deep l
 
 ### 7.6 Restoring the model and MCP selection
 
-`ConversationStore` seeds `TurnSettingsStore.applyConversationSettings({ modelId, mcpServerIds })` from the `GET api/conversations/{id}` response — the only shape carrying `mcpServerIds`. The seed is deliberately **unvalidated**: `selectedModel` falls back to the catalog default for an id that is gone, and `effectiveMcpServerIds` re-intersects with the permitted catalog, so a stale selection structurally cannot reach the wire ([streaming client §5.3](streaming-client.md#53-the-mcp-gating-invariant-enforced-twice)).
+`ConversationStore` seeds `TurnSettingsStore.applyConversationSettings({ modelId, mcpServerIds })` from the `GET api/conversations/{id}` response — the only shape carrying `mcpServerIds`. The seed is deliberately **unvalidated**: `selectedModel` falls back to the catalog default for an id that is gone, and `effectiveMcpServerIds` re-intersects with the permitted catalog, so a stale selection structurally cannot reach the wire ([streaming client §5.3](streaming-client.md#53-the-mcp-gating-invariant-enforced-twice)). The same re-intersection also drops a server whose auth type is `UserApiKey` if the caller no longer has a usable key for it (`needsUserApiKey`, [`domain/api/mcp.ts`](../../enterprise-gpt-ui/src/app/domain/api/mcp.ts)) — a selection made while a key was stored can outlive that key, since removing or losing one does not touch the conversation's saved selection, and the picker itself never lets such a server be toggled on in the first place (§8.7).
 
 Two things in it are easy to get wrong.
 
@@ -395,6 +395,12 @@ Four decisions are worth knowing before changing it:
 - **The ridgeline hands the gap over.** `showThinking` / `showLiveTurn` split on "is the model reasoning" (§2), so the region streams inside the live turn from the model's first delta rather than appearing whole at the first token — one component instance for the length of the turn.
 - **The text renders as plain text, not markdown.** It is a summary written for a reader, and a third `<markdown>` instance per turn would spend the streaming budget US-602 exists to protect. `pre-wrap` keeps the model's paragraph breaks, which are the only structure a reasoning summary has.
 - **Expansion is component-local state**, which is exactly "persists for the duration of the turn": the live turn's instance is stable while it streams, and the settled turn is a different instance whose default is collapsed again.
+
+### 8.7 A selected server needing the caller's own API key
+
+`mcp-credential-required` and `mcp-credential-rejected` (both `428 Precondition Required`, see [streaming contract §3.3](streaming-contract.md#33-errors-before-and-after-the-first-frame)) render through the same generic notice-card path as every other pre-stream failure in §8.3's table, with `canRetry` returning `false` for both: the way past either is supplying a key, and a Retry button that repeats the same request would just repeat the same 428. `userMessage` words the two differently — "Connect your account to use the tool server…" for the first, "…rejected your API key. Enter a new one." for the second — but neither points the reader anywhere from the card itself; fixing it means reopening the composer's Tools menu and using the masked-key row §7.6 already dropped the server behind ([Administration §11](../ui/administration.md#11-the-mcp-server-registry-us-1208-us-1210) documents the registration side, and the [GitHub MCP Server runbook](../mcp/github-server.md) documents this end to end for the motivating case).
+
+Both are excluded from `shouldNotify` too — `false` in `NOTIFIABLE_KINDS` — so a mid-turn instance of either raises no toast alongside the inline card: the card *is* the message, and a toast beside it would say the same sentence twice. This mid-turn path is the **rare** case in practice, since the same catalog fact that produces it (`needsUserApiKey`) is what keeps the picker from letting such a server be toggled on in the first place (§7.6) — reaching it means a key that was valid when the turn was sent stopped being valid before the server actually ran the request.
 
 ## 9. The composer and the empty state
 

@@ -134,6 +134,8 @@ describe('authErrorDecision', () => {
       'permission-required',
       'conversation-busy',
       'mcp-server-unavailable',
+      'mcp-credential-required',
+      'mcp-credential-rejected',
       'provider-not-configured',
       'storage-not-configured',
       'export-renderer-not-configured',

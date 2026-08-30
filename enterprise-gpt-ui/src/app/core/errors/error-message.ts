@@ -20,6 +20,9 @@ const NOTIFIABLE_KINDS = {
   'permission-required': true,
   'conversation-busy': true,
   'mcp-server-unavailable': true,
+  // The dialog the client opens is the message; a toast beside it says it twice.
+  'mcp-credential-required': false,
+  'mcp-credential-rejected': false,
   'provider-not-configured': true,
   'storage-not-configured': true,
   'export-renderer-not-configured': true,
@@ -59,6 +62,9 @@ const RETRYABLE_KINDS = {
   // The whole point of the 409: the turn in front of it finishes and the next one works.
   'conversation-busy': true,
   'mcp-server-unavailable': true,
+  // Retry is the wrong control: the way past these is supplying a key, not asking again.
+  'mcp-credential-required': false,
+  'mcp-credential-rejected': false,
   'provider-not-configured': false,
   'storage-not-configured': false,
   // A deployment either has the renderer or does not; a second press cannot install one.
@@ -112,6 +118,14 @@ export function userMessage(error: AppError): string {
       return error.serverName
         ? `The tool server "${error.serverName}" could not be reached.`
         : 'A tool server could not be reached.';
+    case 'mcp-credential-required':
+      return error.serverName
+        ? `Connect your account to use the tool server "${error.serverName}".`
+        : 'Connect your account to use that tool server.';
+    case 'mcp-credential-rejected':
+      return error.serverName
+        ? `The tool server "${error.serverName}" rejected your API key. Enter a new one.`
+        : 'That tool server rejected your API key. Enter a new one.';
     case 'provider-not-configured':
       return 'The selected model is not available in this environment.';
     case 'storage-not-configured':

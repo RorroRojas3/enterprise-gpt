@@ -75,6 +75,22 @@ describe('toAppError — application problem types', () => {
     expect(error.kind === 'mcp-server-unavailable' && error.serverName).toBe('Weather');
   });
 
+  it.each([
+    ['mcp-credential-required', PROBLEM_FIXTURES.mcpCredentialRequired],
+    ['mcp-credential-rejected', PROBLEM_FIXTURES.mcpCredentialRejected],
+  ] as const)('maps %s from a 428 and exposes the server it names', (kind, fixture) => {
+    const error = toAppError(httpError(fixture, 428));
+
+    expect(error.kind).toBe(kind);
+    if (error.kind !== 'mcp-credential-required' && error.kind !== 'mcp-credential-rejected') {
+      throw new Error('unreachable');
+    }
+
+    // The id as well as the name: the client opens the key dialog for that server.
+    expect(error.mcpServerId).toBe('3f1c9b2a-7d4e-4c5f-8a9b-0c1d2e3f4a5b');
+    expect(error.serverName).toBe('GitHub');
+  });
+
   it('maps provider-not-configured from a 503 and exposes providerId', () => {
     const error = toAppError(httpError(PROBLEM_FIXTURES.providerNotConfigured, 503));
 

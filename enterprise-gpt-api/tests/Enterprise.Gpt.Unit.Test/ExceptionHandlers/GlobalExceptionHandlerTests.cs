@@ -49,6 +49,41 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task TryHandleAsync_McpCredentialRequiredException_Returns428NamingTheServer()
+    {
+        var httpContext = CreateHttpContext();
+        var mcpServerId = Guid.NewGuid();
+        var exception = new McpCredentialRequiredException(mcpServerId, "GitHub");
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status428PreconditionRequired, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(ProblemTypes.McpCredentialRequired.Type, problem.Type);
+        Assert.Equal("GitHub", ReadExtension(problem, "serverName"));
+        Assert.Equal(mcpServerId.ToString(), ReadExtension(problem, "mcpServerId"));
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_McpCredentialRejectedException_Returns428NamingTheServer()
+    {
+        var httpContext = CreateHttpContext();
+        var mcpServerId = Guid.NewGuid();
+        var exception = new McpCredentialRejectedException(
+            mcpServerId, "GitHub", new HttpRequestException("unauthorized"));
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status428PreconditionRequired, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(ProblemTypes.McpCredentialRejected.Type, problem.Type);
+        Assert.Equal("GitHub", ReadExtension(problem, "serverName"));
+        Assert.Equal(mcpServerId.ToString(), ReadExtension(problem, "mcpServerId"));
+    }
+
+    [Fact]
     public async Task TryHandleAsync_ProviderNotConfiguredException_Returns503WithTheProviderId()
     {
         // 503 rather than the 400 the InvalidOperationException arm above it produces: rebasing this

@@ -41,6 +41,7 @@ using Enterprise.Gpt.Service.Extraction;
 using Enterprise.Gpt.Service.Rendering;
 using Enterprise.Gpt.Service.Reports;
 using Enterprise.Gpt.Service.Serialization;
+using Enterprise.Gpt.Service.Security;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Service.Summarization;
 using Enterprise.Gpt.Service.Tokenization;
@@ -83,6 +84,9 @@ builder.Services.AddDbContext<EnterpriseGptDbContext>(options =>
     {
         sqlOptions.UseCompatibilityLevel(170);
     }));
+
+// After the DbContext it persists its key ring in, and after the vault whose key wraps it.
+builder.AddEnterpriseDataProtection(keyVault);
 
 // OpenAPI document generation (served by Scalar in development).
 builder.Services.AddOpenApi();
@@ -805,6 +809,8 @@ builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IMcpServerService, McpServerService>();
+builder.Services.AddScoped<IUserMcpCredentialService, UserMcpCredentialService>();
+builder.Services.AddSingleton<IUserSecretProtector, UserSecretProtector>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IUserService, UserService>();
 

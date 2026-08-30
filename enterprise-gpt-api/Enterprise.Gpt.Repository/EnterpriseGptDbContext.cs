@@ -1,10 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Repository.Configurations;
 
 namespace Enterprise.Gpt.Repository
 {
-    public class EnterpriseGptDbContext(DbContextOptions<EnterpriseGptDbContext> options) : DbContext(options)
+    public class EnterpriseGptDbContext(DbContextOptions<EnterpriseGptDbContext> options)
+        : DbContext(options), IDataProtectionKeyContext
     {
         #region DbSets
         public DbSet<Provider> Providers { get; set; }
@@ -55,7 +57,16 @@ namespace Enterprise.Gpt.Repository
 
         public DbSet<McpServer> McpServers { get; set; }
 
+        public DbSet<UserMcpCredential> UserMcpCredentials { get; set; }
+
         public DbSet<MessageFeedback> MessageFeedback { get; set; }
+
+        /// <summary>
+        /// The Data Protection key ring, owned by the framework rather than by this application:
+        /// no configuration maps it and nothing here reads it. It is a <c>DbSet</c> only because
+        /// <see cref="IDataProtectionKeyContext"/> requires one.
+        /// </summary>
+        public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -64,6 +75,7 @@ namespace Enterprise.Gpt.Repository
             modelBuilder.ApplyConfiguration(new UserPermissionConfiguration());
             modelBuilder.ApplyConfiguration(new PermissionConfiguration());
             modelBuilder.ApplyConfiguration(new McpServerConfiguration());
+            modelBuilder.ApplyConfiguration(new UserMcpCredentialConfiguration());
             modelBuilder.ApplyConfiguration(new ProviderConfiguration());
             modelBuilder.ApplyConfiguration(new ModelConfiguration());
             modelBuilder.ApplyConfiguration(new ConversationConfiguration());

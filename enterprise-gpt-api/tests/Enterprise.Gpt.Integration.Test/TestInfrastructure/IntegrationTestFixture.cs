@@ -197,6 +197,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .Where(x => _builtInPermissionIds.Contains(x.Id))
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         await ClearConversationUsageAsync(ctx, cancellationToken);
+        // Before the servers they reference: the foreign key is NoAction, so a leftover credential
+        // turns the reset into a constraint violation rather than a clean slate.
+        await ctx.UserMcpCredentials
+            .ExecuteDeleteAsync(cancellationToken);
         await ctx.McpServers
             .ExecuteDeleteAsync(cancellationToken);
 
@@ -209,7 +213,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// arranging read, grant, and cascade scenarios.
     /// </summary>
     /// <param name="name">The server name (also used for the linked permission's name).</param>
-    /// <param name="authType">The auth type discriminator (1 = None, 2 = EntraIdOnBehalfOf).</param>
+    /// <param name="authType">The auth type discriminator (1 = None, 2 = EntraIdOnBehalfOf, 3 = UserApiKey).</param>
     /// <param name="scope">The on-behalf-of scope; only meaningful when <paramref name="authType"/> is 2.</param>
     /// <param name="deactivated">Whether the server (and its permission) are soft-deleted.</param>
     /// <param name="withPermission">Whether to insert the linked permission row.</param>
@@ -313,6 +317,25 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return await ctx.McpServers
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a stored MCP credential straight from the database — the only way to assert on the
+    /// ciphertext and the soft-delete stamp, neither of which any route returns.
+    /// </summary>
+    /// <param name="userId">The owning user.</param>
+    /// <param name="mcpServerId">The server the credential is for.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The row, or <see langword="null"/> when none was ever written.</returns>
+    public async Task<UserMcpCredential?> FindUserMcpCredentialAsync(
+        Guid userId, Guid mcpServerId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.UserMcpCredentials
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId && x.McpServerId == mcpServerId, cancellationToken);
     }
 
     /// <summary>

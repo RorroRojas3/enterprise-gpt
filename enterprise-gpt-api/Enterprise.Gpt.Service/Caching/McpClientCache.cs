@@ -154,6 +154,23 @@ namespace Enterprise.Gpt.Service.Caching
         }
 
         /// <inheritdoc />
+        public void InvalidateServerForUser(Guid mcpServerId, Guid userOid)
+        {
+            if (!_entries.TryRemove(McpCacheKey.ForUser(mcpServerId, userOid), out var lazy))
+            {
+                return;
+            }
+
+            if (lazy.IsValueCreated)
+            {
+                _ = EvictWhenCompletedAsync(lazy);
+            }
+
+            _logger.LogInformation(
+                "Evicted the cached MCP client for server {McpServerId} and user {UserId}", mcpServerId, userOid);
+        }
+
+        /// <inheritdoc />
         public async ValueTask DisposeAsync()
         {
             await _sweepCts.CancelAsync().ConfigureAwait(false);

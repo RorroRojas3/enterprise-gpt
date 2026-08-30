@@ -99,5 +99,18 @@ namespace Enterprise.Gpt.Service.Caching
         /// </summary>
         /// <param name="mcpServerId">The MCP server whose entries to evict.</param>
         void InvalidateServer(Guid mcpServerId);
+
+        /// <summary>
+        /// Evicts one user's entry for the given server, leaving every other user's in place.
+        /// Safe to call while streams are in flight, as <see cref="InvalidateServer"/> is.
+        /// </summary>
+        /// <param name="mcpServerId">The MCP server whose entry to evict.</param>
+        /// <param name="userOid">The user's Entra object id.</param>
+        /// <remarks>
+        /// A user-supplied credential carries no expiry, so its entry lives to the age cap. Without
+        /// this a replaced or removed key would keep talking to the server over the connection the
+        /// old one opened.
+        /// </remarks>
+        void InvalidateServerForUser(Guid mcpServerId, Guid userOid);
     }
 }

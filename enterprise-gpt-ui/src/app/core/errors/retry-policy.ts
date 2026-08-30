@@ -115,6 +115,9 @@ export const AUTH_DECISIONS = {
   'permission-required': 'passthrough',
   'conversation-busy': 'passthrough',
   'mcp-server-unavailable': 'passthrough',
+  // 428s. They ask the user for a credential, which no token refresh supplies.
+  'mcp-credential-required': 'passthrough',
+  'mcp-credential-rejected': 'passthrough',
   'provider-not-configured': 'passthrough',
   'storage-not-configured': 'passthrough',
   'export-renderer-not-configured': 'passthrough',

@@ -7,7 +7,7 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
-import { McpDto } from '@domain/api/mcp';
+import { McpDto, needsUserApiKey } from '@domain/api/mcp';
 import { ModelDto } from '@domain/api/model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
@@ -94,11 +94,18 @@ export const TurnSettingsStore = signalStore(
      * Selection intersected with the permitted catalog. Load-bearing: US-410
      * will seed ids the caller may no longer be permitted, and a catalog
      * reload can drop a server mid-session — neither may reach the wire.
+     *
+     * A server still waiting for the user's own API key is dropped here too. The
+     * server would answer that turn with a 428, and the picker never lets one be
+     * toggled on — but a stored selection can outlive the key that made it valid,
+     * since removing a key does not touch the selection.
      */
     const selectedServers = computed<readonly McpDto[]>(() => {
       const ids = new Set(store.selectedMcpServerIds());
 
-      return store._mcps.servers().filter((server) => ids.has(server.id));
+      return store._mcps
+        .servers()
+        .filter((server) => ids.has(server.id) && !needsUserApiKey(server));
     });
 
     const effectiveMcpServerIds = computed<readonly string[]>(() =>

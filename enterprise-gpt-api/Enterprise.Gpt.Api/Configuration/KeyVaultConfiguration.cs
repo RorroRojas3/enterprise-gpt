@@ -38,16 +38,6 @@ internal static class KeyVaultConfiguration
             return null;
         }
 
-        var credentialOptions = new DefaultAzureCredentialOptions();
-
-        if (source.ManagedIdentityClientId is not null)
-        {
-            credentialOptions.ManagedIdentityClientId = source.ManagedIdentityClientId;
-            // Set on both legs: the workload-identity credential reads its own property and would
-            // otherwise fall back to AZURE_CLIENT_ID, ignoring the identity configured here.
-            credentialOptions.WorkloadIdentityClientId = source.ManagedIdentityClientId;
-        }
-
         // Wider retry per Microsoft's throttling guidance, but with a per-attempt timeout: the 100s
         // default would let a black-holed vault outlive the platform's startup probe, replacing the
         // exception that explains the failure with a bare "container did not start".
@@ -63,16 +53,36 @@ internal static class KeyVaultConfiguration
             }
         };
 
-        var client = new SecretClient(
-            source.VaultUri,
-            new DefaultAzureCredential(credentialOptions),
-            clientOptions);
+        var client = new SecretClient(source.VaultUri, CreateCredential(source), clientOptions);
 
         builder.Configuration.AddAzureKeyVault(
             client,
             new AzureKeyVaultConfigurationOptions { ReloadInterval = source.ReloadInterval });
 
         return source;
+    }
+
+    /// <summary>
+    /// Builds the credential the vault is reached with.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the Data Protection registration so both legs authenticate as the same identity;
+    /// two independently built credentials are what would let the key ring silently fall back to a
+    /// different principal than the one the secrets were granted to.
+    /// </remarks>
+    internal static DefaultAzureCredential CreateCredential(KeyVaultSource source)
+    {
+        var credentialOptions = new DefaultAzureCredentialOptions();
+
+        if (source.ManagedIdentityClientId is not null)
+        {
+            credentialOptions.ManagedIdentityClientId = source.ManagedIdentityClientId;
+            // Set on both legs: the workload-identity credential reads its own property and would
+            // otherwise fall back to AZURE_CLIENT_ID, ignoring the identity configured here.
+            credentialOptions.WorkloadIdentityClientId = source.ManagedIdentityClientId;
+        }
+
+        return new DefaultAzureCredential(credentialOptions);
     }
 
     /// <summary>
@@ -111,10 +121,20 @@ internal static class KeyVaultConfiguration
                 $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.ReloadInterval)} must be at least {MinimumReloadInterval}, or unset to read the vault once at startup.");
         }
 
+        Uri? dataProtectionKeyUri = null;
+        if (!string.IsNullOrWhiteSpace(options.DataProtectionKeyUri)
+            && (!Uri.TryCreate(options.DataProtectionKeyUri, UriKind.Absolute, out dataProtectionKeyUri)
+                || dataProtectionKeyUri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.DataProtectionKeyUri)} must be an absolute https key identifier, for example https://contoso.vault.azure.net/keys/data-protection.");
+        }
+
         return new KeyVaultSource(
             vaultUri,
             string.IsNullOrWhiteSpace(options.ManagedIdentityClientId) ? null : options.ManagedIdentityClientId,
-            options.ReloadInterval);
+            options.ReloadInterval,
+            dataProtectionKeyUri);
     }
 
     /// <summary>

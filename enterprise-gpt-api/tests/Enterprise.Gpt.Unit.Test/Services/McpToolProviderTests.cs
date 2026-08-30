@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
+using ModelContextProtocol;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Enterprise.Gpt.Common.Enums;
@@ -10,9 +11,11 @@ using Enterprise.Gpt.Entity;
 using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
 using Enterprise.Gpt.Service.Settings;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
+using System.Net;
 
 namespace Enterprise.Gpt.Unit.Test.Services;
 
@@ -23,6 +26,8 @@ public sealed class McpToolProviderTests : IDisposable
     private readonly ITokenAcquisition _tokenAcquisition = Substitute.For<ITokenAcquisition>();
     private readonly IHttpClientFactory _httpClientFactory = Substitute.For<IHttpClientFactory>();
     private readonly IMcpClientCache _mcpClientCache = Substitute.For<IMcpClientCache>();
+    private readonly IUserSecretProtector _secretProtector = Substitute.For<IUserSecretProtector>();
+    private readonly IUserMcpCredentialService _credentialService = Substitute.For<IUserMcpCredentialService>();
     private readonly McpToolProvider _provider;
 
     public McpToolProviderTests()
@@ -36,6 +41,8 @@ public sealed class McpToolProviderTests : IDisposable
             NullLoggerFactory.Instance,
             Options.Create(new McpClientCacheOptions()),
             _mcpClientCache,
+            _secretProtector,
+            _credentialService,
             _fixture.Context);
     }
 
@@ -95,6 +102,43 @@ public sealed class McpToolProviderTests : IDisposable
         await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return server;
+    }
+
+    private async Task AddCredentialAsync(Guid mcpServerId, Guid userId, bool rejected = false)
+    {
+        var date = DateTimeOffset.UtcNow;
+
+        using var ctx = _fixture.CreateContext();
+
+        // The owning user has to exist for the foreign key; only the seed user is there already.
+        if (userId != KnownIds.SeedUserId)
+        {
+            ctx.Users.Add(new User
+            {
+                Id = userId,
+                FirstName = "Other",
+                LastName = "User",
+                Email = $"{userId:N}@example.com",
+                DateCreated = date,
+                DateModified = date
+            });
+        }
+
+        ctx.UserMcpCredentials.Add(new UserMcpCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            McpServerId = mcpServerId,
+            Ciphertext = "protected",
+            ApiKeyHint = "cdef",
+            DateRejected = rejected ? date : null,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = KnownIds.SeedUserId,
+            ModifiedById = KnownIds.SeedUserId
+        });
+
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private static IMcpToolLease CreateLease(params AITool[] tools)
@@ -283,6 +327,129 @@ public sealed class McpToolProviderTests : IDisposable
         await goodLease.Received(1).DisposeAsync();
     }
 
+    [Fact]
+    public async Task AcquireToolsAsync_UserApiKeyServerWithStoredKey_DecryptsItAndUsesPerUserKey()
+    {
+        var server = await AddMcpServerAsync("aaa-pat", McpAuthTypes.UserApiKey);
+        await AddCredentialAsync(server.Id, KnownIds.SeedUserId);
+        _secretProtector
+            .TryUnprotect(KnownIds.SeedUserId, server.Id, "protected", out Arg.Any<string?>())
+            .Returns(callInfo =>
+            {
+                callInfo[3] = "ghp_secret";
+                return true;
+            });
+        SetUpCache(CreateLease(new FakeTool()));
+
+        await _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken);
+
+        await _mcpClientCache.Received(1).GetOrCreateAsync(
+            McpCacheKey.ForUser(server.Id, KnownIds.SeedUserId),
+            Arg.Any<Func<CancellationToken, Task<McpCacheEntrySource>>>(),
+            Arg.Any<CancellationToken>());
+        await _tokenAcquisition.DidNotReceiveWithAnyArgs().GetAuthenticationResultForUserAsync(default!);
+    }
+
+    [Fact]
+    public async Task AcquireToolsAsync_UserApiKeyServerWithNoStoredKey_ThrowsCredentialRequired()
+    {
+        var server = await AddMcpServerAsync("aaa-pat-missing", McpAuthTypes.UserApiKey);
+
+        var exception = await Assert.ThrowsAsync<McpCredentialRequiredException>(
+            () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
+
+        Assert.Equal(server.Id, exception.McpServerId);
+        Assert.Equal(server.Name, exception.ServerName);
+        Assert.Empty(_mcpClientCache.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task AcquireToolsAsync_StoredKeyThatWillNotDecrypt_ThrowsCredentialRequired()
+    {
+        var server = await AddMcpServerAsync("aaa-pat-undecryptable", McpAuthTypes.UserApiKey);
+        await AddCredentialAsync(server.Id, KnownIds.SeedUserId);
+        _secretProtector
+            .TryUnprotect(KnownIds.SeedUserId, server.Id, "protected", out Arg.Any<string?>())
+            .Returns(false);
+
+        await Assert.ThrowsAsync<McpCredentialRequiredException>(
+            () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AcquireToolsAsync_AlreadyRejectedKey_ReadsAsAbsent()
+    {
+        var server = await AddMcpServerAsync("aaa-pat-rejected", McpAuthTypes.UserApiKey);
+        await AddCredentialAsync(server.Id, KnownIds.SeedUserId, rejected: true);
+
+        await Assert.ThrowsAsync<McpCredentialRequiredException>(
+            () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
+
+        // Never opened: the row is excluded by the query, not discarded after decryption.
+        _secretProtector.DidNotReceiveWithAnyArgs().TryUnprotect(default, default, default!, out Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task AcquireToolsAsync_AnotherUsersStoredKey_IsNotUsed()
+    {
+        var server = await AddMcpServerAsync("aaa-pat-other-user", McpAuthTypes.UserApiKey);
+        await AddCredentialAsync(server.Id, Guid.NewGuid());
+
+        await Assert.ThrowsAsync<McpCredentialRequiredException>(
+            () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AcquireToolsAsync_ServerRejectsTheKey_RecordsTheRejection()
+    {
+        var server = await AddMcpServerAsync("aaa-pat-refused", McpAuthTypes.UserApiKey);
+        await AddCredentialAsync(server.Id, KnownIds.SeedUserId);
+        _secretProtector
+            .TryUnprotect(KnownIds.SeedUserId, server.Id, "protected", out Arg.Any<string?>())
+            .Returns(callInfo =>
+            {
+                callInfo[3] = "ghp_revoked";
+                return true;
+            });
+        _mcpClientCache.GetOrCreateAsync(
+                Arg.Any<McpCacheKey>(),
+                Arg.Any<Func<CancellationToken, Task<McpCacheEntrySource>>>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new McpCredentialRejectedException(
+                server.Id, server.Name, new HttpRequestException("unauthorized")));
+
+        await Assert.ThrowsAsync<McpCredentialRejectedException>(
+            () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
+
+        await _credentialService.Received(1).MarkRejectedAsync(
+            server.Id, KnownIds.SeedUserId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AcquireToolsAsync_RecordingARejectionFails_StillReportsTheRejection()
+    {
+        var server = await AddMcpServerAsync("aaa-pat-bookkeeping", McpAuthTypes.UserApiKey);
+        await AddCredentialAsync(server.Id, KnownIds.SeedUserId);
+        _secretProtector
+            .TryUnprotect(KnownIds.SeedUserId, server.Id, "protected", out Arg.Any<string?>())
+            .Returns(callInfo =>
+            {
+                callInfo[3] = "ghp_revoked";
+                return true;
+            });
+        _mcpClientCache.GetOrCreateAsync(
+                Arg.Any<McpCacheKey>(),
+                Arg.Any<Func<CancellationToken, Task<McpCacheEntrySource>>>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new McpCredentialRejectedException(
+                server.Id, server.Name, new HttpRequestException("unauthorized")));
+        _credentialService.MarkRejectedAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("write failed"));
+
+        await Assert.ThrowsAsync<McpCredentialRejectedException>(
+            () => _provider.AcquireToolsAsync([server.Id], TestContext.Current.CancellationToken));
+    }
+
     /// <summary>
     /// Pins the exact substitution the tool-name prefix is built from.
     /// </summary>
@@ -410,6 +577,70 @@ public sealed class McpToolProviderTests : IDisposable
 
         Assert.Equal("true", Assert.Contains("X-MCP-Readonly", headers));
         Assert.DoesNotContain("Authorization", headers);
+    }
+
+    private static McpServer ServerFor(McpAuthTypes authType) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = "GitHub",
+        Description = "GitHub",
+        Url = "https://api.githubcopilot.com/mcp/",
+        AuthType = authType
+    };
+
+    /// <summary>
+    /// Pins the branch that decides who is told to fix a failed connection. Getting it wrong
+    /// either blames a third-party outage on the user's key, or hides a revoked key behind a
+    /// Retry button that can never succeed.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public void Classify_UserApiKeyServerRefusedByTheHost_IsACredentialRejection(HttpStatusCode status)
+    {
+        var server = ServerFor(McpAuthTypes.UserApiKey);
+        // Wrapped as the SDK reports it: the status lives on an inner exception, not the one caught.
+        var failure = new McpException("listing tools failed", new HttpRequestException("refused", null, status));
+
+        var classified = McpToolProvider.Classify(server, failure);
+
+        var rejected = Assert.IsType<McpCredentialRejectedException>(classified);
+        Assert.Equal(server.Id, rejected.McpServerId);
+        Assert.Same(failure, rejected.InnerException);
+    }
+
+    [Fact]
+    public void Classify_RefusalOnTheSdkFallbackBranch_IsStillACredentialRejection()
+    {
+        // Streamable HTTP and its SSE fallback both failed, so the SDK surfaces the two together.
+        // `InnerException` on an aggregate returns only the first, which is what hid this.
+        var failure = new AggregateException(
+            new McpException("streamable http failed", new IOException("connection reset")),
+            new McpException("sse failed", new HttpRequestException("refused", null, HttpStatusCode.Unauthorized)));
+
+        var classified = McpToolProvider.Classify(ServerFor(McpAuthTypes.UserApiKey), failure);
+
+        Assert.IsType<McpCredentialRejectedException>(classified);
+    }
+
+    [Theory]
+    [InlineData(McpAuthTypes.None)]
+    [InlineData(McpAuthTypes.EntraIdOnBehalfOf)]
+    public void Classify_RefusalOnAServerHoldingNoUserKey_IsUnavailable(McpAuthTypes authType)
+    {
+        // Nothing the user supplied, so nothing they can replace: this is a registration fault.
+        var failure = new McpException("failed", new HttpRequestException("refused", null, HttpStatusCode.Unauthorized));
+
+        Assert.IsType<McpServerUnavailableException>(McpToolProvider.Classify(ServerFor(authType), failure));
+    }
+
+    [Fact]
+    public void Classify_FailureThatIsNotARefusal_IsUnavailable()
+    {
+        var failure = new McpException("failed", new HttpRequestException("boom", null, HttpStatusCode.InternalServerError));
+
+        Assert.IsType<McpServerUnavailableException>(
+            McpToolProvider.Classify(ServerFor(McpAuthTypes.UserApiKey), failure));
     }
 
     private sealed class FakeTool : AITool

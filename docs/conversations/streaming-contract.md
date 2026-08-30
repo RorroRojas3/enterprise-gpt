@@ -149,6 +149,8 @@ The JSON comes from `AssistantUiJsonContext.Default.AssistantUiEvent`, the packa
 | `403` | `/problems/forbidden` | The caller may not use something the turn needs |
 | `404` | `/problems/resource-not-found` | The conversation is unknown, deactivated, or another user's |
 | `409` | `/problems/conversation-busy` | A turn is already in flight for this conversation |
+| `428` | `/problems/mcp-credential-required` | A selected server takes an API key the caller supplies themselves (`McpAuthTypes.UserApiKey`) and none is stored |
+| `428` | `/problems/mcp-credential-rejected` | A selected server refused the API key the caller stored — GitHub answering `401`/`403` to it, most commonly |
 | `502` | `/problems/mcp-server-unavailable` | A selected MCP server could not be reached, or its on-behalf-of token could not be acquired — a consent or Conditional Access requirement included, since these servers are consented tenant-wide and a UI-required result is a registration fault, not something the caller can act on |
 | `503` | `/problems/provider-not-configured` | The model exists but this deployment has no chat client for its provider — an operator fixes it, not the caller |
 

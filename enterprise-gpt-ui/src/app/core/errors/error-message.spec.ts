@@ -33,6 +33,16 @@ describe('userMessage', () => {
     expect(userMessage(errorFrom(PROBLEM_FIXTURES.mcpServerUnavailable, 502))).toContain('Weather');
   });
 
+  it.each([
+    [PROBLEM_FIXTURES.mcpCredentialRequired, 'Connect your account'],
+    [PROBLEM_FIXTURES.mcpCredentialRejected, 'rejected your API key'],
+  ])('tells the reader to supply a key, naming the server', (fixture, expected) => {
+    const message = userMessage(errorFrom(fixture, 428));
+
+    expect(message).toContain('GitHub');
+    expect(message).toContain(expected);
+  });
+
   it('names the missing permission by its display name', () => {
     expect(userMessage(errorFrom(PROBLEM_FIXTURES.permissionRequired, 403))).toContain(
       'Upload File',
@@ -73,6 +83,13 @@ describe('shouldNotify', () => {
     expect(shouldNotify(toAppError(new DOMException('stop', 'AbortError')))).toBe(false);
   });
 
+  it.each([
+    ['mcp-credential-required', PROBLEM_FIXTURES.mcpCredentialRequired],
+    ['mcp-credential-rejected', PROBLEM_FIXTURES.mcpCredentialRejected],
+  ])('stays silent for %s, which the key dialog reports instead', (_label, body) => {
+    expect(shouldNotify(errorFrom(body, 428))).toBe(false);
+  });
+
   it('stays silent for a validation error, which renders against its own fields', () => {
     expect(shouldNotify(errorFrom(PROBLEM_FIXTURES.validationError, 400))).toBe(false);
   });
@@ -107,6 +124,9 @@ describe('canRetry', () => {
     ['resource-not-found', PROBLEM_FIXTURES.resourceNotFound, 404],
     ['validation-error', PROBLEM_FIXTURES.validationError, 400],
     ['provider-not-configured', PROBLEM_FIXTURES.providerNotConfigured, 503],
+    // Retry is the wrong control: the way past these is supplying a key.
+    ['mcp-credential-required', PROBLEM_FIXTURES.mcpCredentialRequired, 428],
+    ['mcp-credential-rejected', PROBLEM_FIXTURES.mcpCredentialRejected, 428],
   ])(
     'withholds Retry for %s, which answers the same however often it is asked',
     (_label, body, status) => {

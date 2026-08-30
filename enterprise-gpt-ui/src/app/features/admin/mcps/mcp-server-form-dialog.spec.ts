@@ -18,6 +18,7 @@ const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 const BAD_REQUEST = { status: 400, statusText: 'Bad Request' };
 const NONE = String(MCP_AUTH_TYPE.none);
 const ENTRA = String(MCP_AUTH_TYPE.entraIdOnBehalfOf);
+const USER_KEY = String(MCP_AUTH_TYPE.userApiKey);
 
 describe('McpServerFormDialog (US-1208)', () => {
   let backend: HttpTestingController;
@@ -144,7 +145,7 @@ describe('McpServerFormDialog (US-1208)', () => {
     );
   });
 
-  it('offers the two auth types the API has, not frame `5h`’s three', async () => {
+  it('offers the three auth types the API has, still not the board’s three', async () => {
     await openCreate();
 
     const options = [...(field('mcp-form-auth') as HTMLSelectElement).options].map((option) => ({
@@ -155,7 +156,15 @@ describe('McpServerFormDialog (US-1208)', () => {
     expect(options).toEqual([
       { value: NONE, label: 'None' },
       { value: ENTRA, label: 'Entra ID (on behalf of)' },
+      { value: USER_KEY, label: 'API key (per user)' },
     ]);
+  });
+
+  it('shows no Scope field for a per-user API key server', async () => {
+    await openCreate();
+    await choose('mcp-form-auth', USER_KEY);
+
+    expect(host().querySelector('#mcp-form-scope')).toBeNull();
   });
 
   it('shows Scope only for Entra ID, because None refuses one outright', async () => {

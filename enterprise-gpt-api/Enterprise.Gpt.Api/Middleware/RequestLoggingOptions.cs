@@ -170,8 +170,11 @@ public sealed class BodyLoggingOptions
 
     // /api/conversations as a whole, not just the stream route: GET api/conversations/{id}/messages
     // returns the entire prompt-and-response transcript as application/json, and the list and search
-    // routes return user-authored titles.
-    private static readonly string[] _defaultExcludedPaths = ["/api/conversations", "/api/documents"];
+    // routes return user-authored titles. The MCP credential route carries a user's own third-party
+    // token; "apiKey" is on the redaction list below, but a body never captured cannot leak through a
+    // payload the parser fails on either.
+    private static readonly string[] _defaultExcludedPaths =
+        ["/api/conversations", "/api/documents", "/api/mcps/*/credential"];
 
     // downloadUrl is on the list because it is a credential, not a link: the signed document download
     // URL grants read access to anyone holding it until it expires. /api/documents is excluded from
@@ -233,7 +236,8 @@ public sealed class BodyLoggingOptions
 
     /// <summary>
     /// Request paths excluded from capture entirely. A <c>*</c> matches exactly one path segment.
-    /// Defaults to <c>/api/conversations</c> and <c>/api/documents</c> when left unset.
+    /// Defaults to <c>/api/conversations</c>, <c>/api/documents</c> and the MCP credential route
+    /// when left unset.
     /// </summary>
     /// <remarks>
     /// Route templates cannot be used here: capture has to be set up before <c>next()</c> runs, and

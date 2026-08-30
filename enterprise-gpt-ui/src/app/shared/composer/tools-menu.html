@@ -29,25 +29,74 @@
     </button>
   } @else {
     @for (server of mcps.servers(); track server.id) {
-      <button
-        appMenuItem
-        type="button"
-        role="menuitemcheckbox"
-        class="tools-menu__option"
-        [attr.aria-checked]="settings.selectedIdSet().has(server.id)"
-        (click)="settings.toggleMcpServer(server.id)"
-      >
-        @if (brandIcon(server); as brand) {
-          <app-brand-icon class="tools-menu__brand" [name]="brand" />
-        } @else {
-          <app-icon class="tools-menu__brand tools-menu__brand--generic" [name]="fallbackIcon" />
-        }
-        <span class="tools-menu__name">{{ server.name }}</span>
-        <app-switch
-          class="tools-menu__switch"
-          [checked]="settings.selectedIdSet().has(server.id)"
-        />
-      </button>
+      @if (needsKey(server)) {
+        <!--
+          A menuitem, not a menuitemcheckbox: this row opens the key dialog rather
+          than toggling anything, and announcing a checked state it does not have
+          would promise the reader an action the click does not perform.
+        -->
+        <button
+          appMenuItem
+          type="button"
+          class="tools-menu__option"
+          aria-haspopup="dialog"
+          (click)="openKeyDialog(server)"
+        >
+          @if (brandIcon(server); as brand) {
+            <app-brand-icon class="tools-menu__brand" [name]="brand" />
+          } @else {
+            <app-icon class="tools-menu__brand tools-menu__brand--generic" [name]="fallbackIcon" />
+          }
+          <span class="tools-menu__name">{{ server.name }}</span>
+          <app-status-dot class="tools-menu__state" tone="warn" label="Key required" />
+        </button>
+      } @else {
+        <!--
+          Two menu items on one visual line, not a control nested in a control: a
+          <button> inside a <button> is invalid HTML, and the menu's roving focus
+          collects `[appMenuItem]`, so a plain nested button would be unreachable by
+          keyboard. role="none" makes the wrapper transparent, leaving both buttons
+          direct children of the menu as far as assistive technology is concerned.
+        -->
+        <div class="tools-menu__row" role="none">
+          <button
+            appMenuItem
+            type="button"
+            role="menuitemcheckbox"
+            class="tools-menu__option"
+            [attr.aria-checked]="settings.selectedIdSet().has(server.id)"
+            (click)="settings.toggleMcpServer(server.id)"
+          >
+            @if (brandIcon(server); as brand) {
+              <app-brand-icon class="tools-menu__brand" [name]="brand" />
+            } @else {
+              <app-icon
+                class="tools-menu__brand tools-menu__brand--generic"
+                [name]="fallbackIcon"
+              />
+            }
+            <span class="tools-menu__name">{{ server.name }}</span>
+            <app-switch
+              class="tools-menu__switch"
+              [checked]="settings.selectedIdSet().has(server.id)"
+            />
+          </button>
+          @if (server.requiresUserApiKey) {
+            <button
+              appMenuItem
+              type="button"
+              class="tools-menu__manage"
+              aria-haspopup="dialog"
+              [attr.aria-label]="
+                'Change your API key for ' + server.name + ', ending ' + server.apiKeyHint
+              "
+              (click)="openKeyDialog(server)"
+            >
+              ••••{{ server.apiKeyHint }}
+            </button>
+          }
+        </div>
+      }
     }
     <hr appMenuSeparator />
     <!-- Redundant with the menu's own stay-open behavior, so hidden from AT. -->
