@@ -27,10 +27,9 @@
     list and the browser's reset then selects the first — a deep link to `?sort=name`
     would request Alphabetical and display "Last updated".
 
-    It is never disabled. Frame `4d` disables it past the load ceiling, because a
-    client-side sort over 500 of 1,284 rows would be a lie; US-706 moved the ordering to
-    the server, so the 500 on screen are the correct first 500 in this order and the
-    notice below the toolbar states the truncation instead.
+    It is never disabled. Frame `4d` disables it past a load ceiling, because a
+    client-side sort over 500 of 1,284 rows would be a lie; the order is the server's, so
+    every page is a continuation of the same run and there is nothing to disable.
   -->
   <label class="projects__sort">
     <span class="visually-hidden">Sort projects</span>
@@ -54,9 +53,9 @@
 </div>
 
 @if (projects.error(); as error) {
-  <!-- Instead of the grid rather than beside it: a drain that failed part-way holds a
-       set that is neither complete nor knowably incomplete, and showing it would be
-       the silently-partial list regime A exists to avoid. -->
+  <!-- Instead of the grid rather than beside it: the cards on screen belong to a query
+       that failed, so leaving them up would show a stale result set as if it were the
+       answer. A failed *page* is the other case, and it keeps its cards and toasts. -->
   <app-error-panel
     [error]="error"
     [canRetry]="canRetry(error)"
@@ -106,20 +105,6 @@
     </button>
   </app-empty-state>
 } @else {
-  <!--
-    Stated rather than left to be inferred from a grid that simply stops. Frame `4d`
-    words it around sorting — "Sorting is unavailable past the 500-project load ceiling"
-    — and that sentence is no longer true: the server applied the order to the whole set
-    before the ceiling cut it. What is left is a truncation, so the notice states the
-    truncation and names the order, and the select above stays enabled.
-  -->
-  @if (projects.truncated()) {
-    <p class="projects__ceiling">
-      <app-icon name="bi-info-circle" />
-      {{ projects.ceilingNotice() }}
-    </p>
-  }
-
   <!--
     The board draws three columns at 1440 and its caption gives the responsive rule.
     This used to be written with `row g-3` and `col-12 col-md-6 col-xl-4`, and none of
@@ -183,4 +168,38 @@
       </app-project-card>
     }
   </div>
+
+  <!--
+    Its own markup rather than a projected slot: the grid is a plain card layout with no
+    `<app-data-table>` to hang a `tableFooter` on.
+
+    Gone rather than disabled once everything is loaded: a disabled control still reads as
+    "there is more, but not for you".
+  -->
+  <div class="projects__more">
+    @if (projects.hasMore()) {
+      <!--
+        Both halves of `loadMore()`'s own guard, so the control cannot look operable while
+        a press would be a silent no-op — which is what it would be during a narrowing
+        search, where the cards and this button both stay up.
+      -->
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        [attr.aria-disabled]="projects.loadingMore() || projects.isPending() ? 'true' : null"
+        (click)="onLoadMore()"
+      >
+        @if (projects.loadingMore()) {
+          <span class="kit-spinner" aria-hidden="true"></span>
+          <span>Loading…</span>
+        } @else {
+          <span>Load more</span>
+        }
+      </button>
+    }
+  </div>
+
+  <!-- Announced, never drawn: the board has no visible counter here, but a grid that
+       grows on request has to say by how much. -->
+  <p class="visually-hidden" role="status">{{ projects.countSummary() }}</p>
 }

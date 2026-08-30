@@ -4,27 +4,27 @@ import {
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UserDocumentDto } from '@domain/api/document';
 import { conversationEvents } from '@core/events/conversation-events';
 import { sessionEvents } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
 import { documentPage, userDocumentFixture } from '@testing/documents';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import {
-  DOCUMENT_LOAD_CEILING,
-  DOCUMENT_PAGE_SIZE,
-  DocumentLibraryStore,
-} from './document-library-store';
+import { DOCUMENT_PAGE_SIZE, DocumentLibraryStore } from './document-library-store';
 
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;
 
 describe('DocumentLibraryStore (US-1002/US-1003)', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof DocumentLibraryStore>;
+  let term: ReturnType<typeof signal<string>>;
+  let generatedOnly: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -38,11 +38,21 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
 
     backend = TestBed.inject(HttpTestingController);
     store = TestBed.inject(DocumentLibraryStore);
+    term = signal('');
+    generatedOnly = signal(false);
   });
 
   afterEach(() => {
     backend.verify();
   });
+
+  /** Wires the query the way the screen's constructor does — one computation, both filters. */
+  function bind(): void {
+    TestBed.runInInjectionContext(() =>
+      store.bindQuery(() => ({ name: term(), generatedOnly: generatedOnly() })),
+    );
+    TestBed.tick();
+  }
 
   function expectRequest(): TestRequest {
     return backend.expectOne((request) => request.url === DOCUMENTS_URL);
@@ -54,125 +64,456 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
     );
   }
 
-  /** A full page, so the drain asks for another. */
+  /** A full page, so more is left behind and `hasMore()` is true. */
   function fullPage(count = DOCUMENT_PAGE_SIZE): UserDocumentDto[] {
     return Array.from({ length: count }, () => userDocumentFixture());
   }
 
+  /** A first page that leaves more behind, answered the way the server would. */
+  function loadFirstPage(totalCount = 60): void {
+    bind();
+    expectRequest().flush(documentPage(fullPage(), { totalCount, pageSize: DOCUMENT_PAGE_SIZE }));
+    TestBed.tick();
+  }
+
   it('starts empty and idle, with zero seeded records', () => {
-    // A US-1002 criterion, asserted explicitly: the library is built from the
-    // server's answer alone, so a brand-new user sees the empty state and never a
-    // placeholder row.
+    // Asserted explicitly: the library is built from the server's answer alone, so a
+    // brand-new user sees the empty state and never a placeholder row.
     expect(store.entities()).toEqual([]);
     expect(store.isIdle()).toBe(true);
     expect(store.totalCount()).toBe(0);
-    expect(store.truncated()).toBe(false);
     backend.expectNone((request) => request.url === DOCUMENTS_URL);
   });
 
-  it('drains every page of a listing larger than one page', () => {
-    store.bindSource(false);
+  describe('paging', () => {
+    it('fetches one page and leaves the rest behind the control', () => {
+      loadFirstPage(600);
 
-    const first = expectRequest();
-    expect(first.request.params.get('take')).toBe(String(DOCUMENT_PAGE_SIZE));
-    expect(first.request.params.get('skip')).toBe('0');
-    first.flush(documentPage(fullPage(), { totalCount: 250 }));
-    TestBed.tick();
+      const request = backend.match(() => true);
+      expect(request).toHaveLength(0);
+      expect(store.entities().length).toBe(DOCUMENT_PAGE_SIZE);
+      expect(store.hasMore()).toBe(true);
+      expect(store.isFulfilled()).toBe(true);
+    });
 
-    const second = expectRequest();
-    expect(second.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE));
-    second.flush(documentPage(fullPage(), { totalCount: 250, skip: DOCUMENT_PAGE_SIZE }));
-    TestBed.tick();
+    it('asks for the page size the screen chose', () => {
+      bind();
 
-    const third = expectRequest();
-    expect(third.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE * 2));
-    third.flush(documentPage(fullPage(50), { totalCount: 250, skip: DOCUMENT_PAGE_SIZE * 2 }));
-    TestBed.tick();
+      const request = expectRequest();
+      expect(request.request.params.get('take')).toBe(String(DOCUMENT_PAGE_SIZE));
+      expect(request.request.params.get('skip')).toBe('0');
+      // Omitted, never sent empty: a blank `name=` would still take the server down its
+      // LIKE branch.
+      expect(request.request.params.has('name')).toBe(false);
 
-    expect(store.entities().length).toBe(250);
-    expect(store.truncated()).toBe(false);
-    expect(store.isFulfilled()).toBe(true);
-  });
+      request.flush(documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+    });
 
-  it('stops at the ceiling and says so, rather than draining a whole tenant', () => {
-    store.bindSource(false);
+    it('appends the next page and moves the offset by what came back', () => {
+      loadFirstPage();
 
-    for (let page = 0; page * DOCUMENT_PAGE_SIZE < DOCUMENT_LOAD_CEILING; page++) {
-      expectRequest().flush(
-        documentPage(fullPage(), { totalCount: 600, skip: page * DOCUMENT_PAGE_SIZE }),
+      store.loadMore();
+      TestBed.tick();
+
+      const next = expectRequest();
+      expect(next.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE));
+      next.flush(
+        documentPage([userDocumentFixture()], {
+          totalCount: 60,
+          pageSize: DOCUMENT_PAGE_SIZE,
+          skip: DOCUMENT_PAGE_SIZE,
+        }),
       );
       TestBed.tick();
-    }
 
-    // No sixth request: the ceiling is the whole point.
-    backend.verify();
-    expect(store.entities().length).toBe(DOCUMENT_LOAD_CEILING);
-    expect(store.truncated()).toBe(true);
-    expect(store.ceilingNotice()).toBe('Showing the 500 most recent of 600 documents.');
-  });
-
-  it('supersedes an in-flight drain on retry rather than letting its pages land', () => {
-    store.bindSource(false);
-    expectRequest().flush(documentPage(fullPage(), { totalCount: 250 }));
-    TestBed.tick();
-
-    const secondPage = expectRequest();
-
-    store.retry();
-    TestBed.tick();
-
-    expect(secondPage.cancelled).toBe(true);
-
-    const restarted = expectRequest();
-    expect(restarted.request.params.get('skip')).toBe('0');
-    restarted.flush(documentPage([userDocumentFixture()]));
-    TestBed.tick();
-
-    expect(store.entities().length).toBe(1);
-    expect(store.truncated()).toBe(false);
-  });
-
-  it('replaces the listing with an error mid-drain and keeps Retry meaningful', () => {
-    store.bindSource(false);
-    expectRequest().flush(documentPage(fullPage(), { totalCount: 250 }));
-    TestBed.tick();
-
-    expectRequest().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
-      status: 500,
-      statusText: 'Server Error',
+      expect(store.entities().length).toBe(DOCUMENT_PAGE_SIZE + 1);
+      expect(store.skip()).toBe(DOCUMENT_PAGE_SIZE + 1);
+      expect(store.countSummary()).toBe('Showing 26 of 60 documents');
     });
-    TestBed.tick();
 
-    // The listing regime: whichever page failed, the screen renders the panel
-    // instead of the rows — a half-drained set counted as if it were whole is the
-    // failure regime A exists to avoid. The dead pages are cleared with it, so
-    // Retry's pending round trip shows the skeleton rather than the partial set.
-    expect(store.error()).not.toBeNull();
-    expect(store.entities().length).toBe(0);
+    it('ignores a second press while a page is on the wire', () => {
+      loadFirstPage();
 
-    store.retry();
-    TestBed.tick();
+      store.loadMore();
+      TestBed.tick();
+      const inFlight = expectRequest();
+      expect(store.loadingMore()).toBe(true);
 
-    expect(store.isFirstLoad()).toBe(true);
-    TestBed.tick();
+      store.loadMore();
+      TestBed.tick();
+      // `skip` has not moved yet, so a second request would fetch the same window twice
+      // and `addEntities` would silently no-op on every id.
+      backend.expectNone(() => true);
 
-    const retried = expectRequest();
-    expect(retried.request.params.get('skip')).toBe('0');
-    retried.flush(documentPage([userDocumentFixture()]));
-    TestBed.tick();
+      inFlight.flush(documentPage([], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }));
+      TestBed.tick();
+      expect(store.loadingMore()).toBe(false);
+    });
 
-    expect(store.error()).toBeNull();
-    expect(store.isFulfilled()).toBe(true);
-    expect(store.entities().length).toBe(1);
+    it('refuses a press once everything is loaded', () => {
+      loadFirstPage(DOCUMENT_PAGE_SIZE);
+
+      expect(store.hasMore()).toBe(false);
+
+      store.loadMore();
+      TestBed.tick();
+
+      backend.verify();
+    });
+
+    it('keeps the loaded rows when a page fails, and toasts instead', async () => {
+      loadFirstPage();
+      const toasts = TestBed.inject(ToastStore);
+
+      store.loadMore();
+      TestBed.tick();
+      expectRequest().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
+        status: 500,
+        statusText: 'Internal Server Error',
+      });
+      TestBed.tick();
+      await Promise.resolve();
+
+      // The rows already on screen belong to a query that succeeded, so swapping the list
+      // for an error panel would throw away a usable result set.
+      expect(store.entities().length).toBe(DOCUMENT_PAGE_SIZE);
+      expect(store.error()).toBeNull();
+      expect(store.loadingMore()).toBe(false);
+      expect(toasts.toasts()).toHaveLength(1);
+    });
+
+    it('drops a page whose result set a newer query replaced', () => {
+      loadFirstPage(600);
+
+      store.loadMore();
+      TestBed.tick();
+      const page = expectRequest();
+
+      term.set('quarterly');
+      TestBed.tick();
+
+      // Without `_querySuperseded$` this page would land after the new query's
+      // `setAllEntities` and append a window from a list that no longer exists.
+      expect(page.cancelled).toBe(true);
+      expect(store.loadingMore()).toBe(false);
+
+      const narrowed = expectRequest();
+      expect(narrowed.request.params.get('name')).toBe('quarterly');
+      expect(narrowed.request.params.get('skip')).toBe('0');
+      narrowed.flush(documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+
+      expect(store.entities().length).toBe(1);
+    });
+
+    it('drops a page when a conversation delete moves the offset under it', () => {
+      loadFirstPage(600);
+      const doomed = store.entities()[0];
+
+      store.loadMore();
+      TestBed.tick();
+      const page = expectRequest();
+
+      TestBed.inject(Dispatcher).dispatch(conversationEvents.deleted(doomed?.conversationId ?? ''));
+      TestBed.tick();
+
+      // The page's URL was built against the pre-removal offset, so letting it land would
+      // skip the rows that slid into the gap.
+      expect(page.cancelled).toBe(true);
+      expect(store.loadingMore()).toBe(false);
+    });
+
+    it('replaces the listing with an error on a failed first page and keeps Retry meaningful', () => {
+      bind();
+      expectRequest().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
+        status: 500,
+        statusText: 'Server Error',
+      });
+      TestBed.tick();
+
+      expect(store.error()).not.toBeNull();
+      expect(store.entities().length).toBe(0);
+
+      store.retry();
+      TestBed.tick();
+
+      const retried = expectRequest();
+      expect(retried.request.params.get('skip')).toBe('0');
+      retried.flush(documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+
+      expect(store.error()).toBeNull();
+      expect(store.isFulfilled()).toBe(true);
+      expect(store.entities().length).toBe(1);
+    });
+  });
+
+  describe('the served name filter', () => {
+    it('sends the term as `name=` when the URL carries one', () => {
+      term.set('quarterly');
+      bind();
+
+      const request = expectRequest();
+      expect(request.request.params.get('name')).toBe('quarterly');
+
+      request.flush(documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+    });
+
+    it('carries the term onto an appended page, so a search reaches every document', () => {
+      term.set('quarterly');
+      loadFirstPage(600);
+
+      store.loadMore();
+      TestBed.tick();
+
+      // The reachability guarantee: without this the second page searches nothing and a
+      // match ranked past the first page never comes back.
+      const next = expectRequest();
+      expect(next.request.params.get('name')).toBe('quarterly');
+      expect(next.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE));
+
+      next.flush(documentPage([], { totalCount: 600, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }));
+      TestBed.tick();
+    });
+
+    it('replaces the rows when the term changes rather than narrowing what is held', () => {
+      loadFirstPage(600);
+
+      term.set('quarterly');
+      TestBed.tick();
+
+      const narrowed = expectRequest();
+      expect(narrowed.request.params.get('name')).toBe('quarterly');
+      narrowed.flush(
+        documentPage([userDocumentFixture({ name: 'quarterly.pdf' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      TestBed.tick();
+
+      expect(store.entities().length).toBe(1);
+      expect(store.hasQuery()).toBe(true);
+    });
+
+    it('tells "nothing uploaded" apart from "no matches"', () => {
+      bind();
+      expectRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+
+      // Zero documents and no term: "Nothing uploaded yet" is the truth.
+      expect(store.isEmpty()).toBe(true);
+      expect(store.hasNoMatches()).toBe(false);
+      expect(store.countSummary()).toBe('No documents');
+
+      term.set('quarterly');
+      TestBed.tick();
+      expectRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+
+      // A term with nothing behind it is the other state, and the one with a way out.
+      expect(store.hasNoMatches()).toBe(true);
+    });
+  });
+
+  describe('grouping', () => {
+    it('groups loaded rows in first-seen order', () => {
+      const alphaNewest = userDocumentFixture({
+        name: 'alpha-plan.pdf',
+        conversationName: 'Alpha',
+        conversationDocumentCount: 2,
+      });
+      const beta = userDocumentFixture({ name: 'beta-notes.txt', conversationName: 'Beta' });
+      const alphaOlder = userDocumentFixture({
+        name: 'alpha-summary.md',
+        conversationId: alphaNewest.conversationId,
+        conversationName: 'Alpha',
+        conversationDocumentCount: 2,
+      });
+      bind();
+      expectRequest().flush(
+        documentPage([alphaNewest, beta, alphaOlder], { pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      TestBed.tick();
+
+      // First-seen over a newest-first listing: groups order by their newest document.
+      const groups = store.groups();
+      expect(groups.map((group) => group.conversationId)).toEqual([
+        alphaNewest.conversationId,
+        beta.conversationId,
+      ]);
+      expect(groups[0]?.documents.map((document) => document.id)).toEqual([
+        alphaNewest.id,
+        alphaOlder.id,
+      ]);
+      expect(groups[0]?.countLabel).toBe('2 files');
+      expect(groups[1]?.countLabel).toBe('1 file');
+    });
+
+    it('says how many of a conversation’s files a partially loaded group holds', () => {
+      const first = userDocumentFixture({
+        conversationName: 'Alpha',
+        conversationDocumentCount: 8,
+      });
+      const second = userDocumentFixture({
+        conversationId: first.conversationId,
+        conversationName: 'Alpha',
+        conversationDocumentCount: 8,
+      });
+      const third = userDocumentFixture({
+        conversationId: first.conversationId,
+        conversationName: 'Alpha',
+        conversationDocumentCount: 8,
+      });
+      bind();
+      expectRequest().flush(
+        documentPage([first, second, third], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      TestBed.tick();
+
+      expect(store.groups()[0]?.countLabel).toBe('3 of 8 files');
+    });
+
+    it('drops the qualifier once a group holds everything the server counted', () => {
+      const document = userDocumentFixture({ conversationDocumentCount: 1 });
+      bind();
+      expectRequest().flush(documentPage([document], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+
+      // Never "1 of 1 files": the group is whole, and the qualifier would be noise.
+      expect(store.groups()[0]?.countLabel).toBe('1 file');
+    });
+
+    it('updates a group’s count as Load more appends rows to it', () => {
+      const first = userDocumentFixture({
+        conversationName: 'Alpha',
+        conversationDocumentCount: 8,
+      });
+      bind();
+      expectRequest().flush(
+        documentPage([first], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      TestBed.tick();
+      expect(store.groups()[0]?.countLabel).toBe('1 of 8 files');
+
+      store.loadMore();
+      TestBed.tick();
+      expectRequest().flush(
+        documentPage(
+          [
+            userDocumentFixture({
+              conversationId: first.conversationId,
+              conversationName: 'Alpha',
+              conversationDocumentCount: 8,
+            }),
+          ],
+          { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 1 },
+        ),
+      );
+      TestBed.tick();
+
+      expect(store.groups()[0]?.countLabel).toBe('2 of 8 files');
+    });
+  });
+
+  describe('the served origin filter', () => {
+    it('asks for every origin until the filter is on', () => {
+      bind();
+
+      expect(expectRequest().request.params.has('type')).toBe(false);
+    });
+
+    it('narrows the request when the assistant-created filter is on', () => {
+      generatedOnly.set(true);
+      bind();
+
+      expectGeneratedRequest().flush(
+        documentPage([userDocumentFixture({ type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      TestBed.tick();
+
+      expect(store.generatedOnly()).toBe(true);
+      expect(store.entities()).toHaveLength(1);
+    });
+
+    it('carries the origin onto an appended page', () => {
+      generatedOnly.set(true);
+      bind();
+      expectGeneratedRequest().flush(
+        documentPage(fullPage(), { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      TestBed.tick();
+
+      store.loadMore();
+      TestBed.tick();
+
+      expectGeneratedRequest().flush(
+        documentPage([], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }),
+      );
+      TestBed.tick();
+    });
+
+    it('drops the previous rows the moment the origin changes', () => {
+      bind();
+      expectRequest().flush(
+        documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      TestBed.tick();
+      expect(store.totalCount()).toBe(1);
+
+      generatedOnly.set(true);
+      TestBed.tick();
+
+      // Held rows under the new filter would be counted and captioned as that filter's set
+      // for a whole round trip; the skeleton is the honest thing to show instead.
+      expect(store.isFirstLoad()).toBe(false);
+      expectGeneratedRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+
+      expect(store.entities()).toEqual([]);
+      expect(store.totalCount()).toBe(0);
+    });
+
+    it('names the narrowed set in the count', () => {
+      generatedOnly.set(true);
+      bind();
+      expectGeneratedRequest().flush(
+        documentPage(fullPage(), { totalCount: 600, pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      TestBed.tick();
+
+      // It would otherwise describe the whole library, which is the dishonesty serving the
+      // filter exists to avoid.
+      expect(store.countSummary()).toBe('Showing 25 of 600 generated documents');
+    });
+
+    it('retries the query the filter last ran with', () => {
+      generatedOnly.set(true);
+      bind();
+      expectGeneratedRequest().error(new ProgressEvent('error'));
+      TestBed.tick();
+
+      store.retry();
+      TestBed.tick();
+
+      expectGeneratedRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      TestBed.tick();
+      expect(store.isFulfilled()).toBe(true);
+    });
   });
 
   describe('events', () => {
     it('renames the link column when a conversation is renamed, and evicts nothing', () => {
-      store.bindSource(false);
       const kept = userDocumentFixture();
       const renamedA = userDocumentFixture();
       const renamedB = userDocumentFixture({ conversationId: renamedA.conversationId });
-      expectRequest().flush(documentPage([kept, renamedA, renamedB]));
+      bind();
+      expectRequest().flush(
+        documentPage([kept, renamedA, renamedB], { pageSize: DOCUMENT_PAGE_SIZE }),
+      );
       TestBed.tick();
 
       TestBed.inject(Dispatcher).dispatch(
@@ -185,18 +526,20 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       expect(store.entityMap()[renamedA.id]?.conversationName).toBe('Renamed');
       expect(store.entityMap()[renamedB.id]?.conversationName).toBe('Renamed');
       expect(store.entityMap()[kept.id]?.conversationName).toBe(kept.conversationName);
-      // US-1003's client filter is on document names only, so a rename never
-      // removes a row — or moves a counter.
+      // The filter is on document names only, so a rename never removes a row — or moves
+      // a counter.
       expect(store.entities().length).toBe(3);
       expect(store.totalCount()).toBe(3);
     });
 
     it('drops a deleted conversation’s rows and takes both counters down with them', () => {
-      store.bindSource(false);
       const doomedA = userDocumentFixture();
       const doomedB = userDocumentFixture({ conversationId: doomedA.conversationId });
       const kept = userDocumentFixture();
-      expectRequest().flush(documentPage([doomedA, doomedB, kept]));
+      bind();
+      expectRequest().flush(
+        documentPage([doomedA, doomedB, kept], { pageSize: DOCUMENT_PAGE_SIZE }),
+      );
       TestBed.tick();
       expect(store.skip()).toBe(3);
 
@@ -204,257 +547,27 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       TestBed.tick();
 
       expect(store.entities().map((document) => document.id)).toEqual([kept.id]);
-      // Both together: the total because the ceiling notice would otherwise count
-      // rows that are gone, and the offset because `hasMore` compares the two.
+      // Both together: the total because the count would otherwise claim rows that are
+      // gone, and the offset because `hasMore` compares the two.
       expect(store.totalCount()).toBe(1);
       expect(store.skip()).toBe(1);
     });
   });
 
-  describe('client-side filter and grouping (US-1003)', () => {
-    it('narrows on document names only, case-insensitively', () => {
-      store.bindSource(false);
-      const report = userDocumentFixture({ name: 'Q3-Report.pdf', conversationName: 'Alpha' });
-      // The decoy's *conversation* name matches the term; its file name does not.
-      const decoy = userDocumentFixture({ name: 'notes.txt', conversationName: 'report review' });
-      expectRequest().flush(documentPage([report, decoy]));
-      TestBed.tick();
+  it('cancels an appended page on sign-out and empties', () => {
+    loadFirstPage(600);
 
-      store.bindQuery('report');
-      TestBed.tick();
-
-      // Case-insensitive on the file name, and never on the conversation name —
-      // "Filters cover file names only." is the screen's own promise.
-      expect(store.results().map((document) => document.id)).toEqual([report.id]);
-      expect(store.hasQuery()).toBe(true);
-    });
-
-    it('tells "nothing uploaded" apart from "no matches"', () => {
-      store.bindSource(false);
-      expectRequest().flush(documentPage([]));
-      TestBed.tick();
-
-      store.bindQuery('report');
-      TestBed.tick();
-
-      // Zero documents: whatever term a deep link carries, "Nothing uploaded yet"
-      // is the truth — a cleared filter would reveal nothing.
-      expect(store.isEmpty()).toBe(true);
-      expect(store.hasNoMatches()).toBe(false);
-      expect(store.countSummary()).toBe('No documents');
-    });
-
-    it('reports no matches when documents exist and the term excludes them all', () => {
-      store.bindSource(false);
-      expectRequest().flush(documentPage([userDocumentFixture({ name: 'notes.txt' })]));
-      TestBed.tick();
-
-      store.bindQuery('zzz');
-      TestBed.tick();
-
-      expect(store.isEmpty()).toBe(false);
-      expect(store.hasNoMatches()).toBe(true);
-    });
-
-    it('groups filtered results in first-seen order, counting only what is visible', () => {
-      store.bindSource(false);
-      const alphaNewest = userDocumentFixture({
-        name: 'alpha-plan.pdf',
-        conversationName: 'Alpha',
-      });
-      const beta = userDocumentFixture({ name: 'beta-notes.txt', conversationName: 'Beta' });
-      const alphaOlder = userDocumentFixture({
-        name: 'alpha-summary.md',
-        conversationId: alphaNewest.conversationId,
-        conversationName: 'Alpha',
-      });
-      expectRequest().flush(documentPage([alphaNewest, beta, alphaOlder]));
-      TestBed.tick();
-
-      // First-seen over a newest-first listing: groups order by their newest document.
-      let groups = store.groups();
-      expect(groups.map((group) => group.conversationId)).toEqual([
-        alphaNewest.conversationId,
-        beta.conversationId,
-      ]);
-      expect(groups[0]?.documents.map((document) => document.id)).toEqual([
-        alphaNewest.id,
-        alphaOlder.id,
-      ]);
-      expect(groups[0]?.countLabel).toBe('2 files');
-      expect(groups[1]?.countLabel).toBe('1 file');
-
-      store.bindQuery('summary');
-      TestBed.tick();
-
-      // Counts cover the visible files, and a group with none left disappears.
-      groups = store.groups();
-      expect(groups.map((group) => group.conversationId)).toEqual([alphaNewest.conversationId]);
-      expect(groups[0]?.countLabel).toBe('1 file');
-      expect(groups[0]?.documents.map((document) => document.id)).toEqual([alphaOlder.id]);
-    });
-
-    it('counts the envelope total unfiltered, and shown-of-total filtered', () => {
-      store.bindSource(false);
-      expectRequest().flush(
-        documentPage([
-          userDocumentFixture({ name: 'report.pdf' }),
-          userDocumentFixture({ name: 'notes.txt' }),
-        ]),
-      );
-      TestBed.tick();
-
-      expect(store.countSummary()).toBe('2 documents');
-
-      store.bindQuery('report');
-      TestBed.tick();
-
-      expect(store.countSummary()).toBe('Showing 1 of 2 documents');
-    });
-
-    it('speaks in the singular for one document', () => {
-      store.bindSource(false);
-      expectRequest().flush(documentPage([userDocumentFixture()]));
-      TestBed.tick();
-
-      expect(store.countSummary()).toBe('1 document');
-    });
-
-    it('stays honest under the ceiling: the envelope total, and a qualified filter', () => {
-      store.bindSource(false);
-
-      for (let page = 0; page * DOCUMENT_PAGE_SIZE < DOCUMENT_LOAD_CEILING; page++) {
-        expectRequest().flush(
-          documentPage(fullPage(), { totalCount: 600, skip: page * DOCUMENT_PAGE_SIZE }),
-        );
-        TestBed.tick();
-      }
-
-      // The envelope's 600, not the 500 rows held — the ceiling notice carries the
-      // shortfall, so the count must not double-report it.
-      expect(store.countSummary()).toBe('600 documents');
-
-      store.bindQuery('no-fixture-is-named-this');
-      TestBed.tick();
-
-      // A filter over a truncated set is qualified rather than suppressed.
-      expect(store.countSummary()).toBe('Showing 0 of 600 documents');
-      expect(store.resultsPartialReason()).toBe('Only the 500 most recent documents have loaded.');
-    });
-  });
-
-  describe('served origin filter', () => {
-    it('asks for every origin until one is bound', () => {
-      store.bindSource(false);
-
-      expect(expectRequest().request.params.has('type')).toBe(false);
-    });
-
-    it('narrows the request when the assistant-created filter is on', () => {
-      store.bindSource(true);
-
-      expectGeneratedRequest().flush(documentPage([userDocumentFixture({ type: 'Generated' })]));
-      TestBed.tick();
-
-      expect(store.generatedOnly()).toBe(true);
-      expect(store.entities()).toHaveLength(1);
-    });
-
-    it('supersedes a drain still in flight rather than mixing the two sets', () => {
-      store.bindSource(false);
-      expectRequest().flush(documentPage(fullPage(), { totalCount: 250 }));
-      TestBed.tick();
-
-      const stale = expectRequest();
-      store.bindSource(true);
-
-      expect(stale.cancelled).toBe(true);
-      expectGeneratedRequest().flush(documentPage([userDocumentFixture({ type: 'Generated' })]));
-      TestBed.tick();
-
-      // The 100 rows of the superseded drain are gone, not appended to.
-      expect(store.entities()).toHaveLength(1);
-      expect(store.totalCount()).toBe(1);
-    });
-
-    it('carries the filter through every page of one drain', () => {
-      store.bindSource(true);
-      expectGeneratedRequest().flush(documentPage(fullPage(), { totalCount: 150 }));
-      TestBed.tick();
-
-      expectGeneratedRequest().flush(
-        documentPage(fullPage(50), { totalCount: 150, skip: DOCUMENT_PAGE_SIZE }),
-      );
-      TestBed.tick();
-
-      expect(store.entities()).toHaveLength(150);
-    });
-
-    it('drops the previous rows the moment the origin changes', () => {
-      store.bindSource(false);
-      expectRequest().flush(documentPage([userDocumentFixture()]));
-      TestBed.tick();
-      expect(store.totalCount()).toBe(1);
-
-      store.bindSource(true);
-
-      // Held rows under the new filter would be counted and captioned as that filter's
-      // set for a whole round trip; the skeleton is the honest thing to show instead.
-      expect(store.entities()).toEqual([]);
-      expect(store.totalCount()).toBe(0);
-      expect(store.isFirstLoad()).toBe(true);
-
-      expectGeneratedRequest().flush(documentPage([]));
-      TestBed.tick();
-    });
-
-    it('names the narrowed set in every count and notice', () => {
-      store.bindSource(true);
-
-      for (let page = 0; page * DOCUMENT_PAGE_SIZE < DOCUMENT_LOAD_CEILING; page++) {
-        expectGeneratedRequest().flush(
-          documentPage(fullPage(), { totalCount: 600, skip: page * DOCUMENT_PAGE_SIZE }),
-        );
-        TestBed.tick();
-      }
-
-      // Every one of these would otherwise describe the whole library, which is the
-      // dishonesty serving the filter exists to avoid.
-      expect(store.countSummary()).toBe('600 generated documents');
-      expect(store.ceilingNotice()).toBe('Showing the 500 most recent of 600 generated documents.');
-
-      store.bindQuery('no-fixture-is-named-this');
-      TestBed.tick();
-
-      expect(store.resultsPartialReason()).toBe(
-        'Only the 500 most recent generated documents have loaded.',
-      );
-    });
-
-    it('retries the drain the filter last ran with', () => {
-      store.bindSource(true);
-      expectGeneratedRequest().error(new ProgressEvent('error'));
-      TestBed.tick();
-
-      store.retry();
-
-      expectGeneratedRequest().flush(documentPage([]));
-      TestBed.tick();
-      expect(store.isFulfilled()).toBe(true);
-    });
-  });
-
-  it('cancels its drain on sign-out and empties', () => {
-    store.bindSource(false);
-    expectRequest().flush(documentPage(fullPage(), { totalCount: 250 }));
+    store.loadMore();
     TestBed.tick();
-
     const inFlight = expectRequest();
+
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     TestBed.tick();
 
+    // Clearing state is not cancelling work: `withResetOnSignOut` empties the store and the
+    // response would write the previous user's rows straight back over it.
     expect(inFlight.cancelled).toBe(true);
     expect(store.entities()).toEqual([]);
-    expect(store.truncated()).toBe(false);
+    expect(store.loadingMore()).toBe(false);
   });
 });

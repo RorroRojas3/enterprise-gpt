@@ -1056,6 +1056,138 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
+    public async Task GetDocuments_NameRequested_ReturnsOnlyMatchingDocuments()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var quarterlyId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "quarterly report.pdf", [],
+            cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "budget.pdf", [], cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?name=quarterly", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(quarterlyId, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetDocuments_NameRequested_ReachesADocumentRankedFarPastTheFirstPage()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        // Last, so it is the oldest of the 621 and sits far past any page a reader would reach by
+        // pressing Load more — the wall a client-side name filter could never see over.
+        var seeded = await _fixture.AddConversationDocumentsAsync(
+            conversationId,
+            [
+                .. Enumerable.Range(0, 620).Select(index => $"filler-{index:D4}.pdf"),
+                "needle-quarterly-forecast.pdf"
+            ],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?skip=0&take=25&name=needle-quarterly", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(seeded[^1], Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetDocuments_BlankName_NarrowsNothing()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentsAsync(
+            conversationId, ["notes.pdf", "budget.pdf"],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?name=%20%20", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(2, page.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetDocuments_NameAndType_NarrowTheSameQueryTogether()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "quarterly report.pdf", [],
+            cancellationToken: TestContext.Current.CancellationToken);
+        var generatedId = await _fixture.AddConversationDocumentAsync(
+            conversationId, "quarterly summary.docx", [],
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            conversationId, "budget summary.docx", [],
+            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?type=generated&name=quarterly", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(generatedId, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task GetDocuments_GroupedCount_ReportsTheConversationsDocumentsMatchingTheSameFilters()
+    {
+        var planningId = await _fixture.AddConversationAsync(name: "Planning", cancellationToken: TestContext.Current.CancellationToken);
+        var researchId = await _fixture.AddConversationAsync(name: "Research", cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentsAsync(
+            planningId, ["quarterly-a.pdf", "quarterly-b.pdf", "budget.pdf"],
+            cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentsAsync(
+            researchId, ["quarterly-findings.pdf"],
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var unfiltered = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents", TestContext.Current.CancellationToken);
+        var filtered = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?name=quarterly", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(unfiltered);
+        Assert.All(
+            unfiltered.Items.Where(x => x.ConversationId == planningId),
+            item => Assert.Equal(3, item.ConversationDocumentCount));
+        Assert.NotNull(filtered);
+        // The count follows the filter: two of Planning's three match, so a grouped client
+        // can say "2 of 2" rather than claiming the group holds three.
+        Assert.All(
+            filtered.Items.Where(x => x.ConversationId == planningId),
+            item => Assert.Equal(2, item.ConversationDocumentCount));
+        Assert.Equal(
+            1,
+            Assert.Single(filtered.Items, x => x.ConversationId == researchId).ConversationDocumentCount);
+    }
+
+    [Fact]
+    public async Task GetDocuments_NameRequested_StillExcludesAnotherUsersMatchingDocuments()
+    {
+        var theirConversation = await _fixture.AddConversationAsync(
+            TestUsers.AdminUserId, cancellationToken: TestContext.Current.CancellationToken);
+        await _fixture.AddConversationDocumentAsync(
+            theirConversation, "quarterly report.pdf", [], userId: TestUsers.AdminUserId,
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
+            "api/documents?name=quarterly", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(page);
+        Assert.Equal(0, page.TotalCount);
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
     public async Task GetConversationDocuments_GeneratedDocument_IsNotListedAmongTheConversationsUploads()
     {
         var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);

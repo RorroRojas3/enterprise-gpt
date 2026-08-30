@@ -125,6 +125,14 @@ export interface UserDocumentDto {
   readonly dateCreated: string;
   /** The owning conversation's name — present only on the cross-conversation route. */
   readonly conversationName: string;
+  /**
+   * How many of the owning conversation's active documents match the same `name`/`type`
+   * filters this listing was narrowed by — computed per response, never stored.
+   *
+   * A grouped client holds only what it has paged to, so this is the only way to say "3 of
+   * 8" rather than counting the rows in hand and calling that the whole group.
+   */
+  readonly conversationDocumentCount: number;
 }
 
 /**

@@ -20,18 +20,15 @@ import {
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { tapResponse } from '@ngrx/operators';
-import { EMPTY, Observable, Subject, expand, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
+import { Observable, Subject, exhaustMap, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
 import { PaginatedResponseDto } from '@domain/api/paginated-response';
 import { ProjectSummaryDto, toProjectSummary } from '@domain/api/project';
 import { toAppError } from '@core/errors/to-app-error';
 import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
-import {
-  PROJECT_LOAD_CEILING,
-  PROJECT_PAGE_SIZE,
-  matchesProjectTerm,
-} from '@core/projects/project-load';
+import { ToastStore } from '@core/notifications/toast-store';
+import { matchesProjectTerm } from '@core/projects/project-load';
 import {
   OffsetPaginationState,
   setFirstPage,
@@ -47,10 +44,15 @@ import {
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { DEFAULT_PROJECT_SORT, ProjectSortOption } from './projects-route';
 
-// Re-exported so this screen's own module still reads as one contract; they moved to
-// `core/projects/` when US-307's root lookup store needed them, and `core` may not
-// import `features`.
-export { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from '@core/projects/project-load';
+/**
+ * How many cards the grid asks for at a time, matching the conversations library's own
+ * page size so paging feels the same on both screens.
+ *
+ * Its own constant rather than `core/projects/project-load`'s `PROJECT_PAGE_SIZE`: that
+ * one is chosen so `ProjectLookupStore`'s drain costs the fewest round trips, and this
+ * one is chosen for a grid with a Load more control beneath it.
+ */
+export const PROJECT_LIST_PAGE_SIZE = 25;
 
 /** What the URL says about which projects to fetch, and in what order (US-901, US-902). */
 export interface ProjectListQuery {
@@ -69,20 +71,27 @@ interface ProjectListState {
   /**
    * The order the cards on screen are in.
    *
-   * Held for the same reason as {@link name}: the ceiling notice names it, and naming
-   * the order still on the wire would describe a grid nobody is looking at yet.
+   * Held for the same reason as {@link name}: an appended page continues the order the
+   * cards on screen are already in, not the one still on the wire.
    */
   readonly sort: ProjectSortOption;
-  /** The drain stopped at {@link PROJECT_LOAD_CEILING} with more still on the server. */
-  readonly truncated: boolean;
+  /**
+   * A *next page* is in flight, which is not the same as `isPending()`.
+   *
+   * A query replaces the cards and shows skeletons; a page appends to them and only
+   * marks the Load more control busy. Keeping them apart is what stops a second page
+   * from blanking a grid the reader is already looking at.
+   */
+  readonly loadingMore: boolean;
 }
 
 /**
  * Moves the offset and the total together, for a row that joined or left the set.
  *
- * Both, for the reason the conversations library documents: the total because the
- * ceiling notice would otherwise count rows that are gone, and the **offset** because
- * it is how many rows are held — and `hasMore` compares the two.
+ * Both, for the reason the conversations library documents: the total because "Showing
+ * N of M" would otherwise count rows that are gone, and the **offset** because the
+ * server no longer counts them either — leaving `skip` where it was would make the next
+ * page start short, and the cards that slid into the gap would never be fetched.
  */
 function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState> {
   return ({ skip, totalCount }) => ({
@@ -98,46 +107,45 @@ function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState
  * `switchMap` so a slow `"data"` cannot paint over a fast `"data platform"`, no
  * `debounceTime` because `SearchInput` already debounces and emits only committed
  * values, and `takeUntil(signedOut$)` on the request because `withResetOnSignOut`
- * clears state and does not cancel work — with one structural difference: **it drains
- * rather than pages.**
+ * clears state and does not cancel work.
  *
- * There is no Load more here and there never will be: the grid is a card grid, and one
- * that grew a page at a time would keep moving the reader's cursor. So each query walks
- * the pages itself, up to a stated ceiling, and {@link ProjectListState.truncated} is
- * what stops the shortfall being silent.
+ * **This store used to drain to a 500-project ceiling, and this comment used to say a
+ * Load more control would never exist here — a card grid growing a page at a time would
+ * keep moving the reader's cursor.** The product owner reversed that on 2026-08-29: the
+ * cursor cost is real but bounded, while the drain rendered up to 500 cards nobody had
+ * asked for and hid every project past the ceiling behind a sentence with no way out of
+ * it. The record stays because the reasoning was sound at the time, not because it still
+ * decides anything.
  *
  * **The order is the server's, not a comparator here (US-902).** `sort=` and `dir=` ride
- * every drained page, so the 500 the ceiling admits are the correct first 500 *in the
- * chosen order* — which is why the select is never disabled and why frame `4d`'s
- * "Sorting is unavailable…" line is not the one {@link ceilingNotice} renders.
+ * the first page and every appended one alike, which is what makes a Load more page a
+ * continuation of the same run rather than a second sorted run underneath the first.
  *
- * **`withClientQuery` is therefore not composed.** The store's doc block used to forecast
- * that it would be, over `entities` with `isAuthoritative: isFulfilled() &&
- * isFullyLoaded()`; that forecast was written when no endpoint accepted a sort parameter.
- * US-706 changed the premise, and filtering here was already server-side, so the feature
- * would contribute a second filter over an already-filtered set and a comparator nothing
- * would call.
+ * **`withClientQuery` is not composed.** Filtering here is already server-side, so the
+ * feature would contribute a second filter over an already-filtered set and a comparator
+ * nothing would call — and under paging it would narrow only the loaded window.
  */
 export const ProjectListStore = signalStore(
-  withState<ProjectListState>({ name: '', sort: DEFAULT_PROJECT_SORT, truncated: false }),
+  withState<ProjectListState>({ name: '', sort: DEFAULT_PROJECT_SORT, loadingMore: false }),
   withEntities<ProjectSummaryDto>(),
   withRequestStatus(),
-  withOffsetPagination(PROJECT_PAGE_SIZE),
+  withOffsetPagination(PROJECT_LIST_PAGE_SIZE),
   withProps(() => ({
     _http: inject(HttpClient),
+    _toasts: inject(ToastStore),
     _url: inject(ApiUrl).build('projects'),
     _signedOut$: injectSignedOut(),
     /**
-     * Cancels a drain whose result set no longer exists.
+     * Cancels a page whose result set no longer exists.
      *
-     * `switchMap` cancels the one request in flight when a new query arrives, but the
-     * drain is a *chain* of them: without this, a page fetched against the old term
-     * lands after the new query's `setAllEntities` and appends rows from a list that
-     * is gone.
+     * `switchMap` already cancels one *query* for the next, but a page is a separate
+     * request on a separate `rxMethod`: without this, a page fetched against the old
+     * term lands after the new query's `setAllEntities` and appends a window from a
+     * grid that is gone.
      */
     _querySuperseded$: new Subject<void>(),
   })),
-  withComputed(({ entities, isFulfilled, isPending, name, sort, totalCount }) => {
+  withComputed(({ entities, isFulfilled, isPending, name, totalCount }) => {
     const isEmpty = computed(() => isFulfilled() && entities().length === 0);
     const hasTerm = computed(() => name().trim() !== '');
 
@@ -155,26 +163,23 @@ export const ProjectListStore = signalStore(
        */
       isFirstLoad: computed(() => isPending() && entities().length === 0),
       /**
-       * What the grid is showing when the drain stopped short, and in what order.
-       *
-       * Neither of frame `4d`'s two claims survives US-706: the sort is not unavailable
-       * — the server applied it to the whole set before the ceiling cut it — and "the
-       * 500 most recent" is only true under one of the four orders on offer. What is
-       * left is a truncation, so the sentence states the truncation and names the order
-       * that produced it.
+       * The loaded half counts the cards actually on screen rather than reading `skip`:
+       * the two agree after a page, but a card deleted from anywhere decrements both
+       * counters, and counting cards keeps this honest whichever path moved them.
        */
-      ceilingNotice: computed(
-        () =>
-          `Showing the first ${entities().length} of ${totalCount()} projects, ${sort().order}.`,
-      ),
+      countSummary: computed(() => {
+        const total = totalCount();
+
+        return `Showing ${entities().length} of ${total} ${total === 1 ? 'project' : 'projects'}`;
+      }),
     };
   }),
   withMethods((store) => {
     function pageParams(query: ProjectListQuery, skip: number): HttpParams {
       const trimmed = query.name.trim();
-      // The order rides *every* page, not just the first: the drain is a sequence of
-      // requests and the server orders each one independently, so a page fetched without
-      // it would splice a differently-ordered run into the middle of the grid.
+      // The order rides *every* page, not just the first: the server orders each request
+      // independently, so an appended page fetched without it would splice a
+      // differently-ordered run underneath the first.
       let params = new HttpParams()
         .set('skip', String(skip))
         .set('take', String(store.take()))
@@ -199,30 +204,9 @@ export const ProjectListStore = signalStore(
       });
     }
 
-    /**
-     * The next step of the drain, or its end.
-     *
-     * The ceiling is recorded here rather than in a `finalize`, so it is written only
-     * when the drain genuinely stopped short — a `finalize` would also run on the
-     * cancellation a new query or a sign-out causes, and stamp a partial load as a
-     * truncated one.
-     */
-    function nextPage(
-      query: ProjectListQuery,
-    ): Observable<PaginatedResponseDto<ProjectSummaryDto>> {
-      if (!store.hasMore()) {
-        return EMPTY;
-      }
-
-      if (store.skip() >= PROJECT_LOAD_CEILING) {
-        patchState(store, { truncated: true });
-
-        return EMPTY;
-      }
-
-      return fetchPage(query, store.skip()).pipe(
-        tap((page) => patchState(store, addEntities(page.items), setPage(page))),
-      );
+    /** The query the cards on screen belong to, for a retry or a next page. */
+    function currentQuery(): ProjectListQuery {
+      return { name: store.name(), sort: store.sort() };
     }
 
     // No `distinctUntilChanged`: the signal source only emits on a real change, and
@@ -231,27 +215,14 @@ export const ProjectListStore = signalStore(
       pipe(
         tap(({ name, sort }) => {
           store._querySuperseded$.next();
-          patchState(store, { name, sort, truncated: false }, setPending());
+          patchState(store, { name, sort, loadingMore: false }, setPending());
         }),
         switchMap((query) =>
           fetchPage(query, 0).pipe(
-            tap((first) =>
-              patchState(store, setAllEntities(first.items), setFirstPage(first), setFulfilled()),
-            ),
-            // `expand` rather than a self-referential `concat`: each iteration completes
-            // and is dropped, so a five-page drain does not retain five nested
-            // subscribers — the same reason `UploadStatusClient.follow` uses it.
-            expand(() => nextPage(query)),
-            // On the whole chain, not the first request: `switchMap` cancels only what
-            // is in flight when the next query arrives, and the drain is a sequence.
-            takeUntil(merge(store._signedOut$, store._querySuperseded$)),
+            takeUntil(store._signedOut$),
             tapResponse({
-              // Each page is written by the taps above; this arm exists so that a
-              // failure mid-drain does not tear down the rxMethod's own subscription.
-              next: () => undefined,
-              // Whichever page failed, the panel replaces the grid: a half-drained set
-              // sorted or counted as if it were whole is the failure regime A exists to
-              // avoid, and Retry re-runs the query from the first page.
+              next: (page) =>
+                patchState(store, setAllEntities(page.items), setFirstPage(page), setFulfilled()),
               error: (cause: unknown) =>
                 patchState(store, setError(toAppError(cause, { url: store._url }))),
             }),
@@ -260,11 +231,51 @@ export const ProjectListStore = signalStore(
       ),
     );
 
+    const _loadNextPage = rxMethod<void>(
+      // exhaustMap: a second press while a page is on the wire is a double-click, not a
+      // request for the page after it. `skip` has not moved yet, so letting it through
+      // would fetch the same window twice.
+      exhaustMap(() => {
+        patchState(store, { loadingMore: true });
+
+        return fetchPage(currentQuery(), store.skip()).pipe(
+          takeUntil(merge(store._signedOut$, store._querySuperseded$)),
+          tapResponse({
+            // addEntities, not setAllEntities: this page joins the cards already on
+            // screen. `setPage` advances `skip` by what came back rather than by `take`,
+            // so a short page cannot leave a gap.
+            next: (page) => patchState(store, addEntities(page.items), setPage(page)),
+            error: (cause: unknown) =>
+              // A toast rather than `setError`: the cards already loaded are still valid,
+              // and swapping the grid for an error panel would throw away a result set
+              // the reader can still use.
+              void store._toasts.fromError(toAppError(cause, { url: store._url })),
+            finalize: () => patchState(store, { loadingMore: false }),
+          }),
+        );
+      }),
+    );
+
     return {
+      /**
+       * Removes a card that has left the result set, and keeps paging coherent.
+       *
+       * The cancellation is the subtle half. A page already on the wire had its URL built
+       * against the pre-removal offset, so once `skip` moves down beneath it that response
+       * appends the *next* window and the card that slid into the gap is fetched by
+       * neither request — a permanent hole, with the counter reading as if nothing were
+       * missing. Dropping the page is the cheaper loss: the reader can press Load more
+       * again.
+       */
+      _dropCard(id: string): void {
+        store._querySuperseded$.next();
+        patchState(store, removeEntity(id), shiftCounters(-1), { loadingMore: false });
+      },
+
       /**
        * Binds the screen's `?name=` and `?sort=` to the query, once, from its constructor.
        *
-       * Taking a computation rather than a value is what makes a deep link one drain:
+       * Taking a computation rather than a value is what makes a deep link one request:
        * `rxMethod` subscribes through an effect, so it reads the parameters the router
        * has already bound instead of firing unfiltered first and filtered second.
        */
@@ -272,7 +283,22 @@ export const ProjectListStore = signalStore(
 
       /** Re-runs the query the cards on screen belong to, after a failure. */
       retry(): void {
-        _runQuery({ name: store.name(), sort: store.sort() });
+        _runQuery(currentQuery());
+      },
+
+      /**
+       * Appends the next page in server order.
+       *
+       * `isPending()` is the load-bearing half of the guard. `_querySuperseded$` cancels
+       * a page a *later* query overtook, but it cannot help a page started *after* a
+       * query was already on the wire: that request carries the old `skip` against the
+       * new result set, and when it lands after `setFirstPage` it appends a window from
+       * the middle of a grid that no longer exists.
+       */
+      loadMore(): void {
+        if (!store.isPending() && !store.loadingMore() && store.hasMore()) {
+          _loadNextPage();
+        }
       },
     };
   }),
@@ -292,7 +318,7 @@ export const ProjectListStore = signalStore(
         // The head of the list, which is where a refetch would put it under either date
         // order. Under Alphabetical or Favourites first it is a guess, and deliberately
         // the same guess: the reader just made this project and wants to see it, and the
-        // alternative is re-draining up to five pages to move one card. The order settles
+        // alternative is refetching every loaded page to move one card. The order settles
         // on the next query.
         patchState(
           store,
@@ -312,7 +338,7 @@ export const ProjectListStore = signalStore(
         // that produced it, so it leaves rather than sitting in a filtered grid it does
         // not match — the rule US-703 applies to an unstarred conversation.
         if (!matchesProjectTerm(payload.name, store.name())) {
-          patchState(store, removeEntity(payload.id), shiftCounters(-1));
+          store._dropCard(payload.id);
 
           return;
         }
@@ -327,7 +353,7 @@ export const ProjectListStore = signalStore(
           return;
         }
 
-        patchState(store, removeEntity(id), shiftCounters(-1));
+        store._dropCard(id);
       }),
     ),
 
@@ -335,7 +361,7 @@ export const ProjectListStore = signalStore(
     // evict a card: this grid filters on `name=`, which a favourite does not change.
     //
     // It *can* change the order, under Favourites first — and the card still does not
-    // move. Re-draining up to five pages because the reader starred one card would
+    // move. Refetching every loaded page because the reader starred one card would
     // rearrange the grid under the cursor that pressed the star, which is a worse answer
     // than an order that settles on the next query. The other three orders are unaffected:
     // the server does not bump `dateModified` for a favourite either.

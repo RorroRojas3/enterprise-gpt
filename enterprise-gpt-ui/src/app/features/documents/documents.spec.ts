@@ -15,7 +15,7 @@ import { formatShortDate } from '@domain/format/relative-time';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { DOCUMENT_LOAD_CEILING, DOCUMENT_PAGE_SIZE } from './document-library-store';
+import { DOCUMENT_PAGE_SIZE } from './document-library-store';
 import { Documents } from './documents';
 
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;
@@ -69,17 +69,17 @@ describe('Documents (US-1002, US-1003)', () => {
   }
 
   /**
-   * The unfiltered drain. It refuses a request carrying `type=`, so a regression that
+   * The unfiltered listing. It refuses a request carrying `type=`, so a regression that
    * kept the origin filter after the URL dropped it fails here rather than passing.
    */
-  function expectDrain(): TestRequest {
+  function expectListing(): TestRequest {
     return backend.expectOne(
       (request) => request.url === DOCUMENTS_URL && !request.params.has('type'),
     );
   }
 
-  /** The drain a screen with the assistant-created filter on issues. */
-  function expectGeneratedDrain(): TestRequest {
+  /** The request a screen with the assistant-created filter on issues. */
+  function expectGeneratedListing(): TestRequest {
     return backend.expectOne(
       (request) => request.url === DOCUMENTS_URL && request.params.get('type') === 'generated',
     );
@@ -95,7 +95,7 @@ describe('Documents (US-1002, US-1003)', () => {
     items: UserDocumentDto[] = [userDocumentFixture()],
   ): Promise<void> {
     await harness.navigateByUrl(route, Documents);
-    expectDrain().flush(documentPage(items));
+    expectListing().flush(documentPage(items, { pageSize: DOCUMENT_PAGE_SIZE }));
     await harness.fixture.whenStable();
   }
 
@@ -135,10 +135,11 @@ describe('Documents (US-1002, US-1003)', () => {
     ];
   }
 
-  it('issues exactly one drain when opened', async () => {
+  it('issues exactly one request when opened', async () => {
     await open('/documents', twoConversations());
 
-    // `afterEach`'s `verify()` is what makes this "exactly one".
+    // `afterEach`'s `verify()` is what makes this "exactly one" — where the drain fired
+    // up to five before the reader had asked for anything.
     expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
     expect(element().querySelector('h1')?.textContent?.trim()).toBe('Documents');
   });
@@ -216,7 +217,7 @@ describe('Documents (US-1002, US-1003)', () => {
 
   it('offers a retry on a failure, instead of the listing — and instead of the toolbar', async () => {
     await harness.navigateByUrl('/documents', Documents);
-    expectDrain().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
+    expectListing().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
       status: 500,
       statusText: 'Internal Server Error',
     });
@@ -229,52 +230,221 @@ describe('Documents (US-1002, US-1003)', () => {
     );
     expect(panel?.querySelector('.error-panel__trace')?.textContent).toContain('Trace ID:');
     expect(element().querySelector('.documents__list')).toBeNull();
-    // Frame 4k draws the error card alone: a client-side filter over a failed load
-    // narrows nothing, so the toolbar goes too — unlike the conversations library,
-    // whose field drives a server query.
+    // Frame 4k draws the error card alone, so the toolbar goes with the listing —
+    // unlike the conversations library, whose field stays up beside its panel.
     expect(element().querySelector('app-search-input')).toBeNull();
     expect(element().querySelector('.documents__group-toggle')).toBeNull();
 
     panel?.querySelector<HTMLButtonElement>('button')?.click();
     await harness.fixture.whenStable();
 
-    const retried = expectDrain();
+    const retried = expectListing();
     expect(retried.request.params.get('skip')).toBe('0');
-    retried.flush(documentPage([userDocumentFixture()]));
+    retried.flush(documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }));
     await harness.fixture.whenStable();
 
     expect(element().querySelector('app-error-panel')).toBeNull();
     expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
   });
 
-  it('states the ceiling when the drain stopped short', async () => {
-    await harness.navigateByUrl('/documents', Documents);
+  describe('paging', () => {
+    function loadMoreButton(): HTMLButtonElement | null {
+      return element().querySelector<HTMLButtonElement>('.documents__more button');
+    }
 
-    for (let page = 0; page * DOCUMENT_PAGE_SIZE < DOCUMENT_LOAD_CEILING; page++) {
-      expectDrain().flush(
+    function rowNames(): (string | undefined)[] {
+      return [...element().querySelectorAll('.document-row__name')].map((row) =>
+        row.textContent?.trim(),
+      );
+    }
+
+    /** Opens with a full first page that leaves more behind. */
+    async function openPaged(totalCount = 60): Promise<void> {
+      await harness.navigateByUrl('/documents?view=flat', Documents);
+      expectListing().flush(
         documentPage(
-          Array.from({ length: DOCUMENT_PAGE_SIZE }, () => userDocumentFixture()),
-          { totalCount: 600, skip: page * DOCUMENT_PAGE_SIZE },
+          Array.from({ length: DOCUMENT_PAGE_SIZE }, (_, index) =>
+            userDocumentFixture({ name: `document-${index}.pdf` }),
+          ),
+          { totalCount, pageSize: DOCUMENT_PAGE_SIZE },
         ),
       );
       await harness.fixture.whenStable();
     }
 
-    expect(element().querySelectorAll('app-document-row')).toHaveLength(DOCUMENT_LOAD_CEILING);
-    expect(element().querySelector('.documents__ceiling')?.textContent?.trim()).toBe(
-      'Showing the 500 most recent of 600 documents.',
-    );
+    it('places one page of rows in the DOM, from one request', async () => {
+      await openPaged(600);
+
+      // The whole point: 25 rows and one round trip, where the drain put up to 500 there
+      // over five requests nobody asked for.
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(DOCUMENT_PAGE_SIZE);
+      backend.verify();
+    });
+
+    it('appends the next page in server order', async () => {
+      await openPaged();
+
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+
+      const request = expectListing();
+      expect(request.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE));
+      request.flush(
+        documentPage([userDocumentFixture({ name: 'document-25.pdf' })], {
+          totalCount: 60,
+          pageSize: DOCUMENT_PAGE_SIZE,
+          skip: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      const names = rowNames();
+      expect(names).toHaveLength(DOCUMENT_PAGE_SIZE + 1);
+      expect(names.at(0)).toBe('document-0.pdf');
+      expect(names.at(-1)).toBe('document-25.pdf');
+    });
+
+    it('removes the control rather than disabling it once everything is loaded', async () => {
+      await openPaged(DOCUMENT_PAGE_SIZE);
+
+      expect(loadMoreButton()).toBeNull();
+    });
+
+    it('marks the control busy while a page is on the wire', async () => {
+      await openPaged();
+
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+      expect(loadMoreButton()?.getAttribute('aria-disabled')).toBe('true');
+
+      expectListing().flush(
+        documentPage([], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }),
+      );
+      await harness.fixture.whenStable();
+    });
+
+    it('announces the busy state through the region that already carries the count', async () => {
+      await openPaged(312);
+
+      const status = element().querySelector('[role="status"]');
+      expect(status?.textContent?.trim()).toBe('Showing 25 of 312 documents');
+
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+
+      // One region, not two: a second live region describing the same list would have a
+      // screen reader announce the change twice.
+      expect(status?.textContent?.trim()).toBe('Showing 25 of 312 documents, loading more…');
+
+      expectListing().flush(
+        documentPage([], { totalCount: 312, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }),
+      );
+      await harness.fixture.whenStable();
+    });
+
+    it('fires the same request from the keyboard as from a click', async () => {
+      await openPaged();
+
+      const button = loadMoreButton()!;
+      button.focus();
+      // What Enter and Space do on a real `<button>`: the browser synthesises a click.
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await harness.fixture.whenStable();
+
+      const request = expectListing();
+      expect(request.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE));
+      request.flush(documentPage([], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }));
+      await harness.fixture.whenStable();
+    });
+
+    it('moves focus to the last row when the control removes itself', async () => {
+      await openPaged(DOCUMENT_PAGE_SIZE + 1);
+
+      const button = loadMoreButton()!;
+      button.focus();
+      button.click();
+      await harness.fixture.whenStable();
+
+      expectListing().flush(
+        documentPage([userDocumentFixture({ name: 'last.pdf' })], {
+          totalCount: DOCUMENT_PAGE_SIZE + 1,
+          pageSize: DOCUMENT_PAGE_SIZE,
+          skip: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      // The button the reader pressed is gone; without this, focus falls to `<body>` and
+      // most screen readers reset to the top of the document.
+      expect(loadMoreButton()).toBeNull();
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Download last.pdf');
+    });
+
+    it('leaves focus on the control while there is still more to load', async () => {
+      await openPaged(100);
+
+      const button = loadMoreButton()!;
+      button.focus();
+      button.click();
+      await harness.fixture.whenStable();
+
+      expectListing().flush(
+        documentPage([userDocumentFixture()], {
+          totalCount: 100,
+          pageSize: DOCUMENT_PAGE_SIZE,
+          skip: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      // Moving focus off a control the reader is repeatedly pressing would be the worse
+      // defect of the two.
+      expect(document.activeElement).toBe(loadMoreButton());
+    });
+
+    it('leaves focus where the reader put it while the page was on the wire', async () => {
+      await openPaged(DOCUMENT_PAGE_SIZE + 1);
+
+      loadMoreButton()!.focus();
+      loadMoreButton()!.click();
+      await harness.fixture.whenStable();
+
+      // The reader moved on mid-flight. Yanking them back out of the field they are
+      // typing in is worse than the focus loss the fallback exists to fix.
+      const field = element().querySelector<HTMLInputElement>('.search__field')!;
+      field.focus();
+
+      expectListing().flush(
+        documentPage([userDocumentFixture({ name: 'last.pdf' })], {
+          totalCount: DOCUMENT_PAGE_SIZE + 1,
+          pageSize: DOCUMENT_PAGE_SIZE,
+          skip: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(document.activeElement).toBe(field);
+    });
   });
 
   describe('filtering by name (US-1003)', () => {
-    it('narrows client-side: the URL gains the term and no request goes out', async () => {
+    it('asks the server, so a match past the loaded window still comes back', async () => {
       await open('/documents', twoConversations());
 
       await type('alpha');
 
-      // The whole point of regime A's drain: the set is already here.
-      backend.expectNone(() => true);
+      // The reversal this screen exists for: the filter used to narrow rows already held,
+      // which put every document past the load ceiling out of reach.
       expect(url()).toBe('/documents?name=alpha');
+      const request = expectListing();
+      expect(request.request.params.get('name')).toBe('alpha');
+      request.flush(
+        documentPage([userDocumentFixture({ name: 'alpha-plan.pdf' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
+
       const rows = [...element().querySelectorAll('app-document-row')];
       expect(rows).toHaveLength(1);
       expect(rows[0]?.querySelector('.document-row__name')?.textContent?.trim()).toBe(
@@ -286,30 +456,50 @@ describe('Documents (US-1002, US-1003)', () => {
       await open('/documents', twoConversations());
 
       await type('alp');
+      expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
+
       await type('alpha');
+      expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
       expect(url()).toBe('/documents?name=alpha');
 
-      // One press, not two: refining replaced rather than pushed, so back lands on
-      // the unfiltered list — and restores its rows without a request.
+      // One press, not two: refining replaced rather than pushed, so back lands on the
+      // unfiltered list.
       await goBack();
       expect(url()).toBe('/documents');
+      expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
     });
 
     it('removes the key when the term is cleared', async () => {
-      await open('/documents?name=alpha', twoConversations());
+      await open('/documents?name=alpha', [
+        userDocumentFixture({ name: 'alpha-plan.pdf', conversationName: 'Alpha' }),
+      ]);
       expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
 
       await type('');
 
       expect(url()).toBe('/documents');
+      expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
     });
 
-    it('filters a deep link on its one and only drain', async () => {
-      // Handing `bindQuery` the *signal* is what makes the first render filtered:
-      // reading its value in the constructor would flash the whole set first.
-      await open('/documents?name=beta', twoConversations());
+    it('filters a deep link on its one and only request', async () => {
+      // Handing `bindQuery` a computation is what makes that one request filtered:
+      // reading the values in the constructor would fire an unfiltered one first.
+      await harness.navigateByUrl('/documents?name=beta', Documents);
+
+      const request = expectListing();
+      expect(request.request.params.get('name')).toBe('beta');
+      request.flush(
+        documentPage([userDocumentFixture({ name: 'beta-notes.txt', conversationName: 'Beta' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
+      );
+      await harness.fixture.whenStable();
 
       const rows = [...element().querySelectorAll('app-document-row')];
       expect(rows).toHaveLength(1);
@@ -364,11 +554,14 @@ describe('Documents (US-1002, US-1003)', () => {
     });
 
     it('lets the term and the view survive each other', async () => {
-      await open('/documents?name=alpha', twoConversations());
+      await open('/documents?name=alpha', [
+        userDocumentFixture({ name: 'alpha-plan.pdf', conversationName: 'Alpha' }),
+      ]);
 
       groupSwitch().click();
       await harness.fixture.whenStable();
 
+      // A view change is not a query change, so no request goes out and the rows stay.
       expect(url()).toContain('name=alpha');
       expect(url()).toContain('view=flat');
       expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
@@ -382,8 +575,8 @@ describe('Documents (US-1002, US-1003)', () => {
       return input!;
     }
 
-    it('is off by default and sends no origin with the drain', async () => {
-      // `open` flushes through `expectDrain`, which refuses a request carrying `type=`.
+    it('is off by default and sends no origin with the request', async () => {
+      // `open` flushes through `expectListing`, which refuses a request carrying `type=`.
       await open('/documents', twoConversations());
 
       expect(sourceSwitch().checked).toBe(false);
@@ -392,14 +585,16 @@ describe('Documents (US-1002, US-1003)', () => {
 
     it('names the narrowed set in the count', async () => {
       await harness.navigateByUrl('/documents?source=generated', Documents);
-      expectGeneratedDrain().flush(
-        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      expectGeneratedListing().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
       );
       await harness.fixture.whenStable();
 
       // "1 document" would describe the library rather than the set on screen.
       expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
-        '1 generated document',
+        'Showing 1 of 1 generated document',
       );
     });
 
@@ -410,8 +605,10 @@ describe('Documents (US-1002, US-1003)', () => {
       await harness.fixture.whenStable();
 
       expect(url()).toBe('/documents?source=generated');
-      expectGeneratedDrain().flush(
-        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      expectGeneratedListing().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
       );
       await harness.fixture.whenStable();
 
@@ -425,19 +622,21 @@ describe('Documents (US-1002, US-1003)', () => {
 
       // Toggling back removes the key rather than writing `source=uploaded`.
       expect(url()).toBe('/documents');
-      expectDrain().flush(documentPage(twoConversations()));
+      expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
       await goBack();
       expect(url()).toBe('/documents?source=generated');
-      expectGeneratedDrain().flush(documentPage([]));
+      expectGeneratedListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
     });
 
     it('filters on first render from a deep link', async () => {
       await harness.navigateByUrl('/documents?source=generated', Documents);
-      expectGeneratedDrain().flush(
-        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      expectGeneratedListing().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
       );
       await harness.fixture.whenStable();
 
@@ -454,7 +653,7 @@ describe('Documents (US-1002, US-1003)', () => {
 
     it('explains an empty filtered set and offers the whole library back', async () => {
       await harness.navigateByUrl('/documents?source=generated', Documents);
-      expectGeneratedDrain().flush(documentPage([]));
+      expectGeneratedListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
       const empty = element().querySelector('app-empty-state');
@@ -467,37 +666,54 @@ describe('Documents (US-1002, US-1003)', () => {
       // The button removed itself with its branch, so focus has to land somewhere real.
       expect(document.activeElement).toBe(sourceSwitch());
       expect(url()).toBe('/documents');
-      expectDrain().flush(documentPage(twoConversations()));
+      expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
     });
 
-    it('drops a name term with the filter, so the way out shows every document', async () => {
+    it('reports a term with no matches as such, and clears only the term', async () => {
       await harness.navigateByUrl('/documents?source=generated&name=summary', Documents);
-      expectGeneratedDrain().flush(documentPage([]));
+      expectGeneratedListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
+
+      // The term is why nothing came back, and the server said so — "No generated
+      // documents yet" would claim something about the whole origin from a search result.
+      expect(element().querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
+        'No documents match “summary”',
+      );
 
       element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
       await harness.fixture.whenStable();
 
-      // Leaving `?name=` behind would land the reader on the no-matches card instead.
-      expect(url()).toBe('/documents');
-      expectDrain().flush(documentPage(twoConversations()));
+      // The origin switch stays where the reader left it: clearing a search is not a
+      // request to widen every other filter with it.
+      expect(url()).toBe('/documents?source=generated');
+      expectGeneratedListing().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
+      );
       await harness.fixture.whenStable();
-      expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
+      expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
     });
 
-    it('does not re-drain when only the term changes', async () => {
+    it('carries the origin with the term when only the term changes', async () => {
       await harness.navigateByUrl('/documents?source=generated', Documents);
-      expectGeneratedDrain().flush(
-        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      expectGeneratedListing().flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
       );
       await harness.fixture.whenStable();
 
       await type('summary');
 
-      // Every `?name=` navigation re-sets the `source` input; input equality is what
-      // stops that re-running the drain, and `afterEach`'s verify() is what proves it.
+      // One request for the pair, never one per parameter: both ride the same query.
+      const request = expectGeneratedListing();
+      expect(request.request.params.get('name')).toBe('summary');
+      request.flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
+
       expect(url()).toContain('source=generated');
     });
 
@@ -509,8 +725,12 @@ describe('Documents (US-1002, US-1003)', () => {
 
       expect(url()).toContain('name=summary');
       expect(url()).toContain('source=generated');
-      expectGeneratedDrain().flush(
-        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })]),
+      const request = expectGeneratedListing();
+      expect(request.request.params.get('name')).toBe('summary');
+      request.flush(
+        documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
+          pageSize: DOCUMENT_PAGE_SIZE,
+        }),
       );
       await harness.fixture.whenStable();
 
@@ -520,12 +740,17 @@ describe('Documents (US-1002, US-1003)', () => {
 
   describe('the grouped view (US-1003)', () => {
     it('draws a linking header with a count, and rows without the conversation column', async () => {
-      const alpha = userDocumentFixture({ name: 'alpha-plan.pdf', conversationName: 'Alpha' });
+      const alpha = userDocumentFixture({
+        name: 'alpha-plan.pdf',
+        conversationName: 'Alpha',
+        conversationDocumentCount: 2,
+      });
       const beta = userDocumentFixture({ name: 'beta-notes.txt', conversationName: 'Beta' });
       const alphaOlder = userDocumentFixture({
         name: 'alpha-summary.md',
         conversationId: alpha.conversationId,
         conversationName: 'Alpha',
+        conversationDocumentCount: 2,
       });
       await open('/documents', [alpha, beta, alphaOlder]);
 
@@ -546,6 +771,56 @@ describe('Documents (US-1002, US-1003)', () => {
       expect(element().querySelector('.document-row__conversation')).toBeNull();
       // The badge stays on every row in both shapes.
       expect(element().querySelectorAll('app-source-badge')).toHaveLength(3);
+    });
+
+    it('says how many of a conversation’s files a partially loaded group holds', async () => {
+      const alpha = userDocumentFixture({
+        name: 'alpha-plan.pdf',
+        conversationName: 'Alpha',
+        conversationDocumentCount: 8,
+      });
+      await open('/documents', [alpha]);
+
+      // "1 file" would claim the conversation holds one, which the server says it does not.
+      expect(element().querySelector('.documents__group-count')?.textContent?.trim()).toBe(
+        '1 of 8 files',
+      );
+    });
+
+    it('updates a group’s count as Load more appends rows to it', async () => {
+      const alpha = userDocumentFixture({
+        name: 'alpha-plan.pdf',
+        conversationName: 'Alpha',
+        conversationDocumentCount: 8,
+      });
+      await harness.navigateByUrl('/documents', Documents);
+      expectListing().flush(
+        documentPage([alpha], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      await harness.fixture.whenStable();
+
+      element().querySelector<HTMLButtonElement>('.documents__more button')!.click();
+      await harness.fixture.whenStable();
+
+      expectListing().flush(
+        documentPage(
+          [
+            userDocumentFixture({
+              name: 'alpha-summary.md',
+              conversationId: alpha.conversationId,
+              conversationName: 'Alpha',
+              conversationDocumentCount: 8,
+            }),
+          ],
+          { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 1 },
+        ),
+      );
+      await harness.fixture.whenStable();
+
+      expect(element().querySelector('.documents__group-count')?.textContent?.trim()).toBe(
+        '2 of 8 files',
+      );
+      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(1);
     });
 
     it('collapses a group from its chevron, removing its rows from the DOM', async () => {
@@ -588,13 +863,16 @@ describe('Documents (US-1002, US-1003)', () => {
       expect(empty?.querySelector('a')).toBeNull();
     });
 
-    it('tells the truth on a zero-document deep link that carries a term', async () => {
-      await open('/documents?name=ghost', []);
+    it('names the term on a zero-result deep link rather than the empty library', async () => {
+      await harness.navigateByUrl('/documents?name=ghost', Documents);
+      expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
 
-      // "Nothing uploaded yet", not "No documents match": clearing the filter
-      // would reveal nothing, so offering it would be a lie.
+      // "No documents match", not "Nothing uploaded yet": the server answered a question
+      // about the search, and claiming the library is empty from it would be a guess the
+      // response does not support.
       expect(element().querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
-        'Nothing uploaded yet',
+        'No documents match “ghost”',
       );
     });
 
@@ -602,11 +880,15 @@ describe('Documents (US-1002, US-1003)', () => {
       await open('/documents', twoConversations());
 
       await type('zzz');
+      expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
 
       const empty = element().querySelector('app-empty-state');
       expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
         'No documents match “zzz”',
       );
+      // Unqualified, because the server searched the whole library rather than the rows
+      // this screen happens to hold.
       expect(empty?.querySelector('.empty-state__message')?.textContent?.trim()).toBe(
         'Filters cover file names only.',
       );
@@ -614,69 +896,45 @@ describe('Documents (US-1002, US-1003)', () => {
       empty?.querySelector<HTMLButtonElement>('button')?.click();
       await harness.fixture.whenStable();
 
-      // Clearing is a navigation and a client-side re-widen — never a request.
-      backend.expectNone(() => true);
       expect(url()).toBe('/documents');
+      expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
+      await harness.fixture.whenStable();
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
       // The button removed itself with the empty state, so focus lands in the field.
       expect(document.activeElement?.classList.contains('search__field')).toBe(true);
-    });
-
-    it('qualifies the no-matches state over a truncated drain rather than lying', async () => {
-      await harness.navigateByUrl('/documents', Documents);
-
-      for (let page = 0; page * DOCUMENT_PAGE_SIZE < DOCUMENT_LOAD_CEILING; page++) {
-        expectDrain().flush(
-          documentPage(
-            Array.from({ length: DOCUMENT_PAGE_SIZE }, () => userDocumentFixture()),
-            { totalCount: 600, skip: page * DOCUMENT_PAGE_SIZE },
-          ),
-        );
-        await harness.fixture.whenStable();
-      }
-
-      await type('zzz');
-
-      // A match may sit in the 100 unloaded rows, so the scope line yields to the
-      // partial-set qualifier instead of claiming the whole library was searched.
-      const empty = element().querySelector('app-empty-state');
-      expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
-        'No documents match “zzz”',
-      );
-      expect(empty?.querySelector('.empty-state__message')?.textContent?.trim()).toBe(
-        'Only the 500 most recent documents have loaded.',
-      );
     });
   });
 
   describe('the count summary', () => {
     it('shows the count aria-hidden and announces it once through the status region', async () => {
-      await open('/documents', twoConversations());
+      await harness.navigateByUrl('/documents', Documents);
+      expectListing().flush(
+        documentPage(twoConversations(), { totalCount: 312, pageSize: DOCUMENT_PAGE_SIZE }),
+      );
+      await harness.fixture.whenStable();
 
       const visible = element().querySelector('.documents__count');
-      expect(visible?.textContent?.trim()).toBe('2 documents');
+      expect(visible?.textContent?.trim()).toBe('Showing 2 of 312 documents');
       expect(visible?.getAttribute('aria-hidden')).toBe('true');
 
       const status = element().querySelector('[role="status"]');
-      expect(status?.textContent?.trim()).toBe('2 documents');
-
-      await type('alpha');
-
-      expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
-        'Showing 1 of 2 documents',
-      );
+      expect(status?.textContent?.trim()).toBe('Showing 2 of 312 documents');
     });
 
-    it('withholds the count while the first drain runs', async () => {
+    it('withholds the count while the first page loads', async () => {
       await harness.navigateByUrl('/documents', Documents);
 
       expect(element().querySelector('.documents__count')).toBeNull();
       expect(element().querySelector('[role="status"]')?.textContent?.trim()).toBe('');
 
-      expectDrain().flush(documentPage([userDocumentFixture()]));
+      expectListing().flush(
+        documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }),
+      );
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe('1 document');
+      expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
+        'Showing 1 of 1 document',
+      );
     });
   });
 });

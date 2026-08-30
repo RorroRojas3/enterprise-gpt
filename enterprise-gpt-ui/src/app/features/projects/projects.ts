@@ -39,7 +39,7 @@ import {
   toProjectSort,
 } from './projects-route';
 
-/** How many skeleton cards stand in for the grid while the first drain runs. */
+/** How many skeleton cards stand in for the grid while the first page loads. */
 const SKELETON_CARDS = 6;
 
 /**
@@ -62,9 +62,9 @@ const SKELETON_CARDS = 6;
  * grid under entries nobody chose.
  *
  * Two departures from frame `4c` and `4d` are deliberate, and both are the board being
- * older than the API: the select is **never disabled** past the load ceiling, since
- * US-706 made the order the server's rather than a comparator over a partial set; and the
- * fourth option reads "Favourites first" where the board says "Pinned".
+ * older than the API: the select is **never disabled**, since US-706 made the order the
+ * server's rather than a comparator over a partial set; and the fourth option reads
+ * "Favourites first" where the board says "Pinned".
  */
 @Component({
   selector: 'app-projects',
@@ -136,7 +136,7 @@ export class Projects {
    * A `Date.now()` read from a template binding would be a fresh value on every change
    * detection pass, which `provideCheckNoChangesConfig({ exhaustive: true })` compares
    * between passes — and would recompute every label on every unrelated render. The
-   * clock is sampled once per drain instead; labels are minute-granular at their
+   * clock is sampled once per result set instead; labels are minute-granular at their
    * finest, so nothing visible is lost.
    */
   private readonly _updatedLabels = computed(() => {
@@ -160,8 +160,8 @@ export class Projects {
    *
    * `ProjectCard.link` is a signal `input()`, so a fresh `[route, id]` literal fails
    * `Object.is` on every change-detection pass — writing the input, marking every card
-   * dirty and re-running `RouterLink`'s href update. At the 500-project ceiling this
-   * store deliberately materialises, that is OnPush defeated across the whole grid.
+   * dirty and re-running `RouterLink`'s href update, which is OnPush defeated across the
+   * whole grid.
    */
   protected linkFor(project: ProjectSummaryDto): string {
     return `${PROJECTS_ROUTE}/${project.id}`;
@@ -176,6 +176,9 @@ export class Projects {
    * tell this screen that the reader was the cause.
    */
   private readonly _focusAfterEmptied = signal(false);
+
+  /** The reader pressed Load more and focus has to survive the page landing. */
+  private readonly _focusAfterPage = signal(false);
 
   constructor() {
     // The constructor is an injection context, which a signal-valued reactive method
@@ -207,6 +210,38 @@ export class Projects {
       this._focusAfterEmptied.set(false);
       afterNextRender(() => this._focusField(), { injector: this._injector });
     });
+
+    // The other control on this screen that removes itself: Load more goes when the last
+    // page lands, leaving the reader who pressed it standing on a node that no longer
+    // exists and focus on `<body>`.
+    effect(() => {
+      const settled = !this.projects.loadingMore();
+      // Untracked, so clearing the request below cannot re-enter this effect, and so the
+      // only thing it waits on is the page.
+      const requested = untracked(this._focusAfterPage);
+
+      if (!settled || !requested) {
+        return;
+      }
+
+      this._focusAfterPage.set(false);
+
+      // Still there and still focused: the reader is paging through, and moving focus off
+      // the control they are pressing would be the worse defect.
+      if (untracked(this.projects.hasMore)) {
+        return;
+      }
+
+      afterNextRender(() => this._focusLastCard(), { injector: this._injector });
+    });
+  }
+
+  protected onLoadMore(): void {
+    this.projects.loadMore();
+    // Only when a page actually started. The control carries `aria-disabled` rather than
+    // `disabled`, so a press during a narrowing search still reaches this — and
+    // `loadMore()` no-ops there, leaving a flag that would never be cleared.
+    this._focusAfterPage.set(this.projects.loadingMore());
   }
 
   /**
@@ -277,6 +312,35 @@ export class Projects {
     // `<body>` inside a grid the reader then has to find again. The field is outside
     // every branch of the template, so it is always connected.
     this._search().focusField();
+  }
+
+  /**
+   * Puts focus on the last card after the final page, since the control that was holding
+   * it has gone.
+   *
+   * The card's name link rather than its kebab: it is the card's own heading, so a screen
+   * reader lands on something that names where the reader now is. The field is the
+   * fallback because it is the only control outside every branch of the template.
+   */
+  private _focusLastCard(): void {
+    // Only when focus actually fell through. A reader who clicked into the search field
+    // while the page was on the wire must not be yanked out of it.
+    const active = this._document.activeElement;
+    const fellThrough = active === null || active === this._document.body || !active.isConnected;
+
+    if (!fellThrough) {
+      return;
+    }
+
+    const cards = this._host.nativeElement.querySelectorAll<HTMLElement>('.project-card__name');
+    const last = cards.item(cards.length - 1);
+
+    if (last === null) {
+      this._search().focusField();
+      return;
+    }
+
+    last.focus();
   }
 
   /** Moves focus to the search field when the last card leaves the grid. */

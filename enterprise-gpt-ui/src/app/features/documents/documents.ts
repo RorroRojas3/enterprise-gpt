@@ -1,11 +1,16 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DOCUMENT,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
+  effect,
   inject,
   input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
@@ -27,7 +32,7 @@ import {
   shouldReplaceHistory,
 } from './documents-route';
 
-/** How many skeleton rows stand in for the list while the first drain runs. */
+/** How many skeleton rows stand in for the list while the first page loads. */
 const SKELETON_ROWS = 6;
 
 /**
@@ -38,8 +43,8 @@ const SKELETON_ROWS = 6;
  * contract: `withComponentInputBinding()` binds `?name=`, `?view=` and `?source=` to the
  * inputs, {@link _applyQuery} is the only writer, and the loop cannot feed itself because
  * a navigation re-seeds `SearchInput`'s `linkedSignal`, whose debounce finds the text
- * unchanged and emits nothing. Only the name filter is client-side; the origin is served,
- * for the reason `DocumentLibraryState.generatedOnly` records.
+ * unchanged and emits nothing. Both filters are served, so a search reaches every document
+ * the caller holds rather than the window this screen happens to have paged to.
  */
 @Component({
   selector: 'app-documents',
@@ -88,6 +93,9 @@ export class Documents {
 
   private readonly _router = inject(Router);
   private readonly _route = inject(ActivatedRoute);
+  private readonly _injector = inject(Injector);
+  private readonly _document = inject(DOCUMENT);
+  private readonly _host = inject<ElementRef<HTMLElement>>(ElementRef);
   // Optional, unlike the conversations screen's: the toolbar — and the field with
   // it — is withheld in the error branch here, so `required` would be a lie.
   private readonly _search = viewChild(SearchInput);
@@ -114,12 +122,29 @@ export class Documents {
   /**
    * Frame `4b`'s heading shape, naming the term.
    *
-   * Read from the **store's** committed `query()`, not from {@link name}: the store's
-   * copy is the one the empty result belongs to.
+   * Read from the **store's** committed name, not from {@link name}: the store's copy is
+   * the one the empty result belongs to.
    */
-  protected readonly noMatchHeading = computed(
-    () => `No documents match “${this.library.query()}”`,
-  );
+  protected readonly noMatchHeading = computed(() => `No documents match “${this.library.name()}”`);
+
+  /**
+   * The count and the busy state as one string, because they share one live region.
+   *
+   * Built here rather than interpolated beside an `@if` in the template, where the
+   * formatter's line breaks become whitespace inside the announced text.
+   */
+  protected readonly announcement = computed(() => {
+    if (this.library.isFirstLoad()) {
+      return '';
+    }
+
+    const summary = this.library.countSummary();
+
+    return this.library.loadingMore() ? `${summary}, loading more…` : summary;
+  });
+
+  /** The reader pressed Load more and focus has to survive the page landing. */
+  private readonly _focusAfterPage = signal(false);
 
   /**
    * Conversations whose group the reader collapsed.
@@ -136,11 +161,42 @@ export class Documents {
 
   constructor() {
     // The constructor is an injection context, which a signal-valued reactive method
-    // requires. Handing over the signals — not their values — is what makes a deep link
-    // filter on its first render rather than flashing the unfiltered set. Binding the
-    // origin is also what starts the listing: its first value runs the first drain.
-    this.library.bindSource(this.source);
-    this.library.bindQuery(this.name);
+    // requires. Handing over a computation — not the values — is what makes a deep link
+    // issue one request carrying both filters, rather than an unfiltered request followed
+    // by a filtered one. It is also what starts the listing.
+    this.library.bindQuery(() => ({ name: this.name(), generatedOnly: this.source() }));
+
+    // Focus, not state — the one thing a signal cannot express declaratively. Load more
+    // removes itself when the last page lands, leaving the reader who pressed it standing
+    // on a node that no longer exists and focus on `<body>`.
+    effect(() => {
+      const settled = !this.library.loadingMore();
+      // Untracked, so clearing the request below cannot re-enter this effect, and so the
+      // only thing it waits on is the page.
+      const requested = untracked(this._focusAfterPage);
+
+      if (!settled || !requested) {
+        return;
+      }
+
+      this._focusAfterPage.set(false);
+
+      // Still there and still focused: the reader is paging through, and moving focus off
+      // the control they are pressing would be the worse defect.
+      if (untracked(this.library.hasMore)) {
+        return;
+      }
+
+      afterNextRender(() => this._focusLastRow(), { injector: this._injector });
+    });
+  }
+
+  protected onLoadMore(): void {
+    this.library.loadMore();
+    // Only when a page actually started. The control carries `aria-disabled` rather than
+    // `disabled`, so a press during a narrowing search still reaches this — and
+    // `loadMore()` no-ops there, leaving a flag that would never be cleared.
+    this._focusAfterPage.set(this.library.loadingMore());
   }
 
   protected isExpanded(conversationId: string): boolean {
@@ -202,6 +258,35 @@ export class Documents {
     // The button is inside the branch this navigation tears down, so focus would fall to
     // `<body>`; the switch it just turned off is where the state now lives.
     this._sourceSwitch()?.nativeElement.focus();
+  }
+
+  /**
+   * Puts focus on the last row after the final page, since the control that was holding it
+   * has gone.
+   *
+   * The download button rather than the file name: the name is a `<span>`, and the button
+   * is the one control every row renders in both view modes. The filter field is the
+   * fallback because it is the only control outside every branch of the listing.
+   */
+  private _focusLastRow(): void {
+    // Only when focus actually fell through. A reader who clicked into the filter field
+    // while the page was on the wire must not be yanked out of it.
+    const active = this._document.activeElement;
+    const fellThrough = active === null || active === this._document.body || !active.isConnected;
+
+    if (!fellThrough) {
+      return;
+    }
+
+    const actions = this._host.nativeElement.querySelectorAll<HTMLElement>('.document-row__action');
+    const last = actions.item(actions.length - 1);
+
+    if (last === null) {
+      this._search()?.focusField();
+      return;
+    }
+
+    last.focus();
   }
 
   /**
