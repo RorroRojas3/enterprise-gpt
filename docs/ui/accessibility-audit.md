@@ -39,7 +39,7 @@ So the work is one new test target, one harness, five audit specs, one coverage 
 ```bash
 # from enterprise-gpt-ui/
 npx --no playwright install chromium   # once per machine
-npm run test:a11y                      # 36 audits in headless Chromium
+npm run test:a11y                      # 80 audits in headless Chromium
 ```
 
 `pretest:a11y` runs `npm run assets` first, so the generated fonts and icon sprite exist — exactly as `pretest` does for `npm test`.
@@ -93,10 +93,13 @@ The three devDependencies behind it are `@vitest/browser-playwright`, `playwrigh
 
 **`VIEWPORTS` and `atViewport(name)`** are the three widths US-1403 defines: `desktop` 1280×900, `tablet` 900×800, `mobile` 390×844.
 
-**`expectNoHorizontalOverflow(root, label)`** is US-1403's last criterion, and only a real browser can answer it. Two details make it useful rather than noisy:
+**`expectNoHorizontalOverflow(root, label)`** is US-1403's last criterion, and only a real browser can answer it. Three details make it useful rather than noisy:
 
 - It measures **descendants of the shell**, not `document.body`. Inside the signed-in app the shell is `height: 100dvh; overflow: hidden`, so the body can never scroll in either axis and a body-level assertion is vacuously true however badly a screen overflows.
 - It reports a node only when `scrollWidth > clientWidth + 1` **and** its computed `overflow-x` is `hidden`. An `auto` or `scroll` container is a deliberate scroll region — a code block, the pill strip, a wide table — and reporting those would be reporting the design. Nodes 1px wide or narrower are skipped, because a `visually-hidden` element is a clipped 1×1 box whose content is _meant_ to overflow it; without that skip the check's first run produced three false positives and nothing real.
+- **A pure text run that both ellipsises and refuses to wrap is contained, not reported.** `node.childElementCount === 0` plus a computed `text-overflow: ellipsis` and `white-space: nowrap` together mean the pattern is doing its job — pushing nothing sideways. `nowrap` is the load-bearing half of the pair: a `<td>` also sets `overflow: hidden` and `text-overflow: ellipsis`, but it *wraps*, so a cell clipping content it cannot actually ellipsise is still reported. The carve-out bounds containment only — it says nothing about whether the surviving text is still worth reading. Verified non-vacuous by reverting `PermissionBadge`'s own shrink fix, which fails `/admin/mcps` again at desktop and tablet, on `td.align-start`.
+
+**Per-spec helpers build on top of these rather than reaching past them.** `admin.a11y.spec.ts`'s `openInShell(url, width)` calls `atViewport` and `open`, then narrows the returned element by the width the shell's own sidebar actually leaves at that breakpoint — 260px in the flow at desktop, a 60px strip at tablet, 0px once it is in the drawer at mobile. Auditing a routed screen against the bare viewport instead gives it room production never does: doing exactly that let two card-anatomy defects through a first pass of these audits, because the bare viewport had headroom the shell's own chrome always claims first (see [Administration §3.3.1](administration.md#331-six-defects-in-the-card-anatomy-and-four-bugs-found-while-fixing-them)).
 
 ## 5. What is covered
 
@@ -115,16 +118,18 @@ export const AXE_ROUTES = [
 ];
 ```
 
-Every one of the eight is rendered in both themes. Six spec files, **36 tests**:
+Every one of the eight is rendered in both themes. Eight spec files, **80 tests**:
 
 | Spec                             | Tests | What it renders                                                                                                      |
 | -------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
-| `shell.a11y.spec.ts`             | 13    | The whole frame at three widths × two themes, plus the same six checked for horizontal overflow, plus one landmark assertion |
-| `admin.a11y.spec.ts`             | 8     | The four admin tabs × two themes, through `admin.routes.ts` with real stores and real data                            |
-| `chat.a11y.spec.ts`              | 4     | The empty chat screen and an open conversation × two themes                                                          |
-| `projects.a11y.spec.ts`          | 4     | The projects grid and the conversation library × two themes                                                          |
-| `documents.a11y.spec.ts`         | 4     | The documents library × two themes × both of US-1003's view modes — the grouped default and `?view=flat` render different anatomies |
+| `shell.a11y.spec.ts`             | 14    | The whole frame at three widths × two themes, plus the same six checked for horizontal overflow, plus one landmark assertion |
+| `admin.a11y.spec.ts`             | 26    | The four admin tabs × two themes, through `admin.routes.ts` with real stores and real data; plus nine viewport-fitting checks — the user directory, the model catalog and the MCP registry, each at desktop, tablet and mobile, through `openInShell` (§4) |
+| `chat.a11y.spec.ts`              | 12    | The empty chat screen and an open conversation × two themes                                                          |
+| `projects.a11y.spec.ts`          | 8     | The projects grid and the conversation library × two themes                                                          |
+| `documents.a11y.spec.ts`         | 13    | The documents library × two themes × both of US-1003's view modes — the grouped default and `?view=flat` render different anatomies |
 | `unavailable-panel.a11y.spec.ts` | 3     | The harness smoke test (§3), plus the panel itself × two themes                                                      |
+| `activity-card.a11y.spec.ts`     | 2     | The tool-activity card × two themes                                                                                  |
+| `email-card.a11y.spec.ts`        | 2     | The composed-email card × two themes                                                                                 |
 
 The audits mount screens **through their real routes with real fixture data**, not components in isolation with empty state — which is the configuration in which almost nothing is wrong. Each attaches its element to `document.body`, because axe reads computed style and a detached element has none.
 

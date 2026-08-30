@@ -2,7 +2,17 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
+  max-width: 100%;
   font-size: 12.5px;
+}
+
+// A provider name is longer than the track it is drawn in once the table narrows, and the
+// dot beside it must not be the part that gives way.
+.status-dot__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-dot__mark {

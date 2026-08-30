@@ -11,7 +11,12 @@ import { MenuTriggerContent } from './menu-trigger-content';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Menu, MenuItem, MenuSeparator],
   template: `
-    <app-menu label="Actions for Helios release" [hint]="hint()" [(open)]="menuOpen">
+    <app-menu
+      label="Actions for Helios release"
+      [hint]="hint()"
+      [direction]="direction()"
+      [(open)]="menuOpen"
+    >
       <button id="rename" appMenuItem type="button">Rename</button>
       <button id="favourite" appMenuItem type="button">Favourite</button>
       <hr appMenuSeparator />
@@ -23,6 +28,7 @@ import { MenuTriggerContent } from './menu-trigger-content';
 class MenuHost {
   readonly menuOpen = signal(false);
   readonly hint = signal<string | null>(null);
+  readonly direction = signal<'down' | 'up'>('down');
 }
 
 describe('Menu', () => {
@@ -214,6 +220,43 @@ describe('Menu', () => {
 
       const flyout = menu.trigger.querySelector('.app-tooltip');
       expect(flyout?.textContent).toBe('Available when the response finishes');
+    });
+
+    /**
+     * A `down` trigger is typically in a top bar with nothing above it, where a `top`
+     * flyout gets clamped back over the control it is describing.
+     */
+    it('places the hint on the side the panel opens to', async () => {
+      const menu = await render();
+      menu.fixture.componentInstance.hint.set('Available when the response finishes');
+      await menu.fixture.whenStable();
+
+      menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
+      await menu.fixture.whenStable();
+
+      expect(menu.trigger.querySelector('.app-tooltip')?.getAttribute('data-placement')).toBe(
+        'bottom',
+      );
+    });
+
+    /**
+     * No consumer changes `direction` while a hint is on screen. This pins the wiring
+     * rather than the geometry: that a live change reaches the flyout at all. The
+     * re-measurement it triggers is covered in the directive.
+     */
+    it('follows a direction change made while the hint is showing', async () => {
+      const menu = await render();
+      menu.fixture.componentInstance.hint.set('Available when the response finishes');
+      await menu.fixture.whenStable();
+      menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
+      await menu.fixture.whenStable();
+
+      menu.fixture.componentInstance.direction.set('up');
+      await menu.fixture.whenStable();
+
+      expect(menu.trigger.querySelector('.app-tooltip')?.getAttribute('data-placement')).toBe(
+        'top',
+      );
     });
 
     /**

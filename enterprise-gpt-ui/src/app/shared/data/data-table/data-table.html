@@ -31,44 +31,75 @@
             />
           }
 
+          <!-- The template/text fallback below is repeated per slot rather than shared:
+               one `ng-template` fed a context object would allocate that object on every
+               check, which the exhaustive check-no-changes pass fails outright. -->
           <div cardRowTitle>
             @for (column of slots.title; track column.key) {
-              <ng-container
-                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
-                [ngTemplateOutletContext]="view"
-              />
+              @let template = cellTemplates().get(column.key) ?? null;
+              @if (template) {
+                <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+              } @else {
+                {{ cellText(column, view.row) }}
+              }
             }
           </div>
           <div cardRowSubtitle>
             @for (column of slots.subtitle; track column.key) {
-              <ng-container
-                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
-                [ngTemplateOutletContext]="view"
-              />
+              @let template = cellTemplates().get(column.key) ?? null;
+              @if (template) {
+                <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+              } @else {
+                {{ cellText(column, view.row) }}
+              }
             }
           </div>
-          <div cardRowMeta>
+          <!-- Labelled, because the column header that gives a value its meaning on the
+               desktop table has nowhere to go on a card: three stacked numbers under a
+               model name say nothing about which is the context window. -->
+          <dl cardRowMeta class="card-meta">
             @for (column of slots.meta; track column.key) {
-              <ng-container
-                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
-                [ngTemplateOutletContext]="view"
-              />
+              <div class="card-meta__pair">
+                <dt class="card-meta__label">{{ column.header }}</dt>
+                <dd class="card-meta__value">
+                  @let template = cellTemplates().get(column.key) ?? null;
+                  @if (template) {
+                    <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+                  } @else {
+                    {{ cellText(column, view.row) }}
+                  }
+                </dd>
+              </div>
             }
-          </div>
+          </dl>
           <div cardRowBadges>
             @for (column of slots.badges; track column.key) {
-              <ng-container
-                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
-                [ngTemplateOutletContext]="view"
-              />
+              @let template = cellTemplates().get(column.key) ?? null;
+              @if (template) {
+                <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+              } @else {
+                {{ cellText(column, view.row) }}
+              }
+            }
+          </div>
+          <div cardRowTrailing>
+            @for (column of slots.trailing; track column.key) {
+              @let template = cellTemplates().get(column.key) ?? null;
+              @if (template) {
+                <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+              } @else {
+                {{ cellText(column, view.row) }}
+              }
             }
           </div>
           <div cardRowActions>
             @for (column of slots.actions; track column.key) {
-              <ng-container
-                [ngTemplateOutlet]="cellTemplates().get(column.key) ?? null"
-                [ngTemplateOutletContext]="view"
-              />
+              @let template = cellTemplates().get(column.key) ?? null;
+              @if (template) {
+                <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
+              } @else {
+                {{ cellText(column, view.row) }}
+              }
             }
           </div>
         </app-card-row>
@@ -106,7 +137,7 @@
             }
           </th>
         }
-        @for (column of columns(); track column.key) {
+        @for (column of visibleColumns(); track column.key) {
           <th role="columnheader" scope="col" [class]="'align-' + (column.align ?? 'start')">
             <span [class.visually-hidden]="column.headerHidden">{{ column.header }}</span>
           </th>
@@ -128,7 +159,7 @@
               />
             </td>
           }
-          @for (column of columns(); track column.key) {
+          @for (column of visibleColumns(); track column.key) {
             @let template = cellTemplates().get(column.key) ?? null;
             <td role="cell" [class]="'align-' + (column.align ?? 'start')">
               @if (template) {

@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: block;
 }
@@ -23,6 +25,11 @@
   min-width: 0;
   flex: 1 1 220px;
   max-width: 300px;
+
+  @include bp.mobile {
+    flex-basis: 100%;
+    max-width: none;
+  }
 }
 
 .admin-mcps__add {
@@ -34,6 +41,14 @@
   border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
+
+  // Once the toolbar has wrapped the auto margin strands the button on a line of its own.
+  @include bp.mobile {
+    justify-content: center;
+    width: 100%;
+    height: 44px;
+    margin-left: 0;
+  }
 }
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
@@ -63,7 +78,7 @@
 // A deactivated server is still listed, so it needs a second channel besides the Status
 // column: the name itself recedes. Opacity rather than a colour swap, and never below the
 // 4.5:1 the muted token already clears against the row.
-.admin-mcps__name--retired {
+.admin-mcps__server--retired {
   opacity: 0.65;
 }
 
@@ -74,4 +89,22 @@
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@include bp.mobile {
+  // A URL and a scope are read character by character when they are wrong, and the `title`
+  // the table cells lean on has no hover to open it on a card.
+  .admin-mcps__muted {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  // A card has the vertical room the table row never had, so the name wraps rather than
+  // losing its tail to an ellipsis no hover can reopen.
+  .admin-mcps__name {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
 }

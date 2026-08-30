@@ -1,8 +1,6 @@
-// No `overflow: hidden` here, deliberately. The collapsed strip's tooltip flyout is
-// positioned at `left: 54px` inside a 60px column, so it sits *outside* this element
-// by design (frame 3b) — clipping it would silently drop US-301's tooltip criterion.
-// During the 200ms expand the contents reflow at the animating width instead of
-// overflowing, which is what a sidebar animation looks like anyway.
+// No `overflow: hidden` here. The collapsed strip's tooltip flyout is positioned outside
+// this column, and during the 200ms expand the contents reflow at the animating width
+// instead of overflowing, which is what a sidebar animation looks like anyway.
 :host {
   display: block;
   min-width: 0;

@@ -89,15 +89,15 @@ html:has(dialog[open]) {
 // The colours are tokens rather than the board's literal #0B1F33 on white: that hex
 // *is* --bs-body-bg in dark, which would make the tooltip invisible in the theme it
 // gets used in most.
-// The containing block the flyout positions against. In CSS rather than an inline
-// style written at show time, so the directive needs no getComputedStyle read and
-// leaves nothing behind when it tears the flyout down.
-.app-tooltip-host {
-  position: relative;
-}
-
+//
+// Everything positional is inline, written by the directive against the host's measured
+// box. Fixed, because the hosts sit inside `overflow: hidden` ancestors that clip an
+// absolutely-positioned flyout however high its z-index; the origin here is only what it
+// is measured at, one phase before it is placed.
 .app-tooltip {
-  position: absolute;
+  position: fixed;
+  top: 0;
+  left: 0;
   z-index: 1080;
   padding: 5px 11px;
   border-radius: 8px;
@@ -109,18 +109,6 @@ html:has(dialog[open]) {
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 6px 16px rgba(11, 31, 51, 0.35);
-
-  &[data-placement='right'] {
-    left: 54px;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-
-  &[data-placement='top'] {
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-  }
 }
 
 // ── Safe areas ───────────────────────────────────────────────────────────────

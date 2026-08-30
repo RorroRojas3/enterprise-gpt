@@ -102,6 +102,12 @@ export class Menu {
   /** Whether a consumer projected its own trigger face. */
   protected readonly hasTriggerContent = computed(() => this.triggerContent() !== undefined);
 
+  /**
+   * The hint sits on the side the panel opens to: a `top` flyout on a trigger with no
+   * room above it is clamped back over the control it is meant to describe.
+   */
+  protected readonly hintPlacement = computed(() => (this.direction() === 'up' ? 'top' : 'bottom'));
+
   protected readonly panelId = `menu-panel-${nextId++}`;
   /** Placed by `anchoredPosition`, which US-307's project picker shares. */
   protected readonly position = signal<AnchoredPosition>({
