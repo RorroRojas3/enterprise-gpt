@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto;
 using Enterprise.Gpt.Dto.Actions.Mcp;
 using Enterprise.Gpt.Entity;
@@ -55,17 +56,57 @@ namespace Enterprise.Gpt.Service.Mappers
             };
 
         /// <summary>
-        /// LINQ projection from <see cref="McpServer"/> to the user-facing <see cref="McpDto"/>
-        /// for use inside <c>IQueryable.Select(...)</c>.
+        /// Builds the LINQ projection from <see cref="McpServer"/> to the user-facing
+        /// <see cref="McpDto"/> for use inside <c>IQueryable.Select(...)</c>.
         /// </summary>
-        public static Expression<Func<McpServer, McpDto>> MapToMcpDtoExpression { get; } =
-            server => new McpDto
+        /// <param name="userOid">The calling user's Entra object id.</param>
+        /// <returns>The projection, closed over that user.</returns>
+        /// <remarks>
+        /// A factory rather than a static expression because the credential fields are answers
+        /// about the caller, not about the row: two users reading the same server see different
+        /// values. Resolving them here keeps the listing to one query.
+        /// </remarks>
+        public static Expression<Func<McpServer, McpDto>> BuildMcpDtoExpression(Guid userOid)
+        {
+            return server => new McpDto
             {
                 Id = server.Id,
                 Name = server.Name,
                 Description = server.Description,
-                IconKey = server.IconKey
+                IconKey = server.IconKey,
+                RequiresUserApiKey = server.AuthType == McpAuthTypes.UserApiKey,
+                // A rejected credential reads as absent, so the picker asks for a new one instead
+                // of offering a server the next turn would fail on.
+                HasUserApiKey = server.AuthType == McpAuthTypes.UserApiKey
+                    && server.UserCredentials.Any(c => c.UserId == userOid
+                        && !c.DateDeactivated.HasValue
+                        && !c.DateRejected.HasValue),
+                ApiKeyHint = server.UserCredentials
+                    .Where(c => c.UserId == userOid && !c.DateDeactivated.HasValue && !c.DateRejected.HasValue)
+                    .Select(c => c.ApiKeyHint)
+                    .FirstOrDefault()
             };
+        }
+
+        /// <summary>
+        /// Maps a stored credential to the status shape the caller may see.
+        /// </summary>
+        /// <param name="credential">The active credential, or <see langword="null"/> when none is held.</param>
+        /// <param name="mcpServerId">The server the status is for, needed when there is no row.</param>
+        /// <returns>The status DTO, which carries neither the credential nor its ciphertext.</returns>
+        public static McpCredentialStatusDto MapToMcpCredentialStatusDto(
+            this UserMcpCredential? credential, Guid mcpServerId)
+        {
+            return credential is null || credential.DateRejected.HasValue
+                ? new McpCredentialStatusDto { McpServerId = mcpServerId }
+                : new McpCredentialStatusDto
+                {
+                    McpServerId = mcpServerId,
+                    HasApiKey = true,
+                    ApiKeyHint = credential.ApiKeyHint,
+                    DateModified = credential.DateModified
+                };
+        }
 
         /// <summary>
         /// Creates a new <see cref="McpServer"/> entity from a <see cref="CreateMcpServerActionDto"/>.

@@ -97,3 +97,40 @@
     display: none;
   }
 }
+
+.tools-menu__state {
+  flex: 0 0 auto;
+}
+
+// Two menu items sharing one line. The toggle takes the width; the key control keeps
+// its own hit area, because it is its own item and roves to separately.
+.tools-menu__row {
+  display: flex;
+  align-items: center;
+
+  .tools-menu__option {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+// Overrides `.menu__item`'s full-bleed row: this item shares a line with the toggle
+// rather than owning one, so it takes its content's width and keeps its own border.
+.tools-menu__manage {
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 22px;
+  margin-right: 9px;
+  padding: 1px 6px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--bs-font-monospace);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+
+  &:hover {
+    border-color: var(--bs-body-color);
+    color: var(--bs-body-color);
+  }
+}

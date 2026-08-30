@@ -50,6 +50,18 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);
 
+            // No permission filter, unlike every route above: these act on the caller's own
+            // credential, and the gate is the server's own grant, enforced in the service the way
+            // McpToolProvider enforces it — from the database, so a revoked grant takes effect on
+            // the next request.
+            group.MapPut("{id:guid}/credential", SaveMcpCredentialAsync)
+                .ProducesValidationProblem()
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
+            group.MapDelete("{id:guid}/credential", DeleteMcpCredentialAsync)
+                .ProducesProblem(StatusCodes.Status403Forbidden)
+                .ProducesProblem(StatusCodes.Status404NotFound);
+
             return app;
         }
 
@@ -94,6 +106,25 @@ namespace Enterprise.Gpt.Api.Endpoints
             Guid id, IMcpServerService mcpServerService, CancellationToken cancellationToken)
         {
             await mcpServerService.DeactivateMcpServerAsync(id, cancellationToken);
+            return TypedResults.NoContent();
+        }
+
+        // PUT rather than POST: a user holds at most one credential per server, so saving one is
+        // replacing a known resource rather than adding to a collection.
+        internal static async Task<Ok<McpCredentialStatusDto>> SaveMcpCredentialAsync(
+            Guid id,
+            SaveMcpCredentialActionDto request,
+            IUserMcpCredentialService credentialService,
+            CancellationToken cancellationToken)
+        {
+            var response = await credentialService.SaveAsync(id, request, cancellationToken);
+            return TypedResults.Ok(response);
+        }
+
+        internal static async Task<NoContent> DeleteMcpCredentialAsync(
+            Guid id, IUserMcpCredentialService credentialService, CancellationToken cancellationToken)
+        {
+            await credentialService.DeleteAsync(id, cancellationToken);
             return TypedResults.NoContent();
         }
     }

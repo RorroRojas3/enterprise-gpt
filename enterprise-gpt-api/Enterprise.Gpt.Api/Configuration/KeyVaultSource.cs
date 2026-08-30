@@ -6,4 +6,9 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// <param name="VaultUri">Absolute HTTPS URI of the vault.</param>
 /// <param name="ManagedIdentityClientId">Client id of the user-assigned identity, or <see langword="null"/> to let the credential chain choose.</param>
 /// <param name="ReloadInterval">Polling interval, or <see langword="null"/> to read the vault once.</param>
-internal sealed record KeyVaultSource(Uri VaultUri, string? ManagedIdentityClientId, TimeSpan? ReloadInterval);
+/// <param name="DataProtectionKeyUri">Key that wraps the Data Protection key ring, or <see langword="null"/> to leave it unwrapped.</param>
+internal sealed record KeyVaultSource(
+    Uri VaultUri,
+    string? ManagedIdentityClientId,
+    TimeSpan? ReloadInterval,
+    Uri? DataProtectionKeyUri);

@@ -107,10 +107,10 @@ public class McpServerMapperTests
     }
 
     [Fact]
-    public void MapToMcpDtoExpression_CompiledDelegate_MapsUserFacingProperties()
+    public void BuildMcpDtoExpression_CompiledDelegate_MapsUserFacingProperties()
     {
         var server = CreateServer();
-        var projection = McpServerMapper.MapToMcpDtoExpression.Compile();
+        var projection = McpServerMapper.BuildMcpDtoExpression(Guid.NewGuid()).Compile();
 
         var dto = projection(server);
 
@@ -118,11 +118,83 @@ public class McpServerMapperTests
         Assert.Equal(server.Name, dto.Name);
         Assert.Equal(server.Description, dto.Description);
         Assert.Equal(server.IconKey, dto.IconKey);
+        Assert.False(dto.RequiresUserApiKey);
+        Assert.False(dto.HasUserApiKey);
+        Assert.Null(dto.ApiKeyHint);
 
         // `McpDto` carries no headers, for the reason it carries no url, auth type or scope:
         // they are connection details, and this projection is the one non-administrators read.
         // Asserted on the type rather than a value, so adding the property is what fails.
         Assert.Null(typeof(McpDto).GetProperty(nameof(McpServerDto.Headers)));
+    }
+
+    [Fact]
+    public void BuildMcpDtoExpression_UserApiKeyServer_ReportsOnlyTheCallersOwnCredential()
+    {
+        var userId = Guid.NewGuid();
+        var server = CreateServer();
+        server.AuthType = McpAuthTypes.UserApiKey;
+        server.UserCredentials =
+        [
+            CreateCredential(server.Id, Guid.NewGuid(), "9999"),
+            CreateCredential(server.Id, userId, "abcd")
+        ];
+
+        var dto = McpServerMapper.BuildMcpDtoExpression(userId).Compile()(server);
+
+        Assert.True(dto.RequiresUserApiKey);
+        Assert.True(dto.HasUserApiKey);
+        Assert.Equal("abcd", dto.ApiKeyHint);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void BuildMcpDtoExpression_UnusableCredential_ReadsAsAbsent(bool rejected, bool deactivated)
+    {
+        var userId = Guid.NewGuid();
+        var server = CreateServer();
+        server.AuthType = McpAuthTypes.UserApiKey;
+
+        var credential = CreateCredential(server.Id, userId, "abcd");
+        credential.DateRejected = rejected ? DateTimeOffset.UtcNow : null;
+        credential.DateDeactivated = deactivated ? DateTimeOffset.UtcNow : null;
+        server.UserCredentials = [credential];
+
+        var dto = McpServerMapper.BuildMcpDtoExpression(userId).Compile()(server);
+
+        Assert.True(dto.RequiresUserApiKey);
+        Assert.False(dto.HasUserApiKey);
+        Assert.Null(dto.ApiKeyHint);
+    }
+
+    [Fact]
+    public void MapToMcpCredentialStatusDto_RejectedCredential_ReportsNoKey()
+    {
+        var mcpServerId = Guid.NewGuid();
+        var credential = CreateCredential(mcpServerId, Guid.NewGuid(), "abcd");
+        credential.DateRejected = DateTimeOffset.UtcNow;
+
+        var status = credential.MapToMcpCredentialStatusDto(mcpServerId);
+
+        Assert.Equal(mcpServerId, status.McpServerId);
+        Assert.False(status.HasApiKey);
+        Assert.Null(status.ApiKeyHint);
+        Assert.Null(status.DateModified);
+    }
+
+    private static UserMcpCredential CreateCredential(Guid mcpServerId, Guid userId, string hint)
+    {
+        return new UserMcpCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            McpServerId = mcpServerId,
+            Ciphertext = "protected",
+            ApiKeyHint = hint,
+            DateCreated = DateTimeOffset.UtcNow,
+            DateModified = DateTimeOffset.UtcNow
+        };
     }
 
     [Fact]

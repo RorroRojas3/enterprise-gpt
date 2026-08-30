@@ -240,6 +240,49 @@ public class McpClientCacheTests
     }
 
     [Fact]
+    public async Task InvalidateServerForUser_OneUsersEntry_LeavesEveryOtherEntryForThatServer()
+    {
+        await using var cache = CreateCache();
+        var serverId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var ownClient = Substitute.For<IAsyncDisposable>();
+        var otherUserClient = Substitute.For<IAsyncDisposable>();
+        var sharedClient = Substitute.For<IAsyncDisposable>();
+
+        var own = await cache.GetOrCreateAsync(
+            McpCacheKey.ForUser(serverId, userId),
+            ct => Task.FromResult(CreateSource(ownClient)),
+            TestContext.Current.CancellationToken);
+        await own.DisposeAsync();
+        var otherUser = await cache.GetOrCreateAsync(
+            McpCacheKey.ForUser(serverId, Guid.NewGuid()),
+            ct => Task.FromResult(CreateSource(otherUserClient)),
+            TestContext.Current.CancellationToken);
+        await otherUser.DisposeAsync();
+        var shared = await cache.GetOrCreateAsync(
+            McpCacheKey.Shared(serverId),
+            ct => Task.FromResult(CreateSource(sharedClient)),
+            TestContext.Current.CancellationToken);
+        await shared.DisposeAsync();
+
+        cache.InvalidateServerForUser(serverId, userId);
+
+        await AssertEventuallyAsync(() => _ = ownClient.Received(1).DisposeAsync());
+        _ = otherUserClient.DidNotReceive().DisposeAsync();
+        _ = sharedClient.DidNotReceive().DisposeAsync();
+    }
+
+    [Fact]
+    public async Task InvalidateServerForUser_NoSuchEntry_DoesNothing()
+    {
+        await using var cache = CreateCache();
+
+        var exception = Record.Exception(() => cache.InvalidateServerForUser(Guid.NewGuid(), Guid.NewGuid()));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public async Task LeaseDisposeAsync_CalledTwice_ReleasesSingleLeaseAndClientDisposedOnce()
     {
         await using var cache = CreateCache();

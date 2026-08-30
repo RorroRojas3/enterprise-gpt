@@ -7,6 +7,7 @@ import { mcpFixture, modelFixture } from '@testing/catalog';
 import { McpDto } from '@domain/api/mcp';
 import { ModelDto } from '@domain/api/model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
+import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ToolsMenu } from './tools-menu';
@@ -207,5 +208,67 @@ describe('ToolsMenu', () => {
       'No tool servers are available to you.',
     );
     expect(menu.rows()).toHaveLength(0);
+  });
+
+  it('renders a server awaiting the user’s key as a menuitem, not a checkbox', async () => {
+    const menu = await render();
+    await loadModels([modelFixture({ isDefault: true })]);
+    await loadServers([
+      mcpFixture({ name: 'GitHub', requiresUserApiKey: true, hasUserApiKey: false }),
+    ]);
+    await menu.open();
+
+    const row = menu.rows()[0]!;
+    // A checkbox role would promise a checked state the click does not change.
+    expect(row.getAttribute('role')).toBe('menuitem');
+    expect(row.hasAttribute('aria-checked')).toBe(false);
+    expect(row.textContent).toContain('Key required');
+    expect(menu.switches()).toHaveLength(0);
+  });
+
+  it('opens the key dialog instead of selecting a server that has no key', async () => {
+    const menu = await render();
+    await loadModels([modelFixture({ isDefault: true })]);
+    await loadServers([
+      mcpFixture({ name: 'GitHub', requiresUserApiKey: true, hasUserApiKey: false }),
+    ]);
+    await menu.open();
+    await menu.toggle(0);
+
+    expect(TestBed.inject(McpCredentialStore).target()?.name).toBe('GitHub');
+    expect(TestBed.inject(TurnSettingsStore).effectiveMcpServerIds()).toEqual([]);
+  });
+
+  it('toggles a server whose key is stored, and shows the hint as the way to replace it', async () => {
+    const menu = await render();
+    await loadModels([modelFixture({ isDefault: true })]);
+    const server = mcpFixture({
+      name: 'GitHub',
+      requiresUserApiKey: true,
+      hasUserApiKey: true,
+      apiKeyHint: 'wxyz',
+    });
+    await loadServers([server]);
+    await menu.open();
+
+    expect(menu.rows()[0]!.getAttribute('role')).toBe('menuitemcheckbox');
+
+    await menu.toggle(0);
+    expect(TestBed.inject(TurnSettingsStore).effectiveMcpServerIds()).toEqual([server.id]);
+
+    const manage = menu.host.querySelector('.tools-menu__manage') as HTMLButtonElement;
+    expect(manage.textContent?.trim()).toBe('••••wxyz');
+    // Its own menu item, so the arrow keys reach it — a plain nested button would be
+    // invalid HTML and invisible to the menu's roving focus.
+    expect(manage.getAttribute('role')).toBe('menuitem');
+    expect(manage.getAttribute('tabindex')).toBe('-1');
+
+    manage.click();
+    await menu.fixture.whenStable();
+
+    // The dialog opened and the row stayed selected: this item is a sibling of the
+    // toggle, not nested inside it.
+    expect(TestBed.inject(McpCredentialStore).target()?.id).toBe(server.id);
+    expect(TestBed.inject(TurnSettingsStore).effectiveMcpServerIds()).toEqual([server.id]);
   });
 });

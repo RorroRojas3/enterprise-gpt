@@ -57,6 +57,25 @@ export interface McpServerUnavailableProblemDetails extends ProblemDetails {
   readonly serverName: string;
 }
 
+/**
+ * A 428 raised when a tool server needs an API key the user supplies and none is usable.
+ *
+ * `mcpServerId` as well as `serverName`: the client opens the key dialog for that server,
+ * and a name is display copy rather than something a request can be addressed to.
+ */
+export interface McpCredentialRequiredProblemDetails extends ProblemDetails {
+  readonly type: typeof PROBLEM_TYPE.mcpCredentialRequired;
+  readonly mcpServerId: string;
+  readonly serverName: string;
+}
+
+/** A 428 raised when a tool server refused the API key the user stored. */
+export interface McpCredentialRejectedProblemDetails extends ProblemDetails {
+  readonly type: typeof PROBLEM_TYPE.mcpCredentialRejected;
+  readonly mcpServerId: string;
+  readonly serverName: string;
+}
+
 /** A 503 raised when the selected model's provider has no chat client configured. */
 export interface ProviderNotConfiguredProblemDetails extends ProblemDetails {
   readonly type: typeof PROBLEM_TYPE.providerNotConfigured;
@@ -93,6 +112,8 @@ export type AnyProblemDetails =
   | UploadTooLargeProblemDetails
   | PermissionRequiredProblemDetails
   | McpServerUnavailableProblemDetails
+  | McpCredentialRequiredProblemDetails
+  | McpCredentialRejectedProblemDetails
   | ProviderNotConfiguredProblemDetails
   | ExportRendererNotConfiguredProblemDetails
   | ProblemDetails;

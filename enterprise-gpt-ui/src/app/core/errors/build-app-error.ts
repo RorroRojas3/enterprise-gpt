@@ -76,6 +76,22 @@ export function buildAppError(parts: AppErrorParts): AppError {
           message: messageOf(base),
           serverName: stringExtension(problem, 'serverName') ?? '',
         };
+      case PROBLEM_TYPE.mcpCredentialRequired:
+        return {
+          ...base,
+          kind: 'mcp-credential-required',
+          message: messageOf(base),
+          mcpServerId: stringExtension(problem, 'mcpServerId') ?? '',
+          serverName: stringExtension(problem, 'serverName') ?? '',
+        };
+      case PROBLEM_TYPE.mcpCredentialRejected:
+        return {
+          ...base,
+          kind: 'mcp-credential-rejected',
+          message: messageOf(base),
+          mcpServerId: stringExtension(problem, 'mcpServerId') ?? '',
+          serverName: stringExtension(problem, 'serverName') ?? '',
+        };
       case PROBLEM_TYPE.providerNotConfigured:
         return {
           ...base,

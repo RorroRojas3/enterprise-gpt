@@ -51,6 +51,12 @@ describe('TurnSettingsStore', () => {
     await loaded;
   }
 
+  async function reloadServers(servers: McpDto[]): Promise<void> {
+    const loaded = TestBed.inject(McpCatalogStore).reload();
+    backend.expectOne(MCPS_URL).flush(servers);
+    await loaded;
+  }
+
   it('resolves no model and a null streamSelection before the catalog arrives', () => {
     expect(store.selectedModel()).toBeNull();
     expect(store.streamSelection()).toBeNull();
@@ -226,5 +232,38 @@ describe('TurnSettingsStore', () => {
     expect(store.selectedMcpServerIds()).toEqual([]);
     expect(store.streamSelection()).toBeNull();
     expect(store.toolsLabel()).toBe('Tools');
+  });
+
+  it('keeps a server awaiting the user’s API key off the wire', async () => {
+    await loadModels([modelFixture({ isDefault: true, isToolEnabled: true })]);
+    const server = mcpFixture({ requiresUserApiKey: true, hasUserApiKey: false });
+    await loadServers([server]);
+
+    store.toggleMcpServer(server.id);
+
+    // The selection is honoured as intent; the derived set is what the request reads,
+    // and the server would answer that turn with a 428.
+    expect(store.selectedMcpServerIds()).toEqual([server.id]);
+    expect(store.effectiveMcpServerIds()).toEqual([]);
+    expect(store.toolsLabel()).toBe('Tools');
+  });
+
+  it('drops a selected server when its key is removed mid-session', async () => {
+    await loadModels([modelFixture({ isDefault: true, isToolEnabled: true })]);
+    const server = mcpFixture({
+      requiresUserApiKey: true,
+      hasUserApiKey: true,
+      apiKeyHint: 'wxyz',
+    });
+    await loadServers([server]);
+
+    store.toggleMcpServer(server.id);
+    expect(store.effectiveMcpServerIds()).toEqual([server.id]);
+
+    // Removing a key does not touch the selection, so the derivation is what has to
+    // notice.
+    await reloadServers([{ ...server, hasUserApiKey: false, apiKeyHint: null }]);
+
+    expect(store.effectiveMcpServerIds()).toEqual([]);
   });
 });

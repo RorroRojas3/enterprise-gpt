@@ -84,11 +84,12 @@ export interface AuthTypeOption {
 /**
  * The auth types an MCP server can be registered with.
  *
- * **Two, not frame `5h`'s three.** The board draws "Header key", "OAuth2" and "None";
- * `McpAuthTypes` has `None` and `EntraIdOnBehalfOf`, and neither of the board's first
- * two exists in this system — the same class of board error as frame `4l`'s file
- * extensions. The labels are display copy rather than the enum's `nameof` spelling, for
- * the reason `PROVIDER_OPTIONS` gives.
+ * Still not the board's three. Frame `5h` draws "Header key", "OAuth2" and "None", and
+ * neither of the first two exists: "Header key" was one shared secret an administrator
+ * typed into a plain-text column, and it stays refused. `API key (per user)` is the
+ * opposite arrangement — each user supplies their own token, stored encrypted, returned
+ * by no route — which is why it is here and that one is not. The labels are display copy
+ * rather than the enum's `nameof` spelling, for the reason `PROVIDER_OPTIONS` gives.
  *
  * Built here rather than beside the constant in `domain/api/mcp.ts` so it stays off the
  * initial graph: that file is reached by the chat composer's Tools menu, and this list
@@ -97,6 +98,7 @@ export interface AuthTypeOption {
 export const AUTH_TYPE_OPTIONS: readonly AuthTypeOption[] = [
   { value: MCP_AUTH_TYPE.none, label: 'None' },
   { value: MCP_AUTH_TYPE.entraIdOnBehalfOf, label: 'Entra ID (on behalf of)' },
+  { value: MCP_AUTH_TYPE.userApiKey, label: 'API key (per user)' },
 ];
 
 /**
@@ -121,13 +123,13 @@ export function requiresScope(authType: number): boolean {
  * {@link McpAuthType} instead of asserting its way past `number`.
  */
 export function isKnownAuthType(authType: number): authType is McpAuthType {
-  return authType === MCP_AUTH_TYPE.none || authType === MCP_AUTH_TYPE.entraIdOnBehalfOf;
+  return AUTH_TYPE_OPTIONS.some((option) => option.value === authType);
 }
 
 /** The message for an auth type the wire would refuse, or null when it would take it. */
 export function authTypeError(raw: string): string | null {
-  // `IsInEnum` refuses anything outside the two, the `0` an empty select parses to
-  // included — and a row seeded with a third value is reachable, which is why the table
+  // `IsInEnum` refuses anything outside the three, the `0` an empty select parses to
+  // included — and a row seeded with a fourth value is reachable, which is why the table
   // has `authTypeLabel`. Without this rule an edit of such a row would leave Save enabled
   // over a body `toMcpServerBody` refuses, and clicking it would do nothing.
   return isKnownAuthType(Number(raw)) ? null : 'Choose an auth type.';
@@ -227,16 +229,16 @@ export function urlError(raw: string): string | null {
  * Validates the scope against the auth type, returning the reason it is unusable.
  *
  * The rule runs in **both** directions, because the server's does: a scope is required
- * for `EntraIdOnBehalfOf` and must be *empty* for `None`. The form hides the field on
- * `None` and clears it, so the second arm is the guard behind that rather than a message
- * a reader normally meets.
+ * for `EntraIdOnBehalfOf` and must be *empty* for every other auth type. The form hides
+ * the field on those, so the second arm is the guard behind that rather than a message a
+ * reader normally meets.
  */
 export function scopeError(raw: string, authType: string): string | null {
   const trimmed = raw.trim();
   const parsed = Number(authType);
 
   if (!requiresScope(parsed)) {
-    return trimmed === '' ? null : 'A server with no authentication cannot carry a scope.';
+    return trimmed === '' ? null : 'Only an Entra ID server can carry a scope.';
   }
 
   return trimmed === '' ? 'A scope is required for an Entra ID server.' : null;

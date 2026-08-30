@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The Data Protection key ring lives in this database rather than in blob storage: the app
+         already owns a migration pipeline for it, and a key ring the deployment cannot lose in a
+         slot swap is what keeps stored user credentials readable. Key Vault wraps it in
+         Program.cs, so the database alone never decrypts them. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />

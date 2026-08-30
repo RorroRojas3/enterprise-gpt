@@ -57,6 +57,24 @@ internal static class ProblemTypes
         new($"{BaseUri}mcp-server-unavailable", "MCP server unavailable");
 
     /// <summary>
+    /// An MCP server needs an API key the caller supplies themselves and none is stored.
+    /// Accompanied by <c>mcpServerId</c> and <c>serverName</c> extensions.
+    /// </summary>
+    public static readonly ProblemType McpCredentialRequired =
+        new($"{BaseUri}mcp-credential-required", "API key required");
+
+    /// <summary>
+    /// An MCP server refused the API key the caller stored. Accompanied by <c>mcpServerId</c> and
+    /// <c>serverName</c> extensions.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="McpCredentialRequired"/> only so the client can word the two
+    /// differently; both mean the user has to supply a key before the request can proceed.
+    /// </remarks>
+    public static readonly ProblemType McpCredentialRejected =
+        new($"{BaseUri}mcp-credential-rejected", "API key rejected");
+
+    /// <summary>
     /// The selected model's provider has no chat client in this deployment. Accompanied by a
     /// <c>providerId</c> extension.
     /// </summary>

@@ -132,6 +132,29 @@ public sealed class McpServerServiceTests : IDisposable
         return grant;
     }
 
+    private async Task<UserMcpCredential> AddCredentialAsync(Guid mcpServerId, Guid? userId = null)
+    {
+        var date = DateTimeOffset.UtcNow;
+        var credential = new UserMcpCredential
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId ?? KnownIds.SeedUserId,
+            McpServerId = mcpServerId,
+            Ciphertext = "protected",
+            ApiKeyHint = "abcd",
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = KnownIds.SeedUserId,
+            ModifiedById = KnownIds.SeedUserId
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.UserMcpCredentials.Add(credential);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return credential;
+    }
+
     /// <summary>
     /// Seeds a server with its linked permission and, optionally, an active grant for the
     /// seed user — the shape <c>CreateMcpServerAsync</c> plus a grant would produce.
@@ -478,6 +501,93 @@ public sealed class McpServerServiceTests : IDisposable
         _mcpClientCache.Received(1).InvalidateServer(server.Id);
         _permissionCache.Received(1).Invalidate(
             Arg.Is<IEnumerable<Guid>>(ids => ids != null && ids.SequenceEqual(new[] { grant.UserId })));
+    }
+
+    [Fact]
+    public async Task DeactivateMcpServerAsync_ServerHoldingUserApiKeys_CascadesToThemToo()
+    {
+        var server = await AddMcpServerAsync("aaa-cascade-keys", McpAuthTypes.UserApiKey);
+        var credential = await AddCredentialAsync(server.Id);
+
+        await _service.DeactivateMcpServerAsync(server.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.UserMcpCredentials
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(persisted.DateDeactivated);
+        Assert.Equal(KnownIds.SeedUserId, persisted.ModifiedById);
+    }
+
+    [Fact]
+    public async Task UpdateMcpServerAsync_AuthTypeLeavesUserApiKey_DiscardsTheStoredKeys()
+    {
+        var server = await AddMcpServerAsync("aaa-drops-keys", McpAuthTypes.UserApiKey);
+        var credential = await AddCredentialAsync(server.Id);
+
+        await _service.UpdateMcpServerAsync(server.Id, new UpdateMcpServerActionDto
+        {
+            Name = server.Name,
+            Description = server.Description,
+            Url = server.Url,
+            AuthType = McpAuthTypes.None
+        }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.UserMcpCredentials
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(persisted.DateDeactivated);
+    }
+
+    /// <summary>
+    /// A stored key is consent to send it to one endpoint, so repointing the server has to
+    /// discard the keys rather than forward every user's token to the new host.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMcpServerAsync_UrlRepointed_DiscardsTheStoredKeys()
+    {
+        var server = await AddMcpServerAsync("aaa-repointed", McpAuthTypes.UserApiKey);
+        var credential = await AddCredentialAsync(server.Id);
+
+        await _service.UpdateMcpServerAsync(server.Id, new UpdateMcpServerActionDto
+        {
+            Name = server.Name,
+            Description = server.Description,
+            Url = "https://attacker.example.com/mcp",
+            AuthType = McpAuthTypes.UserApiKey
+        }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.UserMcpCredentials
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(persisted.DateDeactivated);
+    }
+
+    [Fact]
+    public async Task UpdateMcpServerAsync_AuthTypeStaysUserApiKey_KeepsTheStoredKeys()
+    {
+        var server = await AddMcpServerAsync("aaa-keeps-keys", McpAuthTypes.UserApiKey);
+        var credential = await AddCredentialAsync(server.Id);
+
+        await _service.UpdateMcpServerAsync(server.Id, new UpdateMcpServerActionDto
+        {
+            Name = server.Name,
+            Description = "A renamed description.",
+            Url = server.Url,
+            AuthType = McpAuthTypes.UserApiKey
+        }, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var persisted = await ctx.UserMcpCredentials
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
+
+        Assert.Null(persisted.DateDeactivated);
     }
 
     [Fact]

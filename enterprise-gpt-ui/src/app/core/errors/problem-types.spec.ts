@@ -13,17 +13,19 @@ describe('PROBLEM_TYPE', () => {
       permissionRequired: '/problems/permission-required',
       conversationBusy: '/problems/conversation-busy',
       mcpServerUnavailable: '/problems/mcp-server-unavailable',
+      mcpCredentialRequired: '/problems/mcp-credential-required',
+      mcpCredentialRejected: '/problems/mcp-credential-rejected',
       providerNotConfigured: '/problems/provider-not-configured',
       storageNotConfigured: '/problems/storage-not-configured',
       exportRendererNotConfigured: '/problems/export-renderer-not-configured',
     });
   });
 
-  it('declares all ten types, with no duplicates', () => {
+  it('declares all twelve types, with no duplicates', () => {
     const values = Object.values(PROBLEM_TYPE);
 
-    expect(values).toHaveLength(10);
-    expect(new Set(values).size).toBe(10);
+    expect(values).toHaveLength(12);
+    expect(new Set(values).size).toBe(12);
   });
 
   it('places every type under the shared relative base', () => {

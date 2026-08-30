@@ -32,6 +32,9 @@
     <PackageReference Include="Markdig" Version="1.3.2" />
     <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.1" />
     <!-- Direct pin: Microsoft.ML.Tokenizers 2.0.0 transitively brings 9.0.4, which has a known vulnerability (GHSA-73j8-2gch-69rq). -->
+    <!-- Abstractions only: this project consumes IDataProtectionProvider, while the key ring
+         and its Key Vault wrapping are configured in the host. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.11" />
     <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.11" />
     <!-- Referenced directly, not left transitive through Enterprise.Gpt.Entity: document retrieval binds
          SqlParameter and SqlVector<float> by hand — see Tool/DocumentRetrievalService.cs. Kept in step with

@@ -50,10 +50,13 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
                 .MaximumLength(512)
                 .When(x => x.AuthType == McpAuthTypes.EntraIdOnBehalfOf)
                 .WithMessage($"Scope is required when the auth type is {nameof(McpAuthTypes.EntraIdOnBehalfOf)}.");
+            // Stated as "every type but one" rather than as an arm per type: a scope is
+            // meaningless outside the on-behalf-of flow, so a fourth auth type must inherit the
+            // refusal rather than silently escape it by not being listed.
             RuleFor(x => x.Scope)
                 .Empty()
-                .When(x => x.AuthType == McpAuthTypes.None)
-                .WithMessage($"Scope must be empty when the auth type is {nameof(McpAuthTypes.None)}.");
+                .When(x => x.AuthType != McpAuthTypes.EntraIdOnBehalfOf)
+                .WithMessage($"Scope is only used by the {nameof(McpAuthTypes.EntraIdOnBehalfOf)} auth type and must be empty for the others.");
             // A slug, not an enum: the artwork lives in the client, so shipping a new icon must
             // not require a server deploy. A key the client does not recognise degrades to its
             // generic glyph, which is why an unknown-but-well-formed value is accepted here.
@@ -134,10 +137,13 @@ namespace Enterprise.Gpt.Dto.Actions.Mcp
                 .MaximumLength(512)
                 .When(x => x.AuthType == McpAuthTypes.EntraIdOnBehalfOf)
                 .WithMessage($"Scope is required when the auth type is {nameof(McpAuthTypes.EntraIdOnBehalfOf)}.");
+            // Stated as "every type but one" rather than as an arm per type: a scope is
+            // meaningless outside the on-behalf-of flow, so a fourth auth type must inherit the
+            // refusal rather than silently escape it by not being listed.
             RuleFor(x => x.Scope)
                 .Empty()
-                .When(x => x.AuthType == McpAuthTypes.None)
-                .WithMessage($"Scope must be empty when the auth type is {nameof(McpAuthTypes.None)}.");
+                .When(x => x.AuthType != McpAuthTypes.EntraIdOnBehalfOf)
+                .WithMessage($"Scope is only used by the {nameof(McpAuthTypes.EntraIdOnBehalfOf)} auth type and must be empty for the others.");
             // A slug, not an enum: the artwork lives in the client, so shipping a new icon must
             // not require a server deploy. A key the client does not recognise degrades to its
             // generic glyph, which is why an unknown-but-well-formed value is accepted here.

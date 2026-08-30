@@ -529,4 +529,228 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
         Assert.NotNull(mcps);
         Assert.Empty(mcps);
     }
+
+    private const string ApiKey = "github_pat_11ABCDEFGwxyz";
+
+    /// <summary>
+    /// Registers a server that takes a per-user key and grants it to the regular test user.
+    /// </summary>
+    private async Task<Guid> AddPermittedUserApiKeyServerAsync(string name)
+    {
+        var (serverId, permissionId) = await _fixture.AddMcpServerAsync(
+            name, authType: (int)McpAuthTypes.UserApiKey,
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(permissionId);
+        await _fixture.AddUserPermissionAsync(
+            TestUsers.RegularUserId, permissionId.Value, cancellationToken: TestContext.Current.CancellationToken);
+
+        return serverId;
+    }
+
+    private static SaveMcpCredentialActionDto CredentialRequest(string apiKey = ApiKey)
+    {
+        return new SaveMcpCredentialActionDto { ApiKey = apiKey };
+    }
+
+    [Theory]
+    [InlineData("PUT", "api/mcps/0e984725-c51c-4bf5-9960-e1c80e27aba0/credential")]
+    [InlineData("DELETE", "api/mcps/0e984725-c51c-4bf5-9960-e1c80e27aba0/credential")]
+    public async Task McpCredentialRoutes_AnonymousUser_ReturnsUnauthorized(string method, string route)
+    {
+        using var client = _fixture.Factory.CreateAnonymousClient();
+        using var request = new HttpRequestMessage(new HttpMethod(method), route)
+        {
+            Content = JsonContent.Create(CredentialRequest())
+        };
+
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task SaveMcpCredential_PermittedUser_StoresItAndReportsOnlyTheHint()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key");
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<McpCredentialStatusDto>(
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(status);
+        Assert.Equal(serverId, status.McpServerId);
+        Assert.True(status.HasApiKey);
+        Assert.Equal("wxyz", status.ApiKeyHint);
+
+        // The whole response body, not just the mapped shape: nothing may carry the token back.
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(ApiKey, body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SaveMcpCredential_StoredRow_HoldsNoPlaintext()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key-at-rest");
+        using var client = _fixture.Factory.CreateUserClient();
+        await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        var credential = await _fixture.FindUserMcpCredentialAsync(
+            TestUsers.RegularUserId, serverId, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(credential);
+        Assert.DoesNotContain(ApiKey, credential.Ciphertext, StringComparison.Ordinal);
+        Assert.Equal("wxyz", credential.ApiKeyHint);
+    }
+
+    [Fact]
+    public async Task GetMcps_ServerTakingAUserKey_ReportsTheCallersOwnState()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key-listed");
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var before = await client.GetFromJsonAsync<List<McpDto>>("api/mcps", TestContext.Current.CancellationToken);
+        var pending = Assert.Single(before!);
+        Assert.True(pending.RequiresUserApiKey);
+        Assert.False(pending.HasUserApiKey);
+        Assert.Null(pending.ApiKeyHint);
+
+        await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        var after = await client.GetFromJsonAsync<List<McpDto>>("api/mcps", TestContext.Current.CancellationToken);
+        var configured = Assert.Single(after!);
+        Assert.True(configured.HasUserApiKey);
+        Assert.Equal("wxyz", configured.ApiKeyHint);
+    }
+
+    [Fact]
+    public async Task SaveMcpCredential_SecondKey_ReplacesTheFirst()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key-replaced");
+        using var client = _fixture.Factory.CreateUserClient();
+        await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential",
+            CredentialRequest("github_pat_11ABCDEFG6789"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<McpCredentialStatusDto>(
+            TestContext.Current.CancellationToken);
+        Assert.Equal("6789", status!.ApiKeyHint);
+    }
+
+    [Fact]
+    public async Task DeleteMcpCredential_StoredKey_RemovesItAndTheListingReflectsIt()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key-removed");
+        using var client = _fixture.Factory.CreateUserClient();
+        await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        var response = await client.DeleteAsync(
+            $"api/mcps/{serverId}/credential", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var mcps = await client.GetFromJsonAsync<List<McpDto>>("api/mcps", TestContext.Current.CancellationToken);
+        Assert.False(Assert.Single(mcps!).HasUserApiKey);
+    }
+
+    [Fact]
+    public async Task DeleteMcpCredential_NoStoredKey_ReturnsNotFound()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key-absent");
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.DeleteAsync(
+            $"api/mcps/{serverId}/credential", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("No API key is stored for this MCP server.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task SaveMcpCredential_ServerWithoutAGrant_ReturnsForbidden()
+    {
+        var (serverId, _) = await _fixture.AddMcpServerAsync(
+            "it-mcp-key-ungranted", authType: (int)McpAuthTypes.UserApiKey,
+            cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.Forbidden);
+        Assert.Equal(
+            "You do not have permission to use MCP server 'it-mcp-key-ungranted'.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task SaveMcpCredential_ServerTakingNoUserKey_ReturnsBadRequest()
+    {
+        var (serverId, permissionId) = await _fixture.AddMcpServerAsync(
+            "it-mcp-key-unwanted", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(permissionId);
+        await _fixture.AddUserPermissionAsync(
+            TestUsers.RegularUserId, permissionId.Value, cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task SaveMcpCredential_UnknownServer_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{Guid.NewGuid()}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("MCP server not found.", problem.Detail);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("short")]
+    [InlineData("github pat with spaces")]
+    public async Task SaveMcpCredential_UnusableKey_ReturnsBadRequest(string apiKey)
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync($"it-mcp-key-bad-{apiKey.Length}");
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(apiKey), TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
+        Assert.Contains(nameof(SaveMcpCredentialActionDto.ApiKey), problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task DeleteMcpServer_ServerHoldingUserApiKeys_CascadesToThem()
+    {
+        var serverId = await AddPermittedUserApiKeyServerAsync("it-mcp-key-cascade");
+        using var userClient = _fixture.Factory.CreateUserClient();
+        await userClient.PutAsJsonAsync(
+            $"api/mcps/{serverId}/credential", CredentialRequest(), TestContext.Current.CancellationToken);
+        using var adminClient = _fixture.Factory.CreateAdminClient();
+
+        var response = await adminClient.DeleteAsync($"api/mcps/{serverId}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var credential = await _fixture.FindUserMcpCredentialAsync(
+            TestUsers.RegularUserId, serverId, TestContext.Current.CancellationToken);
+        Assert.NotNull(credential);
+        Assert.NotNull(credential.DateDeactivated);
+    }
 }

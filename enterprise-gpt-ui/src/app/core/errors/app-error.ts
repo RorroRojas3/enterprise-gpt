@@ -67,6 +67,25 @@ export interface McpServerUnavailableAppError extends AppErrorBase {
   readonly serverName: string;
 }
 
+/**
+ * A 428: a selected tool server needs an API key the user supplies and none is usable.
+ *
+ * Carries the id as well as the name so the client can open the key dialog for that
+ * server rather than only naming it.
+ */
+export interface McpCredentialRequiredAppError extends AppErrorBase {
+  readonly kind: 'mcp-credential-required';
+  readonly mcpServerId: string;
+  readonly serverName: string;
+}
+
+/** A 428: a selected tool server refused the API key the user stored. */
+export interface McpCredentialRejectedAppError extends AppErrorBase {
+  readonly kind: 'mcp-credential-rejected';
+  readonly mcpServerId: string;
+  readonly serverName: string;
+}
+
 /** A 503: the selected model's provider has no chat client in this deployment. */
 export interface ProviderNotConfiguredAppError extends AppErrorBase {
   readonly kind: 'provider-not-configured';
@@ -135,6 +154,8 @@ export type AppError =
   | PermissionRequiredAppError
   | ConversationBusyAppError
   | McpServerUnavailableAppError
+  | McpCredentialRequiredAppError
+  | McpCredentialRejectedAppError
   | ProviderNotConfiguredAppError
   | StorageNotConfiguredAppError
   | ExportRendererNotConfiguredAppError
@@ -162,6 +183,8 @@ const PROBLEM_KINDS = {
   'permission-required': true,
   'conversation-busy': true,
   'mcp-server-unavailable': true,
+  'mcp-credential-required': true,
+  'mcp-credential-rejected': true,
   'provider-not-configured': true,
   'storage-not-configured': true,
   'export-renderer-not-configured': true,

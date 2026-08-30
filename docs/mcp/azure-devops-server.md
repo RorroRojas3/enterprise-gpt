@@ -2,7 +2,7 @@
 
 Audience: the **platform operator** registering an MCP tool server through the admin area. This is the reference case for [the Headers field](../ui/administration.md#1132-headers-a-textarea-not-a-row-editor-and-why-it-can-never-become-a-secret-store) added to MCP server registrations — a remote server that configures itself through request headers rather than through anything this application's registry form would otherwise have a place for. Read [Administration §11](../ui/administration.md#11-the-mcp-server-registry-us-1208-us-1210) first for the registry screen itself; this page is what to type into it for this one server, and the Entra ID setup that has to exist before you do.
 
-Companion: [Permission Cache §5](../permissions/permission-cache.md#5-invalidation) for what deactivating this server later does to everyone who was granted it.
+Companion: [Permission Cache §5](../permissions/permission-cache.md#5-invalidation) for what deactivating this server later does to everyone who was granted it, and the [GitHub MCP Server runbook](github-server.md) for the *other* auth type — `UserApiKey`, where each user supplies their own credential instead of the tenant-wide one this server consents to.
 
 ## 1. Why this exists
 

@@ -21,6 +21,7 @@ import { Offcanvas } from '@shared/overlay/offcanvas/offcanvas';
 import { DeleteConversationDialog } from './conversation-actions/delete-conversation-dialog';
 import { RenameConversationDialog } from './conversation-actions/rename-conversation-dialog';
 import { MobileNavbar } from './mobile-navbar/mobile-navbar';
+import { McpCredentialDialog } from './mcp-credential/mcp-credential-dialog';
 import { DeleteProjectDialog } from './project-actions/delete-project-dialog';
 import { ProjectFormDialog } from './project-actions/project-form-dialog';
 import { Sidebar, SidebarMode } from './sidebar/sidebar';
@@ -47,6 +48,7 @@ type ShellMode = 'desktop' | 'tablet' | 'mobile';
   imports: [
     DeleteConversationDialog,
     DeleteProjectDialog,
+    McpCredentialDialog,
     Icon,
     MobileNavbar,
     NgTemplateOutlet,

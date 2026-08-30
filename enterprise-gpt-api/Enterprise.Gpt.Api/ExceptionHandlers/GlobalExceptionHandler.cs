@@ -12,6 +12,8 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
     /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
     /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
     /// <see cref="McpServerUnavailableException"/>,
+    /// <see cref="McpCredentialRequiredException"/>,
+    /// <see cref="McpCredentialRejectedException"/>,
     /// <see cref="ProviderNotConfiguredException"/>,
     /// <see cref="SummarizerNotConfiguredException"/>,
     /// <see cref="SummarizerProtectedException"/>,
@@ -108,6 +110,14 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
                 McpServerUnavailableException serverUnavailable => WithServerName(
                     Create(StatusCodes.Status502BadGateway, exception.Message, ProblemTypes.McpServerUnavailable),
                     serverUnavailable.ServerName),
+                // 428: refused until the caller supplies something no token refresh, permission
+                // grant or retry can produce.
+                McpCredentialRequiredException credentialRequired => WithCredentialTarget(
+                    Create(StatusCodes.Status428PreconditionRequired, exception.Message, ProblemTypes.McpCredentialRequired),
+                    credentialRequired.McpServerId, credentialRequired.ServerName),
+                McpCredentialRejectedException credentialRejected => WithCredentialTarget(
+                    Create(StatusCodes.Status428PreconditionRequired, exception.Message, ProblemTypes.McpCredentialRejected),
+                    credentialRejected.McpServerId, credentialRejected.ServerName),
                 // 503, not 500: the request is well formed and the model exists — this deployment just
                 // has no client for its provider, which an operator fixes by configuring one rather
                 // than by the caller changing anything about the request.
@@ -153,6 +163,12 @@ namespace Enterprise.Gpt.Api.ExceptionHandlers
 
         private static ProblemDetails WithServerName(ProblemDetails problemDetails, string serverName) =>
             WithExtension(problemDetails, "serverName", serverName);
+
+        // The id as well as the name: the client opens the key dialog for this server, and a name
+        // is display copy rather than something it can address a request to.
+        private static ProblemDetails WithCredentialTarget(
+            ProblemDetails problemDetails, Guid mcpServerId, string serverName) =>
+            WithExtension(WithServerName(problemDetails, serverName), "mcpServerId", mcpServerId);
 
         private static ProblemDetails WithExtension(ProblemDetails problemDetails, string name, object? value)
         {

@@ -8,7 +8,7 @@ Every secret this API needs — a SQL connection string, a Cosmos connection str
 
 What it does not give an operator is one place to rotate a secret, an audit trail of who read it, or RBAC scoped to secrets rather than to the app setting blade. [`KeyVaultConfiguration.AddEnterpriseKeyVault`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/KeyVaultConfiguration.cs) closes that gap by adding Azure Key Vault as one more `IConfiguration` source — the same mechanism `appsettings.json` and environment variables already are — so every existing `IOptions<T>` binding, every `builder.Configuration["..."]` read, keeps working unchanged. Nothing downstream of `IConfiguration` needed to change to gain this.
 
-This is an **in-process, host-agnostic** provider: it needs no App Service, no platform-managed reference resolution, and no Terraform. §12 covers how it relates to the infrastructure PRD's own, different answer to the same problem.
+This is an **in-process, host-agnostic** provider: it needs no App Service, no platform-managed reference resolution, and no Terraform. §13 covers how it relates to the infrastructure PRD's own, different answer to the same problem.
 
 ## 2. Quick start
 
@@ -37,6 +37,7 @@ The `KeyVault` section binds to [`KeyVaultOptions`](../../enterprise-gpt-api/Ent
   "Enabled": false,
   "VaultUri": "",
   "ManagedIdentityClientId": null,
+  "DataProtectionKeyUri": null,
   "ReloadInterval": null
 }
 ```
@@ -46,6 +47,7 @@ The `KeyVault` section binds to [`KeyVaultOptions`](../../enterprise-gpt-api/Ent
 | `Enabled` | `false` | Whether a vault is added to the configuration chain at all. Off means **nothing** about Key Vault happens — no credential is constructed, no request leaves the process |
 | `VaultUri` | *(empty)* | The vault, e.g. `https://contoso.vault.azure.net/`. Required once `Enabled` is `true`; must be an absolute `https://` URI |
 | `ManagedIdentityClientId` | `null` | Client id of a **user-assigned** managed identity. Leave unset for a system-assigned identity or for local development, where the credential chain falls back to the signed-in Azure CLI or Visual Studio account |
+| `DataProtectionKeyUri` | `null` | Versionless key identifier that wraps the Data Protection key ring, e.g. `https://contoso.vault.azure.net/keys/data-protection`. Unrelated to secret resolution — see §10 |
 | `ReloadInterval` | `null` | How often to re-read the vault. `null` reads it once at startup; any value under one minute is rejected (§8) |
 
 ### 3.1 When the vault is (and is not) added
@@ -140,13 +142,43 @@ Authentication goes through `DefaultAzureCredential`, so:
 - **Locally**, `az login` is sufficient — the credential chain picks up the signed-in Azure CLI (or Visual Studio) account.
 - **Deployed**, a managed identity is expected. `ManagedIdentityClientId` sets **both** legs of the credential — the managed-identity credential's own client id and the workload-identity credential's client id — so a single setting selects the right user-assigned identity whether the app is hosted on App Service (managed identity) or in AKS behind workload identity federation; leaving it unset uses the system-assigned identity (or, locally, the developer's own signed-in account) on either host.
 
-## 10. Known boundary: token acquisition is not covered by the measured figures
+## 10. Wrapping the Data Protection key ring (per-user MCP credentials)
+
+A second, independent use of the vault exists beside secret resolution: wrapping the ASP.NET Core Data Protection key ring that encrypts each user's own MCP server credential (see the [GitHub MCP Server runbook](../mcp/github-server.md) — the motivating case, and `Enterprise.Gpt.Service/Security/UserSecretProtector.cs`). That key ring is persisted **in the application database** (`PersistKeysToDbContext`, [`Api/Configuration/DataProtectionConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/DataProtectionConfiguration.cs)) — the same database the encrypted credentials themselves live in — so an unwrapped key ring would make read access to that one database sufficient to decrypt every stored credential, which is the one thing this feature promises it is not.
+
+### 10.1 The setting
+
+| Key | Default | Meaning |
+|---|---|---|
+| `KeyVault:DataProtectionKeyUri` | `null` | A **versionless** Key Vault key identifier, e.g. `https://contoso.vault.azure.net/keys/data-protection`. Left unset, the key ring is persisted unwrapped |
+
+Versionless deliberately: rotating the vault key must not strand payloads written under the previous version, and `ProtectKeysWithAzureKeyVault` resolves a versionless identifier to whichever version is current at the moment it wraps or unwraps.
+
+This setting rides inside the same `KeyVault` section as everything in §3, and inherits that section's gate: it has no effect at all unless `KeyVault:Enabled` is `true` and `VaultUri` is set — a `DataProtectionKeyUri` configured while the vault itself is off is simply never read, because there is no resolved `KeyVaultSource` for it to travel on. Turning this on is therefore a three-setting change, not one.
+
+### 10.2 The Azure role: Crypto User, not Secrets User — and it does not exist yet
+
+The vault must hold an **existing key** for this — a Key (RSA or EC), not a Secret — created ahead of time by whoever administers the vault. The application's identity then needs the **Key Vault Crypto User** role at that key's (or the vault's) scope: permission to wrap and unwrap with the key, deliberately narrower than **Key Vault Crypto Officer**, which can also create and delete keys — this application only ever uses one a vault operator already provisioned. `KeyVaultConfiguration.CreateCredential` is shared between the secrets client and this registration (`DataProtectionConfiguration.AddEnterpriseDataProtection`), so both roles are granted to the **same** managed identity — there is no second identity to create.
+
+**This is a new role assignment an operator has to make by hand.** [`docs/prd/azure-infrastructure/azure-infrastructure.md`](../prd/azure-infrastructure/azure-infrastructure.md) FR-24 — the infra plan's own answer to provisioning this application's identity — grants only **Key Vault Secrets User**, because that PRD predates this feature and none of its Terraform exists yet regardless (§13). Standing up the vault from that plan today does **not** grant Crypto User, and a deployment that wants the wrapped key ring has to add that role assignment itself, on the same identity, until the infra plan catches up. It is easy to miss because the failure mode is loud rather than silent: with `DataProtectionKeyUri` set and the role missing, `ProtectKeysWithAzureKeyVault` fails the very first key-ring operation, which for most requests is at or near startup.
+
+### 10.3 Failure behaviour: refused outside development, not warned
+
+`AddEnterpriseDataProtection` throws `InvalidOperationException` at startup — naming `KeyVault:DataProtectionKeyUri` — whenever no vault key is configured **and** the host is neither `Development` nor `Testing`. This mirrors §7's posture on the vault itself: an unwrapped key ring sitting beside the ciphertext it protects is not a state worth booting into with a warning, because nothing later in the boot sequence would ever surface the gap again. Local development and the integration-test host are exempt for the same reason `Testing` is exempt from the vault's own gate (§3.1) — a checkout that has never touched Azure has no vault key to point at, and the database is the whole trust boundary there anyway.
+
+### 10.4 Losing the key ring, or renaming the application
+
+Two things make every stored MCP credential unreadable at once, and both are worth knowing before either happens: **losing the `DataProtectionKeys` rows** (the table the key ring is persisted into, dropped or truncated), and **changing the `SetApplicationName` value** (`"Enterprise.Gpt"`, hard-coded in `DataProtectionConfiguration`) — Data Protection mixes the application name into every payload it produces, so two processes claiming different names cannot read each other's ciphertext even sharing the same key ring.
+
+Neither is catastrophic, and both are recoverable in the same way: `UserSecretProtector.TryUnprotect` treats a payload it cannot open as "no credential" rather than as an error, so every affected user is simply asked to supply their key again the next time they select the server. It is, however, a real support event — every user of every `UserApiKey` server loses their stored credential at once, with no warning beforehand and no way to recover the old ones after.
+
+## 11. Known boundary: token acquisition is not covered by the measured figures
 
 The 10-second per-attempt `NetworkTimeout` in §7 bounds only the requests this provider's `SecretClient` makes to the vault itself. Acquiring the token that authenticates those requests — `DefaultAzureCredential` reaching IMDS, or the Entra authority, depending on which credential in its chain succeeds — keeps the Azure SDK's own default timeout, effectively **100 seconds** per attempt. A vault that is perfectly reachable, sitting behind an IMDS endpoint or an authority endpoint that is itself black-holed, is therefore **not** covered by the ~44s/~107s figures above; startup can take substantially longer in that specific failure mode.
 
 This was left deliberately rather than tuned blind: token acquisition is a different call, against a different endpoint, with its own retry semantics inside the credential chain, and narrowing it without measuring a real IMDS or authority outage risked trading a slow, honest failure for a fast, wrong one.
 
-## 11. No health check, deliberately
+## 12. No health check, deliberately
 
 There is no `ready`-tagged health check for Key Vault, and that is intentional, not an oversight. Secrets are read once, at startup (or on the configured `ReloadInterval`, §8) — never on the request path — so a vault outage after the app has booted has no effect on whether the app can keep serving requests. A `ready` check that depended on the vault would take a healthy, fully-functional instance out of load-balancer rotation for a dependency it is, at that point, no longer actually using.
 
@@ -158,7 +190,7 @@ Configuration is reading secrets from key vault contoso.vault.azure.net (user-as
 
 [`KeyVaultConfiguration.LogStatus`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/KeyVaultConfiguration.cs) writes this once, right after the vault is added, and reports only the **vault host**, whether a **user-assigned identity** was configured, and the **reload interval** — never a secret value, a secret name, or the managed identity's client id. Which secrets a deployment holds, and which identity it authenticates as, are both worth keeping out of a log sink.
 
-## 12. Relationship to the infra PRD
+## 13. Relationship to the infra PRD
 
 [`docs/prd/azure-infrastructure/azure-infrastructure.md`](../prd/azure-infrastructure/azure-infrastructure.md) EP-4 designs a different answer to the same problem: Key Vault secrets resolved as **App Service Key Vault references**, with the platform doing the resolution and no C# change required at all. That PRD is currently **0 of 45 stories done** — none of its infrastructure exists yet.
 
@@ -166,7 +198,7 @@ This in-process provider is not a partial implementation of that design; it is t
 
 `docs/prd/` is owned by the PRD workflow; this document does not edit it.
 
-## 13. Testing
+## 14. Testing
 
 [`KeyVaultConfigurationTests`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Configuration/KeyVaultConfigurationTests.cs) covers `Resolve` and `AddEnterpriseKeyVault` without reaching a real vault — the enabled-and-well-formed path is asserted against the `KeyVaultSource` `Resolve` returns, so only the refusal paths (missing section, disabled, `Testing` environment, missing/blank/malformed `VaultUri`, a `ReloadInterval` under one minute) and the `Enabled: false` non-registration path run end to end against `WebApplicationBuilder`. One test binds the API's own shipped `appsettings.json` directly (linked into the test project's output, not copied into a literal) to hold that the committed defaults add no vault — a `true` accidentally committed there would point every environment at whatever vault the file happened to name.
 
@@ -175,7 +207,7 @@ This in-process provider is not a partial implementation of that design; it is t
 dotnet test --filter "FullyQualifiedName~KeyVaultConfigurationTests"
 ```
 
-## 14. Key files
+## 15. Key files
 
 | Concern | File |
 |---|---|
@@ -186,4 +218,7 @@ dotnet test --filter "FullyQualifiedName~KeyVaultConfigurationTests"
 | Defaults shipped (`Enabled: false`) | [`Api/appsettings.json`](../../enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json) |
 | Unit tests | [`tests/Enterprise.Gpt.Unit.Test/Configuration/KeyVaultConfigurationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Configuration/KeyVaultConfigurationTests.cs) |
 | The transcript cutover gate this section can trip (§6.1) | [`docs/conversations/transcript-cutover.md`](../conversations/transcript-cutover.md) |
-| The platform-resolved alternative design (§12) | [`docs/prd/azure-infrastructure/azure-infrastructure.md`](../prd/azure-infrastructure/azure-infrastructure.md) |
+| Wrapping the Data Protection key ring (§10) | [`Api/Configuration/DataProtectionConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/DataProtectionConfiguration.cs) |
+| Encrypting the per-user credential the wrapped key ring protects | [`Enterprise.Gpt.Service/Security/UserSecretProtector.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Security/UserSecretProtector.cs) |
+| The motivating case (§10) | [`docs/mcp/github-server.md`](../mcp/github-server.md) |
+| The platform-resolved alternative design (§13) | [`docs/prd/azure-infrastructure/azure-infrastructure.md`](../prd/azure-infrastructure/azure-infrastructure.md) |

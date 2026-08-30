@@ -34,6 +34,10 @@ const RETRYABLE_REJECTIONS = {
   'permission-required': false,
   'conversation-busy': false,
   'mcp-server-unavailable': false,
+  // Unreachable on an upload, and no different from the rest of the tool-server arms
+  // if it ever were: reattaching the file cannot supply an API key.
+  'mcp-credential-required': false,
+  'mcp-credential-rejected': false,
   'provider-not-configured': false,
   'storage-not-configured': false,
   'export-renderer-not-configured': false,

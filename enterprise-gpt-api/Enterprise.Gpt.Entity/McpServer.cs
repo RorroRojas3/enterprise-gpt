@@ -25,7 +25,7 @@ namespace Enterprise.Gpt.Entity
         /// <summary>
         /// The scope requested during on-behalf-of token acquisition
         /// (e.g. <c>api://{clientId}/access_as_user</c>); <see langword="null"/>
-        /// when <see cref="AuthType"/> is <see cref="McpAuthTypes.None"/>.
+        /// for every other <see cref="AuthType"/>.
         /// </summary>
         [StringLength(512)]
         public string? Scope { get; set; }
@@ -59,5 +59,11 @@ namespace Enterprise.Gpt.Entity
         public Dictionary<string, string>? Headers { get; set; }
 
         public ICollection<Permission> Permissions { get; set; } = [];
+
+        /// <summary>
+        /// The per-user credentials held for this server; empty unless <see cref="AuthType"/> is
+        /// <see cref="McpAuthTypes.UserApiKey"/>.
+        /// </summary>
+        public ICollection<UserMcpCredential> UserCredentials { get; set; } = [];
     }
 }

@@ -36,13 +36,15 @@ function formValue(overrides: Partial<McpServerFormValue> = {}): McpServerFormVa
 
 describe('MCP server form rules (US-1208)', () => {
   describe('auth types', () => {
-    it('offers the two the API has, not frame 5h’s three', () => {
-      // The board draws "Header key", "OAuth2" and "None". `McpAuthTypes` has None and
-      // EntraIdOnBehalfOf, and neither of the first two exists in this system.
-      expect(AUTH_TYPE_OPTIONS.map((option) => option.value)).toEqual([1, 2]);
+    it('offers the three the API has, still not the board’s three', () => {
+      // The board draws "Header key", "OAuth2" and "None". "Header key" — one shared
+      // secret in a plain-text column — stays refused; the per-user API key is the
+      // opposite arrangement and is the third arm here.
+      expect(AUTH_TYPE_OPTIONS.map((option) => option.value)).toEqual([1, 2, 3]);
       expect(AUTH_TYPE_OPTIONS.map((option) => option.label)).toEqual([
         'None',
         'Entra ID (on behalf of)',
+        'API key (per user)',
       ]);
     });
 
@@ -56,6 +58,7 @@ describe('MCP server form rules (US-1208)', () => {
     it('requires a scope only for the Entra ID arm', () => {
       expect(requiresScope(MCP_AUTH_TYPE.none)).toBe(false);
       expect(requiresScope(MCP_AUTH_TYPE.entraIdOnBehalfOf)).toBe(true);
+      expect(requiresScope(MCP_AUTH_TYPE.userApiKey)).toBe(false);
     });
 
     it('refuses an auth type outside the enum, the empty select included', () => {
@@ -63,6 +66,7 @@ describe('MCP server form rules (US-1208)', () => {
       // third value is reachable — the table has `authTypeLabel` precisely for it.
       expect(authTypeError(NONE)).toBeNull();
       expect(authTypeError(ENTRA)).toBeNull();
+      expect(authTypeError(String(MCP_AUTH_TYPE.userApiKey))).toBeNull();
       expect(authTypeError('')).toBe('Choose an auth type.');
       expect(authTypeError('0')).toBe('Choose an auth type.');
       expect(authTypeError('99')).toBe('Choose an auth type.');
@@ -101,12 +105,15 @@ describe('MCP server form rules (US-1208)', () => {
       expect(scopeError('api://sap/.default', ENTRA)).toBeNull();
     });
 
-    it('refuses a scope for None, which is the direction the server also enforces', () => {
+    it.each([
+      ['None', NONE],
+      ['API key (per user)', String(MCP_AUTH_TYPE.userApiKey)],
+    ])('refuses a scope for %s, the direction the server also enforces', (_label, authType) => {
       // The field is hidden and cleared on a switch, so this arm is the guard behind that
       // rather than a message a reader normally meets.
-      expect(scopeError('', NONE)).toBeNull();
-      expect(scopeError('api://sap/.default', NONE)).toBe(
-        'A server with no authentication cannot carry a scope.',
+      expect(scopeError('', authType)).toBeNull();
+      expect(scopeError('api://sap/.default', authType)).toBe(
+        'Only an Entra ID server can carry a scope.',
       );
     });
   });

@@ -17,6 +17,7 @@
     </PackageReference>
     <!-- SQLite in-memory backs ModelService tests: unlike the EF InMemory provider it
          supports the relational ExecuteUpdateAsync used by DeactivateModelAsync. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
     <!-- Overrides the transitive 2.1.11 native bundle, which has a known vulnerability

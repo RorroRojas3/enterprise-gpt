@@ -26,6 +26,17 @@ internal sealed class KeyVaultOptions
     /// </remarks>
     public string? ManagedIdentityClientId { get; set; }
 
+    /// <summary>
+    /// Identifier of the vault key that wraps the Data Protection key ring, for example
+    /// <c>https://contoso.vault.azure.net/keys/data-protection</c>.
+    /// </summary>
+    /// <remarks>
+    /// Versionless, so rotating the vault key does not strand payloads written under the previous
+    /// version. Leave unset to persist the key ring unwrapped, which is only appropriate where the
+    /// database itself is the trust boundary — local development and the test host.
+    /// </remarks>
+    public string? DataProtectionKeyUri { get; set; }
+
     /// <summary>How often to re-read the vault, or <see langword="null"/> to read it once at startup.</summary>
     /// <remarks>
     /// A reload reaches only code that re-reads configuration or watches a change token; anything bound
