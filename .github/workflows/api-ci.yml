@@ -93,8 +93,15 @@ jobs:
           # — a `global.json`, `Directory.Build.props`, `NuGet.config` — must be added
           # here when it is introduced. None exists today; a missing entry would under-run
           # these gates rather than over-run them, which is the dangerous direction.
+          #
+          # `docs/tools/file-agent.md` is in the list because it is not only documentation:
+          # the unit test project links it in, and ConversionMatrixDocumentTests holds its
+          # rendered table against conversion-matrix.json. A docs-only edit to that table
+          # has to run these tests.
           changed=$(git diff --name-only HEAD^1 HEAD -- \
-            enterprise-gpt-api .github/workflows/api-ci.yml)
+            enterprise-gpt-api \
+            docs/tools/file-agent.md \
+            .github/workflows/api-ci.yml)
 
           if [ -n "$changed" ]; then
             echo "api=true" >> "$GITHUB_OUTPUT"

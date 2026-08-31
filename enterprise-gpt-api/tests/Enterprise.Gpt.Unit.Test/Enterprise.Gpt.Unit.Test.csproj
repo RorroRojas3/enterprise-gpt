@@ -48,12 +48,12 @@
     <None Include="..\..\Enterprise.Gpt.Api\appsettings.json"
           Link="api-appsettings.json"
           CopyToOutputDirectory="PreserveNewest" />
-    <!-- The published File Agent capability document, so ConversionMatrixDocumentTests can hold
+    <!-- The published File Agent document, so ConversionMatrixDocumentTests can hold
          its rendered table against the JSON it is rendered from. Linked rather than duplicated for
          the same reason as the settings file above: a hand-maintained copy would pass while the
          document a reader actually opens said something else. -->
-    <None Include="..\..\..\docs\file-agent\sandbox-capabilities.md"
-          Link="file-agent-sandbox-capabilities.md"
+    <None Include="..\..\..\docs\tools\file-agent.md"
+          Link="file-agent.md"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

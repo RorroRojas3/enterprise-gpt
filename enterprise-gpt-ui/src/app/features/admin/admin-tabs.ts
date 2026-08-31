@@ -11,22 +11,16 @@ export interface AdminTab {
 }
 
 /**
- * The tabs the administration area offers, in the board's own order.
+ * The tabs the administration area offers.
  *
- * All four `AdminNav.dc.html` draws, since US-1209 gave the last of them a route. The
- * rule that got them here is unchanged and still binds: **an entry is added by the story
- * that builds its route, in the same commit, never ahead of it** — a rail entry leading
- * nowhere is the "shown and disabled" affordance US-203 already rejected for the Admin
- * entry itself. Reports leads to frame `5i`'s unavailable panel rather than to a
- * dashboard, which is a destination; US-1302 changes what is on it, not whether it is
- * reachable.
+ * An entry is added by the change that builds its route, never ahead of it: a rail
+ * entry leading nowhere is the "shown and disabled" affordance already rejected for
+ * the Admin entry itself.
  */
 export const ADMIN_TABS: readonly AdminTab[] = [
   { id: 'users', label: 'Users', icon: 'bi-people', link: `${ADMIN_ROUTE}/users` },
   { id: 'models', label: 'Models', icon: 'bi-cpu', link: `${ADMIN_ROUTE}/models` },
-  // `bi-plug`, which is what `AdminNav.dc.html` draws and is already in the sprite.
   { id: 'mcps', label: 'MCP servers', icon: 'bi-plug', link: `${ADMIN_ROUTE}/mcps` },
-  // `bi-graph-up`, likewise drawn by the board and already among the sprite's glyphs.
   { id: 'reports', label: 'Reports', icon: 'bi-graph-up', link: `${ADMIN_ROUTE}/reports` },
 ];
 

@@ -3,10 +3,9 @@
  * truth for three things: the sprite `scripts/build-icon-sprite.mjs` emits, the
  * `IconName` template type, and the build check in `scripts/check-icon-names.mjs`.
  *
- * The list tracks what the application actually renders rather than what the design
- * boards under `docs/design/project/` drew: a glyph whose last consumer goes away is
- * removed, so the sprite never carries dead weight. Every name must exist in
- * bootstrap-icons 1.13.1, which is what the sprite build resolves against.
+ * The list tracks what the application actually renders: a glyph whose last consumer
+ * goes away is removed, so the sprite never carries dead weight. Every name must exist
+ * in bootstrap-icons 1.13.1, which is what the sprite build resolves against.
  *
  * The multi-colour brand marks are a separate lane — see `brand-icon-names.ts`.
  *

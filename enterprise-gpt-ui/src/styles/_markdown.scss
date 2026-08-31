@@ -210,9 +210,8 @@
 // The border and the background carry the warning; the text does not, and it stays
 // that way. `--warn` as a `color` used to measure 3.99:1 on `--warn-bg` in light —
 // below AA — which is why this inherits `--bs-body-color`, as `TurnNoticeCard` does on
-// the same surface. US-1405 raised the token upstream in the design bundle to 4.56:1
-// on this panel, so the constraint is gone; the treatment is kept because the board
-// draws it this way and `check-tokens.mjs` now measures the pair either way.
+// the same surface. `--warn` now measures 4.56:1 on this panel, so the constraint is
+// gone; the treatment is kept, and `check-tokens.mjs` measures the pair either way.
 .md-diagram__notice {
   margin: 0;
   padding: 8px 14px;

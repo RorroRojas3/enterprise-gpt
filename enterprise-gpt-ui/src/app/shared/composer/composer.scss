@@ -185,8 +185,7 @@
   opacity: 1;
 }
 
-// Composer.dc.html's project pill: 30px, fully rounded, between the paperclip and the
-// model pill. The same box serves the static chip the project screen renders, which is
+// The project pill: 30px, fully rounded, between the paperclip and the model pill. The same box serves the static chip the project screen renders, which is
 // a <span> because there is nothing to open there.
 .composer__project {
   display: inline-flex;

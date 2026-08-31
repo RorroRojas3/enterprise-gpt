@@ -4,212 +4,88 @@
 [![Angular](https://img.shields.io/badge/Angular-21-DD0031?logo=angular)](https://angular.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](https://www.typescriptlang.org/)
-[![SQL Server](https://img.shields.io/badge/SQL%20Server-Vector%20Search-CC2927?logo=microsoft-sql-server)](https://www.microsoft.com/sql-server)
+[![SQL Server](https://img.shields.io/badge/SQL%20Server-2025-CC2927?logo=microsoft-sql-server)](https://www.microsoft.com/sql-server)
 
-Enterprise GPT is a full-stack AI chat platform built with a .NET 10 Web API backend and an Angular 21 frontend. It supports multiple AI service providers including Ollama, OpenAI, Azure AI Foundry, and Anthropic, with document management and vector search capabilities.
+An enterprise AI chat platform. Users sign in with Microsoft Entra ID, hold streaming conversations
+with large language models, attach documents that become searchable context, and — with the right
+permission — have the assistant generate files. Administrators manage the model catalog, the MCP
+tool servers, and user permissions.
 
-## 📋 Table of Contents
+**Documentation lives in [`docs/`](docs/README.md)** — start with
+[the architecture overview](docs/architecture/overview.md).
 
-- [Features](#-features)
-- [Architecture](#️-architecture)
-- [Tech Stack](#️-tech-stack)
-- [Prerequisites](#-prerequisites)
-- [Quick Start](#-quick-start)
-- [Configuration](#-configuration)
-- [Database Setup](#-database-setup)
-- [API Endpoints](#-api-endpoints)
-- [Examples](#-examples)
-- [Development](#-development)
-- [Testing](#-testing)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Authors](#-authors)
-- [Acknowledgments](#-acknowledgments)
-
-## 🚀 Features
-
-- **Multi-AI Provider Support**: Integrate with Ollama, OpenAI, Azure AI Foundry, and Anthropic
-- **Real-time Chat**: Server-sent events for streaming responses
-- **Document Management**: Upload and search documents with vector embeddings
-- **Session Management**: Persistent chat sessions with history
-- **Modern UI**: Responsive Angular frontend with Bootstrap 5
-- **Vector Search**: AI-powered document search using SQL Server Vector Search
-
-## 🏗️ Architecture
+## Layout
 
 ```
 enterprise-gpt/
-├── enterprise-gpt-api/             # .NET 10 Web API backend
-│   ├── Enterprise.Gpt.Api/         # Minimal-API endpoints & Program.cs
-│   ├── Enterprise.Gpt.Service/     # Business logic services
-│   ├── Enterprise.Gpt.Repository/  # Data access layer & EF Core migrations
-│   ├── Enterprise.Gpt.Entity/      # Entity Framework models
-│   ├── Enterprise.Gpt.Dto/         # Data transfer objects
-│   ├── Enterprise.Gpt.Common/      # Shared primitives
-│   └── tests/                      # xUnit v3 unit & integration tests
-└── enterprise-gpt-ui/              # Angular 21 frontend
-    ├── src/app/core/               # App-wide singletons and policy
-    ├── src/app/domain/             # Framework-free domain logic
-    ├── src/app/shared/             # Presentational components
-    ├── src/app/features/           # Route-owned feature areas
-    └── public/config.json          # Runtime configuration
+├── enterprise-gpt-api/    .NET 10 backend (Enterprise.Gpt.sln)
+│   ├── Enterprise.Gpt.Api/          minimal-API endpoints, hosting, providers
+│   ├── Enterprise.Gpt.Service/      business logic and every subsystem
+│   ├── Enterprise.Gpt.Repository/   EF Core DbContext and migrations
+│   ├── Enterprise.Gpt.Entity/       entities and Cosmos document shapes
+│   ├── Enterprise.Gpt.Dto/          request and response DTOs, id catalogs
+│   ├── Enterprise.Gpt.Common/       shared enums and telemetry names
+│   └── tests/                       xUnit v3 unit and integration tests
+├── enterprise-gpt-ui/     Angular 21 frontend (standalone, zoneless)
+└── docs/                  engineering documentation
 ```
 
-## 🛠️ Tech Stack
+## Prerequisites
 
-### Backend (.NET API)
+| | |
+| --- | --- |
+| .NET 10 SDK | [download](https://dotnet.microsoft.com/download/dotnet/10.0) |
+| Node.js 24 | the `engines.node` range in `enterprise-gpt-ui/package.json` |
+| SQL Server 2025 | earlier engines and LocalDB are rejected — the DbContext pins `UseCompatibilityLevel(170)` |
+| Docker | integration tests only |
+| An Azure OpenAI resource | required: it serves the default model and every document embedding |
+| A Microsoft Entra ID app registration | authentication |
 
-- **.NET 10.0** - Web API Framework
-- **Entity Framework Core 10.0** - ORM with SQL Server
-- **SQL Server Vector Search** - Vector embeddings storage
-- **Microsoft.Extensions.AI** - AI service abstractions
-- **Swagger/OpenAPI** - API Documentation
+Azure Cosmos DB, Blob Storage, Document Intelligence and Application Insights are used by the
+transcript, document, extraction and telemetry subsystems respectively.
 
-### Frontend (Angular UI)
-
-- **Angular 21** - Frontend framework (standalone, zoneless)
-- **TypeScript 5.9** - Programming language
-- **NgRx Signals** - State management
-- **Bootstrap 5.3 + SCSS** - CSS framework
-- **RxJS** - Reactive programming
-- **ngx-markdown** (marked + Prism) - Markdown rendering and syntax highlighting
-- **MSAL** - Microsoft Entra ID authentication
-- **Vitest** - Unit testing
-
-### AI Service Integrations
-
-- **Ollama** - Local AI models
-- **OpenAI** - GPT models
-- **Azure OpenAI** - Azure OpenAI deployments over the Responses API (required; also backs embeddings)
-- **Azure AI Foundry** - the same Azure resource over Chat Completions, for Foundry Models (optional)
-- **Amazon Bedrock** - Claude and other models on AWS (optional)
-- **Anthropic** - Claude models (optional)
-
-## 📋 Prerequisites
-
-### Required Software
-
-- **.NET 10.0 SDK** - [Download here](https://dotnet.microsoft.com/download/dotnet/10.0)
-- **Node.js 18+** - [Download here](https://nodejs.org/)
-- **SQL Server** - Express, Developer, or Full edition
-- **Angular CLI 21+** - Install via `npm install -g @angular/cli`
-
-### Optional (for local AI)
-
-- **Ollama** - [Install here](https://ollama.ai/) for local AI models
-
-### AI Service API Keys
-
-- **Azure OpenAI** - Endpoint URL and API Key. **Required** — it serves the default model and every document embedding
-- **Azure AI Foundry** - Endpoint URL and API Key, optional; the same resource reached over Chat Completions
-- **Amazon Bedrock API Key** - optional
-- **Anthropic API Key** - optional, for Claude models served directly
-
-## 🚀 Quick Start
-
-### 1. Clone the Repository
+## Quick start
 
 ```bash
-git clone https://github.com/RorroRojas3/ai-chat.git
-cd ai-chat
+git clone https://github.com/RorroRojas3/enterprise-gpt.git
+cd enterprise-gpt
 ```
 
-### 2. Setup the Database
-
-```bash
-# Create database (replace connection string as needed)
-# Default: Server=localhost;Database=aichat;Integrated Security=true;Encrypt=true;TrustServerCertificate=true;
-```
-
-### 3. Configure API Environment Variables
-
-Create user secrets for the API project:
+**1. Configure the API.** Never put a secret in `appsettings.json` — it is checked in.
 
 ```bash
 cd enterprise-gpt-api/Enterprise.Gpt.Api
 dotnet user-secrets init
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost;Database=EnterpriseGpt;Integrated Security=true;Encrypt=true;TrustServerCertificate=true;"
+dotnet user-secrets set "AzureOpenAI:Url" "https://<resource>.services.ai.azure.com"
+dotnet user-secrets set "AzureOpenAI:ApiKey" "<key>"
+dotnet user-secrets set "AzureAd:TenantId" "<tenant>"
+dotnet user-secrets set "AzureAd:ClientId" "<client>"
 ```
 
-Add your AI service configurations:
+`AzureOpenAI:Url` is the resource **root** — a URL that already carries `/openai/v1` fails at
+startup. Every other section, and the optional providers, are listed in
+[docs/operations/configuration.md](docs/operations/configuration.md).
+
+**2. Trust the development certificate**, or every call to the API will fail while *looking* like a
+CORS error:
 
 ```bash
-# For Azure OpenAI (required) — Url is the resource ROOT, with no /openai/v1 path;
-# the chat client appends it, and a URL that already carries it fails at startup.
-# NOTE: these keys were named AzureAIFoundry:* before this release. See the upgrade
-# note below if you are updating an existing environment.
-dotnet user-secrets set "AzureOpenAI:Url" "https://your-endpoint.openai.azure.com/"
-dotnet user-secrets set "AzureOpenAI:ApiKey" "your-azure-api-key"
-dotnet user-secrets set "AzureOpenAI:DefaultModel" "your-chat-deployment-name"
-dotnet user-secrets set "AzureOpenAI:EmbeddingModel" "text-embedding-ada-002"
-
-# For Azure AI Foundry (optional; Chat Completions on the SAME resource, for Foundry
-# Models such as DeepSeek or Llama that do not implement the Responses API).
-# Leave AzureAIFoundry:Enabled false to skip it entirely.
-dotnet user-secrets set "AzureAIFoundry:Enabled" "true"
-dotnet user-secrets set "AzureAIFoundry:Url" "https://your-endpoint.services.ai.azure.com/"
-dotnet user-secrets set "AzureAIFoundry:ApiKey" "your-azure-api-key"
-dotnet user-secrets set "AzureAIFoundry:DefaultModel" "DeepSeek-R1"
-
-# For Amazon Bedrock (optional; leave AmazonBedrock:Enabled false to skip it entirely)
-dotnet user-secrets set "AmazonBedrock:Enabled" "true"
-dotnet user-secrets set "AmazonBedrock:Region" "us-east-1"
-dotnet user-secrets set "AmazonBedrock:ApiKey" "your-bedrock-api-key"
-dotnet user-secrets set "AmazonBedrock:DefaultModelId" "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-
-# For Anthropic, first-party (optional; leave Anthropic:Enabled false to skip it entirely)
-dotnet user-secrets set "Anthropic:Enabled" "true"
-dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-your-api-key"
-dotnet user-secrets set "Anthropic:DefaultModelId" "claude-opus-5"
+dotnet dev-certs https --trust
 ```
 
-Model ids differ between the two Claude providers: Anthropic takes a **bare** id (`claude-opus-5`),
-Bedrock takes the `anthropic.`-prefixed inference-profile id. Startup validation rejects the prefixed
-form in the `Anthropic` section.
-
-Optionally, switch on the **fabricated weather tool** — a fake `get_weather` function attached to
-every turn, whose only purpose is to drive the assistant's activity timeline (running cards,
-sub-statuses, durations, the failed state) without standing up an MCP server or uploading a
-document:
-
-```bash
-# Local development only. Every value it returns is invented, and the model reports it as fact.
-dotnet user-secrets set "Tools:Weather:Enabled" "true"
-dotnet user-secrets set "Tools:Weather:DelayMilliseconds" "600"
-```
-
-Ask the assistant about the weather anywhere to see a completed card; ask about a place whose name
-contains `fail` (`"weather in Failtown"`) to see a failed one. The delay is artificial and exists so
-the running state is visible at all — an instant tool call finishes inside a single stream flush and
-the card appears already completed. Leave it off in any shared environment; enabling it in
-Production is allowed but prints a warning to standard error at startup.
-
-Enabling Bedrock also needs two database changes that are not applied automatically and fail
-silently if skipped — see [docs/models/amazon-bedrock.md](docs/models/amazon-bedrock.md). Enabling
-Anthropic needs one: its `Core.Ref.Provider` row must be inserted by hand — see
-[docs/models/anthropic.md](docs/models/anthropic.md). Azure AI Foundry needs none: its provider row
-ships as the migration `20260814031023_AddAzureAIFoundryProvider`, applied at startup.
-
-> **⚠️ Upgrading an existing environment: the Azure settings were renamed.** `AzureAIFoundry:Url`,
-> `:ApiKey`, `:DefaultModel` and `:EmbeddingModel` are now `AzureOpenAI:*`, and the `AzureAIFoundry`
-> section has been reassigned to the new, optional Chat Completions provider above. Re-key user
-> secrets and every deployed configuration store before deploying this build — the app refuses to
-> start otherwise, with a message naming `AzureOpenAI:Url` and nothing connecting it to the setting
-> you configured. Steps:
-> [docs/models/azure-openai.md §8](docs/models/azure-openai.md#8-upgrading-from-the-previous-release--the-configuration-rename).
-
-### 4. Run the API
+**3. Run the API.** The schema is created and seeded on first start — `Database.Migrate()` runs at
+startup, so there is no separate migration step.
 
 ```bash
 cd enterprise-gpt-api
-dotnet restore
-dotnet build
 dotnet run --project Enterprise.Gpt.Api
 ```
 
-The API will start at `https://localhost:7045` (HTTPS) and `http://localhost:5045` (HTTP).
+It listens on `https://localhost:7045`. In Development, the OpenAPI document is at `/openapi` and
+the Scalar reference at `/scalar`.
 
-### 5. Run the Frontend
+**4. Run the client.**
 
 ```bash
 cd enterprise-gpt-ui
@@ -217,660 +93,56 @@ npm install
 npm start
 ```
 
-The frontend will start at `http://localhost:4200`.
-
-### 7. (Optional) Enable Angular MCP Tools in VS Code
-
-Use the Angular CLI MCP server to supercharge AI-assisted Angular workflows.
-
-Create `.vscode/mcp.json` in the repo root with one of the following configurations:
-
-```jsonc
-{
-  "servers": {
-    "angular-cli": {
-      "command": "npx",
-      "args": ["-y", "@angular/cli", "mcp"]
-    }
-  }
-}
-```
-
-### 6. Access the Application
-
-- **Frontend**: http://localhost:4200
-- **API Documentation**: https://localhost:7045/swagger
-
-## 🔧 Configuration
-
-### API Configuration (`appsettings.json`)
-
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "AllowedHosts": "*",
-  "CorsOrigins": ["http://localhost:4200"],
-  "OllamaUrl": "http://localhost:11434/",
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Database=aichat;Integrated Security=true;Encrypt=true;TrustServerCertificate=true;"
-  }
-}
-```
-
-### Frontend Configuration (`public/config.json`)
-
-There is no `environments/` directory and no build-time file replacement. `main.ts`
-fetches `config.json` before bootstrapping and validates it; an invalid or missing file
-renders a static fatal shell instead of starting the app. Replace this file per
-environment.
-
-```json
-{
-  "apiBaseUrl": "https://localhost:7045",
-  "auth": {
-    "clientId": "<entra-app-client-id>",
-    "authority": "https://login.microsoftonline.com/<tenant-id>",
-    "redirectUri": "/auth",
-    "postLogoutRedirectUri": "/signed-out",
-    "apiScopes": ["api://<entra-app-client-id>/access_as_user"]
-  },
-  "features": {
-    "diagrams": true,
-    "math": true,
-    "rawStreamCodec": false
-  }
-}
-```
-
-### Environment Variables Reference
-
-| Variable                              | Description                                                   | Required | Default                |
-| ------------------------------------- | ------------------------------------------------------------- | -------- | ---------------------- |
-| `AzureOpenAI:Url`                     | Azure resource **root**, without `/openai/v1`                 | Yes      | -                      |
-| `AzureOpenAI:ApiKey`                  | Azure OpenAI API key                                          | Yes      | -                      |
-| `AzureOpenAI:DefaultModel`            | Chat deployment used when a request names none                | Yes      | -                      |
-| `AzureOpenAI:EmbeddingModel`          | Embedding model name                                          | Yes      | -                      |
-| `AzureOpenAI:ReasoningSummary`        | `auto`, `concise`, `detailed`, or `none`                      | No       | `auto`                 |
-| `AzureOpenAI:ReasoningEffort`         | `minimal`, `low`, `medium`, or `high`                         | No       | `medium`               |
-| `AzureAIFoundry:Enabled`              | Registers the Chat Completions client on the same resource    | No       | false                  |
-| `AzureAIFoundry:Url`                  | Azure resource **root**, without `/openai/v1`                 | If enabled | -                    |
-| `AzureAIFoundry:ApiKey`               | Azure resource API key                                        | If enabled | -                    |
-| `AzureAIFoundry:DefaultModel`         | Chat deployment used when a request names none                | If enabled | -                    |
-| `AmazonBedrock:Enabled`               | Registers the Bedrock chat client                             | No       | false                  |
-| `AmazonBedrock:Region`                | AWS region system name, e.g. `us-east-1`                      | If enabled | -                    |
-| `AmazonBedrock:ApiKey`                | Bedrock API key, sent as an HTTP bearer token                 | If enabled | -                    |
-| `AmazonBedrock:DefaultModelId`        | Bedrock model or inference profile id used when none is named | If enabled | -                    |
-| `Anthropic:Enabled`                   | Registers the Anthropic chat client                           | No       | false                  |
-| `Anthropic:ApiKey`                    | Anthropic API key (secrets store only)                        | If enabled | -                    |
-| `Anthropic:DefaultModelId`            | Bare Anthropic model id used when none is named               | If enabled | `claude-opus-5`      |
-| `Anthropic:DefaultMaxOutputTokens`    | Output token ceiling applied to every Anthropic turn          | No       | 32768                  |
-| `Anthropic:Thinking`                  | `adaptive` or `disabled`                                      | No       | `adaptive`             |
-| `Anthropic:Effort`                    | `low`, `medium`, `high`, `xhigh`, or `max`                    | No       | `high`                 |
-| `Anthropic:Timeout`                   | Per-request timeout                                           | No       | 10 minutes             |
-| `Anthropic:MaxRetries`                | SDK retries per failed request                                | No       | 2                      |
-| `Tools:Weather:Enabled`               | Attaches the fabricated `get_weather` tool to every turn      | No       | false                  |
-| `Tools:Weather:DelayMilliseconds`     | Artificial latency per lookup, 0–10000                        | No       | 600                    |
-| `Summarization:Enabled`               | Attaches the `document_summarize` tool to every turn          | No       | false                  |
-| `SheetQuery:Enabled`                  | Attaches the `sheet_query` tool to a turn with a queryable spreadsheet in scope | No | false      |
-| `FileAgent:Enabled`                   | Attaches the `file_agent` tool, which runs a hosted Code Interpreter sandbox | No | false        |
-| `ConnectionStrings:DefaultConnection` | SQL Server connection string                                  | Yes      | See above              |
-
-Azure OpenAI is required — it serves the default model over the Responses API and also backs
-document-embedding generation. Azure AI Foundry is the same resource reached over Chat Completions,
-for Foundry Models that do not implement the Responses API; it is optional, off by default, and
-serves **no** reasoning. Amazon Bedrock is optional and off by default; when `AmazonBedrock:Enabled`
-is `true` the remaining Bedrock settings are validated at startup and the app refuses to boot if any
-is missing or the region is unknown. Anthropic is optional and off by default too; when
-`Anthropic:Enabled` is `true` every other `Anthropic:*` setting is validated at startup, including
-the rule that `disabled` thinking is not accepted above `high` effort.
-
-`Anthropic:DefaultMaxOutputTokens` is the ceiling on **every** Anthropic turn, not a fallback — the
-catalog model's `maxOutputTokens` is never sent — and with thinking on it covers reasoning and answer
-text together. Size it generously; see [docs/models/anthropic.md](docs/models/anthropic.md).
-
-`Summarization:Enabled` and `SheetQuery:Enabled` both default to `false` in code, so an environment
-that configures neither gets neither — but the repository's committed `appsettings.json` turns both
-on for development. That committed value is a development convenience, not a default: set each one
-explicitly per environment rather than inheriting what the repository ships.
-`SheetQuery:Enabled` reaches a running deployment without a redeploy or a restart, when the change
-lands through a reloading configuration source; see
-[docs/documents/sheet-query.md §10](docs/documents/sheet-query.md#10-rollback) for exactly how, and
-the one case (an environment variable) where it does not.
-
-`FileAgent:Enabled` is the exception to that convenience: it defaults to `false` **in code and in the
-committed `appsettings.json`**, because every run it permits provisions a billed sandbox session — a
-cost the other two flags do not carry. A developer who wants to exercise the File Agent locally
-switches it on themselves, in user secrets or an environment-specific override, rather than inheriting
-it from a checkout. A test (`FileAgentOptionsTests.Bind_TheShippedConfiguration_LeavesFileGenerationOff`)
-binds the real committed file and fails the build if that ever changes. Unlike `SheetQuery:Enabled`,
-flipping it takes a restart — see [docs/file-agent/the-agent.md §13](docs/file-agent/the-agent.md#13-rollback)
-for the shape of that rollback and why it does not follow `SheetQuery`'s reload mechanism. Even with
-the flag on, generating a file also needs the caller to hold the `Generate Files` permission — see
-[docs/permissions/permission-cache.md §3](docs/permissions/permission-cache.md#3-permission-names-are-resolved-from-a-static-map-not-the-database).
-
-The two `AzureOpenAI:Reasoning*` settings only take effect on a model whose catalog row sets
-`isReasoningEnabled`, which is **off by default** — a deployment that does not support reasoning
-rejects the whole request rather than ignoring the option. Turn it on per model through the admin
-model API; see [docs/models/azure-openai.md](docs/models/azure-openai.md). The flag has no effect on
-a model served by any other provider, including Azure AI Foundry.
-
-## 🧪 Database Setup
-
-The application uses Entity Framework migrations. To set up the database:
-
-1. **Update Connection String**: Modify the connection string in `appsettings.json` or set via user secrets:
-
-   ```bash
-   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "your-connection-string"
-   ```
-
-2. **Run Migrations** (when available):
-   ```bash
-   cd enterprise-gpt-api
-   dotnet ef database update --project Enterprise.Gpt.Api
-   ```
-
-## 📚 API Endpoints
-
-### Chat Endpoints
-
-- `POST /api/chats/sessions/{sessionId}/stream` - Stream chat responses
-- `POST /api/chats/sessions/{sessionId}/completion` - Get chat completion
-
-### Session Management
-
-- `GET /api/sessions` - Get all sessions
-- `POST /api/sessions` - Create new session
-- `GET /api/sessions/{id}` - Get session by ID
-- `DELETE /api/sessions/{id}` - Delete session
-
-### Document Management
-
-- `POST /api/documents` - Upload document
-- `GET /api/documents` - Get all documents
-- `POST /api/documents/search` - Search documents
-
-### Models
-
-- `GET /api/models` - Get available AI models
-
-## 📝 Examples
-
-### Example 1: Starting a Chat Session
-
-**Backend (C# API Call)**:
-
-```csharp
-// Create a new chat session
-var session = new SessionDto
-{
-    Name = "My AI Conversation",
-    CreatedAt = DateTime.UtcNow
-};
-
-// POST to /api/sessions
-var response = await httpClient.PostAsJsonAsync("api/sessions", session);
-var createdSession = await response.Content.ReadFromJsonAsync<SessionDto>();
-```
-
-**Frontend (TypeScript/Angular)**:
-
-```typescript
-// Using the SessionService
-this.sessionService.createSession("My AI Conversation").subscribe((session) => {
-  console.log("Session created:", session.id);
-  this.currentSessionId = session.id;
-});
-```
-
-### Example 2: Sending a Chat Message and Streaming Response
-
-**Backend (C# Controller)**:
-
-```csharp
-[HttpPost("sessions/{sessionId}/stream")]
-public async IAsyncEnumerable<string> StreamChatCompletion(
-    Guid sessionId,
-    [FromBody] ChatCompletionDto request,
-    [EnumeratorCancellation] CancellationToken cancellationToken)
-{
-    await foreach (var chunk in _chatService.StreamCompletionAsync(
-        sessionId,
-        request,
-        cancellationToken))
-    {
-        yield return chunk;
-    }
-}
-```
-
-**Frontend (TypeScript/Angular with SSE)**:
-
-```typescript
-// Stream chat response
-sendMessage(sessionId: string, message: string, model: string) {
-  const request = {
-    prompt: message,
-    model: model,
-    systemPrompt: 'You are a helpful assistant.'
-  };
-
-  this.chatService.streamCompletion(sessionId, request).subscribe({
-    next: (chunk) => {
-      // Append chunk to message display
-      this.currentMessage += chunk;
-    },
-    complete: () => {
-      console.log('Streaming completed');
-    }
-  });
-}
-```
-
-### Example 3: Document Upload and Vector Search
-
-**Upload a Document**:
-
-```csharp
-// C# Example
-var formData = new MultipartFormDataContent();
-formData.Add(new StreamContent(fileStream), "file", fileName);
-
-var response = await httpClient.PostAsync("api/documents", formData);
-var document = await response.Content.ReadFromJsonAsync<DocumentDto>();
-```
-
-**Search Documents**:
-
-```csharp
-// C# Example - Vector search with AI embeddings
-var searchRequest = new DocumentSearchDto
-{
-    Query = "What are the system requirements?",
-    TopK = 5
-};
-
-var response = await httpClient.PostAsJsonAsync("api/documents/search", searchRequest);
-var results = await response.Content.ReadFromJsonAsync<List<DocumentDto>>();
-```
-
-### Example 4: Using Different AI Providers
-
-**OpenAI (GPT-4)**:
-
-```typescript
-const request = {
-  prompt: "Explain quantum computing",
-  model: "gpt-4",
-  systemPrompt: "You are a physics expert.",
-};
-
-this.chatService.getCompletion(sessionId, request).subscribe((response) => {
-  console.log(response.content);
-});
-```
-
-**Ollama (Local Model)**:
-
-```typescript
-const request = {
-  prompt: "Write a haiku about coding",
-  model: "llama3.2:latest",
-  systemPrompt: "You are a creative poet.",
-};
-
-this.chatService.getCompletion(sessionId, request).subscribe((response) => {
-  console.log(response.content);
-});
-```
-
-**Anthropic (Claude)**:
-
-```typescript
-const request = {
-  prompt: "Help me debug this code",
-  model: "claude-opus-5",
-  systemPrompt: "You are an expert programmer.",
-};
-
-this.chatService.getCompletion(sessionId, request).subscribe((response) => {
-  console.log(response.content);
-});
-```
-
-### Example 5: Session Management
-
-**List All Sessions**:
-
-```typescript
-// Get all chat sessions
-this.sessionService.getSessions().subscribe((sessions) => {
-  sessions.forEach((session) => {
-    console.log(`${session.name} - Created: ${session.createdAt}`);
-  });
-});
-```
-
-**Delete a Session**:
-
-```typescript
-// Delete a specific session
-this.sessionService.deleteSession(sessionId).subscribe(() => {
-  console.log("Session deleted successfully");
-});
-```
-
-### Example 6: Configuration with User Secrets
-
-**Setting up OpenAI**:
+It serves `http://localhost:4200`, which is the only origin the API's CORS policy allows by default.
+Runtime configuration comes from `public/config.json`, which is fetched and validated before
+bootstrap — an invalid file renders a fatal shell rather than starting the app.
+
+## Commands
 
 ```bash
-cd enterprise-gpt-api/Enterprise.Gpt.Api
-dotnet user-secrets set "OpenAI:ApiKey" "sk-proj-xxxxxxxxxxxxx"
+# enterprise-gpt-api/
+dotnet build
+dotnet test                                     # integration tests need Docker
+dotnet test --filter "Category!=Integration"    # unit only
+
+# enterprise-gpt-ui/
+npm start            # ng serve
+npm run build        # production build, then the initial-chunk gate
+npm run lint         # eslint, then the icon, forbidden-API and token checks
+npm test             # Vitest, single run
+npm run test:a11y    # the axe suite — not part of npm test
+npm run format       # Prettier (format:check for the read-only variant)
 ```
 
-**Setting up Azure OpenAI**:
+Both sides have CI; see [docs/development/testing-and-ci.md](docs/development/testing-and-ci.md).
 
-```bash
-dotnet user-secrets set "AzureOpenAI:Url" "https://my-resource.openai.azure.com/"
-dotnet user-secrets set "AzureOpenAI:ApiKey" "your-azure-key"
-dotnet user-secrets set "AzureOpenAI:EmbeddingModel" "text-embedding-ada-002"
-```
+## Documentation
 
-**Setting up Anthropic**:
+| Area | Start here |
+| --- | --- |
+| How it all fits together | [architecture/overview.md](docs/architecture/overview.md) |
+| Backend structure | [architecture/backend.md](docs/architecture/backend.md) |
+| Frontend structure | [architecture/frontend.md](docs/architecture/frontend.md) |
+| Data model and migrations | [architecture/data-model.md](docs/architecture/data-model.md) |
+| Sign-in and permissions | [architecture/auth-and-permissions.md](docs/architecture/auth-and-permissions.md) |
+| Chat turns and streaming | [conversations/](docs/conversations/turn-lifecycle.md) |
+| Documents, search and summarization | [documents/](docs/documents/ingestion.md) |
+| MCP servers and the File Agent | [tools/](docs/tools/mcp-servers.md) |
+| Models and providers | [models/](docs/models/providers.md) |
+| Configuration and runbooks | [operations/](docs/operations/configuration.md) |
 
-```bash
-dotnet user-secrets set "Anthropic:Enabled" "true"
-dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-xxxxxxxxxxxxx"
-dotnet user-secrets set "Anthropic:DefaultModelId" "claude-opus-5"
-```
+The full index is [docs/README.md](docs/README.md).
 
-The key alone does nothing — `Anthropic:Enabled` is what registers the chat client.
+## Contributing
 
-## 🔧 Development
+Read [`.claude/CLAUDE.md`](.claude/CLAUDE.md) for the coding standards this repository enforces —
+C# conventions, Angular and NgRx Signals patterns, and the comment style. Run `npm run lint`,
+`npm run format` and both test suites before opening a pull request.
 
-### Running Tests
+## License
 
-**Backend Tests**:
+MIT — see [LICENSE](LICENSE).
 
-```bash
-cd enterprise-gpt-api
-dotnet test
-```
+## Authors
 
-**Frontend Tests**:
-
-```bash
-cd enterprise-gpt-ui
-npm test
-```
-
-### Building for Production
-
-**Backend**:
-
-```bash
-cd enterprise-gpt-api
-dotnet publish -c Release -o ./publish
-```
-
-**Frontend**:
-
-```bash
-cd enterprise-gpt-ui
-npm run build
-```
-
-## 🧪 Testing
-
-### Test Framework
-
-- **Backend**: xUnit v3, with NSubstitute for isolation. Unit tests run on SQLite in-memory; integration tests use Testcontainers and need Docker.
-- **Frontend**: Vitest, via the `@angular/build:unit-test` builder. Accessibility specs are a separate target (`npm run test:a11y`).
-
-### Running Backend Tests
-
-```bash
-cd enterprise-gpt-api
-dotnet test --verbosity normal
-```
-
-### Running Frontend Tests
-
-```bash
-cd enterprise-gpt-ui
-npm test
-```
-
-For continuous test watching during development:
-
-```bash
-npm run test:watch
-```
-
-### Code Coverage
-
-To generate code coverage reports:
-
-**Backend (using dotnet-coverage)**:
-
-```bash
-dotnet tool install -g dotnet-coverage
-cd enterprise-gpt-api
-dotnet-coverage collect -f cobertura -o coverage.cobertura.xml dotnet test
-```
-
-**Frontend**:
-
-```bash
-cd enterprise-gpt-ui
-npm run test:coverage
-```
-
-Coverage reports will be generated in the `coverage/` directory.
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### 1. .NET SDK Version Error
-
-**Error**: `The current .NET SDK does not support targeting .NET 10.0`
-
-**Solution**: Install .NET 10.0 SDK from [Microsoft's download page](https://dotnet.microsoft.com/download/dotnet/10.0).
-
-#### 2. Database Connection Issues
-
-**Error**: Cannot connect to SQL Server
-
-**Solutions**:
-
-- Ensure SQL Server is running
-- Verify connection string in `appsettings.json`
-- Check if Windows Authentication is enabled (for Integrated Security)
-- For Docker SQL Server, ensure proper port mapping
-
-#### 3. CORS Errors
-
-**Error**: CORS policy blocking requests from frontend
-
-**Solutions**:
-
-- Verify `CorsOrigins` in `appsettings.json` includes your frontend URL
-- Ensure the API is running on the expected port
-- Check if HTTPS redirects are causing issues
-
-#### 4. AI Service Errors
-
-**Error**: API key authentication failed
-
-**Solutions**:
-
-- Verify API keys are correctly set in user secrets
-- Check if the AI service endpoint URLs are correct
-- Ensure at least one AI service is properly configured
-
-#### 5. Vector Search Issues
-
-**Error**: Vector search operations failing
-
-**Solutions**:
-
-- Ensure SQL Server supports Vector Search (SQL Server 2022+)
-- Verify EFCore.SqlServer.VectorSearch package is installed
-- Check if embedding model is properly configured
-
-#### 6. Node.js/Angular Issues
-
-**Error**: Node.js version compatibility
-
-**Solutions**:
-
-- Use Node.js 18+ (recommended: LTS version)
-- Clear npm cache: `npm cache clean --force`
-- Delete `node_modules` and run `npm install` again
-
-#### 8. Angular MCP CLI Error
-
-**Error**: `Error: Unknown arguments: read-only, mcp`
-
-**Cause**: An older Angular CLI (e.g., v19) is being resolved by `npx`.
-
-**Solutions**:
-
-- Configure VS Code MCP to use the workspace-local CLI binary (Windows example):
-
-  - File: `.vscode/mcp.json`
-  - Snippet:
-
-    ```jsonc
-    {
-      "servers": {
-        "angular-cli": {
-          "type": "stdio",
-          "command": "enterprise-gpt-ui/node_modules/.bin/ng.cmd",
-          "args": ["mcp", "--read-only"]
-        }
-      }
-    }
-    ```
-
-- Or pin CLI v21 when using `npx`:
-
-  ```bash
-  npx -y @angular/cli@21 mcp --read-only
-  ```
-
-Docs: https://angular.dev/ai/mcp
-
-#### 7. Port Conflicts
-
-**Error**: Port already in use
-
-**Solutions**:
-
-- API: Modify `launchSettings.json` to use different ports
-- Frontend: Use `ng serve --port 4201` to specify different port
-
-### Logs and Debugging
-
-- **API Logs**: Check console output when running `dotnet run`
-- **Frontend Logs**: Open browser developer tools (F12)
-- **Database**: Use SQL Server Management Studio or Azure Data Studio
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Code Style Guidelines
-
-- **Backend (.NET)**: Follow standard C# conventions and SOLID principles
-- **Frontend (Angular)**: Follow Angular style guide and use TypeScript strict mode
-- Ensure all tests pass before submitting PR
-- Add tests for new features
-- Update documentation as needed
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-**Copyright (c) 2025 Rodrigo Ignacio Rojas Garcia**
-
-## 👥 Authors
-
-**Rodrigo Ignacio Rojas Garcia** - _Creator and Maintainer_
-
-- GitHub: [@RorroRojas3](https://github.com/RorroRojas3)
-
-## 🙏 Acknowledgments
-
-### AI Service Providers
-
-- [OpenAI](https://openai.com/) - GPT models and embeddings
-- [Anthropic](https://www.anthropic.com/) - Claude AI models
-- [Microsoft Azure AI](https://azure.microsoft.com/en-us/products/ai-services) - Azure OpenAI Service
-- [Ollama](https://ollama.ai/) - Local AI model runtime
-
-### Key Technologies & Libraries
-
-**Backend (.NET)**
-
-- [ASP.NET Core](https://dotnet.microsoft.com/apps/aspnet) - Web framework
-- [Entity Framework Core](https://docs.microsoft.com/ef/core/) - ORM and database access
-- [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai-preview/) - AI service abstractions
-- [OllamaSharp](https://github.com/awaescher/OllamaSharp) - Ollama .NET client
-- [Anthropic](https://github.com/anthropics/anthropic-sdk-csharp) - Official Anthropic .NET SDK
-- [Swashbuckle](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) - OpenAPI/Swagger documentation
-
-**Frontend (Angular)**
-
-- [Angular](https://angular.dev/) - Frontend framework
-- [Bootstrap](https://getbootstrap.com/) - UI component library
-- [Bootstrap Icons](https://icons.getbootstrap.com/) - Icon library
-- [highlight.js](https://highlightjs.org/) - Syntax highlighting
-- [markdown-it](https://github.com/markdown-it/markdown-it) - Markdown parser and renderer
-- [RxJS](https://rxjs.dev/) - Reactive programming library
-- [MSAL Angular](https://github.com/AzureAD/microsoft-authentication-library-for-js) - Microsoft Authentication Library
-
-**Database & Search**
-
-- [SQL Server](https://www.microsoft.com/sql-server) - Database engine
-- [EFCore.SqlServer.VectorSearch](https://github.com/Giorgi/EFCore.SqlServer.VectorSearch) - Vector search capabilities
-
-**Development Tools**
-
-- [Visual Studio Code](https://code.visualstudio.com/) - Code editor
-- [.NET SDK](https://dotnet.microsoft.com/download) - Development framework
-- [Node.js](https://nodejs.org/) - JavaScript runtime
-- [Angular CLI](https://angular.dev/tools/cli) - Angular development tools
-
-### Inspiration
-
-This project combines modern AI capabilities with traditional web development practices to create a flexible, multi-provider chat interface suitable for various AI use cases.
-
-## 🆘 Support
-
-If you encounter any issues or have questions:
-
-1. Check the [Troubleshooting](#-troubleshooting) section
-2. Review the [API documentation](https://localhost:7045/swagger) when the API is running
-3. Create an issue in the GitHub repository
-
-## 🔗 Useful Links
-
-- [.NET 10 Documentation](https://learn.microsoft.com/dotnet/)
-- [Angular Documentation](https://angular.dev/)
-- [Entity Framework Core](https://docs.microsoft.com/ef/core/)
-- [OpenAI API Reference](https://platform.openai.com/docs/)
-- [Azure OpenAI Service](https://azure.microsoft.com/services/cognitive-services/openai-service/)
-- [Anthropic API](https://docs.anthropic.com/)
-- [Ollama Documentation](https://ollama.ai/docs)
+- Rodrigo Rojas — [@RorroRojas3](https://github.com/RorroRojas3)

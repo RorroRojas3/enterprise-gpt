@@ -23,7 +23,7 @@ public sealed class ConversionMatrixDocumentTests
         Path.Combine(AppContext.BaseDirectory, "Agents", "Documents", "conversion-matrix.json");
 
     private static readonly string DocumentPath =
-        Path.Combine(AppContext.BaseDirectory, "file-agent-sandbox-capabilities.md");
+        Path.Combine(AppContext.BaseDirectory, "file-agent.md");
 
     // The agent reads this one, and the pair it offers has to be the pair the matrix confirmed —
     // a conversion refused in one place and offered in the other is the failure this catches.

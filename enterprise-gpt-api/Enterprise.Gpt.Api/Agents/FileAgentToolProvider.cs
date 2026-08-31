@@ -21,7 +21,7 @@ namespace Enterprise.Gpt.Api.Agents;
 /// <remarks>
 /// The agent is reached through agent-level middleware, because <c>WithTracking</c>'s string-in/
 /// string-out bridge hides the response a produced file's identity appears on. See
-/// <c>docs/file-agent/the-agent.md</c> §5 for that choice and the two it beat, and §3 for why the
+/// <c>docs/tools/file-agent.md</c> for that choice, and for why the
 /// agent's client is its own.
 /// </remarks>
 // The hosted-file client is still marked experimental in Microsoft.Extensions.AI 10.9.0. Suppressed

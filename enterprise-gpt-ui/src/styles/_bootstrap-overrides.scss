@@ -1,5 +1,5 @@
-// The rule blocks from `docs/design/project/theme.css` that are not token
-// declarations. They live here rather than in `_tokens.scss` because they have to be
+// The theme's rule blocks that are not token declarations. They live here rather
+// than in `_tokens.scss` because they have to be
 // emitted *after* Bootstrap's `_buttons.scss` and `_forms/*` to win on source order —
 // `_tokens.scss` is imported before them, immediately after `bootstrap/scss/root`.
 //
@@ -53,11 +53,8 @@
 // to about 1.2:1 on `--surface` and is the *only* indicator on a field, because
 // Bootstrap's `.form-control:focus` also sets `outline: 0`. It fails SC 1.4.11, so
 // the ring is the token's and the accent border stays for the board's colour
-// (US-1401). Authorised by the PRD's accessibility-precedence rule (§5): where the
-// boards and the PRD disagree on accessibility, the PRD wins.
-//
-// Not caught by `check:tokens`, which compares `:root` blocks against `theme.css`
-// and never sees a component rule — which is why nothing failed while this did.
+// Not caught by `check:tokens`, which reads `:root` blocks and never sees a
+// component rule — which is why nothing failed while this did.
 .form-control:focus,
 .form-select:focus {
   border-color: var(--accent);

@@ -9,7 +9,7 @@
 //   pagination         3.0 kB — the board's pager shares nothing with .pagination
 //   toasts             1.9 kB — no 4px accent, no draining indicator, nothing reusable
 //   placeholders       0.6 kB — would add a fifth keyframe; the skeleton is static
-//   spinners           1.2 kB — would add a sixth; the boards' spinner rides theme.css's `spin`
+//   spinners           1.2 kB — would add a sixth; the app's spinner rides `spin`
 //   modal/offcanvas/
 //   dropdown/tooltip  26.7 kB — replaced by native <dialog> and ~4 kB of our own CSS+JS
 //   card, badge, alert, list-group, close, button-group, navbar, breadcrumb,

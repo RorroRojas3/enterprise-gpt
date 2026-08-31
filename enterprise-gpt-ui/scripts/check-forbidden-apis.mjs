@@ -152,10 +152,7 @@ const FORBIDDEN = [
     exempt: ['styles/_breakpoints.scss', 'app/shared/layout/breakpoints.ts'],
   },
   {
-    // The application defines exactly four keyframes, all of them transcribed from
-    // `docs/design/project/theme.css`. That rule is asserted in prose by `_motion.scss`,
-    // by the design-system page, by the rebuild PRD and by two sibling PRDs, and until
-    // US-1404 it was enforced by nothing.
+    // The application defines exactly four keyframes.
     //
     // It is why Bootstrap's `_spinners.scss` and `_placeholders.scss` are excluded from
     // the stylesheet — each would add a fifth — and why `_motion.scss` is not exempt
@@ -165,9 +162,8 @@ const FORBIDDEN = [
     pattern: /@keyframes\s+(?!(?:blink|spin|ringpulse|ridgedash)\b)/,
     label: 'a fifth keyframe',
     why:
-      'US-1404 / PRD §5: the app defines exactly four keyframes — blink, spin, ' +
-      'ringpulse and ridgedash — and check-tokens.mjs holds all four to what ' +
-      'theme.css defines. Anything else that has to move uses a transition on the ' +
+      'The app defines exactly four keyframes — blink, spin, ringpulse and ' +
+      'ridgedash. Anything else that has to move uses a transition on the ' +
       '--t-fast / --t-slow scale, which the reduced-motion block already suppresses.',
     exempt: [],
   },

@@ -25,7 +25,6 @@
     "assets:fonts": "node scripts/copy-fonts.mjs",
     "assets:katex": "node scripts/copy-katex.mjs",
     "assets:icons": "node scripts/build-icon-sprite.mjs",
-    "assets:brand": "node scripts/build-brand-images.mjs",
     "check:contract": "node scripts/check-andes-contract.mjs",
     "check:icons": "node scripts/check-icon-names.mjs",
     "check:forbidden": "node scripts/check-forbidden-apis.mjs",
@@ -79,7 +78,6 @@
     "jsdom": "^28.0.0",
     "playwright": "^1.62.1",
     "prettier": "^3.8.1",
-    "sharp": "^0.35.3",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.66.0",
     "vitest": "^4.0.8"

@@ -3,8 +3,6 @@
 // Local rather than in `_tokens.scss`, and deliberately: this component is the only
 // thing that uses these four pairs, while that file is global — eight entries emitted
 // in both themes would cost every page of the app for one component on one lazy route.
-// They are not in `theme.css` either, where the boards leave them as bare literals, so
-// there is nothing for `check-tokens.mjs` to keep in step.
 //
 // Backgrounds are pinned across both themes for the provider dots' reason: a person's
 // colour is how they are recognised in a list, and it must not change when the page

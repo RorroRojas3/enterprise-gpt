@@ -35,7 +35,7 @@
   border-radius: 50%;
   background: var(--muted);
   // A transition rather than a keyframe: the forbidden-API check allows only the
-  // four animations `theme.css` declares, and `_motion.scss` suppresses this
+  // four animations `_motion.scss` declares, and it suppresses this
   // under prefers-reduced-motion without any per-component opt-out.
   transition:
     transform var(--t-fast) ease,

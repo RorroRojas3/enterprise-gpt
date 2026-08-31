@@ -107,7 +107,7 @@
   block-size: 3px;
   inline-size: 100%;
   transform-origin: left;
-  // A transition rather than a keyframe, so the four keyframes theme.css defines stay
+  // A transition rather than a keyframe, so the four keyframes the app defines stay
   // the only four in the app. @starting-style is what gives a transition something to
   // animate *from* on an element that was just inserted — without it there is no
   // change of state and nothing moves. Where it is unsupported the bar simply sits

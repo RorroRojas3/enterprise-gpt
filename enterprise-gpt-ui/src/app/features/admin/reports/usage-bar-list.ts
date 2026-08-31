@@ -43,8 +43,8 @@ export class UsageBarList {
       // The board tints the leader `--brand` and everything else `--accent`. In the dark theme
       // those two tokens are the same colour, so the highlight would vanish exactly where a
       // reader is least able to spot a subtle one — the rank number beside the label is the
-      // second channel that keeps the ordering readable in both themes without inventing a
-      // token, which `check:tokens` would reject against the design bundle anyway.
+      // second channel that keeps the ordering readable in both themes without inventing
+      // a token.
       rank: index + 1,
       isLeader: index === 0,
     }));

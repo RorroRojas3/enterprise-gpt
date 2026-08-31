@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 const UI_ROOT = resolve(import.meta.dirname, '../..');
 const STYLES = join(UI_ROOT, 'src/styles');
 
-/** The four the design bundle defines, and the only four the app may run. */
+/** The only four keyframes the app may run. */
 const KEYFRAMES = ['blink', 'spin', 'ringpulse', 'ridgedash'];
 
 function scssFiles(dir: string): string[] {
@@ -79,7 +79,7 @@ describe('the reduced-motion contract (US-1404)', () => {
     expect(imports.at(-1)).toBe('motion');
   });
 
-  it('runs no animation whose keyframe the design bundle does not define', () => {
+  it('runs no animation whose keyframe is not among the four', () => {
     // `check-forbidden-apis.mjs` refuses a fifth *definition*; this refuses a *use* that
     // names nothing — a typo in an `animation` shorthand is silent in CSS, and the
     // element simply never moves.

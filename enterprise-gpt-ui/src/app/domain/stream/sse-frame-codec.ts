@@ -58,7 +58,7 @@ function parseFrame(frame: string): AssistantUiEvent | null {
 
 /**
  * Decodes the framed chat stream: `data: {json}\n\n`, one event per frame, no
- * `event:`/`id:` lines (see docs/conversations/streaming-contract.md §3.2). A
+ * `event:`/`id:` lines (see docs/conversations/streaming.md). A
  * chunk can end anywhere — mid-frame, mid-JSON, mid-character — so both the
  * text decoder and a partial-frame buffer carry state across reads.
  */
