@@ -16,7 +16,7 @@ namespace Enterprise.Gpt.Dto;
 /// completion alike. Spend is spend, and a naming call is billed against a real deployment like
 /// any other; <see cref="UsageReportTotalsDto.NamingTurns"/> carries the overhead separately for
 /// anyone who needs to see it apart. This departs from the outcome query in
-/// <c>docs/conversations/usage-and-favorites.md</c> §7, which filters <c>Kind = 1</c>: that
+/// <c>docs/conversations/usage-and-reporting.md</c>, which filters <c>Kind = 1</c>: that
 /// cookbook is SQL for an analyst, and a donut whose turn count disagreed with the table beside
 /// it would be a defect on screen.
 /// </para>
@@ -116,7 +116,7 @@ public record UsageReportDto
 /// </summary>
 /// <remarks>
 /// The token columns are reported separately and are <em>not</em> interchangeable. The three rules
-/// <c>docs/conversations/usage-and-favorites.md</c> §7 states apply verbatim to anything computed
+/// <c>docs/conversations/usage-and-reporting.md</c> states apply verbatim to anything computed
 /// from this type: the assistant's own turns and its tools are counted apart and summed only in
 /// <see cref="TotalTokens"/>; <see cref="ContextTokens"/> is an estimate that sits beside the
 /// billed columns and is never added to them; and nothing here is derived from per-turn or

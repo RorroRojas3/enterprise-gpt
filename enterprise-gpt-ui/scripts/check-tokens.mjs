@@ -1,24 +1,17 @@
 #!/usr/bin/env node
-// Asserts that the design tokens in the app still match the design bundle, that the
-// colours duplicated into index.html's pre-paint shell still match the tokens, and
-// that the code surface stays legible in both themes. US-105 / US-604.
+// Asserts that the colours duplicated into index.html's pre-paint shell still match
+// _tokens.scss, that the code surface stays legible in both themes, and that the two
+// copies of the breakpoint table agree.
 //
-// This is the acceptance criterion made executable: "the [data-bs-theme=light] and
-// [data-bs-theme=dark] blocks carry the same custom properties with the same values".
-//
-// The contrast section at the end is US-604's. That story has no light Prism variant
-// to swap to — the board fixes --code-bg dark in both themes — so what makes its
-// "legible in dark mode" criterion true is the palette itself, and a criterion that
-// is only true by inspection is a criterion that drifts. Measuring it here is what
-// tells a future palette edit which colour it broke, and by how much.
-import { existsSync, readFileSync } from 'node:fs';
+// _tokens.scss is the token source of record. The contrast section measures what would
+// otherwise hold only by inspection, so a future palette edit is told which colour it
+// broke and by how much.
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments, walk } from './lib/source-scan.mjs';
 
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
-const REPO_ROOT = resolve(UI_ROOT, '..');
-const THEME_CSS = join(REPO_ROOT, 'docs', 'design', 'project', 'theme.css');
 const TOKENS = join(UI_ROOT, 'src', 'styles', '_tokens.scss');
 const INDEX = join(UI_ROOT, 'src', 'index.html');
 
@@ -27,13 +20,6 @@ function die(...lines) {
   for (const line of lines) console.error('  ' + line);
   console.error('');
   process.exit(1);
-}
-
-if (!existsSync(THEME_CSS)) {
-  die(
-    `The design bundle is not present: ${THEME_CSS}`,
-    'This check compares the app against it, so it cannot run.',
-  );
 }
 
 /**
@@ -49,28 +35,9 @@ const normalize = (value) =>
     .replace(/;$/, '')
     .replace(/(^|[(,])0\./g, '$1.');
 
-/** Pulls `--name: value` pairs out of the block a selector opens. */
-function declarationsIn(source, selectorPattern) {
-  const start = source.search(selectorPattern);
-  if (start < 0) return null;
-  const open = source.indexOf('{', start);
-  const close = source.indexOf('}', open);
-  if (open < 0 || close < 0) return null;
-
-  const pairs = new Map();
-  for (const [, name, value] of source
-    .slice(open + 1, close)
-    .matchAll(/--([\w-]+)\s*:\s*([^;}]+)/g)) {
-    pairs.set(name, normalize(value));
-  }
-  return pairs;
-}
-
-const themeCss = readFileSync(THEME_CSS, 'utf8');
 const tokensScss = readFileSync(TOKENS, 'utf8');
 
-// theme.css is one long line per block; _tokens.scss carries the values in two Sass
-// maps, so the maps are what gets compared.
+// _tokens.scss carries the values in two Sass maps, so the maps are what gets parsed.
 function mapEntries(source, name) {
   const start = source.indexOf(`$${name}: (`);
   if (start < 0) die(`Could not find the $${name} map.`, `file: ${TOKENS}`);
@@ -86,24 +53,9 @@ function mapEntries(source, name) {
   return pairs;
 }
 
-const expected = {
-  light: declarationsIn(themeCss, /:root,\s*\[data-bs-theme=light\]/),
-  dark: declarationsIn(themeCss, /\[data-bs-theme=dark\]/),
-};
 const actual = { light: mapEntries(tokensScss, 'light'), dark: mapEntries(tokensScss, 'dark') };
 
 const problems = [];
-for (const theme of ['light', 'dark']) {
-  if (!expected[theme]) die(`Could not find the ${theme} block in ${THEME_CSS}.`);
-
-  for (const [name, value] of expected[theme]) {
-    const mine = actual[theme].get(name);
-    if (mine === undefined) problems.push(`${theme}: --${name} is missing from _tokens.scss`);
-    else if (mine !== value) {
-      problems.push(`${theme}: --${name} is ${mine} here but ${value} in theme.css`);
-    }
-  }
-}
 
 // The one value the acceptance criterion names outright.
 if (actual.light.get('brand') !== '#14324f' || actual.dark.get('brand') !== '#21a8d8') {
@@ -280,12 +232,9 @@ const CONTRAST_PAIRS = [
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
-  // US-1405, closing the `--warn` open question in the PRD's §9. Light `#A96A10`
-  // measured 4.41:1 on white, 4.21:1 on the page and 3.99:1 on its own tinted panel —
-  // all below AA for text under 18.66px — and it is used as a `color` in eight
-  // stylesheets. The value moved upstream in `docs/design/project/theme.css`, because
-  // this check enforces parity with the design bundle and a local override would fail
-  // it; these three pairs are what stop it drifting back.
+  // `--warn` was `#A96A10` in light, which measured 4.41:1 on white, 4.21:1 on the page
+  // and 3.99:1 on its own tinted panel — all below AA for text under 18.66px — while
+  // being used as a `color` in eight stylesheets. These three pairs stop it drifting back.
   //
   // TEXT_MINIMUM rather than NON_TEXT: some of the eight are icons, which would only
   // need 3:1, but several are running text and the same token serves both. Measuring
@@ -296,12 +245,10 @@ const CONTRAST_PAIRS = [
   { background: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
   { background: 'bs-body-bg', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
   { background: 'warn-bg', under: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
-  // US-1405, and the pair the axe run found rather than this table: the active entry in
-  // the administration rail, the sidebar's active navigation link and the paginator's
-  // current page all render `--brand` on `--active-bg`, which measured **4.29:1** in dark
-  // against a 4.5:1 minimum for 13.5px text. The board specifies that pairing, so the
-  // correction went upstream in `theme.css` — dark `--active-bg` `#173A58` → `#16354D` —
-  // under the PRD's rule that this document wins over the boards on accessibility.
+  // The pair the axe run found rather than this table: the active entry in the
+  // administration rail, the sidebar's active navigation link and the paginator's current
+  // page all render `--brand` on `--active-bg`, which measured 4.29:1 in dark against a
+  // 4.5:1 minimum for 13.5px text. Dark `--active-bg` was corrected to `#16354D`.
   //
   // It went undetected for three stories because nothing measured it: the surfaces guard
   // below checks every painted background against `--focus-ring`, not against the text
@@ -531,68 +478,6 @@ for (const file of ['_prism.scss', '_markdown.scss']) {
   }
 }
 
-// ── Keyframe parity (US-1404) ────────────────────────────────────────────────
-// US-1404's fourth criterion asks that all four keyframes "run as theme.css defines
-// them". `check-forbidden-apis.mjs` refuses a fifth; this holds the four to the design
-// bundle, which nothing did before — a transcription that drifted would have changed
-// how the app moves with every gate still green.
-//
-// Compared with whitespace and the optional trailing semicolon removed, and nothing
-// else: `_motion.scss` is Prettier-formatted and theme.css is minified, so those are
-// the only differences that are *not* a change of behaviour.
-{
-  const MOTION = join(UI_ROOT, 'src', 'styles', '_motion.scss');
-  const motion = stripComments(readFileSync(MOTION, 'utf8'));
-  const design = readFileSync(THEME_CSS, 'utf8');
-
-  /**
-   * The body of one `@keyframes`, brace-matched so a nested block cannot end it early.
-   *
-   * Located with `indexOf` rather than a built RegExp: the next character after the name
-   * is checked directly, which is both simpler and what stops `spin` matching `spinner`.
-   */
-  const bodyOf = (source, name) => {
-    const marker = '@keyframes ' + name;
-    let at = -1;
-    for (let from = source.indexOf(marker); from >= 0; from = source.indexOf(marker, from + 1)) {
-      const next = source[from + marker.length];
-      if (next === '{' || next === ' ' || next === '\n' || next === '\r' || next === '\t') {
-        at = from;
-        break;
-      }
-    }
-    if (at < 0) return null;
-
-    let depth = 0;
-    for (let i = source.indexOf('{', at); i < source.length; i++) {
-      if (source[i] === '{') depth++;
-      else if (source[i] === '}' && --depth === 0) {
-        return source
-          .slice(source.indexOf('{', at) + 1, i)
-          .replace(/\s+/g, '')
-          .replace(/;(?=\}|$)/g, '')
-          .toLowerCase();
-      }
-    }
-    return null;
-  };
-
-  for (const name of ['blink', 'spin', 'ringpulse', 'ridgedash']) {
-    const ours = bodyOf(motion, name);
-    const theirs = bodyOf(design, name);
-
-    if (ours === null) {
-      problems.push(`_motion.scss no longer defines @keyframes ${name}, which theme.css does`);
-    } else if (theirs === null) {
-      problems.push(`theme.css no longer defines @keyframes ${name} — the design bundle moved`);
-    } else if (ours !== theirs) {
-      problems.push(
-        `@keyframes ${name} has drifted from theme.css. Design: ${theirs}. App: ${ours}`,
-      );
-    }
-  }
-}
-
 // ── Breakpoint parity (US-1403) ───────────────────────────────────────────────
 // The three application modes are stated twice by necessity — Sass cannot read a
 // TypeScript constant and `matchMedia` cannot read a Sass variable — so the two copies
@@ -665,15 +550,14 @@ for (const file of ['_prism.scss', '_markdown.scss']) {
 }
 
 if (problems.length > 0) {
-  die(...problems, '', `tokens:   ${TOKENS}`, `design:   ${THEME_CSS}`, `shell:    ${INDEX}`);
+  die(...problems, '', `tokens:   ${TOKENS}`, `shell:    ${INDEX}`);
 }
 
 const measured =
   CONTRAST_PAIRS.reduce((count, { foregrounds }) => count + foregrounds.length, 0) * 2;
 
 console.log(
-  `tokens OK — ${expected.light.size} light and ${expected.dark.size} dark properties match ` +
-    `theme.css, the pre-paint shell matches the tokens, the four keyframes and the two ` +
-    `breakpoints match it too, and ${measured} code-surface and focus-ring pairs clear ` +
-    `their WCAG minimum`,
+  `tokens OK — ${actual.light.size} light and ${actual.dark.size} dark properties parsed, ` +
+    `the pre-paint shell matches the tokens, the two breakpoints agree, and ${measured} ` +
+    `code-surface and focus-ring pairs clear their WCAG minimum`,
 );

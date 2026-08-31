@@ -609,7 +609,7 @@ builder.Services.AddOptions<CosmosOptions>()
     // that has not been migrated, and starting it would answer every transcript read with an empty
     // result — which reads as data loss rather than as a setting nobody removed.
     .Validate(_ => builder.Configuration[CosmosOptions.LegacyContainerKey] is null,
-        $"{CosmosOptions.LegacyContainerKey} names the pre-cutover container, whose documents this application can no longer read. Remove the setting and set CosmosDb:TranscriptContainerId instead; see docs/conversations/transcript-cutover.md.")
+        $"{CosmosOptions.LegacyContainerKey} names the pre-cutover container, whose documents this application can no longer read. Remove the setting and set CosmosDb:TranscriptContainerId instead; see docs/operations/runbooks.md.")
     .ValidateOnStart();
 
 builder.Services.AddSingleton(sp =>

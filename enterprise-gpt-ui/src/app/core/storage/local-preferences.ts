@@ -49,12 +49,3 @@ export function writePreference(key: PreferenceKey, value: string): void {
     // change the user just made.
   }
 }
-
-/** Forgets a preference. */
-export function clearPreference(key: PreferenceKey): void {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    // See readPreference.
-  }
-}

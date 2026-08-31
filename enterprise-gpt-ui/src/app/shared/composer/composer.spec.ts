@@ -100,6 +100,7 @@ describe('Composer', () => {
       stop: () => host.querySelector('.composer__stop') as HTMLButtonElement | null,
       prompt: () => host.querySelector('.composer__prompt') as HTMLTextAreaElement,
       note: () => host.querySelector('.composer__note') as HTMLElement,
+      disclaimer: () => host.querySelector('.composer__disclaimer') as HTMLElement,
       async type(text: string) {
         const prompt = host.querySelector('.composer__prompt') as HTMLTextAreaElement;
         prompt.value = text;
@@ -120,6 +121,23 @@ describe('Composer', () => {
     backend.expectOne(MODELS_URL).error(new ProgressEvent('error'));
     await failed;
   }
+
+  it('renders the AI disclaimer as static text, distinct from the warning line', async () => {
+    const composer = await render();
+    await failModels();
+    await composer.fixture.whenStable();
+
+    expect(composer.disclaimer().textContent?.trim()).toBe(
+      'Enterprise GPT is AI and can make mistakes. Please double-check responses.',
+    );
+    // Not a live region, so the standing line never competes with a real warning.
+    expect(composer.disclaimer().getAttribute('role')).toBeNull();
+    expect(composer.disclaimer().getAttribute('aria-live')).toBeNull();
+    // Outside the card, not merely outside the note: nesting it would still match the
+    // top-level selector and silently render inside the bordered box.
+    expect(composer.host.querySelector('.composer')?.contains(composer.disclaimer())).toBe(false);
+    expect(composer.note().textContent).toContain('The model catalog failed to load');
+  });
 
   it('disables send until both a model and text exist', async () => {
     const composer = await render();

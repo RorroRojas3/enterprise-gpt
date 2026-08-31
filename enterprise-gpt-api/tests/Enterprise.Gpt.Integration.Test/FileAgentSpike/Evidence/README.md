@@ -13,4 +13,4 @@ Neither file may contain a key, a token, an endpoint path or a user's content. T
 records the deployment name and the resource authority and nothing else about the connection.
 
 Nothing lands here until the gate is run against a live deployment — see
-[docs/file-agent/sandbox-capabilities.md](../../../../../docs/file-agent/sandbox-capabilities.md) §3.
+[docs/tools/file-agent.md](../../../../../docs/tools/file-agent.md).

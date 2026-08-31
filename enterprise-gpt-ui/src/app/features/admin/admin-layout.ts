@@ -8,8 +8,7 @@ import { injectMediaQuery } from '@shared/layout/media-query';
 import { ADMIN_PILLS, ADMIN_TABS } from './admin-tabs';
 
 /**
- * The administration area's chrome — `AdminNav.dc.html`'s 190px rail beside the tab
- * that is open.
+ * The administration area's chrome — a 190px rail beside the tab that is open.
  *
  * A layout component rather than chrome repeated per tab: the rail marks the active
  * entry from the router, which is what makes the tabs routes rather than local state

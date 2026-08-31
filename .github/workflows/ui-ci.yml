@@ -7,8 +7,7 @@ name: UI CI
 #
 #   - A workflow skipped by a **path or branch filter** never reports a check at all. Its
 #     status stays Pending, so a filtered workflow can never be a required check without
-#     making every unrelated pull request unmergeable. That was recorded as an open
-#     question in docs/prd/enterprise-ui-rebuild.md; removing the filter is the answer.
+#     making every unrelated pull request unmergeable. Removing the filter is the answer.
 #   - A job skipped by a **conditional** reports **Success** and does not block merging.
 #     That is what makes the `if:` on each job below safe to use as a required check.
 #
@@ -47,11 +46,10 @@ jobs:
   # required check in branch protection alongside the two gates.
   #
   # **Two outputs, not one**, because the two gates read different inputs: `npm run lint`
-  # runs check:tokens, which diffs the app's tokens against the design bundle's
-  # `theme.css`; `check:contract` walks every `.csproj` under the API and compares the
-  # vendored copy against the package they reference. Neither is in the other's input set,
-  # and one shared boolean would run the whole Angular pipeline for a backend dependency
-  # bump, and a .NET restore for a change to a colour.
+  # reads only `enterprise-gpt-ui/`; `check:contract` walks every `.csproj` under the API
+  # and compares the vendored copy against the package they reference. Neither is in
+  # the other's input set, and one shared boolean would run the whole Angular pipeline
+  # for a backend dependency bump, and a .NET restore for a change to a colour.
   changes:
     name: Detect UI changes
     runs-on: ubuntu-latest
@@ -94,12 +92,11 @@ jobs:
           # Both allowlists are hand-maintained, so a root-level file the gates come to
           # read — an `.nvmrc`, an `.npmrc`, a Prettier config — must be added here when
           # it is introduced. Neither exists today: the gate scripts read nothing outside
-          # `enterprise-gpt-ui/` except `theme.css` and the API's csproj files. A missing
-          # entry would under-run these gates rather than over-run them, which is the
-          # dangerous direction.
+          # `enterprise-gpt-ui/` except the API's csproj files. A missing entry would
+          # under-run these gates rather than over-run them, which is the dangerous
+          # direction.
           build=$(git diff --name-only HEAD^1 HEAD -- \
             enterprise-gpt-ui \
-            docs/design/project/theme.css \
             .github/workflows/ui-ci.yml)
 
           contract=$(git diff --name-only HEAD^1 HEAD -- \
@@ -133,8 +130,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # A full checkout, never sparse: check:tokens reads
-      # ../docs/design/project/theme.css from outside the UI tree.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -178,7 +173,7 @@ jobs:
 
       # A step in this job rather than a job of its own, deliberately: a new job name has
       # to be added to branch protection by hand, and a required check nobody adds is a
-      # gate that never runs. See docs/ci/pull-request-checks.md §4.
+      # gate that never runs. See docs/development/testing-and-ci.md.
       #
       # Last, and after `Build`, following the ordering §7 states: the cheapest gates
       # report first. This is the most expensive step in the job — it runs a second

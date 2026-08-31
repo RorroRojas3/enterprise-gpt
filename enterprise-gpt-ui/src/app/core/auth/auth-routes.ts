@@ -10,9 +10,6 @@
 /** Where a user lands after signing in, and the fallback for every ambiguous case. */
 export const CHAT_ROUTE = '/chat';
 
-/** The MSAL redirect URI. Never guarded — MSAL refuses to activate its own target. */
-export const AUTH_ROUTE = '/auth';
-
 /** Frame `6b`: the sign-in did not complete. */
 export const LOGIN_FAILED_ROUTE = '/login-failed';
 

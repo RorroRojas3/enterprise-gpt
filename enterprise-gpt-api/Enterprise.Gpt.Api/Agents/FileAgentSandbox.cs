@@ -20,7 +20,7 @@ internal sealed record SandboxArtifact(string FileId, string? Name, string? Cont
 /// Files API first and referenced by id. And a produced file was surfaced on the message's citation
 /// annotations rather than on the code interpreter's own result content, so the harvest walks every
 /// channel that can carry one instead of the single documented one. See
-/// <c>docs/file-agent/sandbox-capabilities.md</c>.
+/// <c>docs/tools/file-agent.md</c>.
 /// </remarks>
 // The hosted-file surface is still marked experimental in Microsoft.Extensions.AI 10.9.0. Suppressed
 // on this one file rather than project-wide, so a second experimental API cannot slip in behind it.

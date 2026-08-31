@@ -35,7 +35,7 @@
 
 @import 'kit';
 
-// theme.css's own component overrides, after the components they restyle.
+// The theme's own component overrides, after the components they restyle.
 @import 'bootstrap-overrides';
 
 // Token-driven syntax highlighting; no prismjs stylesheet is imported.

@@ -19,7 +19,7 @@ internal static class SpikeConfiguration
         "The File Agent capability spike is opt-in because each run bills a Code Interpreter "
         + "session. Enable it with: dotnet user-secrets --id " + ApiUserSecretsId
         + " set \"FileAgentSpike:Enabled\" \"true\" — and make sure AzureOpenAI:Url, AzureOpenAI:ApiKey "
-        + "and AzureOpenAI:DefaultModel are set in the same store. See docs/file-agent/sandbox-capabilities.md.";
+        + "and AzureOpenAI:DefaultModel are set in the same store. See docs/tools/file-agent.md.";
 
     /// <summary>Why the benchmark skips, phrased as the command that turns it on.</summary>
     /// <remarks>
@@ -30,7 +30,7 @@ internal static class SpikeConfiguration
         "The File Agent benchmark is opt-in because it bills thirty Code Interpreter sessions. "
         + "Enable it with: dotnet user-secrets --id " + ApiUserSecretsId
         + " set \"FileAgentBenchmark:Enabled\" \"true\" — and make sure AzureOpenAI:Url, AzureOpenAI:ApiKey "
-        + "and AzureOpenAI:DefaultModel are set in the same store. See docs/file-agent/the-agent.md.";
+        + "and AzureOpenAI:DefaultModel are set in the same store. See docs/tools/file-agent.md.";
 
     public const string SectionName = "FileAgentSpike";
 

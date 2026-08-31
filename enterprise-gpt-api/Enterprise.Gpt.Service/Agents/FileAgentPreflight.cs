@@ -14,7 +14,7 @@ public sealed record FileAgentRefusal(string Outcome, string Text, string SubSta
 /// </summary>
 /// <remarks>
 /// Refuses only a cell the confirmed matrix records as refused, with exactly one source and one target
-/// named; anything less certain runs. See <c>docs/file-agent/the-agent.md</c> §5.2.
+/// named; anything less certain runs. See <c>docs/tools/file-agent.md</c>.
 /// </remarks>
 public static class FileAgentPreflight
 {

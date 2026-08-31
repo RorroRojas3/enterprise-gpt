@@ -80,9 +80,8 @@ const SKELETON_ROWS = 6;
  * step. It inherits that store's load ceiling with it.
  *
  * The two widths are separate template branches rather than one branch with things
- * hidden, which is how `Sidebar.dc.html` itself is written: a 44px square target with
- * a tooltip is a different control from a 36px row with a visible label, not the same
- * control with its text removed.
+ * hidden: a 44px square target with a tooltip is a different control from a 36px row
+ * with a visible label, not the same control with its text removed.
  */
 @Component({
   selector: 'app-sidebar',

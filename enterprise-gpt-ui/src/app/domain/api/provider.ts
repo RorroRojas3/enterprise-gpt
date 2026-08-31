@@ -31,10 +31,9 @@ export interface ProviderMeta {
 
 const PROVIDERS: Readonly<Record<string, ProviderMeta>> = {
   [PROVIDER_ID.azureOpenAi]: { name: 'Azure OpenAI', tone: 'provider-azure-openai' },
-  // Deliberately shares Azure OpenAI's tone. The boards draw three provider hues and
-  // the palette has no fourth; inventing a brand colour is a decision for
-  // `docs/design/`, not for this file. The provider *name* renders in the same cell,
-  // and the dot groups the two Azure providers — which is the honest reading of it.
+  // Shares Azure OpenAI's tone: the palette carries three provider hues, not four.
+  // The provider *name* renders in the same cell, and the dot groups the two Azure
+  // providers.
   [PROVIDER_ID.azureAiFoundry]: { name: 'Azure AI Foundry', tone: 'provider-azure-openai' },
   [PROVIDER_ID.amazonBedrock]: { name: 'Amazon Bedrock', tone: 'provider-bedrock' },
   [PROVIDER_ID.anthropic]: { name: 'Anthropic', tone: 'provider-anthropic' },

@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 import { PaginatedResponseDto } from '@domain/api/paginated-response';
 import {
   MAX_PAGE_SIZE,
-  resetPagination,
   setFirstPage,
   setPage,
   withOffsetPagination,
@@ -167,16 +166,5 @@ describe('withOffsetPagination', () => {
     patchState(unprotected(store), setFirstPage(page(0, 0, 0)));
 
     expect(store.take()).toBe(100);
-  });
-
-  it('returns to the pre-load offset while keeping the page size', () => {
-    const store = storeWith(50);
-
-    patchState(unprotected(store), setPage(page(50, 500)));
-    patchState(unprotected(store), resetPagination());
-
-    expect(store.skip()).toBe(0);
-    expect(store.totalCount()).toBe(0);
-    expect(store.take()).toBe(50);
   });
 });

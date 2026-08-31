@@ -185,8 +185,7 @@
   opacity: 1;
 }
 
-// Composer.dc.html's project pill: 30px, fully rounded, between the paperclip and the
-// model pill. The same box serves the static chip the project screen renders, which is
+// The project pill: 30px, fully rounded, between the paperclip and the model pill. The same box serves the static chip the project screen renders, which is
 // a <span> because there is nothing to open there.
 .composer__project {
   display: inline-flex;
@@ -298,6 +297,18 @@ app-icon.composer__project-caret {
 
 .composer__mic-elapsed {
   font-size: 11.5px;
+}
+
+// `balance` rather than a smaller size on narrow screens: the line wraps on a phone
+// either way, and shrinking muted text is the wrong half of the trade.
+.composer__disclaimer {
+  margin: 6px 0 0;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
 }
 
 // Below 768px this row wants about twice the width it has, and Send — last in it —

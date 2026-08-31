@@ -1,9 +1,6 @@
-// Design tokens. US-105.
-//
-// Transcribed from `docs/design/project/theme.css`, which is the authority for every
-// value here. `scripts/check-tokens.mjs` compares the two and fails on drift, so a
-// colour changed in one place and not the other is a red build rather than a review
-// comment.
+// Design tokens — the source of record for every colour in the application.
+// `scripts/check-tokens.mjs` holds the pre-paint colours duplicated into `index.html`
+// in step with these, and measures the code-surface and focus-ring pairs for contrast.
 //
 // **Never `@use` this file from a component stylesheet.** It emits `:root` blocks;
 // under emulated encapsulation a component would re-emit them scoped to its own
@@ -12,8 +9,8 @@
 @use 'sass:color';
 @use 'sass:map';
 
-// Property names keep their original casing. `--btnP-bg` is unusual, but custom
-// properties are case-sensitive and the check script compares against theme.css.
+// Property names keep their original casing: `--btnP-bg` is unusual, but custom
+// properties are case-sensitive.
 $light: (
   'bs-body-bg': #f7fafc,
   'bs-body-color': #16283a,
@@ -78,7 +75,7 @@ $dark: (
   'show-dark': inline,
 );
 
-// Tokens this application adds beyond theme.css.
+// Tokens layered on top of the Bootstrap-facing set above.
 //
 // The `-rgb` companions are not optional decoration: Bootstrap 5.3 consumes them in
 // `rgba(var(--bs-body-color-rgb), …)` for its .text-*, .bg-* and .link-* opacity

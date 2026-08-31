@@ -41,8 +41,8 @@ html:has(dialog[open]) {
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
-// Hand-rolled in place of bootstrap/scss/forms/validation (6.9 kB). `applyServerErrors`
-// drives the class directly, and `.was-validated` is never used here.
+// Hand-rolled in place of bootstrap/scss/forms/validation (6.9 kB). Fields bind
+// `.is-invalid` directly, and `.was-validated` is never used here.
 .form-control.is-invalid,
 .form-select.is-invalid,
 // A switch can be faulted by a cross-field rule even though nothing types into it — the
@@ -61,15 +61,8 @@ html:has(dialog[open]) {
   }
 }
 
-.invalid-feedback {
-  display: block;
-  margin-top: 4px;
-  color: var(--fail);
-  font-size: 12px;
-}
-
 // ── Spinner ──────────────────────────────────────────────────────────────────
-// The boards' spinner: a ring on theme.css's existing `spin` keyframe, rather than
+// The spinner: a ring on the existing `spin` keyframe, rather than
 // Bootstrap's `_spinners.scss`, which would add a keyframe of its own.
 .kit-spinner {
   display: inline-block;

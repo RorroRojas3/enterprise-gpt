@@ -28,9 +28,10 @@ import { ModelMenu } from './model-menu';
 import { ToolsMenu } from './tools-menu';
 
 /**
- * The prompt box (frames `2a`–`2j`): attachment chips, textarea, warning line, and
- * the control row — attach, model pill, tools pill, microphone, send. While a turn is
- * in flight the send button gives way to the Stop control (frames `1b`, `2g`).
+ * The prompt box (frames `2a`–`2j`): attachment chips, textarea, warning line, the
+ * control row — attach, model pill, tools pill, microphone, send — and the standing
+ * AI disclaimer beneath the card. While a turn is in flight the send button gives way
+ * to the Stop control (frames `1b`, `2g`).
  *
  * **What executes the prompt is injected, not assumed.** `COMPOSER_HOST` is `TurnStore`
  * on the chat route and `ProjectComposerHost` on the project detail screen (US-906),

@@ -15,7 +15,7 @@
 @import 'bootstrap/scss/functions';
 
 // Project overrides of Bootstrap's !default variables, before `variables` reads them.
-// $theme-colors is trimmed from eight to three: theme.css only ever restyles
+// $theme-colors is trimmed from eight to three: the theme only ever restyles
 // .btn-primary, .btn-outline-secondary and .btn-danger, and each unused colour costs
 // roughly 1.4 kB across buttons and :root.
 $theme-colors: (

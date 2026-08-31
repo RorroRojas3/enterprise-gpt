@@ -1,12 +1,12 @@
 # Application Insights KQL Cookbook
 
-Runnable [KQL](https://learn.microsoft.com/azure/data-explorer/kusto/query/) queries against this API's actual telemetry shape — the access log's structured fields, the chat pipeline's spans and metrics, and the two health routes. Companion to [Request Logging and Application Insights](request-logging.md), which explains *why* each signal exists and where it is registered; this document is the *how do I ask it a question* half. Audience: engineers and operators querying a deployed environment's Application Insights resource, in the **Logs** blade or the linked Log Analytics workspace.
+Runnable [KQL](https://learn.microsoft.com/azure/data-explorer/kusto/query/) queries against this API's telemetry shape: the access log's structured fields, the chat pipeline's spans and metrics, and the two health routes. [telemetry.md](telemetry.md) covers why each signal exists and where it is registered.
 
-Every query here has been checked against the field names in [`RequestLogMessages.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/RequestLogMessages.cs), [`ChatMetrics.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs) and the OpenTelemetry Semantic Conventions for Generative AI that `Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` implements — not against a generic template. If a query returns nothing, the first thing to check is [§2 of the request logging doc](request-logging.md#2-quick-start): no `AzureMonitor:ConnectionString`, no data.
+Every query here has been checked against the field names in `RequestLogMessages.cs`, `ChatMetrics.cs` and the OpenTelemetry Semantic Conventions for Generative AI that `Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` implements — not against a generic template. If a query returns nothing, check first that `AzureMonitor:ConnectionString` is configured — no connection string, no data.
 
 ## How to use this cookbook
 
-**Schema at a glance** — which table holds which signal (full detail in [request-logging.md §7.2](request-logging.md#72-what-lands-where-and-how-it-correlates)):
+**Schema at a glance** — which table holds which signal :
 
 | Table | Holds |
 |---|---|
@@ -19,11 +19,11 @@ Every query here has been checked against the field names in [`RequestLogMessage
 Two habits that every recipe below depends on:
 
 - **`customDimensions` is a dynamic column, and most of its interesting keys contain dots** — `gen_ai.request.model`, `sheet_query.outcome`. Kusto's dot-navigation syntax (`customDimensions.Foo`) parses a literal dot as a *nested* property access, so a dotted key silently returns `null` unless you index it as a string: `customDimensions["gen_ai.request.model"]`. Bracket notation is used throughout this document for that reason, even on the plain PascalCase keys the access log writes, so every recipe here is copy-paste safe.
-- **The access log's four event kinds share one table with no queryable event name.** [`RequestLoggingMiddleware`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/RequestLoggingMiddleware.cs) writes events 1000–1004 to `traces`, and the exporter does not carry the `.NET` `EventId`/`EventName` through as its own column. Discriminate by the fields each event actually sets instead — `customDimensions["StatusCode"]` exists **only** on a completion record (1001), which is the discriminator every query below that reads `traces` relies on.
+- **The access log's four event kinds share one table with no queryable event name.** `RequestLoggingMiddleware` writes events 1000–1004 to `traces`, and the exporter does not carry the `.NET` `EventId`/`EventName` through as its own column. Discriminate by the fields each event actually sets instead — `customDimensions["StatusCode"]` exists **only** on a completion record (1001), which is the discriminator every query below that reads `traces` relies on.
 
 ## Correlating one request end to end by `traceId`
 
-Every problem response this API returns carries a `traceId` — the 32-hex W3C trace id, from [`ProblemDetailsRegistration`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Problems/ProblemDetailsRegistration.cs). A user or a support ticket quoting it finds the whole request, across every table, by `operation_Id`:
+Every problem response this API returns carries a `traceId` — the 32-hex W3C trace id, from `ProblemDetailsRegistration`. A user or a support ticket quoting it finds the whole request, across every table, by `operation_Id`:
 
 ```kusto
 union traces, requests, dependencies, exceptions
@@ -32,7 +32,7 @@ union traces, requests, dependencies, exceptions
 | project timestamp, itemType, name, message, customDimensions
 ```
 
-One thing to know about what this can and cannot guarantee: **the `traces` row is always there; the `requests`/`dependencies` rows might not be.** `AzureMonitor:EnableTraceBasedLogsSampler` ships `false` (see [request-logging.md §7.4](request-logging.md#74-sampling-a-deployment-decision-not-a-library-default)) specifically so the access log stays a census independent of span sampling. OpenTelemetry samples at the **trace** level — the root span's decision is propagated to every child — so a trace the sampler dropped is missing its `requests` row and every `dependencies` child *together*, never partially. If the query above returns a `traces` row and nothing else, that is what happened: the request completed normally and was simply not one of the ~5-per-second the exporter kept as a span.
+One thing to know about what this can and cannot guarantee: **the `traces` row is always there; the `requests`/`dependencies` rows might not be.** `AzureMonitor:EnableTraceBasedLogsSampler` ships `false` (see [telemetry.md](telemetry.md)) specifically so the access log stays a census independent of span sampling. OpenTelemetry samples at the **trace** level — the root span's decision is propagated to every child — so a trace the sampler dropped is missing its `requests` row and every `dependencies` child *together*, never partially. If the query above returns a `traces` row and nothing else, that is what happened: the request completed normally and was simply not one of the ~5-per-second the exporter kept as a span.
 
 ## Error rate and p95 latency by route
 
@@ -50,7 +50,7 @@ requests
 | order by ErrorRatePercent desc
 ```
 
-**Exact, from the access log** — every row is a census (traces are never sampled here), and it distinguishes an error from a visitor closing a browser tab, which `requests.success` does not: `Outcome` is `Faulted` only when an exception escaped the pipeline, never for `ClientAborted` (see [request-logging.md §3.2](request-logging.md#32-level-selection-on-completion) for why the two are kept apart):
+**Exact, from the access log** — every row is a census (traces are never sampled here), and it distinguishes an error from a visitor closing a browser tab, which `requests.success` does not: `Outcome` is `Faulted` only when an exception escaped the pipeline, never for `ClientAborted` (see [telemetry.md](telemetry.md) for why the two are kept apart):
 
 ```kusto
 traces
@@ -73,7 +73,7 @@ traces
 
 ## LLM spend by model and by user
 
-`Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` — wired through [`UseEnterpriseTelemetry`](request-logging.md#73-llm-spans-and-token-metrics) — sets `gen_ai.usage.input_tokens`/`gen_ai.usage.output_tokens` directly on the LLM call's `dependencies` span, alongside `gen_ai.request.model` and `gen_ai.provider.name`:
+`Microsoft.Extensions.AI`'s `OpenTelemetryChatClient` — wired through `UseEnterpriseTelemetry` — sets `gen_ai.usage.input_tokens`/`gen_ai.usage.output_tokens` directly on the LLM call's `dependencies` span, alongside `gen_ai.request.model` and `gen_ai.provider.name`:
 
 ```kusto
 dependencies
@@ -89,7 +89,7 @@ dependencies
 | order by InputTokens desc
 ```
 
-**By user** needs a join, not another attribute: [`EndUserEnrichingProcessor`](request-logging.md#71-registration) only tags `ActivityKind.Server` spans with `enduser.id` — an LLM call is a `Client` span, deliberately left untagged, because attributing a dependency to the *caller's* identity would misattribute work a server span already owns. The chat span's `user_AuthenticatedId` isn't on it; the request that made the call is, and they share `operation_Id`:
+**By user** needs a join, not another attribute: `EndUserEnrichingProcessor` only tags `ActivityKind.Server` spans with `enduser.id` — an LLM call is a `Client` span, deliberately left untagged, because attributing a dependency to the *caller's* identity would misattribute work a server span already owns. The chat span's `user_AuthenticatedId` isn't on it; the request that made the call is, and they share `operation_Id`:
 
 ```kusto
 dependencies
@@ -126,7 +126,7 @@ customMetrics
 
 ## Tool-call and pipeline-run failures
 
-Every tool-shaped pipeline in this API — sheet queries, spreadsheet ingestion, document summarization, the File Agent — records its own outcome-tagged duration histogram in [`ChatMetrics`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Observability/ChatMetrics.cs), each under its own dimension name. `case()` normalizes the four into one column:
+Every tool-shaped pipeline in this API — sheet queries, spreadsheet ingestion, document summarization, the File Agent — records its own outcome-tagged duration histogram in `ChatMetrics`, each under its own dimension name. `case()` normalizes the four into one column:
 
 ```kusto
 customMetrics
@@ -156,13 +156,13 @@ customMetrics
 | summarize FailedArtifacts = sum(value) by DocumentType = tostring(customDimensions["document.type"]), bin(timestamp, 1d)
 ```
 
-Note `sum(value)` here, not `valueSum`: `FileAgentVerification` is a `Counter<long>`, and for a counter the preaggregated total lands in `value` (`valueSum` is meaningful for histograms). See [request-logging.md §7.3](request-logging.md#73-llm-spans-and-token-metrics) for the instrument-kind table.
+Note `sum(value)` here, not `valueSum`: `FileAgentVerification` is a `Counter<long>`, and for a counter the preaggregated total lands in `value` (`valueSum` is meaningful for histograms). See [telemetry.md](telemetry.md) for the instrument-kind table.
 
 **A caveat on `exceptions`.** Every fault this API can raise is caught by one of three `IExceptionHandler`s and turned into a Problem Details response before it ever reaches ASP.NET Core's own unhandled-exception path — which is what usually populates the `exceptions` table. Look for a genuine application fault in `traces` first (`Outcome == "Faulted"` on the completion record, from the [error-rate recipe](#error-rate-and-p95-latency-by-route) above, which also carries the exception's message) or in `requests` (`resultCode >= 500`). Treat a hit in `exceptions` as noteworthy precisely because it means something escaped the handler chain itself.
 
 ## Document-ingestion outcomes (spreadsheets)
 
-**Scope note first:** only spreadsheet extraction (`.xlsx`/`.csv`) has a dedicated outcome metric. The general document pipeline's status — PDF, Office documents, everything `Azure Document Intelligence` extracts — lives in the in-memory `JobStatus` and the SQL-backed `Core.{Conversation,Project}DocumentPage`/`Chunk` tables, not in Application Insights; see [Document Upload and Ingestion §7](../documents/upload-workflow.md#7-status-model). What follows is real telemetry for the subset that has it:
+**Scope note first:** only spreadsheet extraction (`.xlsx`/`.csv`) has a dedicated outcome metric. The general document pipeline's status — PDF, Office documents, everything `Azure Document Intelligence` extracts — lives in the in-memory `JobStatus` and the SQL-backed `Core.{Conversation,Project}DocumentPage`/`Chunk` tables, not in Application Insights; see [the ingestion status model](../documents/ingestion.md). What follows is real telemetry for the subset that has it:
 
 ```kusto
 customMetrics
@@ -175,13 +175,13 @@ customMetrics
 | order by Outcome, DocumentType
 ```
 
-A `refused` outcome is a `Sheets:*` ceiling doing its job, not a bug — see [Document Upload and Ingestion §11.6](../documents/upload-workflow.md#116-telemetry-spreadsheet-extraction) for what each ceiling means and which one a spike in `refused` points at.
+A `refused` outcome is a `Sheets:*` ceiling doing its job, not a bug — see [the spreadsheet ceilings](../documents/ingestion.md) for what each means and which one a spike in `refused` points at.
 
 ## Readiness and liveness
 
-`GET /health` (liveness) checks nothing and returns the plain text `Healthy` with no body structure — it exists so a database outage cannot also read as "process is down" and trigger a restart. `GET`/`HEAD /health/ready` (readiness) runs the SQL and Cosmos health checks, cached for three seconds behind [`ReadinessProbe`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Health/ReadinessProbe.cs)'s single-flight gate, and answers `{"status": "Healthy" | "Degraded" | "Unhealthy"}` with a matching `200`/`503`. Both are anonymous and mapped in every environment, and — because the route is anonymous — the body never names *which* dependency is down; that goes to the log instead.
+`GET /health` (liveness) checks nothing and returns the plain text `Healthy` with no body structure — it exists so a database outage cannot also read as "process is down" and trigger a restart. `GET`/`HEAD /health/ready` (readiness) runs the SQL and Cosmos health checks, cached for three seconds behind `ReadinessProbe`'s single-flight gate, and answers `{"status": "Healthy" | "Degraded" | "Unhealthy"}` with a matching `200`/`503`. Both are anonymous and mapped in every environment, and — because the route is anonymous — the body never names *which* dependency is down; that goes to the log instead.
 
-`requests` gets a row for both routes on every hit, regardless of the access log's own `ExcludedPaths` (§3.3 of the request-logging doc only suppresses this app's *own* log on success — the framework's request instrumentation is unconditional):
+`requests` gets a row for both routes on every hit, regardless of the access log's own `ExcludedPaths` (the access log's `ExcludedPaths` only suppresses this app's *own* log on success — the framework's request instrumentation is unconditional):
 
 ```kusto
 requests
@@ -193,7 +193,7 @@ requests
 
 An empty result for longer than your platform's own probe interval means the probe stopped reaching the app, not that it stopped failing — that is a liveness problem this query cannot distinguish from a healthy silence, which is exactly why an operator dashboard should alert on the *absence* of rows here, not only their content.
 
-**Which dependency failed** is logged, not returned — [`ReadinessProbe.LogFailures`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Health/ReadinessProbe.cs) writes it once per probe, at Error, to the ordinary `ILogger<ReadinessProbe>` category, which lands in `traces` like any other log record:
+**Which dependency failed** is logged, not returned — `ReadinessProbe.LogFailures` writes it once per probe, at Error, to the ordinary `ILogger<ReadinessProbe>` category, which lands in `traces` like any other log record:
 
 ```kusto
 traces
@@ -218,7 +218,7 @@ union requests, dependencies, exceptions, traces
 | summarize RetainedPercentage = 100 / avg(itemCount) by bin(timestamp, 1h), itemType
 ```
 
-Three things this API's configuration means for that number, all covered in [request-logging.md §7.4](request-logging.md#74-sampling-a-deployment-decision-not-a-library-default):
+Three things this API's configuration means for that number, all covered in [telemetry.md](telemetry.md):
 
 - **`traces` should read 100.** `AzureMonitor:EnableTraceBasedLogsSampler` ships `false`, so the access log is a census independent of span sampling — if `traces` shows less than 100 here, something changed that setting.
 - **`requests` and `dependencies` sample together, at `AzureMonitor:TracesPerSecond` (`5.0` by default), because OpenTelemetry samples a whole trace as a unit** — a kept `requests` row's `dependencies` children are always kept alongside it, never separately.
@@ -228,8 +228,8 @@ Three things this API's configuration means for that number, all covered in [req
 
 ## Related docs
 
-- [Request Logging and Application Insights](request-logging.md) — what is recorded, how it is registered, and why
-- [Browser Telemetry](browser-telemetry.md) — the client-side half, and how it correlates to a server trace
-- [Document Upload and Ingestion §11.6](../documents/upload-workflow.md#116-telemetry-spreadsheet-extraction) — the spreadsheet metrics in full
-- [Sheet Query §7.3](../documents/sheet-query.md#73-telemetry) — the query-side counterpart
-- [Document Summarization: Tool, Persistence and Billing §6](../summarization/tool-integration.md#6-telemetry) — the summarization run metrics
+- [Telemetry](telemetry.md) — what is recorded, how it is registered, and why
+- [Telemetry](telemetry.md) — the client-side half, and how it correlates to a server trace
+- [Ingestion](../documents/ingestion.md) — the spreadsheet ceilings these metrics report on
+- [Sheet Query](../documents/sheet-query.md) — the query-side counterpart
+- [Summarization](../documents/summarization.md) — the summarization run metrics

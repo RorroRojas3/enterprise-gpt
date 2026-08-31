@@ -4,11 +4,10 @@ import { MarkdownHost, renderMarkdown } from '@testing/markdown-host';
 import { provideChatMarkdown } from './markdown-providers';
 
 /**
- * US-604. The story asks for code that is legible in whichever theme the page is
- * in, and the way this app answers it is *not* the two-stylesheet swap the
- * criterion describes: the design bundle fixes `--code-bg` and `--code-head` dark
- * in both themes, so there is one hand-authored Prism palette tinted entirely from
- * custom properties and nothing to swap to.
+ * Code has to stay legible in whichever theme the page is in, and this app does not
+ * answer that with the usual two-stylesheet swap: `--code-bg` and `--code-head` are
+ * fixed dark in both themes, so there is one hand-authored Prism palette tinted
+ * entirely from custom properties and nothing to swap to.
  *
  * That makes the mechanism the thing worth pinning here, because it is what the two
  * remaining criteria rest on. If a code block carries no colour of its own, and if

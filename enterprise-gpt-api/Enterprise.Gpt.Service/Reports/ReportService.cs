@@ -44,7 +44,7 @@ public interface IReportService
 /// <inheritdoc />
 /// <remarks>
 /// <para>
-/// Every query here is a port of one in <c>docs/conversations/usage-and-favorites.md</c> §7, and
+/// Every query here is a port of one in <c>docs/conversations/usage-and-reporting.md</c>, and
 /// the three rules stated above those queries are what shape this file: the assistant's own token
 /// columns and its tools' are summed apart and combined only in a total; the estimated
 /// <c>ContextTokens</c> sits beside the billed columns and is never added to them; and neither
