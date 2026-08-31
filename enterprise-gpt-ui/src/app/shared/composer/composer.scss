@@ -300,6 +300,18 @@ app-icon.composer__project-caret {
   font-size: 11.5px;
 }
 
+// `balance` rather than a smaller size on narrow screens: the line wraps on a phone
+// either way, and shrinking muted text is the wrong half of the trade.
+.composer__disclaimer {
+  margin: 6px 0 0;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
+}
+
 // Below 768px this row wants about twice the width it has, and Send — last in it —
 // is what fell off the card. Every pill whose glyph already says what its label says
 // gives the label up; the model name is the one piece of text that survives.

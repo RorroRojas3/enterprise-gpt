@@ -419,6 +419,8 @@ The line above the control row shows at most one message, ordered by what it cos
 
 The microphone ranks last on purpose: one denied permission must not hide the fact that the conversation is now answering on a different model.
 
+A separate, permanent line renders beneath the card, outside it: "Enterprise GPT is AI and can make mistakes. Please double-check responses." It shares no machinery with the amber note above — no `role`, no icon, never conditional — because a standing disclaimer competing for the same live region as a real warning would bury the warning under noise that never changes. The design boards do not draw it; a content-only addition like this is not pushed upstream into them, exactly as the landing chips are not (see [Design System §9](../ui/design-system.md#9-corrections-made-against-the-design-boards)).
+
 ### 9.2 Dictation (US-413)
 
 Speaking a prompt runs on the browser's own Web Speech API. **Enterprise GPT never receives the audio**: no microphone stream reaches this application's code, nothing is uploaded to the API, and there is no server-side transcription service anywhere in the product — the PRD's "voice input" was scoped to browser-native recognition for exactly that reason.
