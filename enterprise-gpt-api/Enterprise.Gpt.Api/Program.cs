@@ -468,26 +468,6 @@ builder.Services.AddEmbeddingGenerator(sp =>
         .AsIEmbeddingGenerator();
 });
 
-// The fabricated weather tool. Off unless a deployment asks for it: it answers with invented data,
-// and attached to every production turn it is a tool the model would call and then answer from.
-builder.Services.AddOptions<WeatherToolOptions>()
-    .Bind(builder.Configuration.GetSection(WeatherToolOptions.SectionName))
-    .ValidateDataAnnotations()
-    // Not an error, because a staging environment turning it on is legitimate — but a deployment
-    // answering users from invented data should have said so out loud at least once.
-    .Validate(options =>
-    {
-        if (options.Enabled && builder.Environment.IsProduction())
-        {
-            Console.Error.WriteLine(
-                "WARNING: Tools:Weather:Enabled is set in Production. The weather tool answers with " +
-                "fabricated data and the model will report it to users as fact.");
-        }
-
-        return true;
-    })
-    .ValidateOnStart();
-
 // Document ingestion options, validated at startup so a bad chunk size or size limit fails the app
 // rather than every upload.
 builder.Services.AddOptions<DocumentOptions>()

@@ -57,24 +57,20 @@ catalog edit cannot rewrite history. See
 
 ### Migrations
 
-`Repository/Migrations/` holds **20** migrations, from `InitialCreate` (the whole schema plus the
-`HasData` seeds, including the three provider rows) through `AddUserMcpCredentialStorage`.
+`Repository/Migrations/` holds a single `Initial` migration: the whole schema plus the `HasData`
+seeds, including the provider rows.
 
 `Database.Migrate()` runs at startup and is **skipped in the `Testing` environment**, so a database
 built from empty is migrated and seeded automatically. Unit tests use SQLite in-memory and
 integration tests use `EnsureCreated()` against a Testcontainers SQL Server, so neither replays the
 migration chain.
 
-Add a schema change as a normal `dotnet ef migrations add` migration. Two conventions the existing
-chain establishes:
+Add a schema change as a normal `dotnet ef migrations add` migration. One convention the schema
+carries: a store-generated `bool` default is silently dropped from EF's `HasData` seed differ, so a
+new bool column that must backfill is configured `HasDefaultValue(x).ValueGeneratedNever()`.
 
-- A store-generated `bool` default is silently dropped from EF's `HasData` seed differ, so a new
-  bool column that must backfill is configured `HasDefaultValue(x).ValueGeneratedNever()`.
-- An index landing on a fast-growing table is built **offline inside `Migrate()`** rather than as a
-  plain `CreateIndex`.
-
-A database predating the migration chain has no `__EFMigrationsHistory` and must be baselined before
-`Migrate()` can run against it.
+`Migrate()` expects `__EFMigrationsHistory` to hold the `Initial` row and nothing else. A database
+this application did not build from empty must be baselined before `Migrate()` can run against it.
 
 ## Cosmos DB
 
