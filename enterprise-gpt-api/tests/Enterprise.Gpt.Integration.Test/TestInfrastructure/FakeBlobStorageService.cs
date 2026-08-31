@@ -29,6 +29,12 @@ public sealed class FakeBlobStorageService : IBlobStorageService
     public IReadOnlyCollection<string> UploadedKeys => [.. _uploadedKeys.Keys];
 
     /// <summary>
+    /// Whether a blob is still stored, which <see cref="UploadedPaths"/> cannot say: that one records
+    /// every upload ever made and a delete deliberately does not retract it.
+    /// </summary>
+    public bool Exists(string container, string blob) => _blobs.ContainsKey($"{container}/{blob}");
+
+    /// <summary>
     /// Clears all stored blobs.
     /// </summary>
     public void Reset()

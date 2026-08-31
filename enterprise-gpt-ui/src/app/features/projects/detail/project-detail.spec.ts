@@ -9,6 +9,7 @@ import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenService } from '@core/auth/token-service';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { COMPOSER_UPLOADS, ComposerUploads } from '@core/documents/composer-uploads';
 import { UploadStore } from '@core/documents/upload-store';
 import { projectEvents } from '@core/events/project-events';
 import { SessionStore } from '@core/session/session-store';
@@ -83,12 +84,17 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
   /**
    * The upload store from `ProjectDetail`'s own element injector.
    *
-   * `TestBed.inject` would not find it, and that is the point of the test: it is
-   * provided on the component so the composer and the files panel share one instance,
-   * and the routed child resolves it up the element-injector chain.
+   * `TestBed.inject` would not find it: it is provided on the component, and the routed
+   * files panel resolves it up the element-injector chain. This is the *project's*
+   * store — the composer's is a separate instance under `COMPOSER_UPLOADS`.
    */
   function uploads(): InstanceType<typeof UploadStore> {
     return harness.routeDebugElement!.injector.get(UploadStore);
+  }
+
+  /** The composer's own store on this screen, targeted at no parent yet. */
+  function composerUploads(): ComposerUploads {
+    return harness.routeDebugElement!.injector.get(COMPOSER_UPLOADS);
   }
 
   /** Lets the router's navigation pipeline run far enough to reach a guard. */
@@ -171,9 +177,9 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
   it('resolves the upload store through the outlet, so the files panel shares one', async () => {
     await open('/files');
 
-    // The DI wiring the composer move introduced: `UploadStore` is provided on this
-    // component, and the routed child resolves it up the element-injector chain rather
-    // than starting a second, differently-targeted instance.
+    // `UploadStore` is provided on this component and the routed panel resolves it up
+    // the element-injector chain, so switching tabs mid-upload does not tear the
+    // transfer down.
     uploads().attach([new File(['x'], 'notes.pdf', { type: 'application/pdf' })]);
     await settle();
 
@@ -191,6 +197,21 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
       .expectOne((candidate) => candidate.url.includes('upload-status'))
       .flush(jobStatus('Failed', null));
     await harness.fixture.whenStable();
+  });
+
+  it('keeps the composer’s files off the project', async () => {
+    await open('/files');
+
+    const composer = composerUploads();
+    expect(composer).not.toBe(uploads());
+
+    composer.attach([new File(['x'], 'notes.pdf', { type: 'application/pdf' })]);
+    await settle();
+
+    // The composer starts a conversation; a file attached there belongs to that
+    // conversation, so it waits for one to exist rather than joining the project.
+    expect(uploadXhr.requests).toHaveLength(0);
+    expect(composer.pendingFiles().map((file) => file.name)).toEqual(['notes.pdf']);
   });
 
   it('turns a finished upload into a row even while another tab is open', async () => {

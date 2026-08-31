@@ -8,7 +8,8 @@ namespace Enterprise.Gpt.Dto.Enums
     /// <remarks>
     /// Values 1–6 are frozen: clients already deployed compare against them. New stages are appended, never
     /// renumbered, and are projected onto the coarse job state so an older client still sees a sensible
-    /// Enqueued/Processing/Succeeded/Failed progression.
+    /// Enqueued/Processing/Succeeded/Failed progression — <see cref="Cancelled"/> projects onto Failed
+    /// rather than widening that vocabulary.
     /// </remarks>
     public enum JobStatus
     {
@@ -35,5 +36,9 @@ namespace Enterprise.Gpt.Dto.Enums
 
         [Description(nameof(Persisting))]
         Persisting = 8,
+
+        /// <summary>The caller called the upload off. Terminal, and reported to clients as Failed.</summary>
+        [Description(nameof(Cancelled))]
+        Cancelled = 9,
     }
 }

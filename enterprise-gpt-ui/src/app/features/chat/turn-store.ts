@@ -55,6 +55,7 @@ import {
   reasoningSeconds,
 } from '@domain/stream/reasoning-timing';
 import { ComposerExportTarget, ComposerProjectTarget } from '@core/chat/composer-host';
+import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -614,6 +615,7 @@ export const TurnStore = signalStore(
      * on the route binding that opens it, and cleared by the read.
      */
     _pending: inject(PendingPromptStore),
+    _attachments: inject(PendingAttachmentsStore),
     _toasts: inject(ToastStore),
     _signedOut$: injectSignedOut(),
     /**
@@ -916,6 +918,9 @@ export const TurnStore = signalStore(
           // for the other pre-stream window; the other two reset the store outright.
           switchMap((conversationId) => {
             store._awaitingUploads.value = true;
+            // Here rather than on attach: the composer holds its files until the turn they
+            // belong to is actually sent, and the gate below then waits for them.
+            store._uploads.startPending();
 
             return store._uploads.settled$().pipe(
               // Cancelled, the inner observable completes **without emitting**, so
@@ -1196,9 +1201,26 @@ export const TurnStore = signalStore(
         // still streaming and therefore not persisted yet.
         loadHistory({ id, keepLive: true });
 
-        // US-906: a conversation created on the project screen arrives here with
-        // its first prompt waiting. Claimed after the reset, so the send lands on
-        // the binding it belongs to, and single-shot inside the store, so a
+        // A conversation created on the project screen arrives with its files waiting
+        // too. Claimed here rather than from an effect on the route input, because the
+        // gate below is evaluated in this same call stack: an attach one change-detection
+        // pass later would find `settled$()` already answered, open the stream, and
+        // ground the answer in nothing. Binding precedes attaching — reversed, the target
+        // change clears the chips just added.
+        const handedOver = id === null ? [] : store._attachments.claim(id);
+        if (id !== null && handedOver.length > 0) {
+          store._uploads.bindConversation(id);
+          store._uploads.attach(handedOver);
+        } else {
+          // Landing anywhere else — including the bare chat route — means that handoff was
+          // abandoned: a refused guard, a reader who clicked away mid-navigation. Held
+          // `File` handles are bytes, not a string like the prompt beside them, so they are
+          // released rather than left in root state until sign-out.
+          store._attachments.clear();
+        }
+
+        // The first prompt, waiting the same way. Claimed after the reset, so the send
+        // lands on the binding it belongs to, and single-shot inside the store, so a
         // refresh of the same URL does not send the prompt twice.
         const pending = id === null ? null : store._pending.claim(id);
         const pendingText = pending?.trim() ?? '';

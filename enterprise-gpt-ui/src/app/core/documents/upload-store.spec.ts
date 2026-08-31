@@ -19,6 +19,7 @@ const JOB_ID = 'b0f2c1a4-1f3e-4b7a-9a2e-5c6d7e8f9a0b';
 const DOC_ID = '9c8b7a65-4321-4fed-8cba-0987654321fe';
 const EXTENSIONS_URL = `${TEST_API_BASE_URL}/api/documents/file-extensions`;
 const STATUS_URL = `${TEST_API_BASE_URL}/api/documents/upload-status/${JOB_ID}`;
+const CANCEL_URL = STATUS_URL;
 const SUPPORTED = ['.doc', '.docx', '.md', '.pdf', '.pptx', '.txt'];
 
 /** A file whose `size` is the 212 MB frame `4l` quotes back to the user. */
@@ -329,6 +330,72 @@ describe('UploadStore', () => {
     expect(state()).toEqual({ kind: 'uploading', percent: 80 });
   });
 
+  it('holds every file until Send once the composer has asked it to', async () => {
+    store.deferUploadsUntilSend();
+    // A conversation already exists, which before was enough to upload on the drop — so the
+    // first turn waited for Send and every later one did not.
+    store.bindConversation(CONVERSATION_ID);
+
+    store.attach([textFile('notes.txt')]);
+    await settle();
+
+    expect(xhr.requests).toHaveLength(0);
+    // And a file nothing has been posted for must not hold Send against itself.
+    expect(store.blocksSend()).toBe(false);
+    expect(store.isSettled()).toBe(true);
+
+    store.startPending();
+    await settle();
+
+    expect(xhr.requests).toHaveLength(1);
+    expect(store.blocksSend()).toBe(true);
+  });
+
+  it('goes on holding later files, not just the first', async () => {
+    store.deferUploadsUntilSend();
+    store.bindConversation(CONVERSATION_ID);
+
+    store.attach([textFile('first.txt')]);
+    store.startPending();
+    await settle();
+    xhr.last.respond(202, { id: JOB_ID });
+    await settle();
+
+    // The reported bug: after one send the target stayed bound, so the next attachment
+    // uploaded on the drop.
+    store.attach([textFile('second.txt')]);
+    await settle();
+
+    expect(xhr.requests).toHaveLength(1);
+
+    store.cancelAll();
+    await settle();
+    backend
+      .match(CANCEL_URL)
+      .forEach((request) => request.flush(null, { status: 204, statusText: 'No Content' }));
+  });
+
+  it('surrenders the bytes behind chips no server has taken yet', async () => {
+    store.attach([textFile('notes.txt'), textFile('report.md'), textFile('demo-capture.mov')]);
+    await settle();
+
+    // Chip order, and the refused file absent — `attach` never kept its bytes.
+    expect(store.pendingFiles().map((file) => file.name)).toEqual(['notes.txt', 'report.md']);
+  });
+
+  it('hands on nothing once it has a parent of its own', async () => {
+    store.bindConversation(CONVERSATION_ID);
+    store.attach([textFile('notes.txt')]);
+    await settle();
+
+    // A bound store may have a transfer in flight whose job id has not landed yet;
+    // handing that file to another screen would ingest it twice.
+    expect(store.pendingFiles()).toEqual([]);
+
+    store.cancelAll();
+    await settle();
+  });
+
   describe('watching a job (US-802)', () => {
     async function queue(): Promise<string> {
       store.bindConversation(CONVERSATION_ID);
@@ -410,6 +477,84 @@ describe('UploadStore', () => {
       // control can only hide the chip — it must not claim to remove anything.
       expect(store.attachments()[0]?.removeAction).toBe('dismiss');
       expect(store.attachments()[0]?.downloadable).toBe(true);
+    });
+
+    it('calls the running job off when the reader cancels it', async () => {
+      const id = await queue();
+      await poll(jobStatus({ state: 'Processing' }));
+
+      store.remove(id);
+      await settle();
+
+      // The chip goes at once, and one request stops the ingestion rather than waiting for
+      // it to finish and undoing it.
+      expect(store.attachments()).toHaveLength(0);
+      expect(store.isSettled()).toBe(true);
+
+      const cancel = backend.expectOne(CANCEL_URL);
+      expect(cancel.request.method).toBe('DELETE');
+      cancel.flush(null, { status: 204, statusText: 'No Content' });
+
+      // And the client stops watching a job it just called off.
+      await vi.advanceTimersByTimeAsync(30_000);
+      backend.expectNone(STATUS_URL);
+    });
+
+    it('asks for nothing when the job already failed on its own', async () => {
+      const id = await queue();
+      await poll(jobStatus({ state: 'Failed', errorMessage: 'No readable text.' }));
+
+      store.remove(id);
+      await settle();
+
+      // Nothing ran and nothing was ingested, so there is nothing to call off.
+      await vi.advanceTimersByTimeAsync(30_000);
+      backend.expectNone((candidate) => candidate.method === 'DELETE');
+    });
+
+    it('leaves the job running when the reader simply leaves the conversation', async () => {
+      await queue();
+      await poll(jobStatus({ state: 'Processing' }));
+
+      store.bindConversation(OTHER_ID);
+      await settle();
+
+      // Leaving is not retracting: those files were attached on purpose and must finish.
+      await vi.advanceTimersByTimeAsync(30_000);
+      backend.expectNone(STATUS_URL);
+      backend.expectNone((candidate) => candidate.method === 'DELETE');
+    });
+
+    it('cancels every file still on its way, and leaves the settled ones alone', async () => {
+      store.bindConversation(CONVERSATION_ID);
+      store.attach([textFile('notes.txt'), textFile('demo-capture.mov')]);
+      await settle();
+
+      expect(store.attachments()).toHaveLength(2);
+
+      store.cancelAll();
+      await settle();
+
+      // The refused file is not in flight, so its chip — and its explanation — stay.
+      expect(store.attachments()).toHaveLength(1);
+      expect(state()).toEqual({
+        kind: 'unsupported',
+        reason: expect.stringContaining('.mov'),
+      });
+      expect(xhr.last.aborted).toBe(true);
+    });
+
+    it('leaves files that were never posted anywhere alone', async () => {
+      // Stop was offered for the create, not for these: no conversation exists yet, so
+      // nothing is in flight for them and losing them to that press would be a surprise.
+      store.attach([textFile('notes.txt')]);
+      await settle();
+
+      store.cancelAll();
+      await settle();
+
+      expect(store.attachments()).toHaveLength(1);
+      expect(store.pendingFiles().map((file) => file.name)).toEqual(['notes.txt']);
     });
 
     it('stops polling once the job is terminal', async () => {

@@ -9,6 +9,8 @@ import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { ToastStore } from '@core/notifications/toast-store';
+import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
+import { COMPOSER_UPLOADS, ComposerUploads } from '@core/documents/composer-uploads';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
@@ -24,13 +26,19 @@ describe('ProjectComposerHost (US-906)', () => {
   let pending: InstanceType<typeof PendingPromptStore>;
   let navigate: ReturnType<typeof vi.fn>;
   let projectId: string | null;
+  let uploads: { pendingFiles: () => readonly File[] };
 
   beforeEach(() => {
+    uploads = { pendingFiles: () => [] };
     projectId = PROJECT_ID;
     navigate = vi.fn().mockResolvedValue(true);
 
     TestBed.configureTestingModule({
       providers: [
+        // A stub rather than the real store: instantiating one here would drag
+        // `DocumentUploadClient` and `TokenService` in behind it, and this spec
+        // deliberately stands clear of MSAL. Only the handoff is read.
+        { provide: COMPOSER_UPLOADS, useValue: uploads as unknown as ComposerUploads },
         provideTestAppConfig(),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -72,6 +80,37 @@ describe('ProjectComposerHost (US-906)', () => {
     expect(pending.claim(created.id)).toBe('Draft the cutover comms plan');
     expect(navigate).toHaveBeenCalledWith(['/chat', created.id]);
     expect(host.inFlight()).toBe(false);
+  });
+
+  it('hands the composer’s files to the conversation, not to the project', () => {
+    const created = conversationFixture({ projectId: PROJECT_ID });
+    const attached = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    uploads.pendingFiles = () => [attached];
+
+    host.send('What does this say?');
+    TestBed.tick();
+    expectCreate().flush(created);
+    TestBed.tick();
+
+    // The composer on this screen starts a conversation; its attachments belong to that
+    // conversation, and travel to the screen that can upload them against it.
+    const attachments = TestBed.inject(PendingAttachmentsStore);
+    expect(attachments.claim(created.id)).toEqual([attached]);
+  });
+
+  it('holds no files when the create never succeeded', () => {
+    uploads.pendingFiles = () => [new File(['x'], 'notes.txt', { type: 'text/plain' })];
+
+    host.send('What does this say?');
+    TestBed.tick();
+    expectCreate().flush(PROBLEM_FIXTURES.validationError, {
+      status: 400,
+      statusText: 'Bad Request',
+    });
+    TestBed.tick();
+
+    // Nothing was created, so the composer keeps its chips and its bytes.
+    expect(TestBed.inject(PendingAttachmentsStore).claim(PROJECT_ID)).toHaveLength(0);
   });
 
   it('never streams here — turnError stays null so the composer behaves as on chat', () => {

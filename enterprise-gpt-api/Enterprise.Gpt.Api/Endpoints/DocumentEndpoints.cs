@@ -86,7 +86,19 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status404NotFound)
                 .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+            // Not gated on Upload File, for the same reason the downloads are not: that permission is
+            // about adding documents, and owning the parent is what decides whether one can be removed.
+            // Gating it would strand a user's own documents the moment the grant were revoked.
+            group.MapDelete("conversations/{conversationId:guid}/{documentId:guid}", DeactivateConversationDocumentAsync)
+                .ProducesProblem(StatusCodes.Status404NotFound);
+
             group.MapGet("upload-status/{jobId}", GetJobStatus)
+                .ProducesProblem(StatusCodes.Status404NotFound);
+
+            // Two segments, so it cannot collide with the three-segment document delete above. Not gated
+            // on Upload File, for the reason the status read beside it is not: owning the job is what
+            // decides whether it may be stopped.
+            group.MapDelete("upload-status/{jobId}", CancelUploadAsync)
                 .ProducesProblem(StatusCodes.Status404NotFound);
 
             group.MapGet("file-extensions", GetFileExtensions);
@@ -167,11 +179,30 @@ namespace Enterprise.Gpt.Api.Endpoints
             return TypedResults.Ok(response);
         }
 
+        internal static async Task<NoContent> DeactivateConversationDocumentAsync(
+            Guid conversationId, Guid documentId, IDocumentService documentService, CancellationToken cancellationToken)
+        {
+            await documentService.DeactivateConversationDocumentAsync(conversationId, documentId, cancellationToken);
+
+            return TypedResults.NoContent();
+        }
+
         // The body carries a signed URL that reads the file with no credentials of its own, so a private
         // browser cache would otherwise write it to disk where it outlives the link's few minutes.
         private static void PreventCaching(HttpResponse httpResponse)
         {
             httpResponse.Headers.CacheControl = "no-store";
+        }
+
+        // Idempotent: cancelling a job that already finished removes what it produced, so one call always
+        // leaves nothing behind. The orchestration lives in the service because it spans the status store,
+        // the cancellation registry and a soft-delete cascade.
+        internal static async Task<NoContent> CancelUploadAsync(
+            string jobId, IDocumentService documentService, CancellationToken cancellationToken)
+        {
+            await documentService.CancelUploadAsync(jobId, cancellationToken);
+
+            return TypedResults.NoContent();
         }
 
         internal static Ok<JobStatusDto> GetJobStatus(
@@ -224,6 +255,9 @@ namespace Enterprise.Gpt.Api.Endpoints
             JobStatus.Queued => "Enqueued",
             JobStatus.Processed => "Succeeded",
             JobStatus.Failed => "Failed",
+            // Explicit rather than left to the default below: falling through to Processing would leave a
+            // client polling a job that will never move again.
+            JobStatus.Cancelled => "Failed",
             _ => "Processing",
         };
     }

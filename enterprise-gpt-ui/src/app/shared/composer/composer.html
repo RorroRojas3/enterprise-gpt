@@ -30,8 +30,13 @@
     <ul class="composer__chips" role="list" aria-label="Attached files">
       @for (attachment of uploads.attachments(); track attachment.id) {
         <li>
+          <!-- Stop owns the cancel while a file is on its way: two controls for one
+               action read as two different outcomes, and only one of them exists. A file
+               still waiting for a conversation to exist keeps its own, because nothing is
+               in flight for Stop to take over. -->
           <app-attachment-chip
             [attachment]="attachment"
+            [removable]="!attachment.busy"
             [removeAction]="attachment.removeAction"
             [downloadable]="attachment.downloadable"
             [downloading]="attachment.downloading"
@@ -206,14 +211,14 @@
       #actionButton
       type="button"
       class="composer__action btn"
-      [class.btn-primary]="!turn.inFlight()"
-      [class.composer__send]="!turn.inFlight()"
-      [class.composer__stop]="turn.inFlight()"
-      [attr.aria-label]="turn.inFlight() ? 'Stop' : 'Send'"
-      [disabled]="!turn.inFlight() && sendDisabled()"
+      [class.btn-primary]="!inFlight()"
+      [class.composer__send]="!inFlight()"
+      [class.composer__stop]="inFlight()"
+      [attr.aria-label]="actionLabel()"
+      [disabled]="!inFlight() && sendDisabled()"
       (click)="onAction()"
     >
-      @if (turn.inFlight()) {
+      @if (inFlight()) {
         <!-- A drawn square in a --brand ring, not a glyph. -->
         <span class="composer__stop-glyph" aria-hidden="true"></span>
       } @else {

@@ -22,6 +22,10 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
     /// <param name="TotalUnits">Total units of work in the current stage, when countable.</param>
     /// <param name="DocumentId">The created document, available once the job has persisted it.</param>
     /// <param name="ErrorMessage">Populated only when <paramref name="Status"/> is <see cref="JobStatus.Failed"/>.</param>
+    /// <param name="Target">
+    /// What the job is ingesting into, so a cancel can remove whatever it produced without probing both
+    /// document tables for the id.
+    /// </param>
     public sealed record JobStatusSnapshot(
         string JobId,
         Guid UserId,
@@ -32,5 +36,6 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         int? CompletedUnits = null,
         int? TotalUnits = null,
         Guid? DocumentId = null,
-        string? ErrorMessage = null);
+        string? ErrorMessage = null,
+        JobTarget? Target = null);
 }

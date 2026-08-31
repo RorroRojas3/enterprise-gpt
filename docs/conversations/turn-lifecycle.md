@@ -16,7 +16,9 @@ around it.
 | `streaming` | Content is arriving | The live turn, with the blinking caret |
 | `stopping` | Stop was pressed; the abort's error is on its way | The live turn, until the settle lands |
 
-`inFlight` is anything but `idle`, and is what morphs the composer's button into Stop.
+`inFlight` is anything but `idle`. It is one of two things that morph the composer's button into
+Stop — the other is a busy attachment upload, which has no turn open yet but still has something to
+cancel; `Composer` combines the two into its own local `inFlight`.
 `showThinking` and `showLiveTurn` split on whether the model is reasoning, so during
 `awaitingFirst` exactly one is true: the pre-answer gap belongs to the ridgeline on turns where the
 model reasons silently, and is handed to the reasoning region the moment the model reasons in its
@@ -69,6 +71,24 @@ and the route's `conversationId` input never binds.
   has moved the phase on, so `bindRoute` cancels the create before resetting. Without that the 201
   would land after the reset and navigate the user off the conversation they just opened.
 - **Sign-out mid-create** — the same `takeUntil` races `injectSignedOut()`.
+
+### Attachments gate the stream
+
+Between having a conversation id and opening the stream, the pipeline waits on
+`UploadStore.settled$()`. A document is only reachable by the model once ingestion has written its
+chunks, and `document_search` is attached to a turn from what the conversation already holds — a
+stream opened while a file is still uploading would ground the answer in a document it cannot see
+yet. The composer defers uploading until Send (`UploadStore.deferUploadsUntilSend()`, so attaching
+only states an intention), which is why the wait always has something to do: `send()` calls
+`UploadStore.startPending()` first, posting whatever the composer was holding, and only then waits
+for it to settle. A turn with no attachments takes the synchronous path and pays nothing.
+
+Stop, sign-out and a route change all end the wait without opening a stream — the same three that
+end `creating` above. Stop only ends the *wait*, though; calling off the uploads themselves is
+`Composer`'s job, and the order there is load-bearing: its Stop control calls `turn.stop()` before
+`uploads.cancelAll()`, because cancelling the uploads first would settle the gate synchronously and
+release the waiting turn into the stream a moment before `stop()` had ended the wait itself —
+turning a clean pre-stream cancel into a stopped-turn card with the prompt already gone.
 
 ## Settling
 
@@ -154,6 +174,7 @@ is still billed and recorded.
 | `enterprise-gpt-ui/src/app/features/chat/conversation-store.ts` | The conversation open on `/chat` |
 | `enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts` | Model and MCP servers for the next turn |
 | `enterprise-gpt-ui/src/app/core/chat/pending-prompt-store.ts` | The prompt handed between screens |
+| `enterprise-gpt-ui/src/app/core/chat/pending-attachments-store.ts` | The files handed alongside it |
 | `enterprise-gpt-ui/src/app/features/chat/turn-store.spec.ts` | The settle table, case by case |
 
 ## Related

@@ -13,8 +13,8 @@ import {
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { COMPOSER_HOST } from '@core/chat/composer-host';
 import { TurnSettingsStore } from '@core/chat/turn-settings-store';
+import { COMPOSER_UPLOADS } from '@core/documents/composer-uploads';
 import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
-import { UploadStore } from '@core/documents/upload-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
@@ -32,6 +32,11 @@ import { ToolsMenu } from './tools-menu';
  * control row — attach, model pill, tools pill, microphone, send — and the standing
  * AI disclaimer beneath the card. While a turn is in flight the send button gives way
  * to the Stop control (frames `1b`, `2g`).
+ *
+ * A host must provide both `COMPOSER_HOST` and `COMPOSER_UPLOADS` — the latter through
+ * `provideSharedComposerUploads()` where the screen's own `UploadStore` is the composer's
+ * (the chat route), or `provideComposerUploads()` where it is not (a project's screen,
+ * whose store belongs to its files panel).
  *
  * **What executes the prompt is injected, not assumed.** `COMPOSER_HOST` is `TurnStore`
  * on the chat route and `ProjectComposerHost` on the project detail screen (US-906),
@@ -67,7 +72,7 @@ export class Composer {
   protected readonly settings = inject(TurnSettingsStore);
   protected readonly models = inject(ModelCatalogStore);
   protected readonly turn = inject(COMPOSER_HOST);
-  protected readonly uploads = inject(UploadStore);
+  protected readonly uploads = inject(COMPOSER_UPLOADS);
   protected readonly extensions = inject(SupportedExtensionsStore);
   protected readonly session = inject(SessionStore);
   protected readonly dictation = inject(DictationStore);
@@ -117,8 +122,8 @@ export class Composer {
    * near the top because it makes the attachment pointless *and* the answer
    * quietly ungrounded — retrieval is a tool call, so a model that cannot call
    * tools never sees the file. "Preparing files" sits below the selection
-   * warnings and above the microphone: it explains why Send is disabled, which
-   * the disabled control has already half-said.
+   * warnings and above the microphone: it explains why the send control has
+   * become a Stop, which the morphed button has already half-said.
    */
   protected readonly note = computed<string | null>(() => {
     if (this.models.error() !== null && this.settings.selectedModel() === null) {
@@ -143,11 +148,11 @@ export class Composer {
 
     if (this.uploads.blocksSend()) {
       const count = this.uploads.busyCount();
-      // Describes the disabled control rather than promising an auto-send: nothing
-      // sends when the files settle, the user still presses Send.
+      // Names both halves of the one control the row now shows: nothing sends when the
+      // files settle — the user still presses Send — and Stop is what calls them off.
       return count === 1
-        ? 'Preparing 1 file — Send will be available once it’s ready.'
-        : `Preparing ${count} files — Send will be available once they’re ready.`;
+        ? 'Preparing 1 file — Stop cancels it, and Send returns once it’s ready.'
+        : `Preparing ${count} files — Stop cancels them, and Send returns once they’re ready.`;
     }
 
     if (this.dictation.permissionDenied()) {
@@ -155,6 +160,25 @@ export class Composer {
     }
 
     return null;
+  });
+
+  /**
+   * Whether Stop is what this button means.
+   *
+   * The host's own `inFlight` already spans the gate a send waits on while its
+   * attachments ingest. What it cannot see is a file attached to a conversation that is
+   * already open: that uploads immediately, with no turn in flight, and left to the host
+   * alone the control would sit disabled with nothing to press.
+   */
+  protected readonly inFlight = computed(() => this.turn.inFlight() || this.uploads.blocksSend());
+
+  /** Named for what it actually stops, which is not always the answer. */
+  protected readonly actionLabel = computed(() => {
+    if (!this.inFlight()) {
+      return 'Send';
+    }
+
+    return this.turn.inFlight() ? 'Stop' : 'Stop uploading';
   });
 
   /**
@@ -220,7 +244,7 @@ export class Composer {
     // `disabled`. Only a fall-through is corrected — a user focused elsewhere
     // is left alone (the same rule as Chat's post-delete fixup).
     effect(() => {
-      const inFlight = this.turn.inFlight();
+      const inFlight = this.inFlight();
       // A turn that settled into a notice leaves the transcript holding the
       // only thing worth acting on — its Retry — and the transcript restores
       // focus there itself. Claiming it for an empty prompt box would take the
@@ -274,8 +298,14 @@ export class Composer {
 
   /** The morphing button's single handler: Stop in flight, Send otherwise. */
   protected onAction(): void {
-    if (this.turn.inFlight()) {
+    if (this.inFlight()) {
+      // The turn first, and the order is load-bearing. Cancelling the uploads settles the
+      // gate synchronously, which would release the waiting turn *into* the stream before
+      // `stop()` ran — turning a clean pre-stream cancel into a stopped-turn card with the
+      // prompt gone. `stop()` is a no-op when nothing is in flight, so the
+      // upload-before-Send case is unaffected.
       this.turn.stop();
+      this.uploads.cancelAll();
       return;
     }
 

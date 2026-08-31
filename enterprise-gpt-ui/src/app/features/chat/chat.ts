@@ -6,9 +6,11 @@ import {
   Injector,
   TemplateRef,
   afterNextRender,
+  effect,
   inject,
   input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
@@ -37,6 +39,7 @@ import { provideChatMarkdown } from './markdown/markdown-providers';
 import { TranscriptPinning } from './transcript-pinning';
 import { Transcript } from './transcript/transcript';
 import { TurnStore } from './turn-store';
+import { provideSharedComposerUploads } from '@core/documents/composer-uploads';
 import { UploadStore } from '@core/documents/upload-store';
 
 /**
@@ -79,6 +82,7 @@ import { UploadStore } from '@core/documents/upload-store';
   providers: [
     ConversationStore,
     UploadStore,
+    provideSharedComposerUploads(),
     TurnStore,
     provideComposerHost(TurnStore),
     provideChatMarkdown(),
@@ -141,6 +145,9 @@ export class Chat {
     // the moment the conversation exists so a deferred upload starts without waiting
     // for a change-detection pass — and the same method takes a bare value there.
     this.uploads.bindConversation(this.conversationId);
+    // The composer's rule, not a file manager's: attaching states an intention and Send is
+    // the instruction. `TurnStore` posts them at the head of the send pipeline.
+    this.uploads.deferUploadsUntilSend();
 
     const router = inject(Router);
     const document = inject(DOCUMENT);
@@ -177,6 +184,27 @@ export class Chat {
           );
         });
       });
+
+    // A finished chip has done its job: the document is the conversation's, the next turn
+    // reaches it through retrieval, and leaving it on screen makes every later prompt
+    // look like it carries an attachment. Only once the turn is done, so a chip is not
+    // pulled out from under the note line explaining why Send is waiting on it.
+    effect(() => {
+      if (this.turn.inFlight()) {
+        return;
+      }
+
+      const settled = this.uploads.attachments().filter((row) => row.state.kind === 'ready');
+      if (settled.length === 0) {
+        return;
+      }
+
+      untracked(() => {
+        for (const row of settled) {
+          this.uploads.remove(row.id);
+        }
+      });
+    });
 
     // The navbar slot. `optional`, because every route spec instantiates this component
     // without a shell around it, and a required dependency would make this seam a reason

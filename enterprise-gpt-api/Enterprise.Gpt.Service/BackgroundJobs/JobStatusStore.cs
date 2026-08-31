@@ -30,10 +30,11 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         }
 
         /// <inheritdoc />
-        public void Register(string jobId, Guid userId)
+        public void Register(string jobId, Guid userId, JobTarget target)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
-            _snapshots[jobId] = new JobStatusSnapshot(jobId, userId, JobStatus.Queued, 0, DateTimeOffset.UtcNow, "Waiting to start");
+            ArgumentNullException.ThrowIfNull(target);
+            _snapshots[jobId] = new JobStatusSnapshot(jobId, userId, JobStatus.Queued, 0, DateTimeOffset.UtcNow, "Waiting to start", Target: target);
         }
 
         /// <inheritdoc />
@@ -67,21 +68,66 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         }
 
         /// <inheritdoc />
-        public void Complete(string jobId, Guid documentId, string message)
+        public bool Complete(string jobId, Guid documentId, string message)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
 
-            _snapshots.AddOrUpdate(
+            var installed = _snapshots.AddOrUpdate(
                 jobId,
                 _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatus.Processed, 100, DateTimeOffset.UtcNow, message, DocumentId: documentId),
-                (_, existing) => existing with
+                // A cancel that got here first owns the outcome, and the document id is deliberately not
+                // stamped on it: the caller reads this verdict to learn that it must undo what it wrote,
+                // and publishing the id would invite a second party to delete the same rows.
+                (_, existing) => IsTerminal(existing.Status)
+                    ? existing
+                    : existing with
+                    {
+                        Status = JobStatus.Processed,
+                        Progress = 100,
+                        LastUpdated = DateTimeOffset.UtcNow,
+                        Message = message,
+                        DocumentId = documentId,
+                    });
+
+            return installed.Status == JobStatus.Processed && installed.DocumentId == documentId;
+        }
+
+        /// <inheritdoc />
+        public JobStatusSnapshot? Cancel(string jobId, string message)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
+
+            // A compare-and-swap loop rather than AddOrUpdate, because this must never create: a cancel
+            // naming an unknown id would otherwise mint an ownerless snapshot that nobody can read and
+            // retention still has to carry.
+            while (true)
+            {
+                if (!_snapshots.TryGetValue(jobId, out var existing))
                 {
-                    Status = JobStatus.Processed,
-                    Progress = 100,
+                    return null;
+                }
+
+                if (IsTerminal(existing.Status))
+                {
+                    return existing;
+                }
+
+                var cancelled = existing with
+                {
+                    Status = JobStatus.Cancelled,
                     LastUpdated = DateTimeOffset.UtcNow,
                     Message = message,
-                    DocumentId = documentId,
-                });
+                };
+
+                // TryUpdate compares with the default equality comparer, and this is a record — so two
+                // snapshots written inside one timestamp tick could compare equal and let the swap succeed
+                // against a value it did not read. Harmless: both were non-terminal, so the outcome is the
+                // same either way.
+                if (_snapshots.TryUpdate(jobId, cancelled, existing))
+                {
+                    return cancelled;
+                }
+            }
         }
 
         /// <inheritdoc />
@@ -94,13 +140,17 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
             _snapshots.AddOrUpdate(
                 jobId,
                 _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatus.Failed, 0, DateTimeOffset.UtcNow, errorMessage, ErrorMessage: errorMessage),
-                (_, existing) => existing with
-                {
-                    Status = JobStatus.Failed,
-                    LastUpdated = DateTimeOffset.UtcNow,
-                    Message = errorMessage,
-                    ErrorMessage = errorMessage,
-                });
+                // Guarded like Report: a job cancelled while it was already unwinding must not have that
+                // outcome overwritten by the failure its own cancellation produced.
+                (_, existing) => IsTerminal(existing.Status)
+                    ? existing
+                    : existing with
+                    {
+                        Status = JobStatus.Failed,
+                        LastUpdated = DateTimeOffset.UtcNow,
+                        Message = errorMessage,
+                        ErrorMessage = errorMessage,
+                    });
         }
 
         /// <inheritdoc />
@@ -129,7 +179,7 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         }
 
         private static bool IsTerminal(JobStatus status) =>
-            status is JobStatus.Processed or JobStatus.Failed;
+            status is JobStatus.Processed or JobStatus.Failed or JobStatus.Cancelled;
 
         /// <inheritdoc />
         public void Dispose()

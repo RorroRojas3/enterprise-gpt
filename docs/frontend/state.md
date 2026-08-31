@@ -66,12 +66,12 @@ carries no body; the event carries the fact rather than a DTO.
 ## The stores
 
 **Root-scoped** — session, UI preferences, toasts, the model and MCP catalogs and their action
-stores, conversation list/actions/export, project lookup and actions, document download and
-supported extensions, user actions, pending prompt, turn settings.
+stores, conversation list/actions/export, project lookup and actions, document download, supported
+extensions, user actions, pending prompt and pending attachments, turn settings.
 
 **Component- or route-scoped** — the conversation and turn stores on `/chat`, the four library list
 stores, the project detail trio provided on the route, the four admin screen stores, the composer's
-upload and dictation stores.
+dictation store and three separate `UploadStore` instances.
 
 Two scoping choices worth knowing:
 
@@ -79,8 +79,23 @@ Two scoping choices worth knowing:
   device-local preferences, not the signed-in user's data.
 - `AdminReportsStore` is provided on the *screen*, not the admin layout, so back-navigation gets a
   fresh empty instance rather than a stale report.
-- `UploadStore` is provided by `Chat` and again by the project files panel, giving two independent
-  instances rather than one shared queue.
+- `UploadStore` is provided three times, never shared by accident. `Chat` provides one instance and
+  points the composer's `COMPOSER_UPLOADS` token at that same instance (`useExisting`), so the chips
+  the composer draws are the very ones `TurnStore` gates a send on. `ProjectDetail` provides two:
+  one project-bound, backing the Files tab, and a second, separate instance behind `COMPOSER_UPLOADS`
+  (`useClass`) for its composer — deliberately unbound, so a file attached there becomes a
+  conversation document once the prompt creates one, not a document of the project the screen is
+  showing. See [../admin/projects.md](../admin/projects.md#the-client). Every composer instance
+  calls `deferUploadsUntilSend()`, so attaching only states an intention and `TurnStore` posts the
+  files at the head of its send pipeline; the Files-panel instance keeps the opposite default,
+  where dropping a file is itself the instruction. Cancelling a busy chip calls `UploadCancelClient`
+  (`core/documents/`) — a plain root-scoped `@Injectable`, not a store, since a fire-and-forget
+  `DELETE` renders nothing — so the request outlives a screen a cancel very often navigates away
+  from.
+- `PendingAttachmentsStore` (`core/chat/`) mirrors `PendingPromptStore`: root-scoped, single-shot,
+  id-matched — the same shape, for the same reason, one field wider. It carries the `File` handles a
+  project-created conversation's composer already held, from the screen that creates the
+  conversation to the one that uploads into it.
 
 ## Key files
 

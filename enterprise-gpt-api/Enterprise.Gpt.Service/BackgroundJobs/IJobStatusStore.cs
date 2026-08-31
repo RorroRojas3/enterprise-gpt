@@ -4,9 +4,13 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// In-memory store tracking the live status of background jobs. Singleton lifetime; thread-safe.
-    /// Terminal snapshots (<see cref="JobStatus.Processed"/>, <see cref="JobStatus.Failed"/>) are evicted
-    /// after the configured retention window.
+    /// Terminal snapshots (<see cref="JobStatus.Processed"/>, <see cref="JobStatus.Failed"/>,
+    /// <see cref="JobStatus.Cancelled"/>) are evicted after the configured retention window.
     /// </summary>
+    /// <remarks>
+    /// The terminal slot is the pipeline's ordering point against a concurrent cancel, so
+    /// <see cref="Complete"/> and <see cref="Cancel"/> must keep reporting which of them won.
+    /// </remarks>
     public interface IJobStatusStore
     {
         /// <summary>
@@ -14,7 +18,8 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         /// </summary>
         /// <param name="jobId">The job identifier.</param>
         /// <param name="userId">The caller who queued the job; status reads are checked against it.</param>
-        void Register(string jobId, Guid userId);
+        /// <param name="target">What the job is ingesting into, so a cancel can undo it.</param>
+        void Register(string jobId, Guid userId, JobTarget target);
 
         /// <summary>
         /// Updates the snapshot for an in-flight job.
@@ -36,7 +41,26 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         /// <param name="jobId">The job identifier.</param>
         /// <param name="documentId">The identifier of the created document.</param>
         /// <param name="message">A short, user-facing completion message.</param>
-        void Complete(string jobId, Guid documentId, string message);
+        /// <returns>
+        /// <see langword="false"/> when the job had already reached a terminal state — it was cancelled
+        /// while this call was in flight — in which case the caller must undo what it persisted.
+        /// </returns>
+        bool Complete(string jobId, Guid documentId, string message);
+
+        /// <summary>
+        /// Marks a job as cancelled, unless it had already reached a terminal state.
+        /// </summary>
+        /// <remarks>
+        /// Update-only: unlike <see cref="Fail"/> this never creates a snapshot, so a cancel naming an id
+        /// that was never registered cannot mint an ownerless entry.
+        /// </remarks>
+        /// <param name="jobId">The job identifier.</param>
+        /// <param name="message">A short, user-facing message describing the cancellation.</param>
+        /// <returns>
+        /// The snapshot left in place — this call's own <see cref="JobStatus.Cancelled"/>, or the terminal
+        /// one that beat it — or <see langword="null"/> when no snapshot exists.
+        /// </returns>
+        JobStatusSnapshot? Cancel(string jobId, string message);
 
         /// <summary>
         /// Marks a job as failed and records the failure message.

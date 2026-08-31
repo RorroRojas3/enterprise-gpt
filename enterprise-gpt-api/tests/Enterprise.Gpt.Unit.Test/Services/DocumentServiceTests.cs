@@ -43,12 +43,16 @@ public sealed class DocumentServiceTests : IDisposable
     private readonly InlineValidator<FileDto> _fileValidator = [];
     private readonly IBackgroundJobQueue _backgroundJobQueue = Substitute.For<IBackgroundJobQueue>();
     private readonly IJobStatusStore _jobStatusStore = Substitute.For<IJobStatusStore>();
+    private readonly IJobCancellationRegistry _jobCancellationRegistry = Substitute.For<IJobCancellationRegistry>();
     private readonly ITokenService _tokenService = Substitute.For<ITokenService>();
     private readonly DocumentService _service;
 
     public DocumentServiceTests()
     {
         _tokenService.GetOid().Returns(KnownIds.SeedUserId);
+        // A substitute returns false by default, which now means "a cancel claimed the terminal slot
+        // first" — so without this every ingestion test would unwind as a cancelled job.
+        _jobStatusStore.Complete(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<string>()).Returns(true);
         _extractorFactory.Resolve(Arg.Any<FileExtensions>()).Returns(_extractor);
 
         _service = CreateService(new ConfigurationBuilder()
@@ -73,6 +77,7 @@ public sealed class DocumentServiceTests : IDisposable
             _fileValidator,
             _backgroundJobQueue,
             _jobStatusStore,
+            _jobCancellationRegistry,
             _tokenService,
             _fixture.Context);
     }
@@ -184,7 +189,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         Assert.True(Guid.TryParse(job.Id, out _));
         // Registered against the caller so the status endpoint can scope reads to them.
-        _jobStatusStore.Received(1).Register(job.Id, KnownIds.SeedUserId);
+        _jobStatusStore.Received(1).Register(job.Id, KnownIds.SeedUserId, Arg.Any<JobTarget>());
         await _backgroundJobQueue.Received(1).EnqueueAsync(
             Arg.Is<JobWorkItem>(item => item != null && item.JobId == job.Id), Arg.Any<CancellationToken>());
     }
@@ -232,7 +237,7 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.QueueConversationDocumentAsync(conversation.Id, CreateFile("book.xlsx"), TestContext.Current.CancellationToken));
 
-        _jobStatusStore.DidNotReceive().Register(Arg.Any<string>(), Arg.Any<Guid>());
+        _jobStatusStore.DidNotReceive().Register(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<JobTarget>());
         await _backgroundJobQueue.DidNotReceive().EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>());
     }
 
@@ -511,7 +516,7 @@ public sealed class DocumentServiceTests : IDisposable
         var job = await _service.QueueProjectDocumentAsync(project.Id, CreateFile(), TestContext.Current.CancellationToken);
 
         Assert.True(Guid.TryParse(job.Id, out _));
-        _jobStatusStore.Received(1).Register(job.Id, KnownIds.SeedUserId);
+        _jobStatusStore.Received(1).Register(job.Id, KnownIds.SeedUserId, Arg.Any<JobTarget>());
         await _backgroundJobQueue.Received(1).EnqueueAsync(
             Arg.Is<JobWorkItem>(item => item != null && item.JobId == job.Id), Arg.Any<CancellationToken>());
     }
@@ -557,7 +562,7 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.QueueProjectDocumentAsync(project.Id, CreateFile("book.xlsx"), TestContext.Current.CancellationToken));
 
-        _jobStatusStore.DidNotReceive().Register(Arg.Any<string>(), Arg.Any<Guid>());
+        _jobStatusStore.DidNotReceive().Register(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<JobTarget>());
         await _backgroundJobQueue.DidNotReceive().EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>());
     }
 
@@ -775,6 +780,272 @@ public sealed class DocumentServiceTests : IDisposable
                 Arg.Any<string?>(), Arg.Any<string?>())
             .Returns(new Uri(uri));
     }
+
+    #region CancelUploadAsync
+    private JobStatusSnapshot JobSnapshot(
+        JobStatus status = JobStatus.Embedding,
+        Guid? documentId = null,
+        JobTarget? target = null,
+        Guid? userId = null)
+    {
+        return new JobStatusSnapshot("job-1", userId ?? KnownIds.SeedUserId, status, 50, DateTimeOffset.UtcNow,
+            DocumentId: documentId, Target: target);
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_UnknownJob_ThrowsNotFound()
+    {
+        _jobStatusStore.Get("job-1").Returns((JobStatusSnapshot?)null);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_JobQueuedByAnotherUser_ThrowsNotFoundWithoutCancellingIt()
+    {
+        _jobStatusStore.Get("job-1").Returns(JobSnapshot(userId: Guid.NewGuid()));
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken));
+
+        // The 404 must not double as a side channel that stops someone else work.
+        await _jobCancellationRegistry.DidNotReceive().CancelAsync(Arg.Any<string>());
+        _jobStatusStore.DidNotReceive().Cancel(Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_RunningJob_PublishesTheOutcomeBeforeSignalling()
+    {
+        var snapshot = JobSnapshot();
+        _jobStatusStore.Get("job-1").Returns(snapshot);
+        _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot with { Status = JobStatus.Cancelled });
+
+        await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
+
+        // Store first, because that write is what decides the race against the job own completion.
+        Received.InOrder(() =>
+        {
+            _jobStatusStore.Cancel("job-1", Arg.Any<string>());
+            _jobCancellationRegistry.CancelAsync("job-1");
+        });
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_JobThatAlreadySucceeded_DeactivatesTheConversationDocument()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+        var snapshot = JobSnapshot(JobStatus.Processed, document.Id, new JobTarget(JobTargetKind.Conversation, conversation.Id));
+        _jobStatusStore.Get("job-1").Returns(snapshot);
+        _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot);
+
+        await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        Assert.NotNull(stored.DateDeactivated);
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_JobThatAlreadySucceeded_DeactivatesTheProjectDocument()
+    {
+        var project = await AddProjectAsync();
+        var document = await AddProjectDocumentAsync(project);
+        var snapshot = JobSnapshot(JobStatus.Processed, document.Id, new JobTarget(JobTargetKind.Project, project.Id));
+        _jobStatusStore.Get("job-1").Returns(snapshot);
+        _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot);
+
+        await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.ProjectDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        Assert.NotNull(stored.DateDeactivated);
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_JobThatAlreadyFailed_RemovesNothing()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+        var snapshot = JobSnapshot(JobStatus.Failed);
+        _jobStatusStore.Get("job-1").Returns(snapshot);
+        _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot);
+
+        await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
+
+        // A failed job produced no document, so there is nothing to retract.
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        Assert.Null(stored.DateDeactivated);
+    }
+
+    [Fact]
+    public async Task CreateConversationDocumentAsync_LosingTheTerminalSlot_UndoesWhatItPersisted()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpPipeline(chunkCount: 1);
+        _jobStatusStore.Complete(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<string>()).Returns(false);
+
+        await Assert.ThrowsAsync<JobCancelledException>(
+            () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
+
+        // The job lost the race, so it is the one that cleans up — rows and the stored original alike.
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.ConversationDocuments.SingleOrDefaultAsync(x => x.ConversationId == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.NotNull(stored);
+        Assert.NotNull(stored.DateDeactivated);
+        await _blobStorageService.Received(1).DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+    #endregion
+
+    #region DeactivateConversationDocumentAsync
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_OwnedDocument_SoftDeletesTheDocumentAndItsChunks()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+
+        using (var seed = _fixture.CreateContext())
+        {
+            seed.ConversationDocumentChunks.Add(new ConversationDocumentChunk
+            {
+                Id = Guid.NewGuid(),
+                ConversationDocumentId = document.Id,
+                Index = 0,
+                Text = "a chunk of the report",
+                TokenCount = 5,
+                SourceNumber = 1,
+                DateCreated = DateTimeOffset.UtcNow,
+                DateModified = DateTimeOffset.UtcNow
+            });
+            await seed.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        await _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        Assert.NotNull(stored.DateDeactivated);
+        // A chunk left active under a deleted document would still be matched by retrieval.
+        Assert.All(
+            await ctx.ConversationDocumentChunks.Where(x => x.ConversationDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
+            chunk => Assert.NotNull(chunk.DateDeactivated));
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_ConversationBelongsToAnotherUser_ThrowsNotFound()
+    {
+        var otherUser = await AddUserAsync();
+        var conversation = await AddConversationAsync(userId: otherUser.Id);
+        var document = await AddConversationDocumentAsync(conversation);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_DocumentInAnotherConversation_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync();
+        var other = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(other);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_AlreadyDeactivatedDocument_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, deactivated: DateTimeOffset.UtcNow);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_DeactivatedConversation_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync(deactivated: DateTimeOffset.UtcNow);
+        var document = await AddConversationDocumentAsync(conversation);
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_GeneratedDocument_ThrowsNotFound()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, type: ConversationDocumentTypes.Generated);
+
+        // The transcript carries a generated file's identity on the message that produced it, and this
+        // cascade cannot reach Cosmos — removing the row alone would leave a chip that never resolves.
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        Assert.Null(stored.DateDeactivated);
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_DocumentHasSheets_DeactivatesTheRowsAndColumnsBeneathThem()
+    {
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation, name: "budget.xlsx");
+        var sheetId = Guid.NewGuid();
+
+        using (var seed = _fixture.CreateContext())
+        {
+            var date = DateTimeOffset.UtcNow;
+            seed.ConversationDocumentSheets.Add(new ConversationDocumentSheet
+            {
+                Id = sheetId,
+                ConversationDocumentId = document.Id,
+                SheetIndex = 0,
+                SheetName = "Q3",
+                RowCount = 1,
+                ColumnCount = 1,
+                DateCreated = date,
+                DateModified = date
+            });
+            seed.ConversationDocumentSheetColumns.Add(new ConversationDocumentSheetColumn
+            {
+                Id = Guid.NewGuid(),
+                ConversationDocumentSheetId = sheetId,
+                ColumnIndex = 0,
+                ColumnName = "Amount",
+                DateCreated = date,
+                DateModified = date
+            });
+            seed.ConversationDocumentSheetRows.Add(new ConversationDocumentSheetRow
+            {
+                Id = Guid.NewGuid(),
+                ConversationDocumentSheetId = sheetId,
+                RowIndex = 0,
+                Cells = "{\"Amount\":1}",
+                DateCreated = date,
+                DateModified = date
+            });
+            await seed.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        await _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        // Rows and columns are reached through the sheet navigation rather than the document, which is
+        // the one leg of this cascade a document-only assertion would never exercise.
+        Assert.All(await ctx.ConversationDocumentSheets.Where(x => x.ConversationDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
+            sheet => Assert.NotNull(sheet.DateDeactivated));
+        Assert.All(await ctx.ConversationDocumentSheetColumns.Where(x => x.ConversationDocumentSheetId == sheetId).ToListAsync(TestContext.Current.CancellationToken),
+            column => Assert.NotNull(column.DateDeactivated));
+        Assert.All(await ctx.ConversationDocumentSheetRows.Where(x => x.ConversationDocumentSheetId == sheetId).ToListAsync(TestContext.Current.CancellationToken),
+            row => Assert.NotNull(row.DateDeactivated));
+    }
+    #endregion
 
     private async Task<ConversationDocument> AddConversationDocumentAsync(
         Conversation conversation, string name = "quarterly report.pdf",

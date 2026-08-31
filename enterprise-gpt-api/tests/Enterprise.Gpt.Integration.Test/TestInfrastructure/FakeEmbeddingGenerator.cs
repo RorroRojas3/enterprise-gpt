@@ -24,13 +24,40 @@ public sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embeddi
     /// </summary>
     public int BatchCount { get; private set; }
 
+    /// <summary>Completes once the first batch has been asked for, so a test can act mid-pipeline.</summary>
+    public TaskCompletionSource FirstBatchStarted { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Holds the first batch until a test releases it. Left null by default so the ordinary upload tests
+    /// run unblocked.
+    /// </summary>
+    public TaskCompletionSource? HoldFirstBatch { get; set; }
+
+    /// <summary>Clears the counters and the latch between tests.</summary>
+    public void Reset()
+    {
+        BatchCount = 0;
+        HoldFirstBatch = null;
+        FirstBatchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
     /// <inheritdoc />
-    public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+    public async Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
         IEnumerable<string> values,
         EmbeddingGenerationOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         BatchCount++;
+
+        var hold = HoldFirstBatch;
+        if (hold is not null && BatchCount == 1)
+        {
+            FirstBatchStarted.TrySetResult();
+
+            // Awaited *with* the token, so a cancel while the job is parked here unblocks it rather
+            // than hanging the test until its own timeout.
+            await hold.Task.WaitAsync(cancellationToken);
+        }
 
         // Derived from the input so different chunks get different vectors, which keeps a test that
         // accidentally compares them from passing for the wrong reason.
@@ -42,7 +69,7 @@ public sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embeddi
             return new Embedding<float>(vector);
         });
 
-        return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(embeddings));
+        return new GeneratedEmbeddings<Embedding<float>>(embeddings);
     }
 
     /// <inheritdoc />

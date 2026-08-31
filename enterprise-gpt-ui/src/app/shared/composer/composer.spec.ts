@@ -28,6 +28,7 @@ import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { projectFixture, projectPage } from '@testing/projects';
 import { ConversationStore } from '@features/chat/conversation-store';
 import { TurnStore } from '@features/chat/turn-store';
+import { provideSharedComposerUploads } from '@core/documents/composer-uploads';
 import { UploadStore } from '@core/documents/upload-store';
 import { Composer } from './composer';
 
@@ -69,6 +70,7 @@ describe('Composer', () => {
         { provide: SPEECH_RECOGNITION, useFactory: () => speech },
         provideFakeUploadXhr(uploadXhr),
         UploadStore,
+        provideSharedComposerUploads(),
         // The real streaming host, deliberately: what this spec checks is the Send/Stop
         // morph, the seed handoff and the focus fixups, and every one of them is a
         // reaction to state a stub would have to fake into existence.
@@ -484,7 +486,7 @@ describe('Composer', () => {
       expect(uploadXhr.opened).toEqual([]);
     });
 
-    it('holds Send until the files are ready, and says why', async () => {
+    it('offers Stop rather than a dead Send while a file is being prepared', async () => {
       const composer = await render();
       await signIn();
       await loadModels([modelFixture({ isDefault: true })]);
@@ -497,8 +499,73 @@ describe('Composer', () => {
       dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
       await composer.fixture.whenStable();
 
-      expect(composer.send()?.disabled).toBe(true);
+      // The upload is the only thing in flight — no turn has been sent — so the
+      // control belongs to it: a disabled Send would leave the reader with the file
+      // going nowhere and nothing to press.
+      expect(composer.send()).toBeNull();
+      expect(composer.stop()).not.toBeNull();
+      expect(composer.stop()?.disabled).toBe(false);
       expect(composer.note().textContent).toContain('Preparing 1 file');
+    });
+
+    it('cancels the upload from Stop, leaving no chip and no request outstanding', async () => {
+      const composer = await render();
+      await signIn();
+      await loadModels([modelFixture({ isDefault: true })]);
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      TestBed.inject(UploadStore).bindConversation(CONVERSATION_ID);
+      await composer.type('What does this say?');
+
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+
+      composer.stop()?.click();
+      await composer.fixture.whenStable();
+
+      expect(chips(composer.host)).toHaveLength(0);
+      expect(uploadXhr.last.aborted).toBe(true);
+      expect(composer.send()).not.toBeNull();
+    });
+
+    it('keeps the chip’s own remove control out of the way while it is uploading', async () => {
+      const composer = await render();
+      await signIn();
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      TestBed.inject(UploadStore).bindConversation(CONVERSATION_ID);
+      await composer.fixture.whenStable();
+
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+
+      // Two controls for one action read as two different outcomes; Stop owns it.
+      expect(composer.host.querySelector('.chip__remove')).toBeNull();
+
+      dispatchDrag(card!, 'drop', fileDrag(textFile('demo-capture.mov')));
+      await composer.fixture.whenStable();
+
+      // A refused file is not in flight, so its chip keeps the control that dismisses it.
+      expect(composer.host.querySelector('.chip__remove')).not.toBeNull();
+    });
+
+    it('leaves the remove control on a file still waiting for a conversation', async () => {
+      const composer = await render();
+      await signIn();
+      await composer.fixture.whenStable();
+      await flushExtensions();
+      // No `bindConversation`: this is the empty chat screen, where Send is what creates
+      // the conversation and the file has not been posted anywhere yet.
+      const card = composer.host.querySelector<HTMLElement>('.composer');
+      dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
+      await composer.fixture.whenStable();
+
+      // Nothing is in flight, so Stop is not offered — and taking the `×` away too
+      // would leave no way to change your mind about the file.
+      expect(composer.stop()).toBeNull();
+      expect(composer.host.querySelector('.chip__remove')).not.toBeNull();
     });
 
     it('warns that a model with no tools cannot read an attachment', async () => {

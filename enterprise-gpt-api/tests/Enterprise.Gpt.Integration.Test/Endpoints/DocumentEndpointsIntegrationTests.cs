@@ -1209,6 +1209,149 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
     #endregion
 
+    #region Cancel
+    /// <summary>Whether a recorded upload key still has bytes behind it.</summary>
+    private bool StillStored(string key)
+    {
+        var separator = key.IndexOf('/', StringComparison.Ordinal);
+
+        return _fixture.Factory.BlobStorage.Exists(key[..separator], key[(separator + 1)..]);
+    }
+
+    /// <summary>Waits for a condition the worker satisfies after the cancel has already answered.</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTimeOffset.UtcNow + _jobTimeout;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(25, TestContext.Current.CancellationToken);
+        }
+
+        throw new TimeoutException($"The condition was not satisfied within {_jobTimeout}.");
+    }
+
+    /// <summary>
+    /// Parks the pipeline on its first embedding batch, so a cancel lands provably mid-flight rather
+    /// than racing the job to completion.
+    /// </summary>
+    private async Task<JobDto> StartHeldUploadAsync(HttpClient client, Guid conversationId)
+    {
+        _fixture.Factory.EmbeddingGenerator.HoldFirstBatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        await _fixture.Factory.EmbeddingGenerator.FirstBatchStarted.Task.WaitAsync(_jobTimeout, TestContext.Current.CancellationToken);
+
+        return job;
+    }
+
+    [Fact]
+    public async Task CancelUpload_JobStillEmbedding_StopsTheWorkAndLeavesNothingBehind()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var job = await StartHeldUploadAsync(client, conversationId);
+
+        var response = await client.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        // The coarse state stays inside the four-value vocabulary; the stage names what happened.
+        Assert.Equal("Failed", status.State);
+        Assert.Equal(nameof(JobStatus.Cancelled), status.Status);
+
+        var documents = await _fixture.FindConversationDocumentsAsync(conversationId, TestContext.Current.CancellationToken);
+        Assert.Empty(documents.Where(x => !x.DateDeactivated.HasValue));
+    }
+
+    [Fact]
+    public async Task CancelUpload_JobStillEmbedding_RemovesTheStoredOriginal()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var job = await StartHeldUploadAsync(client, conversationId);
+
+        await client.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+        await WaitForTerminalStateAsync(client, job.Id);
+
+        // Polled rather than asserted outright: the terminal state is published by the cancel, before
+        // the worker has finished unwinding, so the cleanup lands shortly after the status says so.
+        // No surviving row references the blob, so retention could never find it — the worker must drop it.
+        await WaitUntilAsync(() => !_fixture.Factory.BlobStorage.UploadedKeys.Any(StillStored));
+    }
+
+    [Fact]
+    public async Task CancelUpload_JobThatAlreadySucceeded_SoftDeletesTheDocumentButKeepsTheBlob()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        var status = await WaitForTerminalStateAsync(client, job.Id);
+        Assert.Equal("Succeeded", status.State);
+
+        var response = await client.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var documents = await _fixture.FindConversationDocumentsAsync(conversationId, TestContext.Current.CancellationToken);
+        Assert.All(documents, document => Assert.NotNull(document.DateDeactivated));
+
+        // The deliberate asymmetry: a persisted row is only soft-deleted, so reclaiming its bytes stays
+        // a retention job concern, exactly as it is for any other document delete.
+        Assert.NotEmpty(_fixture.Factory.BlobStorage.UploadedKeys);
+    }
+
+    [Fact]
+    public async Task CancelUpload_CalledTwice_IsIdempotent()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var client = _fixture.Factory.CreateUserClient();
+        var job = await PostUploadAsync(client, conversationId, TextUpload());
+        await WaitForTerminalStateAsync(client, job.Id);
+
+        var first = await client.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+        var second = await client.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task CancelUpload_UnknownJob_ReturnsNotFound()
+    {
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.DeleteAsync("api/documents/upload-status/does-not-exist", TestContext.Current.CancellationToken);
+
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Upload job not found.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task CancelUpload_JobQueuedByAnotherUser_ReturnsNotFoundAndLetsItFinish()
+    {
+        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
+        using var owner = _fixture.Factory.CreateUserClient();
+        using var other = _fixture.Factory.CreateAdminClient();
+        var job = await PostUploadAsync(owner, conversationId, TextUpload());
+
+        var response = await other.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
+
+        // Same message as an unknown job, so the route cannot be used to confirm one exists — and the
+        // refusal must not double as a side channel that stops it.
+        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
+        Assert.Equal("Upload job not found.", problem.Detail);
+
+        var status = await WaitForTerminalStateAsync(owner, job.Id);
+        Assert.Equal("Succeeded", status.State);
+    }
+    #endregion
+
     #region Status
     [Fact]
     public async Task GetJobStatus_UnknownJob_ReturnsNotFound()

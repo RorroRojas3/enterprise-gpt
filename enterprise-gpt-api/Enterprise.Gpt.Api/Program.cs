@@ -535,6 +535,7 @@ builder.Services.AddOptions<ExportOptions>()
 // caps concurrent jobs via SemaphoreSlim, and updates IJobStatusStore for client polling.
 builder.Services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
 builder.Services.AddSingleton<IJobStatusStore, JobStatusStore>();
+builder.Services.AddSingleton<IJobCancellationRegistry, JobCancellationRegistry>();
 builder.Services.AddHostedService<BackgroundJobProcessor>();
 
 // Add Microsoft Graph Service
