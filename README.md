@@ -39,17 +39,21 @@ Enterprise GPT is a full-stack AI chat platform built with a .NET 10 Web API bac
 ## 🏗️ Architecture
 
 ```
-ai-chat/
-├── enterprise-gpt-api/             # .NET 10 Web API Backend
-│   ├── Enterprise.Gpt.Api/         # API Controllers & Program.cs
-│   ├── Enterprise.Gpt.Service/     # Business Logic Services
-│   ├── Enterprise.Gpt.Repository/  # Data Access Layer
-│   ├── Enterprise.Gpt.Entity/      # Entity Framework Models
-│   └── Enterprise.Gpt.Dto/         # Data Transfer Objects
-└── enterprise-ui/                  # Angular 21 Frontend
-    ├── src/app/services/       # HTTP Services
-    ├── src/app/dtos/           # TypeScript DTOs
-    └── src/environments/       # Environment Configuration
+enterprise-gpt/
+├── enterprise-gpt-api/             # .NET 10 Web API backend
+│   ├── Enterprise.Gpt.Api/         # Minimal-API endpoints & Program.cs
+│   ├── Enterprise.Gpt.Service/     # Business logic services
+│   ├── Enterprise.Gpt.Repository/  # Data access layer & EF Core migrations
+│   ├── Enterprise.Gpt.Entity/      # Entity Framework models
+│   ├── Enterprise.Gpt.Dto/         # Data transfer objects
+│   ├── Enterprise.Gpt.Common/      # Shared primitives
+│   └── tests/                      # xUnit v3 unit & integration tests
+└── enterprise-gpt-ui/              # Angular 21 frontend
+    ├── src/app/core/               # App-wide singletons and policy
+    ├── src/app/domain/             # Framework-free domain logic
+    ├── src/app/shared/             # Presentational components
+    ├── src/app/features/           # Route-owned feature areas
+    └── public/config.json          # Runtime configuration
 ```
 
 ## 🛠️ Tech Stack
@@ -64,12 +68,14 @@ ai-chat/
 
 ### Frontend (Angular UI)
 
-- **Angular 21** - Frontend Framework
-- **TypeScript 5.9** - Programming Language
-- **Bootstrap 5.3** - CSS Framework
-- **RxJS** - Reactive Programming
-- **Highlight.js** - Code Syntax Highlighting
-- **Markdown-it** - Markdown Rendering
+- **Angular 21** - Frontend framework (standalone, zoneless)
+- **TypeScript 5.9** - Programming language
+- **NgRx Signals** - State management
+- **Bootstrap 5.3 + SCSS** - CSS framework
+- **RxJS** - Reactive programming
+- **ngx-markdown** (marked + Prism) - Markdown rendering and syntax highlighting
+- **MSAL** - Microsoft Entra ID authentication
+- **Vitest** - Unit testing
 
 ### AI Service Integrations
 
@@ -101,8 +107,6 @@ ai-chat/
 - **Anthropic API Key** - optional, for Claude models served directly
 
 ## 🚀 Quick Start
-
-> **New to the project?** Check out our [Quick Start Guide](QUICK_START.md) for the fastest way to get running!
 
 ### 1. Clone the Repository
 
@@ -208,14 +212,14 @@ The API will start at `https://localhost:7045` (HTTPS) and `http://localhost:504
 ### 5. Run the Frontend
 
 ```bash
-cd enterprise-ui
+cd enterprise-gpt-ui
 npm install
 npm start
 ```
 
 The frontend will start at `http://localhost:4200`.
 
-### 6. (Optional) Enable Angular MCP Tools in VS Code
+### 7. (Optional) Enable Angular MCP Tools in VS Code
 
 Use the Angular CLI MCP server to supercharge AI-assisted Angular workflows.
 
@@ -258,13 +262,29 @@ Create `.vscode/mcp.json` in the repo root with one of the following configurati
 }
 ```
 
-### Frontend Configuration (`src/environments/environment.ts`)
+### Frontend Configuration (`public/config.json`)
 
-```typescript
-export const environment = {
-  production: false,
-  apiUrl: "https://localhost:7045/api/",
-};
+There is no `environments/` directory and no build-time file replacement. `main.ts`
+fetches `config.json` before bootstrapping and validates it; an invalid or missing file
+renders a static fatal shell instead of starting the app. Replace this file per
+environment.
+
+```json
+{
+  "apiBaseUrl": "https://localhost:7045",
+  "auth": {
+    "clientId": "<entra-app-client-id>",
+    "authority": "https://login.microsoftonline.com/<tenant-id>",
+    "redirectUri": "/auth",
+    "postLogoutRedirectUri": "/signed-out",
+    "apiScopes": ["api://<entra-app-client-id>/access_as_user"]
+  },
+  "features": {
+    "diagrams": true,
+    "math": true,
+    "rawStreamCodec": false
+  }
+}
 ```
 
 ### Environment Variables Reference
@@ -574,8 +594,6 @@ The key alone does nothing — `Anthropic:Enabled` is what registers the chat cl
 
 ## 🔧 Development
 
-> **Contributing?** See our [Development Guide](DEVELOPMENT.md) for detailed development tips and best practices.
-
 ### Running Tests
 
 **Backend Tests**:
@@ -588,7 +606,7 @@ dotnet test
 **Frontend Tests**:
 
 ```bash
-cd enterprise-ui
+cd enterprise-gpt-ui
 npm test
 ```
 
@@ -604,7 +622,7 @@ dotnet publish -c Release -o ./publish
 **Frontend**:
 
 ```bash
-cd enterprise-ui
+cd enterprise-gpt-ui
 npm run build
 ```
 
@@ -612,8 +630,8 @@ npm run build
 
 ### Test Framework
 
-- **Backend**: The project uses .NET testing frameworks. Test projects can be added following the pattern `[ProjectName].Tests`
-- **Frontend**: Angular uses Jasmine and Karma for unit testing
+- **Backend**: xUnit v3, with NSubstitute for isolation. Unit tests run on SQLite in-memory; integration tests use Testcontainers and need Docker.
+- **Frontend**: Vitest, via the `@angular/build:unit-test` builder. Accessibility specs are a separate target (`npm run test:a11y`).
 
 ### Running Backend Tests
 
@@ -625,14 +643,14 @@ dotnet test --verbosity normal
 ### Running Frontend Tests
 
 ```bash
-cd enterprise-ui
+cd enterprise-gpt-ui
 npm test
 ```
 
 For continuous test watching during development:
 
 ```bash
-npm test -- --watch
+npm run test:watch
 ```
 
 ### Code Coverage
@@ -650,8 +668,8 @@ dotnet-coverage collect -f cobertura -o coverage.cobertura.xml dotnet test
 **Frontend**:
 
 ```bash
-cd enterprise-ui
-npm test -- --code-coverage
+cd enterprise-gpt-ui
+npm run test:coverage
 ```
 
 Coverage reports will be generated in the `coverage/` directory.
@@ -735,7 +753,7 @@ Coverage reports will be generated in the `coverage/` directory.
       "servers": {
         "angular-cli": {
           "type": "stdio",
-          "command": "enterprise-ui/node_modules/.bin/ng.cmd",
+          "command": "enterprise-gpt-ui/node_modules/.bin/ng.cmd",
           "args": ["mcp", "--read-only"]
         }
       }

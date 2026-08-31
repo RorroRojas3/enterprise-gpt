@@ -2,7 +2,7 @@
 
 > **This cutover destroys every conversation transcript that exists today, and none of it is recoverable.** The new build reads and writes a different Cosmos DB container with a different partition key and a different document shape, and it does not migrate, backfill, dual-read or lazily convert anything from the old one. The moment the new build serves traffic, every conversation opens with an empty message list, and the only copy of what was said in it is whatever still sits in the old container — which nothing reads, and which the last step of this runbook tells you to delete. Take an export of the old container first if anybody might ask for it later; after that step there is nothing to ask for.
 
-Audience: the **platform operator** who deploys this release. This is US-207's deliverable, the one story in [the transcript storage and tokenization PRD](../prd/conversation/conversation-storage-and-tokenization.md) that can lose data. It is deliberately its own deployment phase and should never be bundled with a feature deploy.
+Audience: the **platform operator** who deploys this release. This is US-207's deliverable, the one story in the transcript storage and tokenization PRD (not checked into this repository) that can lose data. It is deliberately its own deployment phase and should never be bundled with a feature deploy.
 
 Companion documents: [Transcript Storage and Tokenization](transcript-storage.md) for what the new shape is and why, and [Conversation Usage and Favourites](usage-and-favorites.md) §6 for the SQL columns this release adds.
 
@@ -187,4 +187,4 @@ A build rolled back after users have taken turns on the new build loses those tu
 | The migration | [`Repository/Migrations/20260815202757_AddContextTokensAndModelPricing.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Migrations/20260815202757_AddContextTokensAndModelPricing.cs) |
 | Purge, and the delete-by-partition-key fallback | [`Service/Transcripts/TranscriptStore.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/Transcripts/TranscriptStore.cs) |
 | The empty-transcript path for pre-cutover conversations | [`Service/ConversationService.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs) (`ReadEmptyTranscriptAsync`, and the header-absent branch of `PersistTurnAsync`) |
-| Design and rationale | [Transcript Storage and Tokenization](transcript-storage.md), [PRD](../prd/conversation/conversation-storage-and-tokenization.md) §5, §7 |
+| Design and rationale | [Transcript Storage and Tokenization](transcript-storage.md), PRD §5, §7 |

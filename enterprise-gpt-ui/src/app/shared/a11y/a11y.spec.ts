@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onDismiss } from './dismiss';
 import { captureFocusOrigin } from './focus-return';
-import { trapWithin } from './focus-trap';
 import { tabbableWithin } from './tabbable';
 
 function mount(html: string): HTMLElement {
@@ -69,57 +68,6 @@ describe('captureFocusOrigin', () => {
     host.innerHTML = '';
 
     expect(() => restore()).not.toThrow();
-  });
-});
-
-describe('trapWithin', () => {
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-
-  function tab(target: Element, shiftKey = false): KeyboardEvent {
-    // cancelable matters: without it preventDefault() is a no-op and
-    // defaultPrevented never becomes true, so the assertion would test nothing.
-    const event = new KeyboardEvent('keydown', {
-      key: 'Tab',
-      shiftKey,
-      bubbles: true,
-      cancelable: true,
-    });
-    target.dispatchEvent(event);
-    return event;
-  }
-
-  it('cycles forward from the last element to the first', () => {
-    const host = mount('<button id="first">a</button><button id="last">b</button>');
-    const release = trapWithin(host);
-    host.querySelector<HTMLElement>('#last')?.focus();
-
-    const event = tab(host);
-
-    expect(event.defaultPrevented).toBe(true);
-    expect((document.activeElement as HTMLElement).id).toBe('first');
-    release();
-  });
-
-  it('cycles backward from the first element to the last', () => {
-    const host = mount('<button id="first">a</button><button id="last">b</button>');
-    const release = trapWithin(host);
-    host.querySelector<HTMLElement>('#first')?.focus();
-
-    tab(host, true);
-
-    expect((document.activeElement as HTMLElement).id).toBe('last');
-    release();
-  });
-
-  it('stops trapping once released', () => {
-    const host = mount('<button id="first">a</button><button id="last">b</button>');
-    const release = trapWithin(host);
-    release();
-    host.querySelector<HTMLElement>('#last')?.focus();
-
-    expect(tab(host).defaultPrevented).toBe(false);
   });
 });
 

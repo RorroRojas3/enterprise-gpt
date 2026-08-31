@@ -13,7 +13,7 @@ import { TableCell } from './data-table/table-cell';
 import { TableColumn } from './data-table/table-column';
 import { PAGE_GAP, pageWindow } from './paginator/page-window';
 import { Paginator } from './paginator/paginator';
-import { clearRows, deselectRows, selectRows, toggleRow } from './row-selection';
+import { selectRows, toggleRow } from './row-selection';
 
 interface Row {
   readonly id: string;
@@ -79,8 +79,6 @@ describe('row-selection', () => {
 
     expect(toggleRow(first, 'b')).not.toBe(first);
     expect(selectRows(first, ['c'])).not.toBe(first);
-    expect(deselectRows(first, ['a'])).not.toBe(first);
-    expect(clearRows()).not.toBe(first);
   });
 
   it('toggles membership both ways', () => {

@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES, TRACE_ID } from '@testing/problem-fixtures';
-import { AppError, isProblemAppError, isRouteNotFound } from './app-error';
+import { AppError, isProblemAppError } from './app-error';
 import { toAppError } from './to-app-error';
 
 const URL = 'https://localhost:7045/api/conversations';
@@ -289,7 +289,7 @@ describe('toAppError — shared contract', () => {
   });
 });
 
-describe('isProblemAppError / isRouteNotFound', () => {
+describe('isProblemAppError', () => {
   it('reports an application problem as problem-derived', () => {
     expect(isProblemAppError(toAppError(httpError(PROBLEM_FIXTURES.forbidden, 403)))).toBe(true);
   });
@@ -301,16 +301,5 @@ describe('isProblemAppError / isRouteNotFound', () => {
     ['a client throw', new Error('boom')],
   ])('does not report %s as problem-derived', (_label, value) => {
     expect(isProblemAppError(toAppError(value))).toBe(false);
-  });
-
-  it('separates a routing 404 from a domain not-found', () => {
-    // The domain 404 is the API's deliberate answer for someone else's row and must
-    // never be reported as "deleted"; the routing 404 is a client bug.
-    expect(
-      isRouteNotFound(toAppError(httpError(FRAMEWORK_PROBLEM_FIXTURES.routeNotFound, 404))),
-    ).toBe(true);
-    expect(isRouteNotFound(toAppError(httpError(PROBLEM_FIXTURES.resourceNotFound, 404)))).toBe(
-      false,
-    );
   });
 });

@@ -24,7 +24,7 @@ Three pieces landed here, each solving a problem the deleted `enterprise-ui/` cl
 | Problem type URIs                                              | [`core/errors/problem-types.ts`](../../enterprise-gpt-ui/src/app/core/errors/problem-types.ts)                                                                                                                                                                                                                                  |
 | The `AppError` union                                           | [`core/errors/app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/app-error.ts)                                                                                                                                                                                                                                          |
 | Normalization entry points                                     | [`to-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/to-app-error.ts), [`to-app-error-from-response.ts`](../../enterprise-gpt-ui/src/app/core/errors/to-app-error-from-response.ts), [`build-app-error.ts`](../../enterprise-gpt-ui/src/app/core/errors/build-app-error.ts)                                          |
-| Server errors onto a form                                      | [`core/errors/apply-server-errors.ts`](../../enterprise-gpt-ui/src/app/core/errors/apply-server-errors.ts), [`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts)                                                                                                                                        |
+| Server errors onto a form                                      | [`core/errors/server-messages.ts`](../../enterprise-gpt-ui/src/app/core/errors/server-messages.ts), [`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts)                                                                                                                                        |
 | Retry and refresh policy                                       | [`core/errors/retry-policy.ts`](../../enterprise-gpt-ui/src/app/core/errors/retry-policy.ts), [`core/http/interceptors/retry.interceptor.ts`](../../enterprise-gpt-ui/src/app/core/http/interceptors/retry.interceptor.ts)                                                                                                      |
 | User-facing error text                                         | [`core/errors/error-message.ts`](../../enterprise-gpt-ui/src/app/core/errors/error-message.ts)                                                                                                                                                                                                                                  |
 | The five store features                                        | [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/)                                                                                                                                                                                                                                                                    |
@@ -261,7 +261,7 @@ Two things are deliberately **absent** from the union:
 - **A truncated chat stream.** A `text/event-stream` body that stops without a `Finished` event arrives as a successful `200`, so it is a turn state the transcript renders as "cut off", not an error. Normalization never sees it.
 - **A `maxBytes` on a bare 413.** Kestrel produces that response, not the upload filter, so it lands on `http` and upload UI has to handle both shapes.
 
-Two helpers guard classification mistakes. `isProblemAppError` is backed by a positive `satisfies` table rather than a negation, so adding an arm without classifying it is a compile error — and misclassifying one silently changes whether it is retried. `isRouteNotFound` separates a routing 404 (a client bug: no such endpoint) from `resource-not-found` (the API's deliberate answer for a row the caller may not see), because reporting the latter as "deleted" is wrong.
+One helper guards classification mistakes: `isProblemAppError` is backed by a positive `satisfies` table rather than a negation, so adding an arm without classifying it is a compile error — and misclassifying one silently changes whether it is retried.
 
 ### 4.3 Two entry points, one arm selector
 
@@ -278,20 +278,31 @@ Its classification order is not arbitrary. The thrown value's own identity decid
 
 `toAppErrorFromResponse` is called by the streaming transport the moment `response.ok` is false, before it reads a byte of the stream: the chat endpoint sets its `text/event-stream` headers lazily on the first frame, so every pre-stream failure arrives as ordinary `application/problem+json`. It never rejects and never hangs — it skips a `bodyUsed` body, skips a non-JSON content type, and races the read against a 5-second timeout, degrading to the plain `http` arm in each case. The losing promise's rejection is swallowed on purpose, or a stalled body failing later would surface through `provideBrowserGlobalErrorListeners()` as a fresh error seconds after this one was handled.
 
-### 4.4 `applyServerErrors` — validation messages onto a reactive form
+### 4.4 `serverMessagesFor` — validation messages for Signal Forms
 
-The API keys a validation problem's `errors` dictionary by its own property paths. Because `JsonSerializerDefaults.Web` camel-cases property _names_ but leaves dictionary _keys_ alone, those keys arrive PascalCase (`ContextWindowSize`), dotted (`Chunking.MaxTokens`), and indexed (`Files[0].FileName`) while the controls bound to those same properties are named after the camelCase JSON.
+The API keys a validation problem's `errors` dictionary by its own property paths. Because `JsonSerializerDefaults.Web` camel-cases property _names_ but leaves dictionary _keys_ alone, those keys arrive PascalCase (`ContextWindowSize`) while the fields bound to those same properties are named after the camelCase JSON.
+
+Signal Forms (`@angular/forms/signals`) has no `setErrors`, so a server verdict cannot be written onto a control the way classic `ReactiveFormsModule` allowed. [`serverMessagesFor`](../../enterprise-gpt-ui/src/app/core/errors/server-messages.ts) surfaces it declaratively instead, through a `validate` rule that reads the store's error state on every render:
 
 ```ts
-const result = applyServerErrors(this.form, error); // error: ValidationAppError
-this.summary.set(result.unmatched);
+validate(path.name, ({ value }) => {
+  const rejected = this.actions.renameRejectedName();
+  if (rejected === null || value().trim() !== rejected) {
+    return null;
+  }
+
+  return serverMessagesFor(this.actions.renameError(), 'name').map((message) => ({
+    kind: 'server',
+    message,
+  }));
+});
 ```
 
-Each key is normalized with **.NET's own camel-casing algorithm** ([`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts)) rather than a naive lower-casing of the first character, which would turn `IOStream` into `iOStream` where .NET produces `ioStream`. Lookup then falls back to the verbatim path and finally to a case-insensitive walk. Indexed segments become their own numeric segments and the array overload of `form.get()` is used throughout, because a numeric segment in a dotted string is ambiguous between a `FormArray` index and a control literally named `"0"`.
+Each key is normalized with **.NET's own camel-casing algorithm** ([`camel-case.ts`](../../enterprise-gpt-ui/src/app/core/errors/camel-case.ts)) rather than a naive lower-casing of the first character, which would turn `IOStream` into `iOStream` where .NET produces `ioStream`, then falls back to a case-insensitive match. It handles flat keys only, deliberately — the forms shipped so far bind top-level properties, and the first form that binds a nested or indexed path (`Chunking.MaxTokens`, `Files[0].FileName`) extends it with path parsing.
 
-Messages land under a dedicated `server` error key, so Angular drops them on the control's next validation pass — the moment the user edits the field, which is what they expect.
+Comparing the field's value against the exact rejected value, rather than clearing on a timer, is what makes the message disappear the moment the user edits the field — there is no imperative reset to call.
 
-**Nothing is silently discarded, and nothing is written to the form root.** Entries that matched no control — object-level rules, which FluentValidation keys with the empty string, and any path the form does not model — come back on `result.unmatched` for the caller to render. Writing them to the root would not survive: `updateValueAndValidity` walks up the tree and every ancestor replaces its whole `errors` object with its own validators' output, so a hand-set root summary vanishes on the first keystroke in any field. Hold it in a signal instead.
+**Nothing is silently discarded.** Its companion `unmatchedServerMessages` returns messages under keys the form does not model — object-level rules, which FluentValidation keys with the empty string, and any property the form does not bind — for the caller to render as a summary rather than drop. See [Conversation Actions §4.3](conversation-actions.md#43-servermessagesfor-server-validation-without-seterrors) for the mechanism worked through end to end on the rename dialog.
 
 ### 4.5 `authErrorDecision` — the only place refresh is decided
 
@@ -353,7 +364,7 @@ Five features in [`core/state/`](../../enterprise-gpt-ui/src/app/core/state/), e
 | -------- | ------------------------------------------------------------------ |
 | State    | `skip` (offset for the **next** request), `take`, `totalCount`     |
 | Computed | `hasMore`, `isFullyLoaded`                                         |
-| Updaters | `setPage(response)`, `setFirstPage(response)`, `resetPagination()` |
+| Updaters | `setPage(response)`, `setFirstPage(response)` |
 
 It reads the API's `PaginatedResponseDto` envelope but derives from `skip` and `totalCount` rather than the envelope's `currentPage`/`totalPages`, and `skip` advances by the number of items **actually returned** rather than by `take`. One reason for both: a short final page, a page size the server clamped, and a `totalCount` that is an exact multiple of the page size then all land on `hasMore === false` with no special case. `take` is clamped to `MAX_PAGE_SIZE` (100) because the server clamps it to 1–100 anyway, and a drain that assumed it got `take` items would never terminate.
 
@@ -503,7 +514,7 @@ Everything above is covered by Vitest specs that run with no backend and, for th
 | Area                        | Specs                                                                                                                                                             | Notable cases                                                                                                                                                                                                                        |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Config                      | `app-config`, `app-config.token`, `load-app-config`, `fatal-shell`                                                                                                | Each named-field failure; a 200 carrying `index.html`; the timeout; the shell's `textContent`-only rendering and watchdog clearing                                                                                                   |
-| Errors                      | `to-app-error` (31 cases), `to-app-error-from-response`, `problem-details`, `problem-types`, `apply-server-errors`, `camel-case`, `error-message`, `retry-policy` | Timeout-versus-abort ordering; a `bodyUsed` body; PascalCase, dotted and indexed keys; the `AUTH_DECISIONS` key set                                                                                                                  |
+| Errors                      | `to-app-error` (31 cases), `to-app-error-from-response`, `problem-details`, `problem-types`, `server-messages`, `camel-case`, `error-message`, `retry-policy` | Timeout-versus-abort ordering; a `bodyUsed` body; PascalCase keys; the `AUTH_DECISIONS` key set                                                                                                                  |
 | HTTP                        | `api-url`, `retry.interceptor`                                                                                                                                    | GET-only, the 409 and app-typed-503 exclusions, jitter bounds via a pinned `random`                                                                                                                                                  |
 | State                       | `with-request-status`, `with-offset-pagination` (15 cases), `with-pending-ids`, `with-client-query` (16 cases), `with-reset-on-sign-out`, `toast-store`           | The exact-multiple page boundary; the empty-page cap; the replace-not-mutate signal write; `isAuthoritative` false suppressing sort; the dev-only ordering guard throwing; a toast timer cancelled on sign-out                       |
 | Storage and navigation      | `local-preferences`                                                                                                                                               | The allowlist holding only values about the browser; storage that throws rather than returning `null`                                                                                                                                |

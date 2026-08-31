@@ -5,7 +5,7 @@
 // Deliberately absent, with the measured cost of each:
 //   grid              10.8 kB — one `repeat(auto-fill, minmax(280px, 1fr))` replaces it
 //   tables             6.1 kB — the data table's surface, radius and row heights are custom
-//   forms/validation   6.9 kB — ~350 B of .is-invalid in _kit.scss, driven by applyServerErrors
+//   forms/validation   6.9 kB — ~350 B of .is-invalid in _kit.scss covers what is used
 //   pagination         3.0 kB — the board's pager shares nothing with .pagination
 //   toasts             1.9 kB — no 4px accent, no draining indicator, nothing reusable
 //   placeholders       0.6 kB — would add a fifth keyframe; the skeleton is static

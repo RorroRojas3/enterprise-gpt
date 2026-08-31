@@ -145,13 +145,13 @@ The shape later forms copy:
 
 ### 4.3 `serverMessagesFor`: server validation without `setErrors`
 
-Signal Forms has no `setErrors`, so the server's verdict cannot be written onto a control the way `applyServerErrors` does for `AbstractControl`. Instead it surfaces declaratively:
+Signal Forms has no `setErrors`, so the server's verdict cannot be written onto a control the way classic `ReactiveFormsModule` writes onto an `AbstractControl`. Instead it surfaces declaratively:
 
 1. On a 400, the store records the `ValidationAppError` as `renameError` and the exact submitted name as `renameRejectedName`.
 2. The form's `validate` rule compares the field's trimmed value against `renameRejectedName` — trimmed, because the store submits the trimmed value and the field may hold surrounding whitespace the server never saw — and, on a match, maps `serverMessagesFor(renameError, 'name')` into form errors.
 3. The moment the user edits the value, the comparison fails and the message clears itself — no imperative reset anywhere. A side effect worth keeping: while the field still holds the rejected name the field is *invalid*, so resubmitting the identical doomed value is blocked too.
 
-`serverMessagesFor` (in [`core/errors/server-messages.ts`](../../enterprise-gpt-ui/src/app/core/errors/server-messages.ts)) is the Signal Forms counterpart to `applyServerErrors`: it normalizes the server's PascalCase `errors` keys with .NET's own camel-casing algorithm before comparing them to camelCase field names, with a case-insensitive match as the fallback. It handles flat keys only, deliberately — the first form that binds a nested or indexed path (`Chunking.MaxTokens`, `Files[0].FileName`) extends it with `applyServerErrors`' path parsing rather than reimplementing it. `applyServerErrors` itself gains no new call sites.
+`serverMessagesFor` (in [`core/errors/server-messages.ts`](../../enterprise-gpt-ui/src/app/core/errors/server-messages.ts)) normalizes the server's PascalCase `errors` keys with .NET's own camel-casing algorithm before comparing them to camelCase field names, with a case-insensitive match as the fallback. It handles flat keys only, deliberately — the first form that binds a nested or indexed path (`Chunking.MaxTokens`, `Files[0].FileName`) extends it with path parsing rather than reimplementing the mechanism. See [Frontend Foundation §4.4](frontend-foundation.md#44-servermessagesfor--validation-messages-for-signal-forms) for the general mechanism.
 
 Its companion `unmatchedServerMessages` returns messages under keys the form does not model — object-level rules, which FluentValidation keys with the empty string, and properties the dialog never sends wrong. The dialog renders them in the same error region rather than dropping them, because a server message the user cannot see is a rename that silently fails.
 

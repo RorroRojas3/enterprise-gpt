@@ -162,5 +162,5 @@ The codec layer is framework-free and tests in Node with no `TestBed`; its chunk
 | Transport | [`core/stream/conversation-stream-client.ts`](../../enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts), [`core/stream/stream-fetch.token.ts`](../../enterprise-gpt-ui/src/app/core/stream/stream-fetch.token.ts) |
 | Turn settings | [`core/chat/turn-settings-store.ts`](../../enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts) |
 | Provider presentation | [`domain/api/provider.ts`](../../enterprise-gpt-ui/src/app/domain/api/provider.ts) |
-| Composer and pickers | [`features/chat/composer/`](../../enterprise-gpt-ui/src/app/features/chat/composer/composer.ts) |
+| Composer and pickers | [`shared/composer/`](../../enterprise-gpt-ui/src/app/shared/composer/composer.ts) |
 | Related reference | [Conversation Streaming Contract](streaming-contract.md), [Conversation Turn Lifecycle](turn-lifecycle.md) (the layer above: `TurnStore`, settles, the timeline), [Frontend Foundation](../ui/frontend-foundation.md) (the `AppError` taxonomy, `authErrorDecision`), [Enterprise UI Rebuild PRD](../prd/enterprise-ui-rebuild.md) |

@@ -99,11 +99,6 @@ export function setFirstPage<T>(
   });
 }
 
-/** Returns to the state before any page was loaded, keeping the page size. */
-export function resetPagination(): PartialStateUpdater<OffsetPaginationState> {
-  return ({ take }) => ({ skip: 0, take, totalCount: 0 });
-}
-
 function clampPageSize(take: number): number {
   // NaN survives Math.min/Math.max, and a `take=NaN` query string is a 400 the
   // caller cannot explain.

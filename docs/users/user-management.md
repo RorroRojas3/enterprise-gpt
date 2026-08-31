@@ -12,7 +12,7 @@ Authorization is carried entirely by rows in `Core.UserPermission`. A user is an
 
 The migration was not cosmetic. Admin gating is an **endpoint filter** ([`PermissionEndpointFilter`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs)), which cannot be attached to an MVC controller action — so while user management lived on a controller, **every authenticated caller could deactivate any user**. Moving to minimal APIs is what made per-route admin gating possible at all.
 
-The public URL the frontend depends on (`POST /api/users/me`) is unchanged; [`user.service.ts`](../../enterprise-ui/src/app/services/user.service.ts) required no edits.
+The public URL the frontend depends on (`POST /api/users/me`) is unchanged; the client's user service required no edits. (That client, `enterprise-ui/`, has since been deleted and rebuilt as `enterprise-gpt-ui/`.)
 
 ## 2. API surface
 
@@ -221,7 +221,7 @@ Note that `PUT` writes `firstName`, `lastName`, and `email` directly — it does
 
 ## 5. Default permissions — the `IsDefault` flag
 
-`IsDefault` is a new `bit` column on [`Permission`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Permission.cs). It is the only knob administrators have over what a brand-new user can do, and it is surfaced end to end: [`PermissionDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/PermissionDto.cs), `CreatePermissionActionDto`, `UpdatePermissionActionDto`, and the Angular [`PermissionDto`](../../enterprise-ui/src/app/dtos/PermissionDto.ts) all carry it.
+`IsDefault` is a new `bit` column on [`Permission`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Permission.cs). It is the only knob administrators have over what a brand-new user can do, and it is surfaced end to end: [`PermissionDto`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/PermissionDto.cs), `CreatePermissionActionDto`, `UpdatePermissionActionDto`, and the Angular [`PermissionDto`](../../enterprise-gpt-ui/src/app/domain/api/user.ts) all carry it.
 
 Where the flag is consulted:
 
@@ -347,7 +347,7 @@ Resolving permissions up front is a deliberate choice over letting the insert fa
 | Entities | [`User.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/User.cs), [`Permission.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/Permission.cs), [`UserPermission.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Entity/UserPermission.cs) |
 | EF configuration + seed | [`UserConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/UserConfiguration.cs), [`PermissionConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/PermissionConfiguration.cs), [`UserPermissionConfiguration.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/UserPermissionConfiguration.cs) |
 | Built-in permission ids | [`Enterprise.Gpt.Dto/Enums/PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs) |
-| Frontend consumer | [`enterprise-ui/src/app/services/user.service.ts`](../../enterprise-ui/src/app/services/user.service.ts) (`POST /api/users/me` only) |
+| Frontend consumer | [`session-store.ts`](../../enterprise-gpt-ui/src/app/core/session/session-store.ts) (`POST /api/users/me` only) |
 | Tests | [`UserServiceTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/UserServiceTests.cs), [`UserEndpointsTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Endpoints/UserEndpointsTests.cs), [`UserEndpointsIntegrationTests.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Endpoints/UserEndpointsIntegrationTests.cs), [`FakeGraphService.cs`](../../enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/FakeGraphService.cs) |
 
 ## 11. Operational notes

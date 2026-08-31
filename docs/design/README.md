@@ -30,8 +30,6 @@ Three things to know:
 - **`export-src.html` is the entry point** — the index linking boards 01 through 06. The server redirects `/` to it.
 - **An internet connection is required.** React and ReactDOM load from unpkg, and Bootstrap 5.3, Bootstrap Icons, and the Montserrat/Inter/JetBrains Mono fonts load from their CDNs.
 
-`Enterprise GPT Overview.html` is a self-contained copy of *just the index page* (fonts, React, and `support.js` inlined as base64). It opens from disk, but its links point at the plain `.dc.html` boards, so it isn't a substitute for the server.
-
 ## Bundle contents
 
 - `docs/design/README.md` — this file

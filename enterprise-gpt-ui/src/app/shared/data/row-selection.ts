@@ -22,18 +22,3 @@ export function selectRows(ids: ReadonlySet<string>, add: readonly string[]): Re
   }
   return next;
 }
-
-export function deselectRows(
-  ids: ReadonlySet<string>,
-  remove: readonly string[],
-): ReadonlySet<string> {
-  const next = new Set(ids);
-  for (const id of remove) {
-    next.delete(id);
-  }
-  return next;
-}
-
-export function clearRows(): ReadonlySet<string> {
-  return new Set();
-}

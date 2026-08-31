@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROBLEM_BASE, PROBLEM_TYPE, isKnownProblemType } from './problem-types';
+import { PROBLEM_TYPE } from './problem-types';
 
 describe('PROBLEM_TYPE', () => {
   // These strings are opaque identifiers the API's clients match verbatim; a typo
@@ -30,28 +30,7 @@ describe('PROBLEM_TYPE', () => {
 
   it('places every type under the shared relative base', () => {
     for (const type of Object.values(PROBLEM_TYPE)) {
-      expect(type.startsWith(PROBLEM_BASE)).toBe(true);
+      expect(type.startsWith('/problems/')).toBe(true);
     }
-  });
-});
-
-describe('isKnownProblemType', () => {
-  it('accepts every application type', () => {
-    for (const type of Object.values(PROBLEM_TYPE)) {
-      expect(isKnownProblemType(type)).toBe(true);
-    }
-  });
-
-  it.each([
-    'https://tools.ietf.org/html/rfc9110#section-15.5.2',
-    '/problems/',
-    '/problems/not-a-real-type',
-    '',
-  ])('rejects %s', (type) => {
-    expect(isKnownProblemType(type)).toBe(false);
-  });
-
-  it.each([[null], [undefined]])('rejects %s', (type) => {
-    expect(isKnownProblemType(type)).toBe(false);
   });
 });

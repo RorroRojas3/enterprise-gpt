@@ -31,7 +31,8 @@ export const TABLET_VIEWPORT = '(min-width: 768px) and (max-width: 1023.98px)';
 /**
  * The same two edges as numbers, for code that compares against a measured width rather
  * than subscribing to a query — {@link anchoredPosition}, which is a pure function and
- * takes the viewport as an argument.
+ * takes the viewport as an argument. `scripts/check-tokens.mjs` reads both to hold them
+ * equal to `_breakpoints.scss`.
  */
 export const TABLET_MIN_WIDTH = 768;
 

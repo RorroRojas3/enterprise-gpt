@@ -309,7 +309,6 @@ Functions, not components, so overlays can share exactly one set of semantics.
 | Export | Signature | Purpose |
 | --- | --- | --- |
 | `tabbableWithin` | `(root: Element) => HTMLElement[]` | Focusable descendants in DOM order. Skips `disabled`, `hidden`, `tabindex="-1"`, and anything under `[inert]` or `[aria-hidden="true"]` — both remove a whole subtree, so both are checked against every ancestor |
-| `trapWithin` | `(root: HTMLElement) => () => void` | Cycles Tab and Shift+Tab. Needed only by the menu and the jsdom fallback: a `showModal()` dialog is in the top layer, where the browser inerts everything behind it for real |
 | `captureFocusOrigin` | `(document: Document) => () => void` | Records `activeElement` now, returns a function that puts focus back — and does nothing if the origin is gone, which is the common case when the invoker was a row's kebab button and the action deleted the row |
 | `onDismiss` | `(el, handlers, signal) => void` | Wires Escape, outside pointer, and scroll in one place |
 
@@ -382,7 +381,7 @@ Timer handles live in `withProps`, not in state: a `Map` in `withState` is eithe
 | `<app-card-row>` | — | — | Mobile stand-in for a row. Slots `cardRowLead/Title/Subtitle/Meta/Badges/Trailing/Actions` — `Meta` renders as a labelled `<dt>`/`<dd>` list keyed by each column's header; `Trailing` sits beside the title for a single icon control; `Actions` is the card's full-width foot, for a row of labelled buttons |
 | `<app-paginator>` | `page`, `totalPages`, `totalCount`, `pageSize`, `itemLabel` — all **required** | `pageChanged` | Numbered pager for server-paged screens |
 | `<app-bulk-action-bar>` | `count` **required**, `note` | `cleared` | Actions project as the default slot. `position: fixed`, so it caps and wraps itself (SC 1.4.10) — see below |
-| `row-selection.ts` | `toggleRow`, `selectRows`, `deselectRows`, `clearRows` | — | Every one returns a **new** `Set` |
+| `row-selection.ts` | `toggleRow`, `selectRows` | — | Every one returns a **new** `Set` |
 
 `DataTable` imports no store. Everything arrives as inputs, which is what lets it serve `withOffsetPagination` (the footer slot), `withPendingIds` (`pendingIds`) and `withClientQuery` (the notice slot) without knowing any of them exist.
 

@@ -25,7 +25,7 @@ Reading the original file back out is a much shorter path — one request, a sho
 | Four coarse progress checkpoints (25/50/75/100) | Six stages with per-batch progress and a user-facing message |
 | Unbounded queue | Queue bounded by a memory budget (`Documents:MaxQueuedBytes`) that applies backpressure |
 
-The route URLs are unchanged, so [`document.service.ts`](../../enterprise-ui/src/app/services/document.service.ts) needed no edits.
+The route URLs are unchanged, so the client's document service needed no edits. (That client, `enterprise-ui/`, has since been deleted and rebuilt as `enterprise-gpt-ui/`.)
 
 ### 1.1 Sequence
 
@@ -676,5 +676,5 @@ dotnet test                                    # everything; Docker must be runn
 | DTOs | [`JobDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/JobDto.cs), [`JobStatusDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/JobStatusDto.cs), [`DocumentSegmentDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/DocumentSegmentDto.cs), [`TextChunkDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/TextChunkDto.cs), [`FileDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/FileDto.cs), [`SheetStructureDto.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/SheetStructureDto.cs) |
 | Enums | [`JobStatus.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/JobStatus.cs), [`FileExtensions.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/FileExtensions.cs), [`PermissionIds.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs), [`SheetColumnType.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Common/Enums/SheetColumnType.cs) |
 | DI + options validation | [`Enterprise.Gpt.Api/Program.cs`](../../enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs) |
-| Frontend consumer | [`enterprise-ui/src/app/services/document.service.ts`](../../enterprise-ui/src/app/services/document.service.ts), [`prompt-box.component.ts`](../../enterprise-ui/src/app/components/home/prompt-box/prompt-box.component.ts) |
+| Frontend consumer | [`document-upload-client.ts`](../../enterprise-gpt-ui/src/app/core/documents/document-upload-client.ts), [`upload-store.ts`](../../enterprise-gpt-ui/src/app/core/documents/upload-store.ts) |
 | Related reference | [Document Retrieval (RAG)](retrieval.md), [Document Download](download-workflow.md), [Permission Cache](../permissions/permission-cache.md) |

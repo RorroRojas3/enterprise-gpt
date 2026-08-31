@@ -198,15 +198,3 @@ const PROBLEM_KINDS = {
 export function isProblemAppError(error: AppError): boolean {
   return PROBLEM_KINDS[error.kind];
 }
-
-/**
- * Whether the error is a routing 404 — no such endpoint — as opposed to
- * `resource-not-found`, which means the caller may not see that row.
- *
- * The distinction matters: a routing 404 is a client bug, while
- * `resource-not-found` is the API's deliberate answer for a resource owned by
- * someone else, and must not be reported as "deleted".
- */
-export function isRouteNotFound(error: AppError): boolean {
-  return error.kind === 'http' && error.status === 404;
-}
