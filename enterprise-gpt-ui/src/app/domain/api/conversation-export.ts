@@ -1,12 +1,13 @@
 /**
  * The export formats the download menu offers, as the `?format=` tokens the API accepts.
  *
- * The API supports two more — `html` and `json` — which predate US-1501 and which no
- * surface offers: they exist for scripted callers, and frame `2f` draws three items.
+ * The API supports one more — `json`, the transcript's own storage shape — which no surface
+ * offers and which exists for scripted callers. Listing a format here does not promise the
+ * deployment can render it: configuration can withdraw any of them, and PDF and HTML each
+ * have a prerequisite, so every row has to survive an `export-renderer-not-configured` 503.
  */
-export const EXPORT_FORMATS = ['md', 'docx', 'pdf'] as const;
+export const EXPORT_FORMATS = ['md', 'docx', 'pdf', 'html'] as const;
 
-/** One of the three formats a conversation can be downloaded as. */
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 /**

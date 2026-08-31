@@ -49,6 +49,7 @@ export const ICON_NAMES = [
   'bi-file-earmark-word',
   'bi-file-text',
   'bi-filetype-csv',
+  'bi-filetype-html',
   'bi-filetype-md',
   'bi-folder',
   'bi-folder-fill',

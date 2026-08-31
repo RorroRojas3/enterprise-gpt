@@ -4,9 +4,8 @@ namespace Enterprise.Gpt.Service.Export;
 /// The formats a conversation can be exported as.
 /// </summary>
 /// <remarks>
-/// <see cref="Html"/> and <see cref="Json"/> predate US-1501 and are kept: they are a shipped route
-/// contract, and the client simply never offers them. The three US-1501 added are what frame <c>2f</c>
-/// draws.
+/// <see cref="Json"/> is a shipped route contract that no client surface offers; it exists for
+/// scripted callers. The other four are the ones the download menu draws.
 /// </remarks>
 public enum ConversationExportFormats
 {

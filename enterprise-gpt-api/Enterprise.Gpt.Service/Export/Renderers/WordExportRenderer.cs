@@ -2,6 +2,7 @@ using System.Globalization;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Enterprise.Gpt.Common.Enums;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Enterprise.Gpt.Service.Export.Renderers;
@@ -17,21 +18,26 @@ namespace Enterprise.Gpt.Service.Export.Renderers;
 /// to run an import at all.
 /// </para>
 /// <para>
-/// No font is named anywhere except on the monospace runs. A .docx carries no glyphs, so the reader's
-/// own theme decides the face — which is why this renderer, unlike the PDF one, has no font
-/// prerequisite and can never be the format a deployment lacks.
+/// Colours and sizes come from <see cref="ExportTheme"/>, which the HTML and PDF renderers read too.
+/// The faces do not: a .docx carries no glyphs, so this names what ships with Office rather than the
+/// head of the theme's stack, and that is the one place the formats deliberately differ.
 /// </para>
 /// </remarks>
 /// <param name="mapper">Maps each message's markdown into blocks.</param>
 public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversationExportRenderer
 {
-    private const string MonospaceFont = "Consolas";
     private const int BulletNumberingId = 1;
     private const int OrderedNumberingId = 2;
     private const int MaxListDepth = 8;
 
     /// <summary>Twips of indent per list or quote level. 360 is Word's own half-inch-per-two-levels.</summary>
     private const int IndentStepTwips = 360;
+
+    /// <summary>Eighths of a point. 18 is the 2.25pt rule the app draws down the side of a prompt.</summary>
+    private const uint PromptRuleSize = 18;
+
+    /// <summary>Eighths of a point, matching the 2px edge the HTML export draws on a block quote.</summary>
+    private const uint QuoteRuleSize = 12;
 
     private readonly IMarkdownBlockMapper _mapper = mapper;
 
@@ -63,11 +69,16 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
             foreach (var message in document.Messages)
             {
-                body.AppendChild(StyledParagraph(StyleIds.MessageLabel, [new ExportRun(message.Label)], main));
+                // A prompt is banded rather than bubbled — the same tint and left rule the HTML and
+                // PDF exports draw, because a right-aligned bubble does not survive page flow.
+                var style = message.Role is ChatRoles.User ? ExportBlockStyle.Prompt : ExportBlockStyle.None;
+
+                body.AppendChild(StyledParagraph(
+                    StyleIds.MessageLabel, [new ExportRun(message.Label)], main, style: style));
 
                 foreach (var block in _mapper.Map(message.Markdown))
                 {
-                    AppendBlock(body, block, main, indentLevel: 0);
+                    AppendBlock(body, block, main, indentLevel: 0, style);
                 }
             }
 
@@ -81,35 +92,42 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             $"{ExportFileNames.Stem(document.Name)}.docx");
     }
 
-    private void AppendBlock(OpenXmlCompositeElement parent, ExportBlock block, MainDocumentPart main, int indentLevel)
+    private void AppendBlock(
+        OpenXmlCompositeElement parent,
+        ExportBlock block,
+        MainDocumentPart main,
+        int indentLevel,
+        ExportBlockStyle style)
     {
         switch (block)
         {
             case HeadingBlock heading:
-                parent.AppendChild(StyledParagraph($"Heading{heading.Level}", heading.Runs, main, indentLevel));
+                parent.AppendChild(StyledParagraph(
+                    $"Heading{Math.Clamp(heading.Level, 1, 6)}", heading.Runs, main, indentLevel, style));
                 break;
 
             case ParagraphBlock paragraph:
-                parent.AppendChild(StyledParagraph(StyleIds.Normal, paragraph.Runs, main, indentLevel));
+                parent.AppendChild(StyledParagraph(
+                    StyleIds.Normal, paragraph.Runs, main, indentLevel, style));
                 break;
 
             case CodeBlock code:
-                AppendCode(parent, code, indentLevel);
+                AppendCode(parent, code, indentLevel, style);
                 break;
 
             case QuoteBlock quote:
                 foreach (var child in quote.Children)
                 {
-                    AppendBlock(parent, child, main, indentLevel + 1);
+                    AppendBlock(parent, child, main, indentLevel + 1, style | ExportBlockStyle.Quote);
                 }
                 break;
 
             case ListBlock list:
-                AppendList(parent, list, main, indentLevel);
+                AppendList(parent, list, main, indentLevel, style);
                 break;
 
             case TableBlock table:
-                AppendTable(parent, table, main);
+                AppendTable(parent, table, main, indentLevel, style);
                 break;
 
             case ThematicBreakBlock:
@@ -124,13 +142,23 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     // One Word paragraph per line, because a code block's line breaks are content and Word's own
     // wrapping is not. Shading is on the paragraph rather than the runs so a short line still reads
     // as part of the block.
-    private static void AppendCode(OpenXmlCompositeElement parent, CodeBlock code, int indentLevel)
+    private static void AppendCode(
+        OpenXmlCompositeElement parent, CodeBlock code, int indentLevel, ExportBlockStyle style)
     {
+        // The fence's language, the way the app labels a code block and the HTML export repeats.
+        if (!string.IsNullOrWhiteSpace(code.Language))
+        {
+            var label = new Paragraph(Properties(StyleIds.CodeLanguage, indentLevel, style));
+            label.AppendChild(new Run(
+                new W.Text(code.Language) { Space = SpaceProcessingModeValues.Preserve }));
+            parent.AppendChild(label);
+        }
+
         var lines = code.Text.ReplaceLineEndings("\n").Split('\n');
 
         foreach (var line in lines)
         {
-            var paragraph = new Paragraph(Properties(StyleIds.Code, indentLevel));
+            var paragraph = new Paragraph(Properties(StyleIds.Code, indentLevel, style));
 
             // A blank line still needs a paragraph, or the block silently loses its spacing.
             if (line.Length > 0)
@@ -144,7 +172,12 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         }
     }
 
-    private void AppendList(OpenXmlCompositeElement parent, ListBlock list, MainDocumentPart main, int indentLevel)
+    private void AppendList(
+        OpenXmlCompositeElement parent,
+        ListBlock list,
+        MainDocumentPart main,
+        int indentLevel,
+        ExportBlockStyle style)
     {
         // Word's numbering levels stop at nine, and a list nested deeper than this is unreadable in
         // any case; past the cap the items keep their text and share the deepest level.
@@ -152,50 +185,47 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
         foreach (var item in list.Items)
         {
-            var first = true;
+            // The marker belongs to the item, so it is drawn whether or not the item opens with a
+            // paragraph to hang it on — an item starting with a nested list or a fence would
+            // otherwise lose its bullet, which an HTML <li> never does. Everything after the first
+            // paragraph is indented rather than numbered: a continuation line carrying its own
+            // number restarts the count against it.
+            var opening = item.Children.FirstOrDefault() as ParagraphBlock;
 
-            foreach (var child in item.Children)
+            parent.AppendChild(NumberedParagraph(
+                opening?.Runs ?? [], main, list.Ordered, level, style));
+
+            foreach (var child in item.Children.Skip(opening is null ? 0 : 1))
             {
-                // Only the item's first paragraph gets the bullet or number. A second paragraph, a
-                // nested list or a code block inside the same item is indented to match instead —
-                // numbering them would restart the count at every continuation line.
-                if (first && child is ParagraphBlock paragraph)
-                {
-                    parent.AppendChild(NumberedParagraph(paragraph.Runs, main, list.Ordered, level));
-                    first = false;
-
-                    continue;
-                }
-
-                AppendBlock(parent, child, main, indentLevel + 1);
-                first = false;
-            }
-
-            // An empty item still occupies a line, or the numbering skips a value with nothing to
-            // show for it.
-            if (item.Children.Count == 0)
-            {
-                parent.AppendChild(NumberedParagraph([], main, list.Ordered, level));
+                AppendBlock(parent, child, main, indentLevel + 1, style);
             }
         }
     }
 
     private Paragraph NumberedParagraph(
-        IReadOnlyList<ExportRun> runs, MainDocumentPart main, bool ordered, int level)
+        IReadOnlyList<ExportRun> runs, MainDocumentPart main, bool ordered, int level, ExportBlockStyle style)
     {
-        var paragraph = new Paragraph(
-            new ParagraphProperties(
-                new ParagraphStyleId { Val = StyleIds.ListParagraph },
-                new NumberingProperties(
-                    new NumberingLevelReference { Val = level },
-                    new NumberingId { Val = ordered ? OrderedNumberingId : BulletNumberingId })));
+        // No paragraph indent: the numbering level carries its own, and one set here would override
+        // it and pull every bullet back to the margin.
+        var paragraph = new Paragraph(Properties(
+            StyleIds.ListParagraph,
+            indentLevel: 0,
+            style,
+            new NumberingProperties(
+                new NumberingLevelReference { Val = level },
+                new NumberingId { Val = ordered ? OrderedNumberingId : BulletNumberingId })));
 
         AppendRuns(paragraph, runs, main);
 
         return paragraph;
     }
 
-    private void AppendTable(OpenXmlCompositeElement parent, TableBlock table, MainDocumentPart main)
+    private void AppendTable(
+        OpenXmlCompositeElement parent,
+        TableBlock table,
+        MainDocumentPart main,
+        int indentLevel,
+        ExportBlockStyle style)
     {
         var rows = table.HeaderRow is null ? table.Rows : [table.HeaderRow, .. table.Rows];
 
@@ -206,22 +236,43 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
         var columns = rows.Max(row => row.Cells.Count);
 
-        var wordTable = new W.Table(
-            new TableProperties(
-                new TableStyle { Val = StyleIds.TableGrid },
-                // Auto width over the full text column: a fixed grid computed here would be wrong at
-                // any page size other than the one it was computed for.
-                new TableWidth { Type = TableWidthUnitValues.Pct, Width = "5000" },
+        // A row with no cells is a row Word refuses to open, and the schema permits it — so the
+        // validator would not catch this one.
+        if (columns == 0)
+        {
+            return;
+        }
+
+        // CT_TblPrBase orders tblStyle, tblW, tblInd, then tblBorders. The indent is what a nested
+        // table gets in place of the ancestor CSS gives the HTML export.
+        var properties = new TableProperties(
+            new TableStyle { Val = StyleIds.TableGrid },
+            // Auto width over the full text column: a fixed grid computed here would be wrong at
+            // any page size other than the one it was computed for.
+            new TableWidth { Type = TableWidthUnitValues.Pct, Width = "5000" });
+
+        if (indentLevel > 0)
+        {
+            properties.AppendChild(new TableIndentation
+            {
+                Width = indentLevel * IndentStepTwips,
+                Type = TableWidthUnitValues.Dxa
+            });
+        }
+
+        properties.AppendChild(
                 // Child order is fixed by CT_TblBorders — top, left, bottom, right, then the two
                 // inside edges. A package with them in any other order opens in this SDK and is
                 // rejected by Word, which is what the schema-validation test exists to catch.
                 new TableBorders(
-                    new TopBorder { Val = BorderValues.Single, Size = 4, Color = "D0D7DE" },
-                    new LeftBorder { Val = BorderValues.Single, Size = 4, Color = "D0D7DE" },
-                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = "D0D7DE" },
-                    new RightBorder { Val = BorderValues.Single, Size = 4, Color = "D0D7DE" },
-                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 4, Color = "D0D7DE" },
-                    new InsideVerticalBorder { Val = BorderValues.Single, Size = 4, Color = "D0D7DE" })));
+                    new TopBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
+                    new LeftBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
+                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
+                    new RightBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
+                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
+                    new InsideVerticalBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border }));
+
+        var wordTable = new W.Table(properties);
 
         var grid = new TableGrid();
         for (var column = 0; column < columns; column++)
@@ -249,9 +300,25 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
                         : cellRuns,
                     main);
 
-                row.AppendChild(new W.TableCell(
-                    new TableCellProperties(new TableCellWidth { Type = TableWidthUnitValues.Auto }),
-                    paragraph));
+                // CT_TcPr puts tcW before shd. A table inside a prompt is filled cell by cell,
+                // because Word has no ancestor for the band to come from the way the HTML has.
+                var cellProperties = new TableCellProperties(
+                    new TableCellWidth { Type = TableWidthUnitValues.Auto });
+
+                var fill = isHeader
+                    ? ExportTheme.Colors.SurfaceAlt
+                    : style.HasFlag(ExportBlockStyle.Prompt) ? ExportTheme.Colors.UserBand : null;
+
+                if (fill is not null)
+                {
+                    cellProperties.AppendChild(new Shading
+                    {
+                        Val = ShadingPatternValues.Clear,
+                        Fill = fill
+                    });
+                }
+
+                row.AppendChild(new W.TableCell(cellProperties, paragraph));
             }
 
             wordTable.AppendChild(row);
@@ -265,21 +332,66 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     private static Paragraph HorizontalRule() =>
         new(new ParagraphProperties(
             new ParagraphBorders(
-                new BottomBorder { Val = BorderValues.Single, Size = 6, Color = "D0D7DE" })));
+                new BottomBorder { Val = BorderValues.Single, Size = 6, Color = ExportTheme.Colors.Border })));
 
     private Paragraph StyledParagraph(
-        string styleId, IReadOnlyList<ExportRun> runs, MainDocumentPart main, int indentLevel = 0)
+        string styleId,
+        IReadOnlyList<ExportRun> runs,
+        MainDocumentPart main,
+        int indentLevel = 0,
+        ExportBlockStyle style = ExportBlockStyle.None)
     {
-        var paragraph = new Paragraph(Properties(styleId, indentLevel));
+        var paragraph = new Paragraph(Properties(styleId, indentLevel, style));
 
         AppendRuns(paragraph, runs, main);
 
         return paragraph;
     }
 
-    private static ParagraphProperties Properties(string styleId, int indentLevel)
+    /// <summary>
+    /// Builds one paragraph's properties with its children in schema order.
+    /// </summary>
+    /// <remarks>
+    /// <c>CT_PPrBase</c> fixes the sequence — <c>pStyle</c>, <c>numPr</c>, <c>pBdr</c>, <c>shd</c>,
+    /// then <c>ind</c>. A package with them in any other order reads back through this SDK without
+    /// complaint and is refused by Word.
+    /// </remarks>
+    private static ParagraphProperties Properties(
+        string styleId, int indentLevel, ExportBlockStyle style, NumberingProperties? numbering = null)
     {
         var properties = new ParagraphProperties(new ParagraphStyleId { Val = styleId });
+
+        if (numbering is not null)
+        {
+            properties.AppendChild(numbering);
+        }
+
+        var prompt = style.HasFlag(ExportBlockStyle.Prompt);
+
+        // Word draws one rule per paragraph, so a quote inside a prompt keeps the prompt's: the
+        // outer container is the one a reader loses more by not seeing.
+        if (prompt || style.HasFlag(ExportBlockStyle.Quote))
+        {
+            properties.AppendChild(new ParagraphBorders(
+                new LeftBorder
+                {
+                    Val = BorderValues.Single,
+                    Size = prompt ? PromptRuleSize : QuoteRuleSize,
+                    Space = 6,
+                    Color = prompt ? ExportTheme.Colors.Brand : ExportTheme.Colors.Border
+                }));
+        }
+
+        // A code block keeps its own fill inside a band, marked by the rule alone: filling it with
+        // the band colour would erase the distinction between prose and code.
+        if (prompt && !IsCodeStyle(styleId))
+        {
+            properties.AppendChild(new Shading
+            {
+                Val = ShadingPatternValues.Clear,
+                Fill = ExportTheme.Colors.UserBand
+            });
+        }
 
         if (indentLevel > 0)
         {
@@ -291,6 +403,10 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
         return properties;
     }
+
+    private static bool IsCodeStyle(string styleId) =>
+        string.Equals(styleId, StyleIds.Code, StringComparison.Ordinal)
+        || string.Equals(styleId, StyleIds.CodeLanguage, StringComparison.Ordinal);
 
     private void AppendRuns(Paragraph paragraph, IReadOnlyList<ExportRun> runs, MainDocumentPart main)
     {
@@ -322,11 +438,17 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
     private static void AppendText(OpenXmlCompositeElement parent, ExportRun run, string? characterStyleId = null)
     {
+        // CT_RPr order: rStyle, rFonts, b, i.
         var properties = new RunProperties();
 
         if (characterStyleId is not null)
         {
             properties.AppendChild(new RunStyle { Val = characterStyleId });
+        }
+
+        if (run.Styles.HasFlag(ExportRunStyles.Code))
+        {
+            properties.AppendChild(Monospace());
         }
 
         if (run.Styles.HasFlag(ExportRunStyles.Bold))
@@ -337,11 +459,6 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         if (run.Styles.HasFlag(ExportRunStyles.Italic))
         {
             properties.AppendChild(new Italic());
-        }
-
-        if (run.Styles.HasFlag(ExportRunStyles.Code))
-        {
-            properties.AppendChild(Monospace());
         }
 
         // A hard break inside a run is a line break in the source, and Word needs the element rather
@@ -363,40 +480,83 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     }
 
     private static RunFonts Monospace() =>
-        new() { Ascii = MonospaceFont, HighAnsi = MonospaceFont };
+        new() { Ascii = ExportTheme.Fonts.WordMono, HighAnsi = ExportTheme.Fonts.WordMono };
+
+    private static int HalfPoints(double points) =>
+        (int)Math.Round(points * 2, MidpointRounding.AwayFromZero);
 
     private static Styles BuildStyles()
     {
         var styles = new Styles();
 
-        styles.AppendChild(ParagraphStyle(StyleIds.Normal, "Normal", null, spaceAfterTwips: 120));
-        styles.AppendChild(ParagraphStyle(StyleIds.Title, "Title", StyleIds.Normal, spaceAfterTwips: 240, sizeHalfPoints: 40, bold: true));
-        styles.AppendChild(ParagraphStyle(StyleIds.Subtitle, "Subtitle", StyleIds.Normal, spaceAfterTwips: 360, sizeHalfPoints: 18, color: "5A6E82"));
-        styles.AppendChild(ParagraphStyle(StyleIds.MessageLabel, "Message Label", StyleIds.Normal, spaceBeforeTwips: 360, spaceAfterTwips: 120, sizeHalfPoints: 22, bold: true, color: "14324F"));
+        // Every other style is based on Normal, so naming the face, the size and the ink here is what
+        // puts them on the whole document.
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.Normal, "Normal", null,
+            spaceAfterTwips: 120,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.Body),
+            color: ExportTheme.Colors.Text,
+            fontName: ExportTheme.Fonts.WordSans));
 
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.Title, "Title", StyleIds.Normal,
+            spaceAfterTwips: 60,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.Title),
+            bold: true,
+            color: ExportTheme.Colors.Brand));
+
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.Subtitle, "Subtitle", StyleIds.Normal,
+            spaceAfterTwips: 360,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.Subtitle),
+            color: ExportTheme.Colors.Muted));
+
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.MessageLabel, "Message Label", StyleIds.Normal,
+            spaceBeforeTwips: 360, spaceAfterTwips: 120,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.RoleLabel),
+            bold: true,
+            color: ExportTheme.Colors.Brand));
 
         // Six levels because the mapper clamps markdown headings to six; a document that names
         // Heading7 gets Word's default rather than nothing, but it can never be asked for.
-        var headingSizes = new[] { 32, 28, 26, 24, 22, 22 };
         for (var level = 1; level <= 6; level++)
         {
             styles.AppendChild(ParagraphStyle(
                 $"Heading{level}", $"heading {level}", StyleIds.Normal,
                 spaceBeforeTwips: 240, spaceAfterTwips: 120,
-                sizeHalfPoints: headingSizes[level - 1], bold: true));
+                sizeHalfPoints: HalfPoints(ExportTheme.Sizes.Heading(level)),
+                bold: true,
+                color: ExportTheme.Colors.Brand));
         }
 
-        styles.AppendChild(ParagraphStyle(StyleIds.ListParagraph, "List Paragraph", StyleIds.Normal, spaceAfterTwips: 60));
-        styles.AppendChild(ParagraphStyle(StyleIds.TableCellText, "Table Cell Text", StyleIds.Normal, spaceAfterTwips: 0));
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.ListParagraph, "List Paragraph", StyleIds.Normal, spaceAfterTwips: 60));
+
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.TableCellText, "Table Cell Text", StyleIds.Normal,
+            spaceAfterTwips: 0,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.TableCell)));
+
+        styles.AppendChild(ParagraphStyle(
+            StyleIds.CodeLanguage, "Code Language", StyleIds.Normal,
+            spaceBeforeTwips: 120, spaceAfterTwips: 0,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.CodeLanguage),
+            color: ExportTheme.Colors.Muted,
+            fontName: ExportTheme.Fonts.WordMono,
+            shadingFill: ExportTheme.Colors.SurfaceAlt));
 
         styles.AppendChild(ParagraphStyle(
             StyleIds.Code, "Code Block", StyleIds.Normal,
-            spaceAfterTwips: 0, sizeHalfPoints: 18, monospace: true, shadingFill: "F3F5F7"));
+            spaceAfterTwips: 0,
+            sizeHalfPoints: HalfPoints(ExportTheme.Sizes.Code),
+            fontName: ExportTheme.Fonts.WordMono,
+            shadingFill: ExportTheme.Colors.SurfaceAlt));
 
         styles.AppendChild(new Style(
             new StyleName { Val = "Hyperlink" },
             new StyleRunProperties(
-                new W.Color { Val = "0B5FA5" },
+                new W.Color { Val = ExportTheme.Colors.Link },
                 new Underline { Val = UnderlineValues.Single }))
         {
             Type = StyleValues.Character,
@@ -417,8 +577,8 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     /// </summary>
     /// <remarks>
     /// The order is not cosmetic and not the SDK's business to fix: <c>CT_PPrBase</c> puts <c>shd</c>
-    /// before <c>spacing</c>, and <c>CT_RPr</c> puts <c>rFonts</c>, <c>b</c>, <c>i</c>, <c>color</c>
-    /// and <c>sz</c> in that sequence. Appending them in a different one produces a package this SDK
+    /// before <c>spacing</c>, and <c>CT_RPr</c> puts <c>rFonts</c>, <c>b</c>, <c>color</c> and
+    /// <c>sz</c> in that sequence. Appending them in a different one produces a package this SDK
     /// reads back happily and Word refuses to open, which is why the styles are assembled here rather
     /// than mutated by their callers afterwards.
     /// </remarks>
@@ -431,7 +591,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         int? sizeHalfPoints = null,
         bool bold = false,
         string? color = null,
-        bool monospace = false,
+        string? fontName = null,
         string? shadingFill = null)
     {
         var paragraphProperties = new StyleParagraphProperties();
@@ -449,9 +609,9 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
         var runProperties = new StyleRunProperties();
 
-        if (monospace)
+        if (fontName is not null)
         {
-            runProperties.AppendChild(Monospace());
+            runProperties.AppendChild(new RunFonts { Ascii = fontName, HighAnsi = fontName });
         }
 
         if (bold)
@@ -536,6 +696,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         public const string Subtitle = "ExportSubtitle";
         public const string MessageLabel = "ExportMessageLabel";
         public const string Code = "ExportCode";
+        public const string CodeLanguage = "ExportCodeLanguage";
         public const string ListParagraph = "ListParagraph";
         public const string TableCellText = "ExportTableCell";
         public const string TableGrid = "ExportTableGrid";

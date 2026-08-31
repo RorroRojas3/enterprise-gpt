@@ -1,8 +1,8 @@
 <!--
   `stayOpen`, because the panel has to survive the click that starts the download: the
-  chosen item shows its ring and the other two dim, and a menu that closed on activation
-  would take all three off screen (frame `2f`). Escape, Tab, an outside press and a scroll
-  still dismiss it — it is not modal.
+  chosen item shows its ring and the rest dim, and a menu that closed on activation would
+  take all of them off screen. Escape, Tab, an outside press and a scroll still dismiss
+  it — it is not modal.
 
   `hint` is the reason the trigger is unavailable, and null when it is not: the tooltip is
   visual only, and the same sentence is folded into `label` for assistive technology.
@@ -25,9 +25,9 @@
       focus, which strands the panel's roving focus and its Escape handling. `onChoose`
       re-checks, so the click is a guarded no-op rather than a hole.
 
-      `aria-busy` on the one that is working and `aria-disabled` on the two that are not:
-      the busy row is deliberately undimmed, and announcing it as unavailable would
-      contradict both the pixels and the fact that it is the row the reader just chose.
+      `aria-busy` on the one that is working and `aria-disabled` on the rest: the busy row
+      is deliberately undimmed, and announcing it as unavailable would contradict both the
+      pixels and the fact that it is the row the reader just chose.
 
       `aria-describedby` is what puts the footer note on each item. The note is not a
       `menuitem` — it is a caveat, not an action — and a screen reader in menu mode visits
@@ -57,8 +57,8 @@
   }
 
   <!--
-    Not an `appMenuItem`: it is a note, not an action, so it must not become a fourth stop
-    in the panel's roving focus. US-407's stopped card is the thing it is warning about.
+    Not an `appMenuItem`: it is a note, not an action, so it must not become another stop
+    in the panel's roving focus. The stopped, unsaved answer card is what it warns about.
   -->
   <p class="download-menu__note" [id]="noteId">
     The stopped, unsaved answer on screen won’t be included.

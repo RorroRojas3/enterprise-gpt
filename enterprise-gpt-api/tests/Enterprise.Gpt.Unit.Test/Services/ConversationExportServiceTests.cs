@@ -29,7 +29,7 @@ public sealed class ConversationExportServiceTests : IDisposable
     {
         _tokenService.GetOid().Returns(KnownIds.SeedUserId);
         _service = CreateService(
-            new HtmlExportRenderer(),
+            new HtmlExportRenderer(new MarkdownBlockMapper()),
             new JsonExportRenderer(),
             new MarkdownExportRenderer(),
             new WordExportRenderer(new MarkdownBlockMapper()));
@@ -51,14 +51,15 @@ public sealed class ConversationExportServiceTests : IDisposable
             new MutableTimeProvider { UtcNow = ExportedAt });
     }
 
-    private async Task<Conversation> AddConversationAsync(Guid? userId = null, DateTimeOffset? deactivated = null)
+    private async Task<Conversation> AddConversationAsync(
+        Guid? userId = null, DateTimeOffset? deactivated = null, string name = "Planning notes")
     {
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
         {
             Id = Guid.NewGuid(),
             UserId = userId ?? KnownIds.SeedUserId,
-            Name = "Planning notes",
+            Name = name,
             DateCreated = date,
             DateModified = date,
             DateDeactivated = deactivated
@@ -102,7 +103,7 @@ public sealed class ConversationExportServiceTests : IDisposable
     private static string Text(ConversationExport export) => Encoding.UTF8.GetString(export.Content);
 
     [Fact]
-    public async Task ExportConversationAsync_Html_AssemblesTheStoredHtmlInOrder()
+    public async Task ExportConversationAsync_Html_RendersEachMessageUnderItsLabelInOrder()
     {
         var conversation = await AddConversationAsync();
         SetUpTranscript(
@@ -116,6 +117,8 @@ public sealed class ConversationExportServiceTests : IDisposable
         var content = Text(export);
 
         Assert.StartsWith("text/html", export.ContentType, StringComparison.Ordinal);
+        Assert.Contains("message--user", content, StringComparison.Ordinal);
+        Assert.Contains("message--assistant", content, StringComparison.Ordinal);
         Assert.Contains("<p>Question?</p>", content, StringComparison.Ordinal);
         Assert.Contains("<p>Answer.</p>", content, StringComparison.Ordinal);
         Assert.True(
@@ -126,8 +129,31 @@ public sealed class ConversationExportServiceTests : IDisposable
         Assert.DoesNotContain("System prompt.", content, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The stored rendering is not read at all any more, so a message written before server-side
+    /// rendering existed has to export exactly as one written after it.
+    /// </summary>
     [Fact]
-    public async Task ExportConversationAsync_MessageWithNoStoredHtml_EscapesItsPlainText()
+    public async Task ExportConversationAsync_Html_IgnoresTheStoredRendering()
+    {
+        var withHtml = await AddConversationAsync();
+        SetUpTranscript(withHtml, Message(withHtml, ChatRoles.User, "**Loud** and clear.", "<p>ignored</p>", 1));
+
+        var withoutHtml = await AddConversationAsync();
+        SetUpTranscript(withoutHtml, Message(withoutHtml, ChatRoles.User, "**Loud** and clear.", null, 1));
+
+        var first = Text(await _service.ExportConversationAsync(
+            withHtml.Id, "html", TestContext.Current.CancellationToken));
+        var second = Text(await _service.ExportConversationAsync(
+            withoutHtml.Id, "html", TestContext.Current.CancellationToken));
+
+        Assert.Contains("<strong>Loud</strong> and clear.", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("ignored", first, StringComparison.Ordinal);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public async Task ExportConversationAsync_Html_EscapesTextThatLooksLikeMarkup()
     {
         var conversation = await AddConversationAsync();
         SetUpTranscript(conversation, Message(conversation, ChatRoles.User, "1 < 2 & <b>bold</b>", null, 1));
@@ -138,6 +164,49 @@ public sealed class ConversationExportServiceTests : IDisposable
 
         Assert.Contains("1 &lt; 2 &amp; &lt;b&gt;bold&lt;/b&gt;", content, StringComparison.Ordinal);
         Assert.DoesNotContain("<b>bold</b>", content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Substitution is one pass, so a value spliced in is never scanned again.
+    /// </summary>
+    /// <remarks>
+    /// HTML-encoding leaves a placeholder untouched — it holds no encodable character — so a name
+    /// like this reaching a second <c>Replace</c> would splice the whole transcript into the
+    /// document's own title.
+    /// </remarks>
+    [Theory]
+    [InlineData("{{MESSAGES}}")]
+    [InlineData("{{DATE}}")]
+    [InlineData("{{THEME}}")]
+    public async Task ExportConversationAsync_NameLooksLikeAPlaceholder_IsNotSubstituted(string name)
+    {
+        var conversation = await AddConversationAsync(name: name);
+        SetUpTranscript(conversation, Message(conversation, ChatRoles.User, "Question?", null, 1));
+
+        var export = await _service.ExportConversationAsync(
+            conversation.Id, "html", TestContext.Current.CancellationToken);
+        var content = Text(export);
+
+        Assert.Contains($"<title>{name}</title>", content, StringComparison.Ordinal);
+        Assert.Equal(1, content.Split("Question?").Length - 1);
+    }
+
+    /// <summary>
+    /// Every value the template resolves comes from <see cref="ExportTheme"/>, and the block that
+    /// supplies them is spliced in like any other placeholder.
+    /// </summary>
+    [Fact]
+    public async Task ExportConversationAsync_Html_ResolvesTheThemePlaceholder()
+    {
+        var conversation = await AddConversationAsync();
+        SetUpTranscript(conversation, Message(conversation, ChatRoles.User, "Question?", null, 1));
+
+        var export = await _service.ExportConversationAsync(
+            conversation.Id, "html", TestContext.Current.CancellationToken);
+        var content = Text(export);
+
+        Assert.DoesNotContain("{{THEME}}", content, StringComparison.Ordinal);
+        Assert.Contains($"--brand: #{ExportTheme.Colors.Brand};", content, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -270,7 +339,12 @@ public sealed class ConversationExportServiceTests : IDisposable
                 """
                 # Heading
 
-                Prose with **bold** and `code`.
+                Prose with **bold** and `code`, and a table inside the prompt, whose cells
+                carry the band's own shading.
+
+                | need | priority |
+                | --- | --- |
+                | one | high |
                 """,
                 null,
                 1),
@@ -293,6 +367,10 @@ public sealed class ConversationExportServiceTests : IDisposable
                 | a | b |
                 | --- | --- |
                 | 1 | 2 |
+
+                > | quoted | table |
+                > | --- | --- |
+                > | 3 | 4 |
 
                 ---
 

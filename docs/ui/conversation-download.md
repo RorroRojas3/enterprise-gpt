@@ -2,13 +2,13 @@
 
 How the rebuilt Angular client at `enterprise-gpt-ui/` turns a conversation into a file the reader can save: one menu behind two triggers, a store that treats the export response as bytes rather than a link, an object URL released on a delay instead of immediately, and an outcome the store hands out only once per instance even though two instances can be mounted at the same time.
 
-Audience: a developer wiring the download control into a third surface, extending the store to a fourth format, or debugging a download that silently does nothing. Read [Conversation Export](../conversations/conversation-export.md) first for the API side — the renderer registry, the block model, and why PDF is the one format a deployment can genuinely not have — and [File Attachments §6](file-attachments.md#6-download-us-804) for `DocumentDownloadStore`, this feature's closest precedent and the store this one is shaped after, with one transport decision reversed (§1).
+Audience: a developer wiring the download control into a third surface, extending the store to a fifth format, or debugging a download that silently does nothing. Read [Conversation Export](../conversations/conversation-export.md) first for the API side — the renderer registry, the block model, and why PDF and HTML each carry their own prerequisite a deployment can genuinely lack (PDF a usable font, HTML its template file) beside the deliberate withdrawal `Export:DisabledFormats` allows for any format — and [File Attachments §6](file-attachments.md#6-download-us-804) for `DocumentDownloadStore`, this feature's closest precedent and the store this one is shaped after, with one transport decision reversed (§1).
 
 Companion to [the rebuild PRD](../prd/enterprise-ui-rebuild.md#us-1502-download-a-conversation), the authority for US-1502's acceptance criteria and frame `2f`.
 
 ## 1. Overview
 
-One story, one control: **US-1502** puts a Download button in the composer's control row and in the conversation header, both opening the same menu — Markdown (`.md`), Word (`.docx`), PDF — behind whichever trigger the reader used.
+One story, one control: **US-1502** puts a Download button in the composer's control row and in the conversation header, both opening the same menu — Markdown (`.md`), Word (`.docx`), PDF, HTML — behind whichever trigger the reader used.
 
 Seven decisions shape everything here, and each looks removable until you know what it prevents:
 
@@ -91,7 +91,7 @@ try {
 
 Three pieces work together, and each exists because of what the others cannot do on their own:
 
-- **`skipRetry()`** builds an `HttpContext` carrying a token the retry interceptor checks before it retries any `GET`. Without it, an application-typed 503 — "this deployment has no PDF renderer" — would be retried three times with jittered backoff as if it were a transient gateway failure, because the interceptor cannot classify a `Blob` error body and treats it the same as any other unclassified 5xx.
+- **`skipRetry()`** builds an `HttpContext` carrying a token the retry interceptor checks before it retries any `GET`. Without it, an application-typed 503 — "this deployment has no PDF renderer," or no HTML renderer, or any format withdrawn by `Export:DisabledFormats` — would be retried three times with jittered backoff as if it were a transient gateway failure, because the interceptor cannot classify a `Blob` error body and treats it the same as any other unclassified 5xx.
 - **`toAppErrorFromBlobError`** is what recovers the typed arm the interceptor could not classify. `HttpClient` parses an error body only when `responseType: 'json'`; on this request the failed response's `error` property is an unparsed `Blob`. The function checks for exactly that shape, reads the blob's text, and feeds it through the same `toAppErrorFromResponse` path the raw-`fetch` streaming code uses — so `export-renderer-not-configured`, `resource-not-found` and every other application problem type read identically whether the failing request went through `HttpClient` or `fetch`.
 - **The resulting `AppError`** is fed to `ToastStore.fromError`, which raises an error toast naming the `traceId` — US-1502's fourth acceptance criterion. `retry-policy.ts`'s `AUTH_DECISIONS` table maps `export-renderer-not-configured` to `'passthrough'`: a 503 with an application type never triggers the app's 401-only token-refresh path, matching every other deterministic-deployment-state 503 in the app.
 
@@ -117,16 +117,16 @@ effect(() => {
 
 Two guards matter here. **`seq` is what lets each instance react exactly once** to a settle that both instances observe — the outcome record is *replaced*, not appended to a queue, so without a per-instance high-water mark the second instance to run its effect would see an outcome it had already handled and close a panel that was never open. **`outcome.conversationId === this.conversationId()`** is what keeps one instance from acting on the other's result at all — relevant once routes change mid-export, though the store's own `pending` state already prevents two conversations exporting at once today.
 
-`exportInFlight` — `this.exports.pending() !== null` — is deliberately **not** scoped to this instance's conversation: the store allows only one export across the whole app, so if a PDF for a different conversation is still rendering, this menu's three items dim too rather than looking live while the store would silently drop a second request.
+`exportInFlight` — `this.exports.pending() !== null` — is deliberately **not** scoped to this instance's conversation: the store allows only one export across the whole app, so if a PDF for a different conversation is still rendering, every item in this menu dims too rather than looking live while the store would silently drop a second request.
 
 ## 7. The menu: busy, dimmed, and the footer note
 
-`ConversationDownloadMenu` renders three `MenuItem`s from `EXPORT_FORMATS`, each carrying its own file-type glyph (`bi-filetype-md`, `bi-file-earmark-word`, `bi-file-earmark-pdf` — all already in the sprite). While one is preparing:
+`ConversationDownloadMenu` renders four `MenuItem`s from `EXPORT_FORMATS`, each carrying its own file-type glyph (`bi-filetype-md`, `bi-file-earmark-word`, `bi-file-earmark-pdf`, `bi-filetype-html` — all in the sprite). While one is preparing:
 
 - The chosen item shows a spinning ring (the shared `spin` keyframe, so `_motion.scss`'s reduced-motion block covers it automatically) and the label changes to "Preparing `<format>`…".
-- The other two dim, via `[class.download-menu__item--dimmed]`, and carry `aria-disabled="true"` — never the native `disabled` attribute, because a natively disabled item cannot take focus, which would strand the panel's own roving-focus and Escape handling. `onChoose` re-checks `exportInFlight()` regardless, so a click on a dimmed item is a guarded no-op rather than a hole the attribute alone would leave.
-- `[stayOpen]="true"` on the underlying `Menu` keeps the panel on screen through the click that starts the download — a menu that closed on activation, as `Menu` normally does, would take the busy state and the dimmed items off screen with it, which is the opposite of frame `2f`.
-- A footer note — "The stopped, unsaved answer on screen won't be included." — sits below the three items, tied to every item through `aria-describedby` rather than being a fourth `menuitem`, because a screen reader in menu mode visits only items, and this is a caveat rather than an action.
+- The rest dim, via `[class.download-menu__item--dimmed]`, and carry `aria-disabled="true"` — never the native `disabled` attribute, because a natively disabled item cannot take focus, which would strand the panel's own roving-focus and Escape handling. `onChoose` re-checks `exportInFlight()` regardless, so a click on a dimmed item is a guarded no-op rather than a hole the attribute alone would leave.
+- `[stayOpen]="true"` on the underlying `Menu` keeps the panel on screen through the click that starts the download — a menu that closed on activation, as `Menu` normally does, would take the busy state and the dimmed items off screen with it.
+- A footer note — "The stopped, unsaved answer on screen won't be included." — sits below the four items, tied to every item through `aria-describedby` rather than being a fifth `menuitem`, because a screen reader in menu mode visits only items, and this is a caveat rather than an action.
 
 The trigger itself carries `[hint]` — `Menu`'s new tooltip input (§1, §9.2) — set to a reason only while `disabled()` is true, and the same sentence is folded into the trigger's accessible name via `triggerLabel()` so the reason reaches assistive technology even though the tooltip itself is visual only.
 
@@ -168,17 +168,17 @@ Two changes to the shared `Menu` landed with this feature, both because a disabl
 
 ## 11. Bundle cost
 
-The initial bundle grows **0.91 kB**, from the 670.68 kB baseline to **671.59 kB raw / 168.92 kB transfer**, against the unchanged 675 kB warn / 720 kB error budget — about 3.4 kB of headroom remains. The growth is on the initial graph for a specific reason: the new `core/errors/` arms (`ExportRendererNotConfiguredAppError` and its entries across `app-error.ts`, `problem-types.ts`, `retry-policy.ts`) and `EXPORT_FORMAT_LABELS` are reached from code that is already initial, since error normalization is app-wide. `ConversationDownloadMenu` and `ConversationExportStore` themselves are not new weight on the initial graph — they ride the shared, already-lazy composer chunk that the chat route pulls in. This story does not own the bundle budget and does not re-baseline it.
+The initial bundle measures **674.19 kB raw / 170.00 kB transfer** (styles 64.40 kB) against the **680 kB warn / 720 kB error** budget — the warn line having since moved 675 → 680 kB for unrelated work. That figure came in marginally *below* the 674.42 kB baseline recorded before HTML joined the menu, so this addition did not move the bundle and is not re-baselining it. The reason is structural, not incidental: `EXPORT_FORMATS` gained one string and the glyph map one entry, both trivial, and `ConversationDownloadMenu` and `ConversationExportStore` were already riding the shared, already-lazy composer chunk the chat route pulls in — there was no new code on the initial graph for a fourth format to add weight to. The `core/errors/` arms this menu depends on (`ExportRendererNotConfiguredAppError` and its entries across `app-error.ts`, `problem-types.ts`, `retry-policy.ts`) and `EXPORT_FORMAT_LABELS` landed on the initial graph when PDF shipped, not with this change, since error normalization is app-wide and reached from code that was already initial. This story does not own the bundle budget and does not re-baseline it.
 
 ## 12. Testing
 
-**1830 tests pass** (up from 1788) and **38 browser accessibility audits pass** (up from 36 — the two new ones audit the download menu **open**, in both themes, because that is where its ARIA semantics actually live: a `role="menu"` whose children must all be `menuitem`, and the footer note deliberately is not one). `npm run lint`, `npm run format:check`, `npm run build` and `npm run check:contract` are all green.
+**2293 tests pass** and **80 browser accessibility audits pass**, current totals for the whole frontend suite rather than a delta owned by this page alone. `npm run lint`, `npm run format:check`, `npm run build` and `npm run check:contract` are all green.
 
-`conversation-download-menu.spec.ts` covers the busy/dimmed states, the stays-open-until-success behaviour, cross-conversation dimming, the disabled-with-reason trigger, and ignoring an outcome that belongs to a different conversation — the case §6 exists to prevent.
+`conversation-download-menu.spec.ts` covers the busy/dimmed states, the stays-open-until-success behaviour, cross-conversation dimming, the disabled-with-reason trigger, ignoring an outcome that belongs to a different conversation — the case §6 exists to prevent — and, since HTML joined the other three, that each of the four rows requests the wire token matching its own row.
 
 ## 13. Deliberately not here
 
-- **`html` and `json` are not offered.** Both remain on the API route unchanged ([Conversation Export §10](../conversations/conversation-export.md#10-known-limits)); this client's menu draws exactly the three formats frame `2f` draws.
+- **`json` alone is not offered.** It remains on the API route unchanged ([Conversation Export §10](../conversations/conversation-export.md#10-known-limits)); this client's menu draws the other four.
 - **No caching, no prefetch.** Every download is a fresh request; there is no reason to warm one before the reader asks for it, and the response is never kept around once handed to the browser (§3).
 - **No signed URL, ever, for this feature.** Unlike document downloads, there is no click-then-fetch-a-link step to add later — the design in §1 is not a stopgap.
 

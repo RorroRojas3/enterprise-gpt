@@ -88,7 +88,7 @@ public sealed class ExportRendererRegistrationTests
     }
 
     /// <summary>
-    /// The condition US-1501's fifth criterion exists for: a deployment that can run everything else
+    /// The condition the typed 503 exists for: a deployment that can run everything else
     /// but cannot draw a glyph.
     /// </summary>
     [Fact]

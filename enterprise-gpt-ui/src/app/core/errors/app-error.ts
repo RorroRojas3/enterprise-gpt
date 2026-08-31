@@ -105,7 +105,7 @@ export interface StorageNotConfiguredAppError extends AppErrorBase {
  */
 export interface ExportRendererNotConfiguredAppError extends AppErrorBase {
   readonly kind: 'export-renderer-not-configured';
-  /** The wire token: `md`, `docx` or `pdf`. Empty when the server sent none. */
+  /** The `?format=` token the request used. Empty when the server sent none. */
   readonly format: string;
 }
 
