@@ -13,8 +13,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Enterprise.Gpt.Repository.Migrations
 {
     [DbContext(typeof(EnterpriseGptDbContext))]
-    [Migration("20260828195328_AddConversationUsageToolCallModelIndex")]
-    partial class AddConversationUsageToolCallModelIndex
+    [Migration("20260831024654_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1059,6 +1059,17 @@ namespace Enterprise.Gpt.Repository.Migrations
                             IsDefault = true,
                             ModifiedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
                             Name = "Upload File"
+                        },
+                        new
+                        {
+                            Id = new Guid("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f"),
+                            CreatedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
+                            DateCreated = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DateModified = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Description = "Ask the assistant to create, edit, compare and convert documents.",
+                            IsDefault = false,
+                            ModifiedById = new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"),
+                            Name = "Generate Files"
                         });
                 });
 
@@ -1567,6 +1578,74 @@ namespace Enterprise.Gpt.Repository.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Enterprise.Gpt.Entity.UserMcpCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("id");
+
+                    b.Property<string>("ApiKeyHint")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.Property<string>("Ciphertext")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("createdBy");
+
+                    b.Property<DateTimeOffset>("DateCreated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateCreated");
+
+                    b.Property<DateTimeOffset?>("DateDeactivated")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateDeactivated");
+
+                    b.Property<DateTimeOffset>("DateModified")
+                        .HasColumnType("datetimeoffset")
+                        .HasJsonPropertyName("dateModified");
+
+                    b.Property<DateTimeOffset?>("DateRejected")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("McpServerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ModifiedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasJsonPropertyName("modifiedBy");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasJsonPropertyName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("McpServerId");
+
+                    b.HasIndex("ModifiedById");
+
+                    b.HasIndex("UserId", "McpServerId")
+                        .IsUnique()
+                        .HasFilter("[DateDeactivated] IS NULL");
+
+                    b.ToTable("UserMcpCredential", "Core");
+                });
+
             modelBuilder.Entity("Enterprise.Gpt.Entity.UserPermission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1620,6 +1699,25 @@ namespace Enterprise.Gpt.Repository.Migrations
                         .HasFilter("[DateDeactivated] IS NULL");
 
                     b.ToTable("UserPermission", "Core");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
                 });
 
             modelBuilder.Entity("Enterprise.Gpt.Entity.Conversation", b =>
@@ -2010,6 +2108,41 @@ namespace Enterprise.Gpt.Repository.Migrations
                     b.Navigation("ProjectDocument");
                 });
 
+            modelBuilder.Entity("Enterprise.Gpt.Entity.UserMcpCredential", b =>
+                {
+                    b.HasOne("Enterprise.Gpt.Entity.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Enterprise.Gpt.Entity.McpServer", "McpServer")
+                        .WithMany("UserCredentials")
+                        .HasForeignKey("McpServerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Enterprise.Gpt.Entity.User", "ModifiedBy")
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Enterprise.Gpt.Entity.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("McpServer");
+
+                    b.Navigation("ModifiedBy");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Enterprise.Gpt.Entity.UserPermission", b =>
                 {
                     b.HasOne("Enterprise.Gpt.Entity.User", "CreatedBy")
@@ -2083,6 +2216,8 @@ namespace Enterprise.Gpt.Repository.Migrations
             modelBuilder.Entity("Enterprise.Gpt.Entity.McpServer", b =>
                 {
                     b.Navigation("Permissions");
+
+                    b.Navigation("UserCredentials");
                 });
 
             modelBuilder.Entity("Enterprise.Gpt.Entity.Permission", b =>

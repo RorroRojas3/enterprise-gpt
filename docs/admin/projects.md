@@ -117,6 +117,16 @@ sidebar favourites and the composer chip. The detail route provides three stores
 `ProjectStore`, `ProjectDocumentsStore`, `ProjectConversationsStore` — and its instructions tab
 carries a `canDeactivate` guard for unsaved edits.
 
+**A file attached through the composer is not a project document.** The detail screen's composer
+exists to start a conversation, so a file dropped there travels with that conversation and becomes
+one of *its* documents once the send creates it — not one of the project's. Only the Files tab
+writes to the project's own document set. The two surfaces run on two separate `UploadStore`
+instances for exactly this reason (see [../frontend/state.md](../frontend/state.md#the-stores)):
+the project-bound one backs the Files tab, and the composer gets its own, unbound one, so nothing it
+attaches is uploaded until a conversation exists to own it. The files then reach that conversation
+through `PendingAttachmentsStore`, alongside the prompt itself, because the screen that created the
+conversation navigates away before ingestion can start.
+
 `ProjectConversationsStore` lives in `core/` rather than the feature, so `features/shell` can reach
 it without violating the layer direction.
 

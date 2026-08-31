@@ -22,6 +22,7 @@ import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { Attachment, AttachmentRemoveAction, AttachmentState } from '@domain/documents/attachment';
 import { DocumentDownloadStore } from './document-download-store';
 import { DocumentUploadClient } from './document-upload-client';
+import { UploadCancelClient } from './upload-cancel-client';
 import { describeUploadRejection } from './upload-rejection';
 import { UploadStatusClient } from './upload-status-client';
 import { SupportedExtensionsStore, extensionOf } from './supported-extensions-store';
@@ -41,11 +42,26 @@ export interface UploadItem {
   readonly jobId: string | null;
   /** Present once the job has succeeded; what US-804 downloads without a lookup. */
   readonly documentId: string | null;
+  /**
+   * Whether this file has been handed to the transport yet.
+   *
+   * Distinct from its state: a deferred file sits in `uploading` with nothing in flight,
+   * and treating that as work in progress would hold Send against a request nobody made.
+   */
+  readonly started: boolean;
 }
 
 /** One chip, with every decision the template would otherwise have to ask for. */
 export interface AttachmentRow extends Attachment {
   readonly removeAction: AttachmentRemoveAction;
+  /**
+   * Whether a request is genuinely on its way for this file.
+   *
+   * Not the same as a non-terminal state: a file attached before its parent exists sits
+   * in `uploading` with nothing in flight, and is the user's to remove. Only a busy row
+   * has something for a Stop control to call off.
+   */
+  readonly busy: boolean;
   readonly downloadable: boolean;
   readonly downloading: boolean;
 }
@@ -67,6 +83,10 @@ const initialState: UploadState = { target: null, items: [] };
  * freeing a slot at the 202: ingestion is the *longer* phase, so releasing early would
  * cap the transfers at three and then let fifty poll loops accumulate behind them,
  * which is the same saturation the cap exists to prevent.
+ *
+ * A cancelled file is the one exception: its slot is freed the moment the cancel is sent,
+ * without waiting for the server to confirm, because work the user has already retracted
+ * must not stall chips they can still see.
  */
 const MAX_CONCURRENT_UPLOADS = 3;
 
@@ -81,13 +101,13 @@ const MAX_CONCURRENT_UPLOADS = 3;
  *
  * Three decisions shape it.
  *
- * **Uploads start as early as they can, and Send waits for them.** A document is only
- * reachable by the model once ingestion has written its chunks, and `document_search`
- * is attached to a turn based on what the conversation already holds — so a file posted
- * at the same moment the stream opens is invisible to the very turn that asked about
- * it. Attaching to an open conversation therefore uploads immediately, and a brand-new
- * conversation defers only until US-401's create hands over an id. `TurnStore` gates
- * the stream on {@link settled$}.
+ * **Send is what posts a composer's files, and then waits for them.** A document is only
+ * reachable by the model once ingestion has written its chunks, and `document_search` is
+ * attached to a turn based on what the conversation already holds — so a file posted at
+ * the same moment the stream opens is invisible to the very turn that asked about it.
+ * `TurnStore` therefore calls {@link startPending} before gating the stream on
+ * {@link settled$}. A file manager keeps the opposite default, where dropping a file is
+ * itself the instruction; see {@link deferUploadsUntilSend}.
  *
  * **The dependency runs one way: `TurnStore` injects this store, never the reverse.**
  * This store learns its target by being told, through {@link bindConversation}, from
@@ -105,6 +125,7 @@ export const UploadStore = signalStore(
     _client: inject(DocumentUploadClient),
     _status: inject(UploadStatusClient),
     _downloads: inject(DocumentDownloadStore),
+    _cancels: inject(UploadCancelClient),
     _extensions: inject(SupportedExtensionsStore),
     _toasts: inject(ToastStore),
     _signedOut$: injectSignedOut(),
@@ -120,6 +141,13 @@ export const UploadStore = signalStore(
     _sequence: { value: 0 },
     /** Fires whenever the last unsettled item settles. See {@link settled$}. */
     _settled$: new Subject<void>(),
+    /**
+     * Whether attaching a file is enough to upload it.
+     *
+     * True for a file manager, where dropping a file *is* the instruction. False for a
+     * composer, where the instruction is Send — see {@link deferUploadsUntilSend}.
+     */
+    _startsOnAttach: { value: true },
   })),
   withComputed((store) => ({
     /**
@@ -136,6 +164,7 @@ export const UploadStore = signalStore(
         // Once the document exists it is the conversation's, and no API detaches it,
         // so the control can only hide the chip from here on.
         removeAction: item.documentId === null ? 'cancel' : 'dismiss',
+        busy: isBusy(item),
         downloadable: item.documentId !== null,
         downloading: item.documentId !== null && store._downloads.isRowPending(item.documentId),
       })),
@@ -146,10 +175,8 @@ export const UploadStore = signalStore(
      * settled: it will not change again, and holding Send hostage to it would leave
      * the user with no way to send at all.
      */
-    isSettled: computed(() => store.items().every((item) => isTerminal(item.attachment.state))),
-    busyCount: computed(
-      () => store.items().filter((item) => !isTerminal(item.attachment.state)).length,
-    ),
+    isSettled: computed(() => store.items().every((item) => !isBusy(item))),
+    busyCount: computed(() => store.items().filter(isBusy).length),
   })),
   withComputed(({ items }) => ({
     /**
@@ -230,6 +257,40 @@ export const UploadStore = signalStore(
       store._waiting.delete(id);
     }
 
+    /**
+     * Calls off the job behind a cancelled file, when there is one to call off.
+     *
+     * Must run before the item is dropped: `items` is the only record of the job id, and
+     * the chip is what carries it.
+     */
+    function cancelJob(id: string): void {
+      const item = store.items().find((candidate) => candidate.attachment.id === id);
+      if (item === undefined || item.jobId === null) {
+        return;
+      }
+
+      // An allow-list, because the endpoint deletes the document of a job that already
+      // finished: only a file still on its way has anything to call off. `ready` is the
+      // case that makes a deny-list unsafe — its `documentId` can be null on the wire, and
+      // the chat screen retires ready chips on its own, so a miss here would delete an
+      // ingested document with no user action at all. `unknown` is excluded for the same
+      // reason: a failed status read may be hiding a success.
+      const { kind } = item.attachment.state;
+      if (item.documentId !== null || (kind !== 'uploading' && kind !== 'processing')) {
+        return;
+      }
+
+      store._cancels.cancel(item.jobId);
+    }
+
+    /**
+     * Drops every chip and the work behind it.
+     *
+     * Deliberately does **not** cancel. It is reached from a target change, from sign-out
+     * and from teardown — and none of those is a retraction: the files were attached to
+     * that parent on purpose, and leaving one conversation must not stop the ingestion
+     * the user started there.
+     */
     function clearAll(): void {
       for (const subscription of store._subscriptions.values()) {
         subscription.unsubscribe();
@@ -274,6 +335,7 @@ export const UploadStore = signalStore(
         return;
       }
 
+      patchState(store, markStarted(id));
       setState(id, { kind: 'uploading', percent: 0 });
       store._waiting.add(id);
       pump();
@@ -475,8 +537,15 @@ export const UploadStore = signalStore(
         return;
       }
 
+      if (store._startsOnAttach.value) {
+        drainPending();
+      }
+    }
+
+    /** Hands every file that has not been posted yet to the transport. */
+    function drainPending(): void {
       for (const item of store.items()) {
-        if (item.jobId === null && item.attachment.state.kind === 'uploading') {
+        if (!item.started && item.jobId === null && item.attachment.state.kind === 'uploading') {
           start(item.attachment.id);
         }
       }
@@ -541,10 +610,11 @@ export const UploadStore = signalStore(
               },
               jobId: null,
               documentId: null,
+              started: false,
             }),
           );
 
-          if (supported && store.target() !== null) {
+          if (supported && store._startsOnAttach.value && store.target() !== null) {
             start(id);
           }
         }
@@ -557,10 +627,51 @@ export const UploadStore = signalStore(
        * @param id The attachment id.
        */
       remove(id: string): void {
+        cancelJob(id);
         forget(id);
         patchState(store, drop(id));
         announceIfSettled();
         pump();
+      },
+
+      /**
+       * Cancels every file genuinely on its way, for the composer's Stop control.
+       *
+       * Two kinds of chip are deliberately left alone. A terminal one is not work in
+       * flight, and dropping it would take away a failure nobody has read yet; a
+       * *deferred* one — attached before its parent exists — has no request behind it
+       * either, and Stop was never offered for it, so discarding it would lose the
+       * user's file to a press aimed at something else.
+       */
+      cancelAll(): void {
+        for (const item of [...store.items()]) {
+          if (isBusy(item)) {
+            cancelJob(item.attachment.id);
+            forget(item.attachment.id);
+            patchState(store, drop(item.attachment.id));
+          }
+        }
+
+        announceIfSettled();
+        pump();
+      },
+
+      /**
+       * The bytes behind chips no server has taken yet, in the order they were attached.
+       *
+       * For the handoff out of a screen that is about to be destroyed. Mapped over
+       * `items` rather than read off `_files`, so the order is the one on screen and a
+       * chip already removed cannot travel.
+       */
+      pendingFiles(): readonly File[] {
+        // Only files nothing has been posted for. A started one may have a transfer in
+        // flight whose `jobId` has not landed yet, and handing that on would ingest it
+        // twice.
+        return store
+          .items()
+          .filter((item) => !item.started && item.documentId === null)
+          .map((item) => store._files.get(item.attachment.id))
+          .filter((file): file is File => file !== undefined);
       },
 
       /**
@@ -570,6 +681,28 @@ export const UploadStore = signalStore(
        */
       retry(id: string): void {
         retryUpload(id);
+      },
+
+      /**
+       * Holds every attached file back until {@link startPending} asks for it.
+       *
+       * What a composer wants: attaching states an intention, and Send is the instruction.
+       * Without it a conversation that already exists uploads on the drop, so the first
+       * turn of a conversation would wait for Send and every later one would not.
+       */
+      deferUploadsUntilSend(): void {
+        store._startsOnAttach.value = false;
+      },
+
+      /**
+       * Starts whatever is still waiting, once its parent exists.
+       *
+       * Called by the send path rather than by the composer, so a turn cannot open its
+       * stream before the files it is about have been posted — {@link settled$} then
+       * holds it until they finish.
+       */
+      startPending(): void {
+        drainPending();
       },
 
       /**
@@ -679,6 +812,12 @@ function setJobId(id: string, jobId: string | null): PartialStateUpdater<UploadS
   });
 }
 
+function markStarted(id: string): PartialStateUpdater<UploadState> {
+  return ({ items }) => ({
+    items: items.map((item) => (item.attachment.id === id ? { ...item, started: true } : item)),
+  });
+}
+
 function setDocumentId(id: string, documentId: string | null): PartialStateUpdater<UploadState> {
   return ({ items }) => ({
     items: items.map((item) => (item.attachment.id === id ? { ...item, documentId } : item)),
@@ -694,6 +833,11 @@ function percentOf(items: readonly UploadItem[], id: string): number {
 
 function isTerminal(state: AttachmentState): boolean {
   return state.kind !== 'uploading' && state.kind !== 'processing';
+}
+
+/** Whether a request is actually on its way for this file. */
+function isBusy(item: UploadItem): boolean {
+  return item.started && !isTerminal(item.attachment.state);
 }
 
 /**

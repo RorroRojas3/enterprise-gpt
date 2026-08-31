@@ -32,6 +32,7 @@ import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client'
 import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { ConversationStore } from './conversation-store';
 import { TranscriptEntry, TurnStore } from './turn-store';
+import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
 import { UploadStore } from '@core/documents/upload-store';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
@@ -161,6 +162,48 @@ describe('TurnStore', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('attaches files handed over from the project screen, and waits for them', async () => {
+      setup();
+      const handed = new File(['x'], 'notes.txt', { type: 'text/plain' });
+      TestBed.inject(PendingAttachmentsStore).hold(CONVERSATION_ID, [handed]);
+
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      respondWithStream(streamingResponse());
+      await settle();
+
+      const uploads = TestBed.inject(UploadStore);
+      // Claimed inside the binding, not from an effect: the gate is evaluated in the
+      // same call stack, and an attach a pass later would find it already answered —
+      // opening the stream on a question about a file the model cannot see.
+      expect(uploads.attachments()).toHaveLength(1);
+      expect(uploads.attachments()[0]?.fileName).toBe('notes.txt');
+
+      store.send('What does this say?');
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      uploads.remove(uploads.attachments()[0]!.id);
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves files held for a different conversation alone', async () => {
+      setup();
+      const other = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
+      TestBed.inject(PendingAttachmentsStore).hold(other, [
+        new File(['x'], 'notes.txt', { type: 'text/plain' }),
+      ]);
+
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      await settle();
+
+      expect(TestBed.inject(UploadStore).attachments()).toHaveLength(0);
+    });
+
     it('costs a turn with no attachments nothing', async () => {
       setup();
       store.bindRoute(CONVERSATION_ID);
@@ -201,6 +244,30 @@ describe('TurnStore', () => {
       await settle();
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles cleanly when the composer stops the turn and cancels the uploads', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The order the composer's Stop uses. Cancelling first would settle the gate
+      // synchronously and release the turn into the stream before `stop()` ran, turning
+      // a clean pre-stream cancel into a stopped-turn card with the prompt gone.
+      store.stop();
+      TestBed.inject(UploadStore).cancelAll();
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.phase()).toBe('idle');
+      expect(store.composerSeed()?.text).toBe('What does this say?');
+      expect(TestBed.inject(UploadStore).attachments()).toHaveLength(0);
     });
 
     it('does not swallow the next send after a route change abandons the wait', async () => {

@@ -207,7 +207,6 @@ namespace Enterprise.Gpt.Service
         IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
         IValidator<UpdateConversationActionDto> updateSessionValidator,
         IValidator<SetMessageFeedbackActionDto> setMessageFeedbackValidator,
-        IOptions<WeatherToolOptions> weatherToolOptions,
         IDocumentSummaryService documentSummaryService,
         IUserGrantReader userGrantReader,
         IOptions<SummarizationOptions> summarizationOptions,
@@ -238,7 +237,6 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
         private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
         private readonly IValidator<SetMessageFeedbackActionDto> _setMessageFeedbackValidator = setMessageFeedbackValidator;
-        private readonly WeatherToolOptions _weatherToolOptions = weatherToolOptions.Value;
         private readonly IDocumentSummaryService _documentSummaryService = documentSummaryService;
         private readonly IUserGrantReader _userGrantReader = userGrantReader;
         private readonly SummarizationOptions _summarizationOptions = summarizationOptions.Value;
@@ -2525,25 +2523,6 @@ namespace Enterprise.Gpt.Service
 
                     instructions.Add(ConversationPrompts.BuildSheetQueryToolPrompt(
                         SheetQueryTool.ToolName, DocumentTool.ToolName, spreadsheetNames));
-                }
-
-                // A fabricated tool, off in every environment that has not asked for it. It exists so the
-                // activity timeline can be driven from a real turn — cards, sub-statuses, durations, and
-                // the failed state — without standing up an MCP server. It stands down on a model that
-                // cannot call tools for the same reason retrieval does: nothing about it is worth failing
-                // a turn over.
-                if (_weatherToolOptions.Enabled)
-                {
-                    if (model.IsToolEnabled)
-                    {
-                        tools.Add(WeatherTool.Create(_weatherToolOptions, _logger));
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            "The weather tool is enabled but model {ModelId} does not support tools; it is unavailable for this turn.",
-                            model.Id);
-                    }
                 }
 
                 // The same gate ladder document summarization climbs. A stood-down agent is not a

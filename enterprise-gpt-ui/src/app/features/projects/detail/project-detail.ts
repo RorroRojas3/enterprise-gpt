@@ -11,6 +11,7 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { ProjectDto } from '@domain/api/project';
 import { PROJECTS_ROUTE } from '@core/auth/auth-routes';
 import { provideComposerHost } from '@core/chat/composer-host';
+import { provideComposerUploads } from '@core/documents/composer-uploads';
 import { UploadStore } from '@core/documents/upload-store';
 import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { Composer } from '@shared/composer/composer';
@@ -55,10 +56,17 @@ import { ProjectStore } from './project-store';
     RouterOutlet,
     Skeleton,
   ],
-  // `UploadStore` is provided here rather than on the files panel, so a file dropped
-  // on the composer and a file dropped on the Files tab are the same set of chips — and
-  // so switching tabs mid-upload does not tear the transfer down.
-  providers: [UploadStore, ProjectComposerHost, provideComposerHost(ProjectComposerHost)],
+  // Two upload stores, because the two surfaces upload to different parents. The
+  // project-bound one is provided here rather than on the files panel so switching tabs
+  // mid-upload does not tear the transfer down; the composer gets its own, left unbound,
+  // because a file attached there belongs to the conversation the prompt is about to
+  // create — not to this project.
+  providers: [
+    UploadStore,
+    provideComposerUploads(),
+    ProjectComposerHost,
+    provideComposerHost(ProjectComposerHost),
+  ],
   templateUrl: './project-detail.html',
   styleUrl: './project-detail.scss',
 })
@@ -121,10 +129,9 @@ export class ProjectDetail {
     // right while the reader is standing on another tab (US-908).
     this._conversations.bindProject(this.projectId);
 
-    // Bound the moment the id is known. Unlike the chat composer's, this target is
-    // never absent — the screen only renders under a resolved `:projectId` — so a
-    // dropped file starts uploading immediately rather than waiting for a conversation
-    // to exist. Files added from either surface belong to the project.
+    // Bound the moment the id is known, so a file dropped on the Files tab starts
+    // uploading immediately. Only that store is bound: the composer's stays targetless,
+    // which is what defers its files until a conversation exists to own them.
     effect(() => {
       const projectId = this.projectId();
       untracked(() => this._uploads.bindProject(projectId));
@@ -136,8 +143,10 @@ export class ProjectDetail {
     // sit on screen twice.
     //
     // Here rather than on the files panel because `UploadStore` is provided here: a
-    // file dropped on the composer while the reader is on Instructions has to become a
-    // row too, and the tab strip's own count would otherwise go stale.
+    // file dropped on the Files tab while the reader is on Instructions has to become a
+    // row too, and the tab strip's own count would otherwise go stale. It reads the
+    // project-bound store only — the composer's lives under `COMPOSER_UPLOADS` and is
+    // never reached from here.
     effect(() => {
       const settled = this._uploads.attachments().filter((row) => row.state.kind === 'ready');
       if (settled.length === 0) {

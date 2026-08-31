@@ -48,7 +48,7 @@ startup.
 | `FileAgent` | [file-agent](../tools/file-agent.md) |
 | `Export`, `Export:Pdf` | [export](../conversations/export.md) |
 | `Tokenization` | [transcripts](../conversations/transcripts.md) |
-| `Reports`, `BackgroundJobs`, `Tools:Weather` | — |
+| `Reports`, `BackgroundJobs` | — |
 | `Mcp:Cache`, `Permissions:Cache` | [mcp-servers](../tools/mcp-servers.md), [auth](../architecture/auth-and-permissions.md) |
 | `RequestLogging`, `RequestLogging:Bodies`, `AzureMonitor` | [telemetry](../observability/telemetry.md) |
 

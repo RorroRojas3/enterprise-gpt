@@ -216,6 +216,31 @@ public sealed class DocumentEndpointsTests
     }
 
     [Fact]
+    public async Task DeactivateConversationDocumentAsync_OwnedDocument_ReturnsNoContent()
+    {
+        var conversationId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+
+        var result = await DocumentEndpoints.DeactivateConversationDocumentAsync(
+            conversationId, documentId, _documentService, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        await _documentService.Received(1).DeactivateConversationDocumentAsync(
+            conversationId, documentId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeactivateConversationDocumentAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
+    {
+        _documentService.DeactivateConversationDocumentAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Throws(new NotFoundException("Document with id 'x' was not found."));
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => DocumentEndpoints.DeactivateConversationDocumentAsync(
+                Guid.NewGuid(), Guid.NewGuid(), _documentService, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task GetProjectDocumentDownloadAsync_OwnedDocument_ReturnsTheLinkTheServiceIssued()
     {
         var projectId = Guid.NewGuid();
@@ -334,6 +359,8 @@ public sealed class DocumentEndpointsTests
     [InlineData(JobStatus.Persisting, "Processing")]
     [InlineData(JobStatus.Processed, "Succeeded")]
     [InlineData(JobStatus.Failed, "Failed")]
+    // Not Processing: a cancelled job never moves again, and the default would leave a client polling it.
+    [InlineData(JobStatus.Cancelled, "Failed")]
     public void GetJobStatus_EveryStage_MapsToTheCoarseStateOlderClientsUnderstand(JobStatus status, string expectedState)
     {
         _jobStatusStore.Get("job-1").Returns(Snapshot(status));
@@ -343,6 +370,39 @@ public sealed class DocumentEndpointsTests
         var payload = result.Value;
         Assert.NotNull(payload);
         Assert.Equal(expectedState, payload.State);
+    }
+
+    [Fact]
+    public void GetJobStatus_CancelledJob_NamesTheStageEvenThoughTheStateReadsFailed()
+    {
+        _jobStatusStore.Get("job-1").Returns(Snapshot(JobStatus.Cancelled, 60, "Cancelled"));
+
+        var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
+
+        var payload = result.Value;
+        Assert.NotNull(payload);
+        // The coarse vocabulary stays four values wide; the free-form stage is what tells the two apart.
+        Assert.Equal("Failed", payload.State);
+        Assert.Equal("Cancelled", payload.Status);
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_KnownJob_ReturnsNoContent()
+    {
+        var result = await DocumentEndpoints.CancelUploadAsync("job-1", _documentService, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        await _documentService.Received(1).CancelUploadAsync("job-1", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CancelUploadAsync_JobTheCallerCannotSee_PropagatesNotFound()
+    {
+        _documentService.CancelUploadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Throws(new NotFoundException("Upload job not found."));
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => DocumentEndpoints.CancelUploadAsync("job-1", _documentService, TestContext.Current.CancellationToken));
     }
 
     [Fact]

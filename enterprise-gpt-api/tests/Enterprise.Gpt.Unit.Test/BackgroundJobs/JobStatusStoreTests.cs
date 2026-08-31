@@ -9,6 +9,7 @@ namespace Enterprise.Gpt.Unit.Test.BackgroundJobs;
 public sealed class JobStatusStoreTests : IDisposable
 {
     private static readonly Guid _ownerId = Guid.NewGuid();
+    private static readonly JobTarget Target = new(JobTargetKind.Conversation, Guid.NewGuid());
 
     private readonly JobStatusStore _store = new(
         new ConfigurationBuilder().AddInMemoryCollection([]).Build(),
@@ -25,7 +26,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [Fact]
     public void Register_NewJob_RecordsQueuedAtZeroPercentForTheOwner()
     {
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
 
         var snapshot = _store.Get("job-1");
 
@@ -39,7 +40,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [Fact]
     public void Report_RecordsStageProgressMessageAndUnitCounts()
     {
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
 
         _store.Report("job-1", JobStatus.Embedding, 60, "Embedded 12 of 40 chunk(s)", 12, 40);
 
@@ -56,7 +57,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [Fact]
     public void Report_PreservesTheOwner()
     {
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
 
         _store.Report("job-1", JobStatus.Embedding, 60);
 
@@ -68,7 +69,7 @@ public sealed class JobStatusStoreTests : IDisposable
     {
         // Extraction heartbeats race with stage transitions, and a percentage that went backwards would
         // read to the user as the job restarting.
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
         _store.Report("job-1", JobStatus.Embedding, 70);
 
         _store.Report("job-1", JobStatus.Embedding, 40, "late heartbeat");
@@ -83,7 +84,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [Fact]
     public void Report_WithoutAMessage_KeepsThePreviousOne()
     {
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
         _store.Report("job-1", JobStatus.Extracting, 20, "Recognizing text");
 
         _store.Report("job-1", JobStatus.Extracting, 25);
@@ -94,7 +95,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [Fact]
     public void Report_WithoutUnitCounts_KeepsThePreviousOnes()
     {
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
         _store.Report("job-1", JobStatus.Embedding, 60, "Embedded 12 of 40 chunk(s)", 12, 40);
 
         _store.Report("job-1", JobStatus.Embedding, 65, "still going");
@@ -110,7 +111,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [InlineData(150, 100)]
     public void Report_ProgressOutsideTheValidRange_IsClamped(int reported, int expected)
     {
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
 
         _store.Report("job-1", JobStatus.Extracting, reported);
 
@@ -137,7 +138,7 @@ public sealed class JobStatusStoreTests : IDisposable
     {
         // Reviving a terminal snapshot would also make it permanently un-evictable, because eviction only
         // considers terminal states.
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
 
         if (terminalStatus == JobStatus.Processed)
         {
@@ -160,7 +161,7 @@ public sealed class JobStatusStoreTests : IDisposable
     public void Complete_RecordsProcessedAtFullProgressWithTheDocumentId()
     {
         var documentId = Guid.NewGuid();
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
         _store.Report("job-1", JobStatus.Persisting, 92);
 
         _store.Complete("job-1", documentId, "Ready — 40 chunk(s) indexed");
@@ -180,7 +181,7 @@ public sealed class JobStatusStoreTests : IDisposable
     {
         // Progress is where the failure happened, which tells the user which stage broke; jumping it to
         // 100 would read as a completion.
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
         _store.Report("job-1", JobStatus.Embedding, 60);
 
         _store.Fail("job-1", "Processing failed.");
@@ -212,7 +213,7 @@ public sealed class JobStatusStoreTests : IDisposable
     [InlineData("   ")]
     public void Register_BlankJobId_Throws(string jobId)
     {
-        Assert.Throws<ArgumentException>(() => _store.Register(jobId, _ownerId));
+        Assert.Throws<ArgumentException>(() => _store.Register(jobId, _ownerId, Target));
     }
 
     [Fact]
@@ -220,11 +221,100 @@ public sealed class JobStatusStoreTests : IDisposable
     {
         // Every value stays under 100 and the highest is reported first, so a last-writer-wins
         // implementation fails deterministically rather than roughly half the time.
-        _store.Register("job-1", _ownerId);
+        _store.Register("job-1", _ownerId, Target);
         _store.Report("job-1", JobStatus.Embedding, 90);
 
         Parallel.For(0, 200, i => _store.Report("job-1", JobStatus.Embedding, i % 90));
 
         Assert.Equal(90, _store.Get("job-1")!.Progress);
+    }
+
+    [Fact]
+    public void Cancel_UnknownJob_ReturnsNullAndCreatesNothing()
+    {
+        Assert.Null(_store.Cancel("missing", "Cancelled"));
+
+        // The difference from Fail: a cancel naming an id nobody registered must not mint an
+        // ownerless snapshot that no one can read and retention still has to carry.
+        Assert.Null(_store.Get("missing"));
+    }
+
+    [Fact]
+    public void Cancel_RunningJob_RecordsCancelledAsTerminal()
+    {
+        _store.Register("job-1", _ownerId, Target);
+        _store.Report("job-1", JobStatus.Embedding, 60);
+
+        var outcome = _store.Cancel("job-1", "Cancelled");
+
+        Assert.NotNull(outcome);
+        Assert.Equal(JobStatus.Cancelled, outcome.Status);
+        Assert.Equal("Cancelled", outcome.Message);
+        Assert.Equal(_ownerId, outcome.UserId);
+
+        // Terminal, so a heartbeat still unwinding cannot revive it.
+        _store.Report("job-1", JobStatus.Extracting, 20);
+        Assert.Equal(JobStatus.Cancelled, _store.Get("job-1")!.Status);
+    }
+
+    [Fact]
+    public void Cancel_JobThatAlreadySucceeded_ReturnsItWithItsDocumentIntact()
+    {
+        var documentId = Guid.NewGuid();
+        _store.Register("job-1", _ownerId, Target);
+        _store.Complete("job-1", documentId, "Ready");
+
+        var outcome = _store.Cancel("job-1", "Cancelled");
+
+        // The caller reads the document off this to remove it, so the id has to survive.
+        Assert.NotNull(outcome);
+        Assert.Equal(JobStatus.Processed, outcome.Status);
+        Assert.Equal(documentId, outcome.DocumentId);
+        Assert.Equal(Target, outcome.Target);
+    }
+
+    [Fact]
+    public void Complete_AfterACancelClaimedTheTerminalSlot_ReportsTheLoss()
+    {
+        _store.Register("job-1", _ownerId, Target);
+        _store.Cancel("job-1", "Cancelled");
+
+        Assert.False(_store.Complete("job-1", Guid.NewGuid(), "Ready"));
+
+        var snapshot = _store.Get("job-1");
+        Assert.NotNull(snapshot);
+        Assert.Equal(JobStatus.Cancelled, snapshot.Status);
+        // Never published: the loser undoes its own work, and a second party must not be invited
+        // to delete the same rows.
+        Assert.Null(snapshot.DocumentId);
+    }
+
+    [Fact]
+    public void Complete_WhenNothingBeatIt_ReportsTheWin()
+    {
+        _store.Register("job-1", _ownerId, Target);
+
+        Assert.True(_store.Complete("job-1", Guid.NewGuid(), "Ready"));
+    }
+
+    [Fact]
+    public void Fail_AfterACancel_IsIgnored()
+    {
+        _store.Register("job-1", _ownerId, Target);
+        _store.Cancel("job-1", "Cancelled");
+
+        // The cancellation the caller asked for produces a failure as the pipeline unwinds; that
+        // must not overwrite the outcome already published.
+        _store.Fail("job-1", "Processing failed.");
+
+        Assert.Equal(JobStatus.Cancelled, _store.Get("job-1")!.Status);
+    }
+
+    [Fact]
+    public void Register_RecordsTheTargetSoACancelKnowsWhatToUndo()
+    {
+        _store.Register("job-1", _ownerId, Target);
+
+        Assert.Equal(Target, _store.Get("job-1")!.Target);
     }
 }

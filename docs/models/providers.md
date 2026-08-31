@@ -28,8 +28,8 @@ A model whose provider has no registered client fails the turn with 503
 | DI key | `Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs` |
 | The map between them | `Providers.ServiceKeys` |
 
-Provider rows are seeded in `Core.Ref.Provider` by both `HasData` and `InitialCreate`, so they are
-present in any database this application built. `ChatClientResolver` resolves the keyed client at
+Provider rows are seeded in `Core.Ref.Provider` by `HasData`, which the `Initial` migration emits,
+so they are present in any database this application built. `ChatClientResolver` resolves the keyed client at
 request time.
 
 `ChatClientKeys.FileAgent` is in that key catalog but is **not** a provider key — no provider row

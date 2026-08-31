@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Conversation documents can now be deleted individually
+  (`DELETE api/documents/conversations/{conversationId}/{documentId}`), matching the delete that
+  already existed for project documents. Only an uploaded file can be removed this way; a file the
+  assistant generated is not, since its chip is also referenced from the conversation transcript.
+- Uploads can now be cancelled mid-flight: `DELETE api/documents/upload-status/{jobId}` stops a
+  queued or running ingestion and removes whatever it had already produced, so a cancelled upload
+  always leaves nothing behind. The composer's Stop control uses it for any file still on its way.
+
+### Fixed
+
+- The composer's attachment chips no longer show a `×` and a Stop control at once while a file
+  uploads. Stop now cancels both a running turn and an in-progress upload; a file attached before
+  its conversation exists keeps its own `×`, since there is nothing yet for Stop to cancel.
+- Cancelling a file upload after the server had already accepted it (past the 202) now stops the
+  ingestion itself instead of letting it run unseen to completion before deleting its result — see
+  the cancel route above.
+- Attaching a file to an already-open conversation no longer uploads it immediately. Every composer
+  now waits for Send before posting an attachment, matching the behaviour a brand-new conversation
+  already had; previously only its first turn deferred the upload, and every attachment after that
+  uploaded on the drop.
+- A file attached through a project's composer is now uploaded as a document of the conversation the
+  prompt creates, not as a document of the project. Only the project's Files tab adds to the
+  project's own document set.
+
 ## [1.0.0] - 2026-08-30
 
 First release of Enterprise GPT: a .NET 10 API and an Angular 21 client for enterprise AI chat with

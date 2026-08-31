@@ -144,7 +144,6 @@ public sealed class ConversationServiceTests : IDisposable
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
             new SetMessageFeedbackActionDtoValidator(),
-            Options.Create(new WeatherToolOptions()),
             _documentSummaryService,
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
@@ -155,40 +154,6 @@ public sealed class ConversationServiceTests : IDisposable
             Options.Create(new FileAgentOptions()),
             _fixture.Context);
     }
-
-    /// <summary>
-    /// Builds a second service over the same fixture with the weather tool switched on. The tool's
-    /// settings are captured at construction, so a test that wants it cannot reuse the shared
-    /// instance. Zero delay: the tool's own latency exists to make the running card visible on
-    /// screen, and here it would only make the suite slower.
-    /// </summary>
-    private ConversationService CreateServiceWithWeatherTool() =>
-        new(NullLogger<ConversationService>.Instance,
-            _modelService,
-            _chatClientResolver,
-            _mcpToolProvider,
-            _documentRetrievalService,
-            _lockService,
-            _tokenService,
-            _transcriptStore,
-            _tokenEstimatorResolver,
-            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
-            _markdownRenderer,
-            new CreateConversationActionDtoValidator(),
-            new CreateConversationStreamActionDtoValidator(),
-            new DeactivateConversationsBulkActionDtoValidator(),
-            new UpdateConversationActionDtoValidator(),
-            new SetMessageFeedbackActionDtoValidator(),
-            Options.Create(new WeatherToolOptions { Enabled = true, DelayMilliseconds = 0 }),
-            _documentSummaryService,
-            _userGrantReader,
-            Options.Create(new SummarizationOptions()),
-            _sheetQueryService,
-            new FakeSheetQueryOptionsProvider(),
-            _fileAgentToolProvider,
-            _fileAgentQuotaService,
-            Options.Create(new FileAgentOptions()),
-            _fixture.Context);
 
     /// <summary>
     /// Builds a service with document summarization switched on. Options are captured at
@@ -212,7 +177,6 @@ public sealed class ConversationServiceTests : IDisposable
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
             new SetMessageFeedbackActionDtoValidator(),
-            Options.Create(new WeatherToolOptions()),
             summaryService ?? _documentSummaryService,
             _userGrantReader,
             Options.Create(options ?? new SummarizationOptions { Enabled = true }),
@@ -244,7 +208,6 @@ public sealed class ConversationServiceTests : IDisposable
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
             new SetMessageFeedbackActionDtoValidator(),
-            Options.Create(new WeatherToolOptions()),
             _documentSummaryService,
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
@@ -1270,7 +1233,6 @@ public sealed class ConversationServiceTests : IDisposable
             new DeactivateConversationsBulkActionDtoValidator(),
             new UpdateConversationActionDtoValidator(),
             new SetMessageFeedbackActionDtoValidator(),
-            Options.Create(new WeatherToolOptions()),
             _documentSummaryService,
             _userGrantReader,
             Options.Create(new SummarizationOptions()),
@@ -2104,50 +2066,6 @@ public sealed class ConversationServiceTests : IDisposable
         // when they are empty, so setting it for a model that cannot reason would put reasoning on
         // the wire for a deployment that rejects the whole request for it.
         Assert.Equal(isReasoningEnabled, captured?.Reasoning is not null);
-    }
-
-    [Fact]
-    public async Task StreamConversationAsync_WithTheWeatherToolOff_AttachesNothing()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        await StreamToEndAsync(conversation.Id, request);
-
-        Assert.Null(_chatClient.CapturedOptions?.Tools);
-    }
-
-    [Fact]
-    public async Task StreamConversationAsync_WithTheWeatherToolOn_AttachesIt()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithWeatherTool());
-
-        var tools = _chatClient.CapturedOptions?.Tools;
-        Assert.NotNull(tools);
-        Assert.Contains(tools, tool => tool.Name == WeatherTool.ToolName);
-    }
-
-    [Fact]
-    public async Task StreamConversationAsync_WeatherToolOnANonToolModel_RunsTheTurnWithoutIt()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: false);
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        // It stands down for the same reason retrieval does: nothing about a diagnostic tool is
-        // worth failing a turn over.
-        var events = await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithWeatherTool());
-
-        Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
-        Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 
     [Fact]

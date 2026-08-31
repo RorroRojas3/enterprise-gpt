@@ -145,6 +145,36 @@ namespace Enterprise.Gpt.Service
         /// <returns>A page of the caller's conversation documents.</returns>
         /// <exception cref="ValidationException">Thrown when <paramref name="type"/> names no supported origin.</exception>
         Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, string? name = null, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Soft-deletes one uploaded document of one of the caller's conversations, together with its
+        /// summary, sheets and chunks.
+        /// </summary>
+        /// <remarks>
+        /// Only an uploaded document; a generated one is reported as missing. The stored blob is left in
+        /// place, and reclaiming it belongs to a retention job.
+        /// </remarks>
+        /// <param name="conversationId">The conversation the document belongs to.</param>
+        /// <param name="documentId">The document to remove.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <exception cref="NotFoundException">
+        /// Thrown when the conversation or the document does not exist, is deactivated, is generated
+        /// rather than uploaded, or does not belong to the caller.
+        /// </exception>
+        Task DeactivateConversationDocumentAsync(Guid conversationId, Guid documentId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Cancels a queued or running upload and removes whatever it already produced.
+        /// </summary>
+        /// <remarks>
+        /// Idempotent: a job that already succeeded has its document soft-deleted, and one that already
+        /// failed or was already cancelled is left alone. Another user job, and one that never existed,
+        /// are reported as missing on the same terms as reading the status.
+        /// </remarks>
+        /// <param name="jobId">The job identifier the upload returned.</param>
+        /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+        /// <exception cref="NotFoundException">Thrown when no such job exists, or it belongs to another user.</exception>
+        Task CancelUploadAsync(string jobId, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -166,6 +196,7 @@ namespace Enterprise.Gpt.Service
         IValidator<FileDto> fileValidator,
         IBackgroundJobQueue backgroundJobQueue,
         IJobStatusStore jobStatusStore,
+        IJobCancellationRegistry jobCancellationRegistry,
         ITokenService tokenService,
         EnterpriseGptDbContext ctx) : IDocumentService
     {
@@ -180,6 +211,7 @@ namespace Enterprise.Gpt.Service
         private const int PersistStart = 92;
         #endregion
 
+
         private readonly ILogger<DocumentService> _logger = logger;
         private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator = embeddingGenerator;
         private readonly IBlobStorageService _blobStorageService = blobStorageService;
@@ -190,6 +222,7 @@ namespace Enterprise.Gpt.Service
         private readonly IValidator<FileDto> _fileValidator = fileValidator;
         private readonly IBackgroundJobQueue _backgroundJobQueue = backgroundJobQueue;
         private readonly IJobStatusStore _jobStatusStore = jobStatusStore;
+        private readonly IJobCancellationRegistry _jobCancellationRegistry = jobCancellationRegistry;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
 
@@ -231,6 +264,7 @@ namespace Enterprise.Gpt.Service
 
             var job = await EnqueueAsync(
                 userId,
+                new JobTarget(JobTargetKind.Conversation, conversationId),
                 (documentService, jobId, token) => documentService.CreateConversationDocumentAsync(jobId, file, userId, conversationId, token),
                 cancellationToken);
 
@@ -260,6 +294,7 @@ namespace Enterprise.Gpt.Service
 
             var job = await EnqueueAsync(
                 userId,
+                new JobTarget(JobTargetKind.Project, projectId),
                 (documentService, jobId, token) => documentService.CreateProjectDocumentAsync(jobId, file, userId, projectId, token),
                 cancellationToken);
 
@@ -285,91 +320,66 @@ namespace Enterprise.Gpt.Service
             // and fail the whole job.
             var blobPath = $"{userId}/{conversationId}/{documentId}{extension}";
 
-            var ingestion = await IngestAsync(jobId, file, documentId, blobPath,
-                BuildBlobMetadata(file, userId, documentId, "conversationId", conversationId), cancellationToken);
-
-            _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
-
-            var date = DateTimeOffset.UtcNow;
-            var document = new ConversationDocument
+            try
             {
-                Id = documentId,
-                UserId = userId,
-                ConversationId = conversationId,
-                Name = file.FileName,
-                Extension = extension,
-                MimeType = file.ContentType,
-                Size = file.Length,
-                Path = blobPath,
-                DateCreated = date,
-                DateModified = date,
-                Chunks = BuildChunks<ConversationDocumentChunk>(ingestion, date),
-                Sheets = BuildSheets<ConversationDocumentSheet, ConversationDocumentSheetColumn, ConversationDocumentSheetRow>(
-                    ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
-            };
+                var ingestion = await IngestAsync(jobId, file, blobPath,
+                    BuildBlobMetadata(file, userId, documentId, "conversationId", conversationId), cancellationToken);
 
-            _ctx.Add(document);
-            await _ctx.SaveChangesAsync(cancellationToken);
+                _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
-            // Ingestion spans seconds to minutes, and a conversation deactivated meanwhile has already
-            // run its document cascade, which never re-runs — so this insert would otherwise leave an
-            // active document under a deactivated conversation, which the listings treat as impossible.
-            // Re-checking after the save shrinks that window to the cascade's own statement gap.
-            var conversationStillActive = await _ctx.Conversations
-                .AsNoTracking()
-                .AnyAsync(x => x.Id == conversationId && !x.DateDeactivated.HasValue, cancellationToken);
+                var date = DateTimeOffset.UtcNow;
+                var document = new ConversationDocument
+                {
+                    Id = documentId,
+                    UserId = userId,
+                    ConversationId = conversationId,
+                    Name = file.FileName,
+                    Extension = extension,
+                    MimeType = file.ContentType,
+                    Size = file.Length,
+                    Path = blobPath,
+                    DateCreated = date,
+                    DateModified = date,
+                    Chunks = BuildChunks<ConversationDocumentChunk>(ingestion, date),
+                    Sheets = BuildSheets<ConversationDocumentSheet, ConversationDocumentSheetColumn, ConversationDocumentSheetRow>(
+                        ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
+                };
 
-            if (!conversationStillActive)
-            {
-                // Set-based rather than through the tracked entities: if the cascade caught these rows
-                // between the insert and the re-check, their rowversions have moved and a tracked save
-                // would throw DbUpdateConcurrencyException; this shape is a no-op in that case.
-                var deactivatedAt = DateTimeOffset.UtcNow;
+                _ctx.Add(document);
+                await _ctx.SaveChangesAsync(cancellationToken);
 
-                // Every table is named because nothing cascades, and leaf first because this path has
-                // no transaction: a reader must never find a live cell row under a dead sheet.
-                var sheetIds = _ctx.ConversationDocumentSheets
-                    .Where(s => s.ConversationDocumentId == document.Id)
-                    .Select(s => s.Id);
+                // Ingestion spans seconds to minutes, and a conversation deactivated meanwhile has already
+                // run its document cascade, which never re-runs — so this insert would otherwise leave an
+                // active document under a deactivated conversation, which the listings treat as impossible.
+                // Re-checking after the save shrinks that window to the cascade's own statement gap.
+                var conversationStillActive = await _ctx.Conversations
+                    .AsNoTracking()
+                    .AnyAsync(x => x.Id == conversationId && !x.DateDeactivated.HasValue, cancellationToken);
 
-                await _ctx.ConversationDocumentSheetRows
-                    .Where(r => sheetIds.Contains(r.ConversationDocumentSheetId) && !r.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(r => r
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
+                if (!conversationStillActive)
+                {
+                    _logger.LogWarning("Conversation {ConversationId} was deactivated while job {JobId} ingested document {DocumentId}; the document was deactivated to match", conversationId, jobId, documentId);
+                    throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
+                }
 
-                await _ctx.ConversationDocumentSheetColumns
-                    .Where(c => sheetIds.Contains(c.ConversationDocumentSheetId) && !c.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(c => c
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
+                // The pipeline's ordering point against a concurrent cancel. Whichever of the two installs
+                // its terminal snapshot first decides the outcome, and the loser is the one that cleans up —
+                // the database cannot arbitrate, because a delete issued before this insert commits would
+                // match nothing.
+                if (!_jobStatusStore.Complete(jobId, documentId, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed"))
+                {
+                    throw new JobCancelledException($"Upload job {jobId} was cancelled.");
+                }
 
-                await _ctx.ConversationDocumentSheets
-                    .Where(s => s.ConversationDocumentId == document.Id && !s.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
+                _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, documentId, ingestion.Chunks.Count);
 
-                await _ctx.ConversationDocumentChunks
-                    .Where(c => c.ConversationDocumentId == document.Id && !c.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(c => c
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
-
-                await _ctx.ConversationDocuments
-                    .Where(d => d.Id == document.Id && !d.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(d => d
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
-
-                _logger.LogWarning("Conversation {ConversationId} was deactivated while job {JobId} ingested document {DocumentId}; the document was deactivated to match", conversationId, jobId, document.Id);
-                throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
+                return document.MapToConversationDocumentDto();
             }
-
-            _jobStatusStore.Complete(jobId, document.Id, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed");
-            _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, ingestion.Chunks.Count);
-
-            return document.MapToConversationDocumentDto();
+            catch
+            {
+                await TryCleanUpAsync(JobTargetKind.Conversation, documentId, blobPath);
+                throw;
+            }
         }
 
         /// <inheritdoc />
@@ -388,86 +398,60 @@ namespace Enterprise.Gpt.Service
             // key: both are "{userId}/{ownerId}/..." and the two id spaces are unrelated guids.
             var blobPath = $"{userId}/projects/{projectId}/{documentId}{extension}";
 
-            var ingestion = await IngestAsync(jobId, file, documentId, blobPath,
-                BuildBlobMetadata(file, userId, documentId, "projectId", projectId), cancellationToken);
-
-            _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
-
-            var date = DateTimeOffset.UtcNow;
-            var document = new ProjectDocument
+            try
             {
-                Id = documentId,
-                UserId = userId,
-                ProjectId = projectId,
-                Name = file.FileName,
-                Extension = extension,
-                MimeType = file.ContentType,
-                Size = file.Length,
-                Path = blobPath,
-                DateCreated = date,
-                DateModified = date,
-                Chunks = BuildChunks<ProjectDocumentChunk>(ingestion, date),
-                Sheets = BuildSheets<ProjectDocumentSheet, ProjectDocumentSheetColumn, ProjectDocumentSheetRow>(
-                    ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
-            };
+                var ingestion = await IngestAsync(jobId, file, blobPath,
+                    BuildBlobMetadata(file, userId, documentId, "projectId", projectId), cancellationToken);
 
-            _ctx.Add(document);
-            await _ctx.SaveChangesAsync(cancellationToken);
+                _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
-            // Same mid-ingest deactivation window as the conversation path: the project's document
-            // cascade never re-runs, so a row persisted after it must deactivate itself to match.
-            var projectStillActive = await _ctx.Projects
-                .AsNoTracking()
-                .AnyAsync(x => x.Id == projectId && !x.DateDeactivated.HasValue, cancellationToken);
+                var date = DateTimeOffset.UtcNow;
+                var document = new ProjectDocument
+                {
+                    Id = documentId,
+                    UserId = userId,
+                    ProjectId = projectId,
+                    Name = file.FileName,
+                    Extension = extension,
+                    MimeType = file.ContentType,
+                    Size = file.Length,
+                    Path = blobPath,
+                    DateCreated = date,
+                    DateModified = date,
+                    Chunks = BuildChunks<ProjectDocumentChunk>(ingestion, date),
+                    Sheets = BuildSheets<ProjectDocumentSheet, ProjectDocumentSheetColumn, ProjectDocumentSheetRow>(
+                        ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
+                };
 
-            if (!projectStillActive)
-            {
-                // Set-based for the same reason as the conversation path: idempotent against the
-                // cascade having already deactivated these rows, with no concurrency token involved.
-                var deactivatedAt = DateTimeOffset.UtcNow;
+                _ctx.Add(document);
+                await _ctx.SaveChangesAsync(cancellationToken);
 
-                var sheetIds = _ctx.ProjectDocumentSheets
-                    .Where(s => s.ProjectDocumentId == document.Id)
-                    .Select(s => s.Id);
+                // Same mid-ingest deactivation window as the conversation path: the project's document
+                // cascade never re-runs, so a row persisted after it must deactivate itself to match.
+                var projectStillActive = await _ctx.Projects
+                    .AsNoTracking()
+                    .AnyAsync(x => x.Id == projectId && !x.DateDeactivated.HasValue, cancellationToken);
 
-                await _ctx.ProjectDocumentSheetRows
-                    .Where(r => sheetIds.Contains(r.ProjectDocumentSheetId) && !r.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(r => r
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
+                if (!projectStillActive)
+                {
+                    _logger.LogWarning("Project {ProjectId} was deactivated while job {JobId} ingested document {DocumentId}; the document was deactivated to match", projectId, jobId, documentId);
+                    throw new NotFoundException($"Project with id '{projectId}' was not found.");
+                }
 
-                await _ctx.ProjectDocumentSheetColumns
-                    .Where(c => sheetIds.Contains(c.ProjectDocumentSheetId) && !c.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(c => c
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
+                if (!_jobStatusStore.Complete(jobId, documentId, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed"))
+                {
+                    throw new JobCancelledException($"Upload job {jobId} was cancelled.");
+                }
 
-                await _ctx.ProjectDocumentSheets
-                    .Where(s => s.ProjectDocumentId == document.Id && !s.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
+                _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, documentId, ingestion.Chunks.Count);
 
-                await _ctx.ProjectDocumentChunks
-                    .Where(c => c.ProjectDocumentId == document.Id && !c.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(c => c
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
-
-                await _ctx.ProjectDocuments
-                    .Where(d => d.Id == document.Id && !d.DateDeactivated.HasValue)
-                    .ExecuteUpdateAsync(d => d
-                        .SetProperty(x => x.DateDeactivated, deactivatedAt),
-                        cancellationToken);
-
-                _logger.LogWarning("Project {ProjectId} was deactivated while job {JobId} ingested document {DocumentId}; the document was deactivated to match", projectId, jobId, document.Id);
-                throw new NotFoundException($"Project with id '{projectId}' was not found.");
+                return document.MapToProjectDocumentDto();
             }
-
-            _jobStatusStore.Complete(jobId, document.Id, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed");
-            _logger.LogInformation("Completed document ingestion. Job {JobId}, document {DocumentId}, {ChunkCount} chunk(s)", jobId, document.Id, ingestion.Chunks.Count);
-
-            return document.MapToProjectDocumentDto();
+            catch
+            {
+                await TryCleanUpAsync(JobTargetKind.Project, documentId, blobPath);
+                throw;
+            }
         }
 
         /// <inheritdoc />
@@ -569,6 +553,79 @@ namespace Enterprise.Gpt.Service
             };
         }
 
+        /// <inheritdoc />
+        public async Task DeactivateConversationDocumentAsync(Guid conversationId, Guid documentId, CancellationToken cancellationToken = default)
+        {
+            var userId = _tokenService.GetOid();
+
+            var conversationExists = await _ctx.Conversations
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == conversationId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!conversationExists)
+            {
+                _logger.LogWarning("Delete rejected for conversation {ConversationId}: not found or not owned by user {UserId}", conversationId, userId);
+                throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
+            }
+
+            // Uploaded only. A generated file's identity also lives in the Cosmos transcript, on the
+            // assistant message that produced it, and nothing here patches that — deleting the row would
+            // leave a chip that renders forever and 404s when clicked.
+            var exists = await _ctx.ConversationDocuments
+                .AsNoTracking()
+                .AnyAsync(x => x.Id == documentId
+                    && x.ConversationId == conversationId
+                    && x.Type == ConversationDocumentTypes.Uploaded
+                    && !x.DateDeactivated.HasValue, cancellationToken);
+
+            if (!exists)
+            {
+                _logger.LogWarning("Document {DocumentId} not found in conversation {ConversationId} for user {UserId}", documentId, conversationId, userId);
+                throw new NotFoundException($"Document with id '{documentId}' was not found.");
+            }
+
+            await DeactivateConversationDocumentRowsAsync(documentId, cancellationToken);
+
+            // The blob is deliberately left behind, as the project cascade leaves its own: reclaiming
+            // storage belongs to a retention job that can also reach blobs orphaned by failed ingestion.
+            _logger.LogInformation("Conversation document {DocumentId} deactivated by user {UserId}", documentId, userId);
+        }
+
+        /// <inheritdoc />
+        public async Task CancelUploadAsync(string jobId, CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(jobId);
+
+            var userId = _tokenService.GetOid();
+            var snapshot = _jobStatusStore.Get(jobId);
+
+            // The status route rule exactly, so the two agree on what a caller may see and one message
+            // covers the unknown and the not-yours case alike.
+            if (snapshot is null || snapshot.UserId != userId)
+            {
+                _logger.LogWarning("Cancel rejected for job {JobId}: not found or not owned by user {UserId}", jobId, userId);
+                throw new NotFoundException("Upload job not found.");
+            }
+
+            // Before the signal, deliberately. This write is the ordering point against the worker own
+            // completion, so doing it first decides the outcome regardless of how fast cancellation
+            // propagates: either the job has not finished and this claims the terminal slot, or it has
+            // and the snapshot returned here carries the document to remove.
+            var outcome = _jobStatusStore.Cancel(jobId, JobMessages.Cancelled) ?? snapshot;
+
+            await _jobCancellationRegistry.CancelAsync(jobId);
+
+            if (outcome.DocumentId is { } documentId && outcome.Target is { } target)
+            {
+                // CancellationToken.None: the terminal state is already published, so a caller that hangs
+                // up mid-request must not leave behind the document it asked to remove. The blob stays,
+                // as it does for any other delete of a persisted document.
+                await DeactivateDocumentRowsAsync(target.Kind, documentId, CancellationToken.None);
+            }
+
+            _logger.LogInformation("Upload job {JobId} cancelled by user {UserId}", jobId, userId);
+        }
+
         #region Downloads
         /// <summary>
         /// Turns a resolved blob reference into a signed, expiring download link.
@@ -658,14 +715,19 @@ namespace Enterprise.Gpt.Service
         /// <returns>The registered job.</returns>
         private async Task<JobDto> EnqueueAsync(
             Guid userId,
+            JobTarget target,
             Func<IDocumentService, string, CancellationToken, Task> work,
             CancellationToken cancellationToken)
         {
             var jobId = Guid.NewGuid().ToString();
-            _jobStatusStore.Register(jobId, userId);
+            _jobStatusStore.Register(jobId, userId, target);
 
             try
             {
+                // Registered here rather than when the job starts: the queue is bounded, so the enqueue
+                // below can block, and a caller who can already poll must also be able to cancel.
+                _jobCancellationRegistry.Register(jobId);
+
                 await _backgroundJobQueue.EnqueueAsync(new JobWorkItem(
                     jobId,
                     async (serviceProvider, token) =>
@@ -679,6 +741,8 @@ namespace Enterprise.Gpt.Service
                 // Register succeeded but enqueue did not — the snapshot would otherwise sit in Queued
                 // forever (JobStatusStore only evicts terminal states). Mark it Failed so retention can
                 // reclaim it and any racing poll sees a deterministic terminal state.
+                // Released before the snapshot is failed, so a registration can never outlive its job.
+                _jobCancellationRegistry.Release(jobId);
                 _jobStatusStore.Fail(jobId, "The upload could not be queued for processing. Please try again.");
                 throw;
             }
@@ -697,27 +761,165 @@ namespace Enterprise.Gpt.Service
         /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
         /// <returns>The chunks and their embeddings, positionally aligned.</returns>
         private async Task<IngestionResult> IngestAsync(
-            string jobId, FileDto file, Guid documentId, string blobPath,
+            string jobId, FileDto file, string blobPath,
             Dictionary<string, string> metadata, CancellationToken cancellationToken)
         {
+            // Cleanup belongs to the caller, not here: the blob has to survive a failure of the persist
+            // too, and the store call itself can be cancelled partway. One boundary around the whole
+            // write path is what makes every one of those leave nothing behind.
             await StoreAsync(jobId, file, blobPath, metadata, cancellationToken);
 
+            var extraction = await ExtractAsync(jobId, file, cancellationToken);
+            var chunks = ChunkText(jobId, extraction.Segments, cancellationToken);
+            var embeddings = await EmbedAsync(jobId, chunks, cancellationToken);
+
+            return new IngestionResult(chunks, embeddings, extraction.Sheets);
+        }
+
+        /// <summary>
+        /// Undoes an ingestion that did not finish: soft-deletes whatever rows reached the database and
+        /// removes the stored original.
+        /// </summary>
+        /// <remarks>
+        /// Never throws, and never observes the caller token — the caller is already unwinding, usually
+        /// because that very token was cancelled, so a cleanup honouring it would do nothing. Losing the
+        /// cleanup must not replace the error the processor needs in order to classify the job.
+        /// </remarks>
+        private async Task TryCleanUpAsync(JobTargetKind kind, Guid documentId, string blobPath)
+        {
             try
             {
-                var extraction = await ExtractAsync(jobId, file, cancellationToken);
-                var chunks = ChunkText(jobId, extraction.Segments, cancellationToken);
-                var embeddings = await EmbedAsync(jobId, chunks, cancellationToken);
-
-                return new IngestionResult(chunks, embeddings, extraction.Sheets);
+                // Unconditional rather than guarded by a "did we persist" flag: SaveChangesAsync can be
+                // cancelled after the insert commits but before it returns, so such a flag would read
+                // false while rows exist. With nothing persisted this is a handful of no-op updates on a
+                // path that is already failing.
+                await DeactivateDocumentRowsAsync(kind, documentId, CancellationToken.None);
             }
-            catch
+            catch (Exception ex)
             {
-                // The blob is written first so the original is retained even if processing is slow, but a
-                // failure after this point leaves it referenced by no database row — unreachable content
-                // that would accrue storage cost forever. Best-effort cleanup, then rethrow.
-                await TryDeleteBlobAsync(blobPath, documentId);
-                throw;
+                // After a cancelled save the connection state is not guaranteed, so opening a transaction
+                // here can itself fail. That must not become the exception the caller sees.
+                _logger.LogError(ex, "Failed to deactivate the rows for document {DocumentId} after ingestion did not finish", documentId);
+
+                // The blob stays. An orphaned blob is a retention sweep away from being reclaimed; an
+                // active row over deleted bytes is a document that lists, matches retrieval and 404s on
+                // download, with the original gone for good.
+                return;
             }
+
+            // The rows are gone, so nothing can reach these bytes again and no sweep keyed on a live
+            // document would find them.
+            await TryDeleteBlobAsync(blobPath, documentId);
+        }
+
+        /// <summary>
+        /// Soft-deletes one document and every row hanging off it, leaf first, in one transaction.
+        /// </summary>
+        /// <remarks>
+        /// Authorization belongs to the caller: this is reached from the public delete, from a cancel, and
+        /// from the ingestion cleanup, and only the first of those has a caller to authorize.
+        /// </remarks>
+        private Task DeactivateDocumentRowsAsync(JobTargetKind kind, Guid documentId, CancellationToken cancellationToken) =>
+            kind == JobTargetKind.Project
+                ? DeactivateProjectDocumentRowsAsync(documentId, cancellationToken)
+                : DeactivateConversationDocumentRowsAsync(documentId, cancellationToken);
+
+        private async Task DeactivateConversationDocumentRowsAsync(Guid documentId, CancellationToken cancellationToken)
+        {
+            var date = DateTimeOffset.UtcNow;
+
+            // One transaction across all five child sets and the document: a partial failure would leave
+            // chunks alive under a deleted document, which retrieval would still match. Set-based rather
+            // than through the tracked entities, so a row whose rowversion moved underneath us is a no-op
+            // rather than a DbUpdateConcurrencyException.
+            await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
+
+            await _ctx.ConversationDocumentSummaries
+                .Where(s => s.ConversationDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheetRows
+                .Where(r => r.ConversationDocumentSheet.ConversationDocumentId == documentId && !r.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(r => r
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheetColumns
+                .Where(c => c.ConversationDocumentSheet.ConversationDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentSheets
+                .Where(s => s.ConversationDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocumentChunks
+                .Where(c => c.ConversationDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ConversationDocuments
+                .Where(d => d.Id == documentId && !d.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(d => d
+                    .SetProperty(x => x.DateDeactivated, date)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        private async Task DeactivateProjectDocumentRowsAsync(Guid documentId, CancellationToken cancellationToken)
+        {
+            var date = DateTimeOffset.UtcNow;
+
+            await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
+
+            await _ctx.ProjectDocumentSummaries
+                .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            await _ctx.ProjectDocumentSheetRows
+                .Where(r => r.ProjectDocumentSheet.ProjectDocumentId == documentId && !r.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(r => r
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ProjectDocumentSheetColumns
+                .Where(c => c.ProjectDocumentSheet.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ProjectDocumentSheets
+                .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ProjectDocumentChunks
+                .Where(c => c.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(c => c
+                    .SetProperty(x => x.DateDeactivated, date),
+                    cancellationToken);
+
+            await _ctx.ProjectDocuments
+                .Where(d => d.Id == documentId && !d.DateDeactivated.HasValue)
+                .ExecuteUpdateAsync(d => d
+                    .SetProperty(x => x.DateDeactivated, date)
+                    .SetProperty(x => x.DateModified, date),
+                    cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
         private async Task StoreAsync(string jobId, FileDto file, string blobPath, Dictionary<string, string> metadata, CancellationToken cancellationToken)

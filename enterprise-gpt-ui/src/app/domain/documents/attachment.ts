@@ -47,9 +47,10 @@ export interface Attachment {
  * What the chip's `×` actually does, which changes once the file is the server's.
  *
  * While an upload is in flight or a job is queued, `×` cancels — there is something to
- * call off. Once the document is ingested it belongs to the conversation and there is
- * no API to detach it (only project documents have a `DELETE`), so `×` only takes the
- * chip off screen. Naming that control "Remove" at that point would claim an effect it
- * does not have, which is the whole reason this input exists.
+ * call off, and a job already accepted is undone by deleting what it goes on to create.
+ * Once the document is ingested the chip only hides it: both parents have a delete
+ * route, but a finished attachment is deliberately not detachable from here. Naming that
+ * control "Remove" at that point would claim an effect it does not have, which is the
+ * whole reason this input exists.
  */
 export type AttachmentRemoveAction = 'cancel' | 'dismiss';

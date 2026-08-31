@@ -20,8 +20,10 @@ import {
   ComposerHost,
   ComposerProjectTarget,
 } from '@core/chat/composer-host';
+import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
 import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { COMPOSER_UPLOADS } from '@core/documents/composer-uploads';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
 import { ApiUrl } from '@core/http/api-url';
@@ -64,6 +66,8 @@ export const ProjectComposerHost = signalStore(
     _router: inject(Router),
     _project: inject(ProjectStore),
     _pending: inject(PendingPromptStore),
+    _attachments: inject(PendingAttachmentsStore),
+    _uploads: inject(COMPOSER_UPLOADS),
     _list: inject(ConversationListStore),
     _toasts: inject(ToastStore),
     _signedOut$: injectSignedOut(),
@@ -117,6 +121,13 @@ export const ProjectComposerHost = signalStore(
               // Before navigating, so the sidebar row is already there when the chat
               // route renders — the same ordering US-401's own create uses.
               store._list.prependNewest(created);
+              // Read at the 201, not at `send()`: a chip removed while the create was in
+              // flight must not travel. Both holds precede the navigation, which is what
+              // mounts the screen that claims them.
+              const files = store._uploads.pendingFiles();
+              if (files.length > 0) {
+                store._attachments.hold(created.id, files);
+              }
               store._pending.hold(created.id, prompt);
               void store._router.navigate([CHAT_ROUTE, created.id]);
             },

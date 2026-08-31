@@ -9,16 +9,9 @@ namespace Enterprise.Gpt.Repository.Configurations
     {
         public void Configure(EntityTypeBuilder<Model> builder)
         {
-            // A store default, not just a property initializer: EF scaffolds AddColumn from the
-            // CLR default and never reads the initializer, so without this the column that
-            // introduces IsUserSelectable would backfill every existing row to false and hide the
-            // whole catalog from the picker at once.
-            //
-            // ValueGeneratedNever keeps the default a backfill and a safety net for out-of-band
-            // inserts rather than a value EF may withhold. Left store-generated, the property
-            // becomes ValueGeneratedOnAdd, and EF's seed differ skips store-generated columns when
-            // it diffs HasData — which silently dropped this column from the migration that hides
-            // the summarizer row, leaving a migrated database disagreeing with a freshly created one.
+            // A store default so a column added later backfills existing rows to visible rather than
+            // hiding the whole catalog at once. ValueGeneratedNever because EF's seed differ skips
+            // store-generated columns, and would drop this one from HasData with no error at all.
             builder.Property(x => x.IsUserSelectable)
                 .HasDefaultValue(true)
                 .ValueGeneratedNever();

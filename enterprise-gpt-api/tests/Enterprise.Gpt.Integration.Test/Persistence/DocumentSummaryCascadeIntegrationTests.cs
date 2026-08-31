@@ -12,7 +12,7 @@ namespace Enterprise.Gpt.Integration.Test.Persistence;
 /// a table nothing else queries.
 /// </summary>
 /// <remarks>
-/// Run against a real SQL Server through the real routes, because the four cascades are sequences
+/// Run against a real SQL Server through the real routes, because the five cascades are sequences
 /// of <c>ExecuteUpdateAsync</c> statements — they never materialize an entity, so nothing about
 /// them is exercised by a test that goes through the change tracker.
 /// </remarks>
@@ -35,7 +35,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
     [Fact]
     public async Task DeactivateConversation_DocumentHasASummary_DeactivatesItAlongside()
     {
-        var (conversationId, summaryId) = await AddConversationDocumentWithSummaryAsync();
+        var (conversationId, _, summaryId) = await AddConversationDocumentWithSummaryAsync();
         using var client = _fixture.Factory.CreateUserClient();
 
         var response = await client.DeleteAsync(
@@ -112,7 +112,25 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         Assert.NotNull(summary.DateDeactivated);
     }
 
-    private async Task<(Guid ConversationId, Guid SummaryId)> AddConversationDocumentWithSummaryAsync()
+    [Fact]
+    public async Task DeactivateConversationDocument_DocumentHasASummary_DeactivatesItAlongside()
+    {
+        var (conversationId, documentId, summaryId) = await AddConversationDocumentWithSummaryAsync();
+        using var client = _fixture.Factory.CreateUserClient();
+
+        var response = await client.DeleteAsync(
+            $"api/documents/conversations/{conversationId}/{documentId}", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var summary = await _fixture.FindDocumentSummaryAsync(
+            summaryId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(summary);
+        Assert.NotNull(summary.DateDeactivated);
+    }
+
+    private async Task<(Guid ConversationId, Guid DocumentId, Guid SummaryId)> AddConversationDocumentWithSummaryAsync()
     {
         var token = TestContext.Current.CancellationToken;
 
@@ -124,7 +142,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         var summaryId = await _fixture.AddDocumentSummaryAsync(
             documentId, DocumentSource.Conversation, modelId, token);
 
-        return (conversationId, summaryId);
+        return (conversationId, documentId, summaryId);
     }
 
     private async Task<(Guid ProjectId, Guid DocumentId, Guid SummaryId)> AddProjectDocumentWithSummaryAsync()

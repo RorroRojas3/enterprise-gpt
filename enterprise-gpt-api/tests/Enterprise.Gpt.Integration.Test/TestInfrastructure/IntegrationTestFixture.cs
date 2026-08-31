@@ -574,6 +574,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
 
         Factory.BlobStorage.Reset();
+        Factory.EmbeddingGenerator.Reset();
         Factory.Transcripts.Reset();
         ClearPermissionCache();
 
@@ -1464,6 +1465,25 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return await ctx.ConversationDocuments
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns every document of a conversation, deactivated ones included, so a test can assert on
+    /// what a cancel left behind rather than only on what a listing would show.
+    /// </summary>
+    /// <param name="conversationId">The owning conversation.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>The untracked entities.</returns>
+    public async Task<List<ConversationDocument>> FindConversationDocumentsAsync(
+        Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+
+        return await ctx.ConversationDocuments
+            .AsNoTracking()
+            .Where(x => x.ConversationId == conversationId)
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>

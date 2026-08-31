@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Enterprise.Gpt.Repository.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -19,6 +19,20 @@ namespace Enterprise.Gpt.Repository.Migrations
 
             migrationBuilder.EnsureSchema(
                 name: "Core.Ref");
+
+            migrationBuilder.CreateTable(
+                name: "DataProtectionKeys",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    FriendlyName = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Xml = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DataProtectionKeys", x => x.Id);
+                });
 
             migrationBuilder.CreateTable(
                 name: "Provider",
@@ -66,6 +80,8 @@ namespace Enterprise.Gpt.Repository.Migrations
                     Url = table.Column<string>(type: "nvarchar(2048)", maxLength: 2048, nullable: false),
                     AuthType = table.Column<int>(type: "int", nullable: false),
                     Scope = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    IconKey = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                    Headers = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
                     DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
@@ -103,7 +119,11 @@ namespace Enterprise.Gpt.Repository.Migrations
                     ContextWindowSize = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     MaxOutputTokens = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     IsToolEnabled = table.Column<bool>(type: "bit", nullable: false),
+                    IsReasoningEnabled = table.Column<bool>(type: "bit", nullable: false),
+                    IsUserSelectable = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
                     IsDefault = table.Column<bool>(type: "bit", nullable: false),
+                    InputPricePerMillionTokens = table.Column<decimal>(type: "decimal(18,6)", nullable: true),
+                    OutputPricePerMillionTokens = table.Column<decimal>(type: "decimal(18,6)", nullable: true),
                     DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
@@ -143,6 +163,7 @@ namespace Enterprise.Gpt.Repository.Migrations
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
+                    IsFavorite = table.Column<bool>(type: "bit", nullable: false),
                     Instructions = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -201,6 +222,53 @@ namespace Enterprise.Gpt.Repository.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "UserMcpCredential",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    McpServerId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Ciphertext = table.Column<string>(type: "nvarchar(2048)", maxLength: 2048, nullable: false),
+                    ApiKeyHint = table.Column<string>(type: "nvarchar(4)", maxLength: 4, nullable: false),
+                    DateRejected = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    CreatedById = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ModifiedById = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserMcpCredential", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_UserMcpCredential_McpServer_McpServerId",
+                        column: x => x.McpServerId,
+                        principalSchema: "Core.Ref",
+                        principalTable: "McpServer",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_UserMcpCredential_User_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "Core",
+                        principalTable: "User",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_UserMcpCredential_User_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "Core",
+                        principalTable: "User",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_UserMcpCredential_User_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "Core",
+                        principalTable: "User",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Conversation",
                 schema: "Core",
                 columns: table => new
@@ -213,6 +281,7 @@ namespace Enterprise.Gpt.Repository.Migrations
                     IsFavorite = table.Column<bool>(type: "bit", nullable: false),
                     InputTokens = table.Column<long>(type: "bigint", nullable: false),
                     OutputTokens = table.Column<long>(type: "bigint", nullable: false),
+                    ContextTokens = table.Column<long>(type: "bigint", nullable: false),
                     DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
@@ -327,6 +396,7 @@ namespace Enterprise.Gpt.Repository.Migrations
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ConversationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Type = table.Column<int>(type: "int", nullable: false, defaultValue: 1),
                     DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
@@ -372,6 +442,11 @@ namespace Enterprise.Gpt.Repository.Migrations
                     OutputTokens = table.Column<long>(type: "bigint", nullable: false),
                     ToolInputTokens = table.Column<long>(type: "bigint", nullable: false),
                     ToolOutputTokens = table.Column<long>(type: "bigint", nullable: false),
+                    CachedInputTokens = table.Column<long>(type: "bigint", nullable: true),
+                    ReasoningTokens = table.Column<long>(type: "bigint", nullable: true),
+                    ContextTokens = table.Column<long>(type: "bigint", nullable: true),
+                    InputPricePerMillionTokens = table.Column<decimal>(type: "decimal(18,6)", nullable: true),
+                    OutputPricePerMillionTokens = table.Column<decimal>(type: "decimal(18,6)", nullable: true),
                     AssistantMessageId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -407,6 +482,38 @@ namespace Enterprise.Gpt.Repository.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "MessageFeedback",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    MessageId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Rating = table.Column<int>(type: "int", nullable: true),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_MessageFeedback", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_MessageFeedback_Conversation_ConversationId",
+                        column: x => x.ConversationId,
+                        principalSchema: "Core",
+                        principalTable: "Conversation",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_MessageFeedback_User_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "Core",
+                        principalTable: "User",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "ProjectDocumentChunk",
                 schema: "Core",
                 columns: table => new
@@ -428,6 +535,71 @@ namespace Enterprise.Gpt.Repository.Migrations
                     table.PrimaryKey("PK_ProjectDocumentChunk", x => x.Id);
                     table.ForeignKey(
                         name: "FK_ProjectDocumentChunk_ProjectDocument_ProjectDocumentId",
+                        column: x => x.ProjectDocumentId,
+                        principalSchema: "Core",
+                        principalTable: "ProjectDocument",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProjectDocumentSheet",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProjectDocumentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    SheetIndex = table.Column<int>(type: "int", nullable: false),
+                    SheetName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    RowCount = table.Column<int>(type: "int", nullable: false),
+                    ColumnCount = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProjectDocumentSheet", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProjectDocumentSheet_ProjectDocument_ProjectDocumentId",
+                        column: x => x.ProjectDocumentId,
+                        principalSchema: "Core",
+                        principalTable: "ProjectDocument",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProjectDocumentSummary",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProjectDocumentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Text = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DeploymentName = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: false),
+                    PromptVersion = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
+                    InputTokens = table.Column<long>(type: "bigint", nullable: false),
+                    OutputTokens = table.Column<long>(type: "bigint", nullable: false),
+                    ModelCallCount = table.Column<int>(type: "int", nullable: false),
+                    MapUnitCount = table.Column<int>(type: "int", nullable: false),
+                    CollapsePasses = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProjectDocumentSummary", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProjectDocumentSummary_Model_ModelId",
+                        column: x => x.ModelId,
+                        principalSchema: "Core.Ref",
+                        principalTable: "Model",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_ProjectDocumentSummary_ProjectDocument_ProjectDocumentId",
                         column: x => x.ProjectDocumentId,
                         principalSchema: "Core",
                         principalTable: "ProjectDocument",
@@ -459,6 +631,71 @@ namespace Enterprise.Gpt.Repository.Migrations
                         column: x => x.ConversationDocumentId,
                         principalSchema: "Core",
                         principalTable: "ConversationDocument",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ConversationDocumentSheet",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationDocumentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    SheetIndex = table.Column<int>(type: "int", nullable: false),
+                    SheetName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    RowCount = table.Column<int>(type: "int", nullable: false),
+                    ColumnCount = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConversationDocumentSheet", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ConversationDocumentSheet_ConversationDocument_ConversationDocumentId",
+                        column: x => x.ConversationDocumentId,
+                        principalSchema: "Core",
+                        principalTable: "ConversationDocument",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ConversationDocumentSummary",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationDocumentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Text = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DeploymentName = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: false),
+                    PromptVersion = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
+                    InputTokens = table.Column<long>(type: "bigint", nullable: false),
+                    OutputTokens = table.Column<long>(type: "bigint", nullable: false),
+                    ModelCallCount = table.Column<int>(type: "int", nullable: false),
+                    MapUnitCount = table.Column<int>(type: "int", nullable: false),
+                    CollapsePasses = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConversationDocumentSummary", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ConversationDocumentSummary_ConversationDocument_ConversationDocumentId",
+                        column: x => x.ConversationDocumentId,
+                        principalSchema: "Core",
+                        principalTable: "ConversationDocument",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_ConversationDocumentSummary_Model_ModelId",
+                        column: x => x.ModelId,
+                        principalSchema: "Core.Ref",
+                        principalTable: "Model",
                         principalColumn: "Id");
                 });
 
@@ -502,6 +739,7 @@ namespace Enterprise.Gpt.Repository.Migrations
                     ParentId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     Sequence = table.Column<int>(type: "int", nullable: false),
                     Depth = table.Column<int>(type: "int", nullable: false),
+                    Iteration = table.Column<int>(type: "int", nullable: true),
                     Kind = table.Column<int>(type: "int", nullable: false),
                     ToolName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
                     Source = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
@@ -548,6 +786,138 @@ namespace Enterprise.Gpt.Repository.Migrations
                         principalColumn: "Id");
                 });
 
+            migrationBuilder.CreateTable(
+                name: "ConversationUsageTurn",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationUsageId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Iteration = table.Column<int>(type: "int", nullable: false),
+                    ResponseId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    ReportedModelId = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    InputTokens = table.Column<long>(type: "bigint", nullable: true),
+                    OutputTokens = table.Column<long>(type: "bigint", nullable: true),
+                    TotalTokens = table.Column<long>(type: "bigint", nullable: true),
+                    CachedInputTokens = table.Column<long>(type: "bigint", nullable: true),
+                    ReasoningTokens = table.Column<long>(type: "bigint", nullable: true),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConversationUsageTurn", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ConversationUsageTurn_ConversationUsage_ConversationUsageId",
+                        column: x => x.ConversationUsageId,
+                        principalSchema: "Core",
+                        principalTable: "ConversationUsage",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProjectDocumentSheetColumn",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProjectDocumentSheetId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ColumnIndex = table.Column<int>(type: "int", nullable: false),
+                    ColumnName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    InferredType = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProjectDocumentSheetColumn", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProjectDocumentSheetColumn_ProjectDocumentSheet_ProjectDocumentSheetId",
+                        column: x => x.ProjectDocumentSheetId,
+                        principalSchema: "Core",
+                        principalTable: "ProjectDocumentSheet",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProjectDocumentSheetRow",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProjectDocumentSheetId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RowIndex = table.Column<int>(type: "int", nullable: false),
+                    Cells = table.Column<string>(type: "json", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProjectDocumentSheetRow", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProjectDocumentSheetRow_ProjectDocumentSheet_ProjectDocumentSheetId",
+                        column: x => x.ProjectDocumentSheetId,
+                        principalSchema: "Core",
+                        principalTable: "ProjectDocumentSheet",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ConversationDocumentSheetColumn",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationDocumentSheetId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ColumnIndex = table.Column<int>(type: "int", nullable: false),
+                    ColumnName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    InferredType = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConversationDocumentSheetColumn", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ConversationDocumentSheetColumn_ConversationDocumentSheet_ConversationDocumentSheetId",
+                        column: x => x.ConversationDocumentSheetId,
+                        principalSchema: "Core",
+                        principalTable: "ConversationDocumentSheet",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ConversationDocumentSheetRow",
+                schema: "Core",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationDocumentSheetId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DateCreated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    DateDeactivated = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    Version = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
+                    DateModified = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RowIndex = table.Column<int>(type: "int", nullable: false),
+                    Cells = table.Column<string>(type: "json", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConversationDocumentSheetRow", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ConversationDocumentSheetRow_ConversationDocumentSheet_ConversationDocumentSheetId",
+                        column: x => x.ConversationDocumentSheetId,
+                        principalSchema: "Core",
+                        principalTable: "ConversationDocumentSheet",
+                        principalColumn: "Id");
+                });
+
             migrationBuilder.InsertData(
                 schema: "Core.Ref",
                 table: "Provider",
@@ -556,7 +926,8 @@ namespace Enterprise.Gpt.Repository.Migrations
                 {
                     { new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, "AzureOpenAI" },
                     { new Guid("6f93ec17-e981-409f-a523-700584f1e7d6"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, "Anthropic" },
-                    { new Guid("8c4b1f27-6a3d-4d59-9e21-b0f4a7c6d812"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, "AmazonBedrock" }
+                    { new Guid("8c4b1f27-6a3d-4d59-9e21-b0f4a7c6d812"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, "AmazonBedrock" },
+                    { new Guid("b7d4e0c3-5a18-4f92-9c6e-2d31f8a70b45"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, "AzureAIFoundry" }
                 });
 
             migrationBuilder.InsertData(
@@ -568,8 +939,12 @@ namespace Enterprise.Gpt.Repository.Migrations
             migrationBuilder.InsertData(
                 schema: "Core.Ref",
                 table: "Model",
-                columns: new[] { "Id", "ContextWindowSize", "CreatedById", "DateCreated", "DateDeactivated", "DateModified", "DeploymentName", "Description", "IsDefault", "IsToolEnabled", "MaxOutputTokens", "ModifiedById", "Name", "ProviderId" },
-                values: new object[] { new Guid("c36e22ed-262a-47a1-b2ba-06a38355ae0f"), 0m, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "rr-gpt-5.6-luna", "OpenAI's GPT-5.6 Luna model.", false, true, 0m, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "RR GPT 5.6 Luna", new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0") });
+                columns: new[] { "Id", "ContextWindowSize", "CreatedById", "DateCreated", "DateDeactivated", "DateModified", "DeploymentName", "Description", "InputPricePerMillionTokens", "IsDefault", "IsReasoningEnabled", "IsToolEnabled", "IsUserSelectable", "MaxOutputTokens", "ModifiedById", "Name", "OutputPricePerMillionTokens", "ProviderId" },
+                values: new object[,]
+                {
+                    { new Guid("8f2b4d16-9c05-4a3e-8f7a-1d6a9c2b5e04"), 1000000m, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "rr-gpt5.6-luna", "Runs the File Agent's sandbox turns.", null, false, false, true, false, 16384m, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "RR GPT 5.6 Luna (File Agent)", null, new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0") },
+                    { new Guid("c36e22ed-262a-47a1-b2ba-06a38355ae0f"), 1000000m, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "rr-gpt5.6-luna", "OpenAI's GPT-5.6 Luna model.", null, false, false, true, false, 16384m, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "RR GPT 5.6 Luna", null, new Guid("3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0") }
+                });
 
             migrationBuilder.InsertData(
                 schema: "Core",
@@ -578,7 +953,8 @@ namespace Enterprise.Gpt.Repository.Migrations
                 values: new object[,]
                 {
                     { new Guid("a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d"), new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "Full administrative access.", false, null, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "Administrator" },
-                    { new Guid("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e"), new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "Upload documents into a conversation or a project.", true, null, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "Upload File" }
+                    { new Guid("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e"), new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "Upload documents into a conversation or a project.", true, null, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "Upload File" },
+                    { new Guid("c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f"), new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "Ask the assistant to create, edit, compare and convert documents.", false, null, new Guid("5f7ab694-1b6c-4b19-badd-c82b65e794cf"), "Generate Files" }
                 });
 
             migrationBuilder.CreateIndex(
@@ -614,10 +990,10 @@ namespace Enterprise.Gpt.Repository.Migrations
                 columns: new[] { "ConversationId", "DateDeactivated" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ConversationDocument_UserId",
+                name: "IX_ConversationDocument_UserId_DateDeactivated",
                 schema: "Core",
                 table: "ConversationDocument",
-                column: "UserId");
+                columns: new[] { "UserId", "DateDeactivated" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ConversationDocumentChunk_ConversationDocumentId_Index",
@@ -628,10 +1004,55 @@ namespace Enterprise.Gpt.Repository.Migrations
                 filter: "[DateDeactivated] IS NULL");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ConversationDocumentSheet_ConversationDocumentId_SheetIndex",
+                schema: "Core",
+                table: "ConversationDocumentSheet",
+                columns: new[] { "ConversationDocumentId", "SheetIndex" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ConversationDocumentSheetColumn_ConversationDocumentSheetId_ColumnIndex",
+                schema: "Core",
+                table: "ConversationDocumentSheetColumn",
+                columns: new[] { "ConversationDocumentSheetId", "ColumnIndex" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ConversationDocumentSheetRow_ConversationDocumentSheetId_RowIndex",
+                schema: "Core",
+                table: "ConversationDocumentSheetRow",
+                columns: new[] { "ConversationDocumentSheetId", "RowIndex" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ConversationDocumentSummary_ConversationDocumentId",
+                schema: "Core",
+                table: "ConversationDocumentSummary",
+                column: "ConversationDocumentId",
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ConversationDocumentSummary_ModelId",
+                schema: "Core",
+                table: "ConversationDocumentSummary",
+                column: "ModelId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ConversationUsage_ConversationId_Kind_DateCreated",
                 schema: "Core",
                 table: "ConversationUsage",
                 columns: new[] { "ConversationId", "Kind", "DateCreated" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ConversationUsage_DateCreated",
+                schema: "Core",
+                table: "ConversationUsage",
+                column: "DateCreated")
+                .Annotation("SqlServer:Include", new[] { "UserId", "ConversationId", "ModelId", "ProviderId", "Kind", "Status", "InputTokens", "OutputTokens", "ToolInputTokens", "ToolOutputTokens", "ContextTokens", "InputPricePerMillionTokens", "OutputPricePerMillionTokens" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ConversationUsage_ModelId_DateCreated",
@@ -683,16 +1104,24 @@ namespace Enterprise.Gpt.Repository.Migrations
                 columns: new[] { "McpServerId", "DateCreated" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ConversationUsageToolCall_ModelId",
+                name: "IX_ConversationUsageToolCall_ModelId_DateCreated",
                 schema: "Core",
                 table: "ConversationUsageToolCall",
-                column: "ModelId");
+                columns: new[] { "ModelId", "DateCreated" },
+                filter: "[ModelId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ConversationUsageToolCall_ParentId",
                 schema: "Core",
                 table: "ConversationUsageToolCall",
                 column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ConversationUsageTurn_ConversationUsageId_Iteration",
+                schema: "Core",
+                table: "ConversationUsageTurn",
+                columns: new[] { "ConversationUsageId", "Iteration" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_McpServer_CreatedById",
@@ -713,6 +1142,19 @@ namespace Enterprise.Gpt.Repository.Migrations
                 column: "Name",
                 unique: true,
                 filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_MessageFeedback_ConversationId_MessageId",
+                schema: "Core",
+                table: "MessageFeedback",
+                columns: new[] { "ConversationId", "MessageId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_MessageFeedback_UserId",
+                schema: "Core",
+                table: "MessageFeedback",
+                column: "UserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Model_CreatedById",
@@ -793,6 +1235,70 @@ namespace Enterprise.Gpt.Repository.Migrations
                 filter: "[DateDeactivated] IS NULL");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ProjectDocumentSheet_ProjectDocumentId_SheetIndex",
+                schema: "Core",
+                table: "ProjectDocumentSheet",
+                columns: new[] { "ProjectDocumentId", "SheetIndex" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProjectDocumentSheetColumn_ProjectDocumentSheetId_ColumnIndex",
+                schema: "Core",
+                table: "ProjectDocumentSheetColumn",
+                columns: new[] { "ProjectDocumentSheetId", "ColumnIndex" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProjectDocumentSheetRow_ProjectDocumentSheetId_RowIndex",
+                schema: "Core",
+                table: "ProjectDocumentSheetRow",
+                columns: new[] { "ProjectDocumentSheetId", "RowIndex" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProjectDocumentSummary_ModelId",
+                schema: "Core",
+                table: "ProjectDocumentSummary",
+                column: "ModelId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProjectDocumentSummary_ProjectDocumentId",
+                schema: "Core",
+                table: "ProjectDocumentSummary",
+                column: "ProjectDocumentId",
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserMcpCredential_CreatedById",
+                schema: "Core",
+                table: "UserMcpCredential",
+                column: "CreatedById");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserMcpCredential_McpServerId",
+                schema: "Core",
+                table: "UserMcpCredential",
+                column: "McpServerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserMcpCredential_ModifiedById",
+                schema: "Core",
+                table: "UserMcpCredential",
+                column: "ModifiedById");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserMcpCredential_UserId_McpServerId",
+                schema: "Core",
+                table: "UserMcpCredential",
+                columns: new[] { "UserId", "McpServerId" },
+                unique: true,
+                filter: "[DateDeactivated] IS NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_UserPermission_CreatedById",
                 schema: "Core",
                 table: "UserPermission",
@@ -827,6 +1333,18 @@ namespace Enterprise.Gpt.Repository.Migrations
                 schema: "Core");
 
             migrationBuilder.DropTable(
+                name: "ConversationDocumentSheetColumn",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "ConversationDocumentSheetRow",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "ConversationDocumentSummary",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
                 name: "ConversationUsageMcpServer",
                 schema: "Core");
 
@@ -835,7 +1353,34 @@ namespace Enterprise.Gpt.Repository.Migrations
                 schema: "Core");
 
             migrationBuilder.DropTable(
+                name: "ConversationUsageTurn",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "DataProtectionKeys");
+
+            migrationBuilder.DropTable(
+                name: "MessageFeedback",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
                 name: "ProjectDocumentChunk",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "ProjectDocumentSheetColumn",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "ProjectDocumentSheetRow",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "ProjectDocumentSummary",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "UserMcpCredential",
                 schema: "Core");
 
             migrationBuilder.DropTable(
@@ -843,7 +1388,7 @@ namespace Enterprise.Gpt.Repository.Migrations
                 schema: "Core");
 
             migrationBuilder.DropTable(
-                name: "ConversationDocument",
+                name: "ConversationDocumentSheet",
                 schema: "Core");
 
             migrationBuilder.DropTable(
@@ -851,7 +1396,7 @@ namespace Enterprise.Gpt.Repository.Migrations
                 schema: "Core");
 
             migrationBuilder.DropTable(
-                name: "ProjectDocument",
+                name: "ProjectDocumentSheet",
                 schema: "Core");
 
             migrationBuilder.DropTable(
@@ -859,12 +1404,20 @@ namespace Enterprise.Gpt.Repository.Migrations
                 schema: "Core");
 
             migrationBuilder.DropTable(
-                name: "Conversation",
+                name: "ConversationDocument",
+                schema: "Core");
+
+            migrationBuilder.DropTable(
+                name: "ProjectDocument",
                 schema: "Core");
 
             migrationBuilder.DropTable(
                 name: "McpServer",
                 schema: "Core.Ref");
+
+            migrationBuilder.DropTable(
+                name: "Conversation",
+                schema: "Core");
 
             migrationBuilder.DropTable(
                 name: "Model",

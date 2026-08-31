@@ -35,6 +35,8 @@ import { CHAT_ROLE, ConversationDetailDto } from '@domain/api/conversation';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { UploadStore } from '@core/documents/upload-store';
+import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Chat } from './chat';
 import { CONVERSATION_ID_PARAM, chatMatcher } from './chat-route';
 
@@ -89,6 +91,7 @@ describe('Chat', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let streamFetch: ReturnType<typeof vi.fn>;
+  let uploadXhr: FakeUploadXhrQueue;
 
   const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
 
@@ -96,6 +99,7 @@ describe('Chat', () => {
     // Pending unless a test swaps it: these specs exercise the screen, and an
     // unresolved fetch keeps a sent turn in its thinking state.
     streamFetch = vi.fn(() => new Promise<Response>(() => {}));
+    uploadXhr = new FakeUploadXhrQueue();
     // Or a width set by one test decides the branch every later one renders.
     resetMediaQueries();
 
@@ -109,6 +113,7 @@ describe('Chat', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: streamFetch },
+        provideFakeUploadXhr(uploadXhr),
         { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
         provideRouter(
           [
@@ -136,6 +141,7 @@ describe('Chat', () => {
     // rather than repeating a flush at twenty navigation sites. The replay
     // itself is covered in `turn-store.spec.ts`.
     backend.match((request) => request.url.endsWith('/messages'));
+    backend.match((request) => request.url.includes('file-extensions'));
     backend.verify();
   });
 
@@ -146,6 +152,47 @@ describe('Chat', () => {
   function element(): HTMLElement {
     return harness.routeNativeElement as HTMLElement;
   }
+
+  it('retires a finished attachment chip once its turn is done', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(conversationDetailFixture({ ...conversation }));
+    await harness.fixture.whenStable();
+
+    const uploads = harness.routeDebugElement!.injector.get(UploadStore);
+    uploads.attach([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    // The composer holds its files until a turn is sent, which is what posts them.
+    uploads.startPending();
+    await harness.fixture.whenStable();
+
+    uploadXhr.last.respond(202, { id: 'job-1' });
+    await harness.fixture.whenStable();
+
+    // `UploadStatusClient` waits out its first staged delay before reading.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    backend
+      .expectOne((candidate) => candidate.url.includes('upload-status'))
+      .flush({
+        id: 'job-1',
+        state: 'Succeeded',
+        status: 'Processed',
+        progress: 100,
+        message: null,
+        completedUnits: null,
+        totalUnits: null,
+        documentId: '9c8b7a65-4321-4fed-8cba-0987654321fe',
+        errorMessage: null,
+        updatedAt: '2026-08-14T09:14:23.117+00:00',
+      });
+    await harness.fixture.whenStable();
+
+    // The document is the conversation's now and retrieval reaches it; a chip left on
+    // screen would make every later prompt look like it carries an attachment.
+    expect(uploads.attachments()).toHaveLength(0);
+    // And retiring it must not retract it — that path belongs to a cancel.
+    backend.expectNone((candidate) => candidate.method === 'DELETE');
+  });
 
   it('renders the empty state with no header bar on the bare chat route', async () => {
     await harness.navigateByUrl('/chat', Chat);

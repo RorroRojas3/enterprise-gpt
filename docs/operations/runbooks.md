@@ -158,14 +158,15 @@ Leave `CosmosDb:UsePartitionKeyDelete` at `false` until you have confirmed the
 1. **Apply the SQL migrations.** `Database.Migrate()` runs at startup, skipped only in the `Testing`
    environment.
 
-   If the target database predates the migration history it has no `__EFMigrationsHistory` and
-   `Migrate()` will attempt `InitialCreate` against objects that already exist. Baseline it first:
-   generate the script, apply only the new migrations by hand, and record every row in
-   `__EFMigrationsHistory`.
+   `Migrate()` expects `__EFMigrationsHistory` to hold the `Initial` row and nothing else. A
+   database this application did not build from empty — one with no history at all, or one whose
+   history records migrations the project no longer contains — makes `Migrate()` attempt `Initial`
+   against objects that already exist. Baseline it first: generate the script below, confirm the
+   schema already matches it, then leave exactly one `Initial` row in `__EFMigrationsHistory`.
 
    ```bash
    # in enterprise-gpt-api/
-   dotnet ef migrations script <from> <to> --project Enterprise.Gpt.Repository --startup-project Enterprise.Gpt.Api
+   dotnet ef migrations script --project Enterprise.Gpt.Repository --startup-project Enterprise.Gpt.Api
    ```
 
 2. **Stop traffic.**
