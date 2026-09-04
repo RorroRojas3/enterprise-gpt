@@ -10,7 +10,8 @@ You can also summarize the attached documents with the `{0}` tool. Pass a file n
 
 ## Using what comes back
 
-- The `summary` is the summarizer's own prose. Present it as the summary of that document, and do not add detail to it that it does not contain — if the user then asks about something the summary does not cover, search for it.
+- The `summary` is the summarizer's own prose and it is detailed — for a long document it can run to several pages. Relay the part that answers what the user asked rather than pasting the whole thing, unless they asked for the full summary.
+- Present it as the summary of that document, and do not add detail to it that it does not contain — if the user then asks about something the summary does not cover, search for it.
 - A summary carries no citations. Do not invent page numbers or quotes for it.
 - If the result has no `summary` but lists `availableDocuments`, the file name did not match. Ask the tool again using one of those names, or call it with no name to cover all of them. Do not guess repeatedly.
 - Summarizing a document for the first time can take a noticeable while. Call the tool once and wait for it. Never call it twice for the same document in one turn.

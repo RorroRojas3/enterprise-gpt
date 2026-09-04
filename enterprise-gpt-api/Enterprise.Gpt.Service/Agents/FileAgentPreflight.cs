@@ -1,3 +1,6 @@
+using System.Collections.Frozen;
+using System.Text.RegularExpressions;
+
 namespace Enterprise.Gpt.Service.Agents;
 
 /// <summary>A request the agent answers without opening a sandbox session at all.</summary>
@@ -16,8 +19,25 @@ public sealed record FileAgentRefusal(string Outcome, string Text, string SubSta
 /// Refuses only a cell the confirmed matrix records as refused, with exactly one source and one target
 /// named; anything less certain runs. See <c>docs/tools/file-agent.md</c>.
 /// </remarks>
-public static class FileAgentPreflight
+public static partial class FileAgentPreflight
 {
+    /// <summary>
+    /// The words that make a name the run's own output rather than something it has to find.
+    /// </summary>
+    /// <remarks>
+    /// One-sided on purpose: a create misread as a read costs the user the feature outright, while a
+    /// read misread as a create costs a sandbox session and, worse, can hand back a plausible document
+    /// built from nothing — which is why <see cref="ReadsFromAMissingName"/> overrides this.
+    /// "Save" and "export" are absent: both read as "export this file to that format" far more often
+    /// than as a create.
+    /// </remarks>
+    private static readonly FrozenSet<string> _writingWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "create", "creating", "generate", "generating", "make", "making", "produce", "producing",
+        "write", "writing", "draft", "drafting", "build", "building", "compose", "composing",
+        "prepare", "preparing", "assemble", "assembling", "output", "call", "called", "name", "named"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Weighs one run's resolved sources and its instruction against the confirmed matrix.
     /// </summary>
@@ -42,16 +62,14 @@ public static class FileAgentPreflight
                 "More than one file has that name");
         }
 
-        if (resolution.Unresolved.Count > 0)
+        if (NamesAMissingSource(resolution, instruction))
         {
             var missing = string.Join("', '", resolution.Unresolved);
-            var available = resolution.Available.Count == 0
-                ? "This conversation holds no files at all."
-                : $"What it does have: {string.Join(", ", resolution.Available)}.";
 
             return new FileAgentRefusal(
                 FileAgentOutcomes.RefusedUnknownSource,
-                $"I did not run anything. There is no file called '{missing}' in this conversation. {available}",
+                $"I did not run anything. There is no file called '{missing}' in this conversation. "
+                    + $"What it does have: {string.Join(", ", resolution.Available)}.",
                 "No file here by that name");
         }
 
@@ -79,4 +97,46 @@ public static class FileAgentPreflight
             $"I did not run anything. Converting {cell.From} to {cell.To} is not supported here. {cell.Note}{suggestion}",
             $"{cell.From} to {cell.To} is not supported");
     }
+
+    /// <summary>Whether an unmatched name is a source the run needs rather than a file it would write.</summary>
+    /// <remarks>
+    /// Nothing in an instruction says which direction a name points, so the refusal is held to the case
+    /// where it can only be a source: something was there to be named, nothing resolved, and either
+    /// nothing asks for a file to be written or one of the names is read from regardless.
+    /// </remarks>
+    private static bool NamesAMissingSource(FileAgentSourceResolution resolution, string instruction) =>
+        resolution.Unresolved.Count > 0
+        && resolution.Available.Count > 0
+        && resolution.Matched.Count == 0
+        && (ReadsFromAMissingName(instruction, resolution.Unresolved)
+
+            // Struck out first: a name is a bag of ordinary words once split, and "draft.docx" would
+            // otherwise supply the very verb that proves the request is a create.
+            || !FileAgentFormats
+                .Words(FileAgentFormats.Without(instruction, resolution.Unresolved))
+                .Overlaps(_writingWords));
+
+    /// <summary>Whether the instruction reads one of these names out of the conversation.</summary>
+    /// <remarks>
+    /// A create says what to put in a file; only a read says where the content comes from. The
+    /// preposition settles a name the surrounding verb would otherwise claim, as in "write a summary of
+    /// q3-report.pdf", which is a read however it opens.
+    /// </remarks>
+    private static bool ReadsFromAMissingName(string instruction, IReadOnlyList<string> names)
+    {
+        foreach (var name in names)
+        {
+            var index = instruction.IndexOf(name, StringComparison.OrdinalIgnoreCase);
+
+            if (index > 0 && SourcePreposition().IsMatch(instruction[..index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [GeneratedRegex(@"\b(?:from|of|in|within|using|between|against)\s+$", RegexOptions.IgnoreCase)]
+    private static partial Regex SourcePreposition();
 }

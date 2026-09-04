@@ -63,7 +63,7 @@ public sealed class SummarizerModelResolverTests : IDisposable
         Assert.Equal(Providers.AzureOpenAI, summarizer.ProviderId);
         Assert.Equal("rr-gpt5.6-luna", summarizer.DeploymentName);
         Assert.Equal(1_000_000m, summarizer.ContextWindowSize);
-        Assert.Equal(16_384m, summarizer.MaxOutputTokens);
+        Assert.Equal(32_768m, summarizer.MaxOutputTokens);
     }
 
     [Fact]

@@ -304,7 +304,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await Assert.ThrowsAsync<ValidationException>(() => _service.CreateDigestAsync(
             conversationId, scope, TestContext.Current.CancellationToken));
 
-        await _summarizer.DidNotReceiveWithAnyArgs().SummarizeTextAsync(default!, Arg.Any<CancellationToken>());
+        await _summarizer.DidNotReceiveWithAnyArgs().SummarizeDigestAsync(default!, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await AddStoredSummaryAsync(firstId, "Already known.");
 
         _summarizer
-            .SummarizeTextAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .SummarizeDigestAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Run("Both documents concern refunds."));
 
         var scope = new DocumentRetrievalScope(conversationId, null,
@@ -372,7 +372,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await AddStoredSummaryAsync(documentId, "Already known.");
 
         _summarizer
-            .SummarizeTextAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .SummarizeDigestAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Run("A digest."));
 
         var scope = new DocumentRetrievalScope(conversationId, null,
@@ -403,6 +403,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         ModelCallCount: 3,
         MapUnitCount: 2,
         CollapsePasses: 1,
+        Truncated: false,
         KnownIds.SeedModelId,
         DeploymentName,
         SummarizationPrompts.PromptVersion);

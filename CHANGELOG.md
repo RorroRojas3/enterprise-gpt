@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queued or running ingestion and removes whatever it had already produced, so a cancelled upload
   always leaves nothing behind. The composer's Stop control uses it for any file still on its way.
 
+### Changed
+
+- Document summaries (`document_summarize`) are now detailed records instead of short gists: length
+  scales with the source, every part of it must be covered, and light markdown structure (headings,
+  bullets) is used where the source itself has it. A cross-document digest stays deliberately brief
+  by contrast — a pointer to the right document, not a second copy of its detail. Every summary
+  already cached is regenerated once, at cost, the next time it is requested. A completion cut off at
+  the model's output cap is now kept and reported rather than passed off as an ordinary success, and
+  the pinned summarization model's output cap was raised to give the longer summaries headroom.
+
 ### Fixed
 
 - The composer's attachment chips no longer show a `×` and a Stop control at once while a file
@@ -32,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A file attached through a project's composer is now uploaded as a document of the conversation the
   prompt creates, not as a document of the project. Only the project's Files tab adds to the
   project's own document set.
+- The File Agent read a format mention like `.docx`, or an output name such as `report-v2.docx`, as a
+  missing source file and refused the request unrun. A create now runs whatever the conversation
+  holds, and an edit may name the file it writes. A request naming a source the conversation does not
+  have still refuses.
+- Collapsing or expanding the sidebar left its chevron's tooltip stuck open until the next click
+  elsewhere. Icon-button tooltips (the sidebar chevron, and menu triggers that carry a hint) now
+  appear on hover and on keyboard focus, rather than on any focus — so a click that moves focus
+  programmatically no longer leaves a flyout behind for the pointer to clear.
 
 ## [1.0.0] - 2026-08-30
 

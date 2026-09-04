@@ -146,6 +146,8 @@ customMetrics
 | order by Failures desc
 ```
 
+A `truncated` outcome on `enterprise_gpt.document_summary.run.duration` is not a failure either: the run produced a summary and it was cached and billed, but a call inside it was cut off at the deployment's output cap. It is broken out from `success` so the two are visible separately, not because the run failed — see [the truncation section](../documents/summarization.md#truncation) for what it means and its one gap (the flag never reaches the cached row itself).
+
 `valueCount`, not `valueSum`: for a duration histogram, the count of observations *is* the count of runs — one run, one recorded duration. A generated artifact that opened but did not match its claimed shape is a different signal, recorded as its own counter rather than folded into the run outcome above:
 
 ```kusto

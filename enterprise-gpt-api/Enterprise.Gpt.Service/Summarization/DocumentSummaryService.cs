@@ -154,7 +154,7 @@ public sealed class DocumentSummaryService(
         }
 
         var run = await MeasureAsync(
-            () => _summarizer.SummarizeTextAsync(parts.ToString(), cancellationToken),
+            () => _summarizer.SummarizeDigestAsync(parts.ToString(), cancellationToken),
             cancellationToken,
             path: "digest").ConfigureAwait(false);
 
@@ -245,7 +245,7 @@ public sealed class DocumentSummaryService(
             ChatMetrics.RecordSummaryRun(
                 result.DeploymentName,
                 path ?? (result.MapUnitCount == 0 ? "single-pass" : "map-reduce"),
-                outcome: "success",
+                outcome: result.Truncated ? "truncated" : "success",
                 Stopwatch.GetElapsedTime(started),
                 result.MapUnitCount);
 

@@ -45,8 +45,9 @@ public sealed class FileAgentToolProvider(
         "Produces a real file — docx, xlsx, pptx, pdf, csv, md or txt — by writing and running Python in a "
         + "sandbox. Use it to create a document from a description, edit or convert a file already in the "
         + "conversation, or compare two of them. Pass one instruction in plain language, naming the files to "
-        + "work from exactly as they appear in the conversation. Returns a sentence describing what it made; "
-        + "the file itself is attached to your answer automatically.";
+        + "work from exactly as they appear in the conversation and no others — to create a new file, "
+        + "describe what it should contain rather than inventing a name for it. Returns a sentence "
+        + "describing what it made; the file itself is attached to your answer automatically.";
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IFileAgentModelResolver _modelResolver = modelResolver;

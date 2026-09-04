@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ApplicationRef, ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -24,6 +24,7 @@ import { projectFixture, projectPage } from '@testing/projects';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { administratorFixture } from '@testing/session';
+import { userEvent } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Shell } from './shell';
 
@@ -170,6 +171,53 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
     const panelId = disclosure?.getAttribute('aria-controls');
     expect(panelId).toBe(`sidebar-project-${FAVORITE.id}`);
     expect(element.querySelector(`#${panelId}`)).not.toBeNull();
+  });
+
+  /**
+   * Toggling destroys the chevron that was pressed and moves focus to the one that replaced
+   * it, which the pointer never entered and so will never see `mouseleave`. Both directions
+   * need trusted input: the engine reads focus modality off that alone, and jsdom has no
+   * modality at all.
+   */
+  describe('the tooltip on the chevron focus follows to', () => {
+    async function collapseSidebar(element: HTMLElement): Promise<HTMLButtonElement | null> {
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      return element.querySelector<HTMLButtonElement>(
+        '.strip__button[aria-label="Expand sidebar"]',
+      );
+    }
+
+    it('stays away after a pointer collapse', async () => {
+      await atViewport('desktop');
+      const element = await renderShell('light');
+      const collapse = element.querySelector<HTMLButtonElement>('.sidebar__collapse');
+      expect(collapse).not.toBeNull();
+
+      await userEvent.click(collapse as HTMLButtonElement);
+      const expand = await collapseSidebar(element);
+
+      expect(document.activeElement).toBe(expand);
+      expect(document.querySelector('.app-tooltip')).toBeNull();
+    });
+
+    it('names the replacement after a keyboard collapse', async () => {
+      await atViewport('desktop');
+      const element = await renderShell('light');
+      const collapse = element.querySelector<HTMLButtonElement>('.sidebar__collapse');
+      expect(collapse).not.toBeNull();
+
+      // Tab for the modality, then focus the chevron directly rather than counting stops to
+      // it; scripted focus carries the keyboard modality forward, which is the whole reason
+      // the restored focus still names its control.
+      await userEvent.keyboard('{Tab}');
+      (collapse as HTMLButtonElement).focus();
+      await userEvent.keyboard('{Enter}');
+      const expand = await collapseSidebar(element);
+
+      expect(document.activeElement).toBe(expand);
+      expect(document.querySelector('.app-tooltip')?.textContent).toBe('Expand sidebar');
+    });
   });
 
   it('renders one navigation landmark, whatever the width', async () => {

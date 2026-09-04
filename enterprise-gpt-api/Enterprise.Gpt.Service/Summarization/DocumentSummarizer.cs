@@ -25,6 +25,7 @@ namespace Enterprise.Gpt.Service.Summarization;
 /// </param>
 /// <param name="MapUnitCount">How many units the document was split into. Zero on the single-pass path.</param>
 /// <param name="CollapsePasses">How many times the partial summaries had to be re-summarized. Usually zero.</param>
+/// <param name="Truncated">Whether any call in the run was cut off at the deployment's output cap.</param>
 /// <param name="ModelId">The summarizer's catalog row id, as it stood when the run started.</param>
 /// <param name="DeploymentName">The deployment that actually served the run.</param>
 /// <param name="PromptVersion">The prompt generation the summary was produced under.</param>
@@ -40,6 +41,7 @@ public sealed record SummarizationRun(
     int ModelCallCount,
     int MapUnitCount,
     int CollapsePasses,
+    bool Truncated,
     Guid ModelId,
     string DeploymentName,
     string PromptVersion);
@@ -64,18 +66,19 @@ public interface IDocumentSummarizer
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Summarizes arbitrary text through the same pipeline.
+    /// Reduces several documents' summaries to one overview through the same pipeline.
     /// </summary>
-    /// <param name="text">The text to summarize.</param>
+    /// <param name="summaries">The labelled per-document summaries to digest.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The summary and what producing it cost.</returns>
-    /// <exception cref="ValidationException">There is no text to summarize, or the run failed.</exception>
+    /// <returns>The overview and what producing it cost.</returns>
+    /// <exception cref="ValidationException">There is nothing to summarize, or the run failed.</exception>
     /// <exception cref="SummarizerNotConfiguredException">The summarizer's catalog row is missing or unusable.</exception>
     /// <remarks>
-    /// The seam a conversation-level digest reduces through: a digest is not a fourth algorithm, it
-    /// is this same pipeline run over per-document summaries instead of a document's own text.
+    /// A digest is not a second algorithm: it is this same pipeline run over per-document summaries
+    /// instead of a document's own text, under a framing that asks for an overview rather than a
+    /// record of everything.
     /// </remarks>
-    Task<SummarizationRun> SummarizeTextAsync(string text, CancellationToken cancellationToken);
+    Task<SummarizationRun> SummarizeDigestAsync(string summaries, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -125,21 +128,24 @@ public sealed class DocumentSummarizer(
                     + "its text extraction may have produced nothing.");
         }
 
-        return await SummarizeCoreAsync(text, cancellationToken).ConfigureAwait(false);
+        return await SummarizeCoreAsync(text, SummaryStage.Document, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public async Task<SummarizationRun> SummarizeTextAsync(string text, CancellationToken cancellationToken)
+    public async Task<SummarizationRun> SummarizeDigestAsync(
+        string summaries, CancellationToken cancellationToken)
     {
         // async rather than a bare Task-returning guard, so the failure lands on the returned task.
         // A digest fans several of these out through Task.WhenAll, where a synchronous throw would
         // abandon the sibling tasks it had already started, unobserved.
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(summaries))
         {
-            throw Invalid(nameof(text), "There is nothing to summarize.");
+            throw Invalid(nameof(summaries), "There is nothing to summarize.");
         }
 
-        return await SummarizeCoreAsync(text, cancellationToken).ConfigureAwait(false);
+        return await SummarizeCoreAsync(summaries, SummaryStage.Digest, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     #endregion
@@ -154,14 +160,17 @@ public sealed class DocumentSummarizer(
     /// nobody ever reads. The original is logged rather than shown, since a provider message can
     /// carry a deployment name or a request id.
     /// </remarks>
-    private async Task<SummarizationRun> SummarizeCoreAsync(string text, CancellationToken cancellationToken)
+    private async Task<SummarizationRun> SummarizeCoreAsync(
+        string text,
+        SummaryStage stage,
+        CancellationToken cancellationToken)
     {
         // Named outside the try so the log line still has it when the failure happens deep in a run.
         var deployment = "unresolved";
 
         try
         {
-            return await RunAsync(text, name => deployment = name, cancellationToken)
+            return await RunAsync(text, stage, name => deployment = name, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not (ValidationException or SummarizerNotConfiguredException)
@@ -181,6 +190,7 @@ public sealed class DocumentSummarizer(
 
     private async Task<SummarizationRun> RunAsync(
         string text,
+        SummaryStage stage,
         Action<string> reportDeployment,
         CancellationToken cancellationToken)
     {
@@ -195,19 +205,24 @@ public sealed class DocumentSummarizer(
         var context = new RunContext(summarizer, estimator, chatClient);
         var documentTokens = CountTokens(context, text);
 
-        // Sized against the single-pass frame specifically: each stage's framing differs, and the
-        // decision this budget serves is whether the whole document rides that one prompt.
-        var singlePassPrompt = SummarizationPrompts.BuildSinglePass(text);
-        var singlePassBudget = ComputeBudget(context, singlePassPrompt.Instructions);
+        // Sized against the framing this run's one call would actually carry: each stage's framing
+        // differs, and the decision this budget serves is whether the whole text rides that prompt.
+        var singleCallPrompt = stage is SummaryStage.Digest
+            ? SummarizationPrompts.BuildDigest(text)
+            : SummarizationPrompts.BuildSinglePass(text);
 
-        if (documentTokens <= singlePassBudget.PerCallTokens)
+        var singleCallBudget = ComputeBudget(context, singleCallPrompt.Instructions);
+
+        if (documentTokens <= singleCallBudget.PerCallTokens)
         {
-            var single = await CallAsync(context, singlePassPrompt, cancellationToken)
+            var single = await CallAsync(context, singleCallPrompt, cancellationToken)
                 .ConfigureAwait(false);
 
             return BuildRun(context, single.Text, [single], mapUnitCount: 0, collapsePasses: 0);
         }
 
+        // A digest that overflows falls back to the document's own map and reduce framing rather
+        // than earning two more templates for a path a scope of summaries rarely reaches.
         return await MapReduceAsync(context, text, documentTokens, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -329,8 +344,14 @@ public sealed class DocumentSummarizer(
     {
         var partials = mapped;
         List<CallResult> calls = [];
+
+        // Two budgets because two prompts are in play: the loop exits when the partials fit the
+        // reduce that follows it, while a pass inside it packs against the call it is making.
         var reduceBudget = ComputeBudget(
             context, SummarizationPrompts.BuildReduce(["x"]).Instructions);
+
+        var collapseBudget = ComputeBudget(
+            context, SummarizationPrompts.BuildCollapse(["x"]).Instructions);
 
         var passes = 0;
 
@@ -351,7 +372,7 @@ public sealed class DocumentSummarizer(
             // already fills the budget, nothing can be combined with it, and the pass still earns
             // its cost by compressing that partial on its own. Whether the partials shrink fast
             // enough is what the pass limit above answers; it is not knowable from the grouping.
-            var groups = GroupToFit(context, partials, reduceBudget.PerCallTokens);
+            var groups = GroupToFit(context, partials, collapseBudget.PerCallTokens);
 
             _logger.LogInformation(
                 "Collapse pass {Pass} reducing {PartialCount} partial summaries into {GroupCount}",
@@ -362,7 +383,7 @@ public sealed class DocumentSummarizer(
             foreach (var group in groups)
             {
                 collapsed.Add(await CallAsync(
-                    context, SummarizationPrompts.BuildReduce(group), cancellationToken)
+                    context, SummarizationPrompts.BuildCollapse(group), cancellationToken)
                     .ConfigureAwait(false));
             }
 
@@ -503,8 +524,29 @@ public sealed class DocumentSummarizer(
             ? response.Messages[^1].Text?.Trim() ?? string.Empty
             : string.Empty;
 
+        // Cut-off text is kept rather than failed — it is the best answer the run has, and a retry
+        // against the same cap buys the same text — but it is cached as it stands, so the flag rides
+        // out with it.
+        var truncated = response.FinishReason == ChatFinishReason.Length;
+
+        if (truncated)
+        {
+            _logger.LogWarning(
+                "A summarization call against deployment {DeploymentName} was cut off at its "
+                    + "{MaxOutputTokens}-token output cap",
+                context.Summarizer.DeploymentName, context.Summarizer.MaxOutputTokens);
+        }
+
         if (string.IsNullOrEmpty(text))
         {
+            // A reasoning deployment can spend the whole cap before emitting anything visible. A
+            // retry might land under it, but not reliably enough to buy on every remaining map unit.
+            if (truncated)
+            {
+                throw Invalid(
+                    "summary", "The summarizer spent its entire output budget before writing anything.");
+            }
+
             throw new EmptyCompletionException();
         }
 
@@ -520,7 +562,8 @@ public sealed class DocumentSummarizer(
         return new CallResult(
             text,
             report?.AssistantUsage.InputTokenCount ?? response.Usage?.InputTokenCount ?? 0,
-            report?.AssistantUsage.OutputTokenCount ?? response.Usage?.OutputTokenCount ?? 0);
+            report?.AssistantUsage.OutputTokenCount ?? response.Usage?.OutputTokenCount ?? 0,
+            truncated);
     }
 
     private SummarizationBudget ComputeBudget(RunContext context, string instructions) =>
@@ -562,6 +605,7 @@ public sealed class DocumentSummarizer(
             calls.Count,
             mapUnitCount,
             collapsePasses,
+            calls.Any(c => c.Truncated),
             context.Summarizer.ModelId,
             context.Summarizer.DeploymentName,
             SummarizationPrompts.PromptVersion);
@@ -581,5 +625,15 @@ public sealed class DocumentSummarizer(
         ITokenEstimator Estimator,
         IChatClient ChatClient);
 
-    private readonly record struct CallResult(string Text, long InputTokens, long OutputTokens);
+    private readonly record struct CallResult(
+        string Text,
+        long InputTokens,
+        long OutputTokens,
+        bool Truncated);
+
+    private enum SummaryStage
+    {
+        Document,
+        Digest
+    }
 }

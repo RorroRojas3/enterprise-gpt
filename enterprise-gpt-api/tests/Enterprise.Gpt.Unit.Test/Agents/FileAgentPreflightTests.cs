@@ -123,15 +123,63 @@ public sealed class FileAgentPreflightTests
         Assert.Contains("present.docx", refusal.Text, StringComparison.Ordinal);
     }
 
+    // With no files at all there is no source to be missing, so the only reading left is a name for
+    // what the run is about to write.
     [Fact]
-    public void Evaluate_ANameMatchingNothingInAnEmptyConversation_SaysThereAreNoFiles()
+    public void Evaluate_ANameMatchingNothingWhenTheConversationHoldsNoFiles_Runs()
     {
-        var resolution = Resolution([], unresolved: ["missing.docx"]);
+        var resolution = Resolution([], unresolved: ["random.docx"]);
 
-        var refusal = FileAgentPreflight.Evaluate(resolution, "Convert missing.docx to pdf", _matrix);
+        Assert.Null(FileAgentPreflight.Evaluate(resolution, "Create random.docx with sample content", _matrix));
+    }
+
+    // How a create that proposes a name for its own answer reaches the tool. The format is named in
+    // words as often as in the extension, so neither reading may stand in for "this file must exist".
+    // The unresolved name is carried per row because the name is itself part of what is read.
+    [Theory]
+    [InlineData("Create summary.docx about last quarter", "summary.docx")]
+    [InlineData("Create a Word document called notes.docx", "notes.docx")]
+    [InlineData("Generate a spreadsheet named budget.xlsx", "budget.xlsx")]
+    [InlineData("Write a deck called kickoff.pptx", "kickoff.pptx")]
+    [InlineData("Produce a pdf and save it as summary.pdf", "summary.pdf")]
+    [InlineData("**Create** the draft.docx we discussed", "draft.docx")]
+    public void Evaluate_ACreateNamingTheFileItWillWrite_Runs(string instruction, string name)
+    {
+        var resolution = Resolution([], unresolved: [name], available: ["present.docx"]);
+
+        Assert.Null(FileAgentPreflight.Evaluate(resolution, instruction, _matrix));
+    }
+
+    [Fact]
+    public void Evaluate_AnOutputNameBesideAResolvedSource_Runs()
+    {
+        var resolution = Resolution(
+            Matched("report.docx"), unresolved: ["report-v2.docx"], available: ["report.docx"]);
+
+        Assert.Null(FileAgentPreflight.Evaluate(
+            resolution, "Edit report.docx and save it as report-v2.docx", _matrix));
+    }
+
+    // The other side of the same boundary. The last rows are the ones a bag of words gets wrong on its
+    // own: "draft" and "output" are ordinary file names, and a request to write something *from* a file
+    // is a read whatever verb opens it.
+    [Theory]
+    [InlineData("Summarize missing.docx", "missing.docx")]
+    [InlineData("Fix the totals in missing.docx", "missing.docx")]
+    [InlineData("Convert missing.docx to pdf", "missing.docx")]
+    [InlineData("Convert draft.docx to pdf", "draft.docx")]
+    [InlineData("Convert output.xlsx to csv", "output.xlsx")]
+    [InlineData("Export budget.xlsx to csv", "budget.xlsx")]
+    [InlineData("Write a one-page summary of q3-report.pdf", "q3-report.pdf")]
+    [InlineData("Create a deck from sales.xlsx", "sales.xlsx")]
+    public void Evaluate_AReadNamingAFileThatIsNotHere_Refuses(string instruction, string name)
+    {
+        var resolution = Resolution([], unresolved: [name], available: ["present.docx"]);
+
+        var refusal = FileAgentPreflight.Evaluate(resolution, instruction, _matrix);
 
         Assert.NotNull(refusal);
-        Assert.Contains("no files at all", refusal.Text, StringComparison.Ordinal);
+        Assert.Equal(FileAgentOutcomes.RefusedUnknownSource, refusal.Outcome);
     }
 
     // Every refusal has to be tellable apart from every other one on the card, or the four failure
@@ -144,7 +192,9 @@ public sealed class FileAgentPreflightTests
         var ambiguous = FileAgentPreflight.Evaluate(
             Resolution([], ambiguous: ["report.docx"]), "Convert report.docx to pdf", _matrix);
         var unknown = FileAgentPreflight.Evaluate(
-            Resolution([], unresolved: ["missing.docx"]), "Convert missing.docx to pdf", _matrix);
+            Resolution([], unresolved: ["missing.docx"], available: ["present.docx"]),
+            "Convert missing.docx to pdf",
+            _matrix);
 
         string[] subStatuses = [conversion!.SubStatus, ambiguous!.SubStatus, unknown!.SubStatus];
 

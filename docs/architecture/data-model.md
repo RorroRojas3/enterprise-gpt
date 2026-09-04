@@ -57,8 +57,9 @@ catalog edit cannot rewrite history. See
 
 ### Migrations
 
-`Repository/Migrations/` holds a single `Initial` migration: the whole schema plus the `HasData`
-seeds, including the provider rows.
+`Repository/Migrations/` holds the `Initial` migration — the whole schema plus the `HasData` seeds,
+including the provider rows — plus each schema or seed change made since, added the normal
+`dotnet ef migrations add` way.
 
 `Database.Migrate()` runs at startup and is **skipped in the `Testing` environment**, so a database
 built from empty is migrated and seeded automatically. Unit tests use SQLite in-memory and

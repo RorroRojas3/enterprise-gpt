@@ -80,8 +80,14 @@ describe('Tooltip', () => {
     expect(labelled.getAttribute('aria-label')).toBeNull();
   });
 
-  it('shows on focus, not only on hover, and hides again on blur', async () => {
+  /**
+   * Stubbed rather than focused for real: jsdom has no focus modality — `:focus-visible` is
+   * an alias for `:focus` there — and an ambient inert ancestor left by another spec can make
+   * `focus()` a no-op. The two directions in a real engine are in `shell.a11y.spec.ts`.
+   */
+  it('shows on focus the browser marks visible, and hides again on blur', async () => {
     const { fixture, nameless } = await render();
+    vi.spyOn(nameless, 'matches').mockImplementation((selector) => selector === ':focus-visible');
 
     nameless.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     await fixture.whenStable();
@@ -89,6 +95,16 @@ describe('Tooltip', () => {
 
     nameless.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
     await fixture.whenStable();
+    expect(nameless.querySelector('.app-tooltip')).toBeNull();
+  });
+
+  it('ignores focus the browser does not mark visible', async () => {
+    const { fixture, nameless } = await render();
+    expect(nameless.matches(':focus-visible')).toBe(false);
+
+    nameless.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    await fixture.whenStable();
+
     expect(nameless.querySelector('.app-tooltip')).toBeNull();
   });
 

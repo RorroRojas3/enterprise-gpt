@@ -28,10 +28,11 @@ public sealed record SummarizationPrompt(string Instructions, string UserMessage
 /// being measured.
 /// </para>
 /// <para>
-/// No document name reaches any prompt. A file name is attacker-chosen text, and a project document
-/// is readable by every member of its project, so a name carried into the instructions would be a
-/// cross-user injection channel <em>inside</em> the frame, where the trust paragraph — which speaks
-/// only about the delimited body — would not cover it.
+/// No document name reaches a prompt's framing. A file name is attacker-chosen text, and a project
+/// document is readable by every member of its project, so a name carried into the instructions
+/// would be a cross-user injection channel <em>inside</em> the frame, where the trust paragraph —
+/// which speaks only about the delimited body — would not cover it. The digest labels its documents
+/// by name, and those labels ride inside the fence for that reason.
 /// </para>
 /// <para>
 /// Templates are read once at type initialisation. If a template file is missing, the type
@@ -47,9 +48,9 @@ public static class SummarizationPrompts
     /// <remarks>
     /// Persisted on a summary row so that a summary generated before a template changed can be told
     /// apart from one generated after, without comparing the text itself. Bump this whenever any of
-    /// the three templates changes in a way that would change what a model returns.
+    /// the templates changes in a way that would change what a model returns.
     /// </remarks>
-    public const string PromptVersion = "1";
+    public const string PromptVersion = "2";
 
     private static readonly string SinglePassTemplate =
         PromptTemplateLoader.Load("document-summary-single-pass-prompt.md");
@@ -59,6 +60,12 @@ public static class SummarizationPrompts
 
     private static readonly string ReduceTemplate =
         PromptTemplateLoader.Load("document-summary-reduce-prompt.md");
+
+    private static readonly string CollapseTemplate =
+        PromptTemplateLoader.Load("document-summary-collapse-prompt.md");
+
+    private static readonly string DigestTemplate =
+        PromptTemplateLoader.Load("document-summary-digest-prompt.md");
 
     #region Public static methods
 
@@ -104,17 +111,58 @@ public static class SummarizationPrompts
     }
 
     /// <summary>
-    /// Builds the prompt that combines part summaries into one.
+    /// Builds the prompt that assembles part summaries into the document's final summary.
     /// </summary>
     /// <param name="partialSummaries">The part summaries, in document order.</param>
     /// <returns>The framing and the delimited, numbered parts.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="partialSummaries"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when <paramref name="partialSummaries"/> is empty.</exception>
+    public static SummarizationPrompt BuildReduce(IReadOnlyList<string> partialSummaries) =>
+        BuildNumberedParts(ReduceTemplate, partialSummaries);
+
+    /// <summary>
+    /// Builds the prompt that shortens part summaries until they fit one reduce call.
+    /// </summary>
+    /// <param name="partialSummaries">The part summaries to compress, in document order.</param>
+    /// <returns>The framing and the delimited, numbered parts.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="partialSummaries"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="partialSummaries"/> is empty.</exception>
+    /// <remarks>
+    /// Separate from <see cref="BuildReduce"/> because the two stages want opposite things: a
+    /// collapse pass has to come back shorter or the loop never converges, while the reduce it feeds
+    /// produces the summary that gets cached and is told to keep what it was given.
+    /// </remarks>
+    public static SummarizationPrompt BuildCollapse(IReadOnlyList<string> partialSummaries) =>
+        BuildNumberedParts(CollapseTemplate, partialSummaries);
+
+    /// <summary>
+    /// Builds the prompt that reduces several documents' summaries to one overview.
+    /// </summary>
+    /// <param name="summaries">The per-document summaries, labelled and in scope order.</param>
+    /// <returns>The framing and the delimited summaries.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="summaries"/> is <see langword="null"/> or whitespace.</exception>
+    public static SummarizationPrompt BuildDigest(string summaries)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(summaries);
+
+        var delimiter = CreateDelimiter();
+
+        return new SummarizationPrompt(
+            string.Format(CultureInfo.InvariantCulture, DigestTemplate, delimiter),
+            Fence(delimiter, summaries));
+    }
+
+    #endregion
+
+    #region Private methods
+
     /// <remarks>
     /// The parts are numbered inside one fenced block rather than fenced individually, so the model
     /// sees a single trust boundary it was told about rather than a sequence of them.
     /// </remarks>
-    public static SummarizationPrompt BuildReduce(IReadOnlyList<string> partialSummaries)
+    private static SummarizationPrompt BuildNumberedParts(
+        string template,
+        IReadOnlyList<string> partialSummaries)
     {
         ArgumentNullException.ThrowIfNull(partialSummaries);
 
@@ -139,13 +187,9 @@ public static class SummarizationPrompts
         }
 
         return new SummarizationPrompt(
-            string.Format(CultureInfo.InvariantCulture, ReduceTemplate, delimiter),
+            string.Format(CultureInfo.InvariantCulture, template, delimiter),
             Fence(delimiter, body.ToString()));
     }
-
-    #endregion
-
-    #region Private methods
 
     /// <remarks>
     /// Unguessable per call rather than a fixed string, for the reason

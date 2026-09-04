@@ -28,17 +28,17 @@ type Placement = 'right' | 'top' | 'bottom';
  * the host has no name of its own — including from its own text content, since
  * overriding a visible label would break WCAG SC 2.5.3 (Label in Name).
  *
- * Shown on focus as well as hover, and dismissed by Escape from anywhere, as WCAG SC
- * 1.4.13 (Dismissible) requires. A host-scoped Escape listener would not do: a tooltip
- * shown by hover while focus is elsewhere would be undismissable, which is precisely
- * the case the criterion exists for.
+ * Shown on keyboard-visible focus as well as hover, and dismissed by Escape from
+ * anywhere, as WCAG SC 1.4.13 (Dismissible) requires. A host-scoped Escape listener would
+ * not do: a tooltip shown by hover while focus is elsewhere would be undismissable, which
+ * is precisely the case the criterion exists for.
  */
 @Directive({
   selector: '[appTooltip]',
   host: {
     '(mouseenter)': 'show()',
     '(mouseleave)': 'hide()',
-    '(focusin)': 'show()',
+    '(focusin)': 'showOnVisibleFocus()',
     '(focusout)': 'hide()',
   },
 })
@@ -106,6 +106,20 @@ export class Tooltip {
       this.remove();
       this.dismissController?.abort();
     });
+  }
+
+  /**
+   * A control focused by pointer — or refocused by script after a click destroyed it, as
+   * the sidebar chevron is — was never hovered, so nothing but a click elsewhere would ever
+   * take the flyout back. Hiding stays ungated, which is what dismisses a hover-shown tip
+   * when focus moves away.
+   */
+  protected showOnVisibleFocus(): void {
+    // Every host is a button or a link with no focusable descendants, so it is the node
+    // `focusin` bubbled from — `:focus-visible` never matches an ancestor.
+    if (this.host.nativeElement.matches(':focus-visible')) {
+      this.show();
+    }
   }
 
   protected show(): void {

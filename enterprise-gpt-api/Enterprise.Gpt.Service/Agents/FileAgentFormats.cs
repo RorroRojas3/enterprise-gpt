@@ -15,7 +15,10 @@ public static class FileAgentFormats
     public static readonly IReadOnlyList<string> Producible = ["docx", "xlsx", "pptx", "pdf", "csv", "md", "txt"];
 
     private static readonly char[] _wordBreaks =
-        [' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '"', '\'', '/', '\\'];
+    [
+        ' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '"', '\'',
+        '/', '\\', '*', '_', '`'
+    ];
 
     /// <summary>
     /// The words that name a target format, deliberately narrower than the skill filter's own topics.
@@ -53,6 +56,31 @@ public static class FileAgentFormats
             : new HashSet<string>(
                 text.Split(_wordBreaks, StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Strikes a set of file names out of an instruction, leaving the prose around them.</summary>
+    /// <param name="instruction">The run's instruction.</param>
+    /// <param name="names">The names to remove.</param>
+    /// <returns>The instruction with every occurrence of every name replaced by a space.</returns>
+    /// <remarks>
+    /// A file name splits into ordinary words — "draft.docx" yields "draft" — so a scan reading an
+    /// instruction for what it asks for has to strike the names out before it counts anything.
+    /// </remarks>
+    public static string Without(string instruction, IEnumerable<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        var remainder = instruction;
+
+        foreach (var name in names)
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                remainder = remainder.Replace(name, " ", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return remainder;
+    }
+
     /// <summary>
     /// Finds the formats an instruction asks for, ignoring the source files it names.
     /// </summary>
@@ -72,17 +100,7 @@ public static class FileAgentFormats
             return [];
         }
 
-        var remainder = instruction;
-
-        foreach (var name in sourceNames)
-        {
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                remainder = remainder.Replace(name, " ", StringComparison.OrdinalIgnoreCase);
-            }
-        }
-
-        var words = Words(remainder);
+        var words = Words(Without(instruction, sourceNames));
 
         return
         [

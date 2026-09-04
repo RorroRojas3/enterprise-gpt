@@ -132,6 +132,47 @@ check may be regenerated up to `MaxVerificationRetries` times.
 Persistence and delivery — the second blob container, the `Generated` discriminator, withdrawal of
 undelivered files — are covered in [../documents/downloads.md](../documents/downloads.md).
 
+## Source names vs. output names
+
+An instruction is one string, and nothing in it marks whether a file name is something the run must
+**read** or something it will **write**. `FileAgentDocumentReader.ResolveAsync` scrapes the instruction
+for tokens shaped like a producible file name and resolves each against the conversation into
+`Matched`, `Unresolved` and `Ambiguous`. A token needs an alphanumeric stem ahead of its extension and
+has to reach the end of the candidate name — a bare format mention (`.docx`, `(.docx)`, `**.docx**`)
+and an absolute sandbox path (`/mnt/data/output.docx`) are not names, and `notes.txt` is no longer
+satisfied by `notes.txt.docx`. The tool description also tells the calling model to name only files
+that already exist in the conversation, and to describe a new file rather than invent a name for it.
+
+`FileAgentPreflight.Evaluate` refuses an unresolved name as a missing source only when all of the
+following hold: something went unresolved, the conversation actually holds files, nothing else
+resolved as a source, and the instruction does not ask for a file to be written. That last question is
+answered by a fixed set of writing words — create, generate, make, produce, write, draft, build,
+compose, prepare, assemble, output, call/called, name/named — scanned over the instruction with the
+unresolved names **struck out first**, since a name splits into ordinary words and `draft.docx` would
+otherwise supply the very word that proves the request is a create. `save` and `export` are absent on
+purpose: both read as "export this file to that format" far more often than as a create.
+
+One thing overrides the scan. A name preceded by a source preposition — `from`, `of`, `in`, `within`,
+`using`, `between`, `against` — is read out of the conversation however the sentence opens, so
+`write a one-page summary of q3-report.pdf` refuses rather than fabricating a summary of a file that
+is not there. A create says what to put in a file; only a read says where the content comes from.
+
+Together these keep a create running whether the conversation is empty or already holds files, and let
+an edit or conversion that pairs a resolved source with a new output name (`edit report.docx and save
+it as report-v2.docx`) proceed instead of refusing on the output name.
+
+A read, edit or conversion that names a file the conversation does not hold still refuses before any
+sandbox session opens, naming what the conversation does have instead — `Summarize missing.docx`,
+`Convert missing.docx to pdf`, `Export budget.xlsx to csv`.
+
+**Known limitation.** Once at least one named source resolves, a second name that resolves to nothing
+no longer refuses — the run proceeds with whatever it could mount. That keeps an edit's output name
+from blocking the run, at the cost of a comparison against a missing second file running rather than
+refusing.
+
+The ambiguous-name refusal (two files sharing a name) and the conversion-matrix refusal below are
+unaffected by any of this.
+
 ## The conversion matrix
 
 `Service/Agents/Documents/conversion-matrix.json` is the authority on which format conversions the
@@ -174,6 +215,8 @@ assumption.
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentSkills.cs` | Discovery, the refusing script runner |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentToolProvider.cs` | Per-turn composition |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentQuotaService.cs` | Rolling-day ceilings |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentDocumentReader.cs` | File-name tokens, resolved against the conversation |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentPreflight.cs` | Ambiguous, missing-source and refused-conversion checks |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs` | Post-run checks |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/ConversionMatrix.cs` | What the sandbox can convert |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Settings/FileAgentOptions.cs` | The options above |
