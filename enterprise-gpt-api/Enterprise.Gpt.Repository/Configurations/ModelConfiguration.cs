@@ -30,7 +30,10 @@ namespace Enterprise.Gpt.Repository.Configurations
                     // purpose-built deployment nobody should be able to hold a conversation with.
                     DeploymentName = "rr-gpt5.6-luna",
                     ContextWindowSize = 1_000_000m,
-                    MaxOutputTokens = 16_384m,
+                    // Wide enough for a full document summary plus whatever the deployment spends on
+                    // reasoning, which shares this cap. It costs the input budget three percent of
+                    // the window, since the engine reserves the cap out of it before splitting.
+                    MaxOutputTokens = 32_768m,
                     IsUserSelectable = false,
                     IsToolEnabled = true,
                     Description = "OpenAI's GPT-5.6 Luna model.",

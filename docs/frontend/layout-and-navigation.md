@@ -72,6 +72,12 @@ The sidebar's two widths are separate template branches rather than one branch w
 44px square target with a tooltip is a different control from a 36px row with a visible label, not
 the same control with its text removed.
 
+Toggling therefore destroys the collapse chevron and restores focus to the one that replaces it, in
+the other branch, so the next Tab does not restart at the top of the page. `Tooltip` (below) only
+shows for a focus the browser marks `:focus-visible`, so that restored focus can move the flyout to
+the new chevron for a keyboard user without leaving it stuck open for a pointer user who never
+hovered the control focus landed on.
+
 ## Overlays
 
 `shared/overlay/` holds the primitives: `anchored-panel` (positioning), `menu` (roving focus),
@@ -80,6 +86,9 @@ the same control with its text removed.
 Using the native dialog is what gives real inertness from the top layer rather than a hand-rolled
 focus trap. Focus restoration runs on close **and** on destroy — see
 [design-system.md](design-system.md).
+
+`menu` restores focus to its trigger on close the same way, so a trigger that carries a `hint`
+tooltip meets the same `:focus-visible` gate the sidebar chevron does.
 
 ## A stray file drop
 

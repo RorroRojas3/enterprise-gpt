@@ -219,13 +219,11 @@ public sealed partial class FileAgentDocumentReader(
     /// <remarks>
     /// The whitespace boundary is what keeps "report.docx" from being satisfied by an unrelated
     /// "quarterly-report.docx", which would leave the run with nothing mounted and nothing refused.
+    /// Reaching the end matters too: without it "notes.txt" is satisfied by "notes.txt.docx".
     /// </remarks>
-    private static bool EndsSegment(string name, string token)
-    {
-        var index = name.IndexOf(token, StringComparison.OrdinalIgnoreCase);
-
-        return index == 0 || (index > 0 && char.IsWhiteSpace(name[index - 1]));
-    }
+    private static bool EndsSegment(string name, string token) =>
+        name.EndsWith(token, StringComparison.OrdinalIgnoreCase)
+        && (name.Length == token.Length || char.IsWhiteSpace(name[name.Length - token.Length - 1]));
 
     /// <summary>Prefers the stored extension, falling back to the name for a row that carries none.</summary>
     private static string NormalizeExtension(SourceRef file)
@@ -237,9 +235,13 @@ public sealed partial class FileAgentDocumentReader(
         return extension.StartsWith('.') ? extension.ToLowerInvariant() : $".{extension}".ToLowerInvariant();
     }
 
-    // Anchored on whitespace rather than \b so a name with a dot or a dash in it arrives whole; the
-    // seven producible formats only, because those are the pairs the matrix can answer for.
-    [GeneratedRegex(@"(?<=^|\s)[^\s""']+\.(?:docx|xlsx|pptx|pdf|csv|md|txt)\b", RegexOptions.IgnoreCase)]
+    // Anchored on whitespace or an opening bracket rather than \b so a name with a dot or a dash in
+    // it arrives whole; the seven producible formats only, because those are the pairs the matrix can
+    // answer for. A stem is required, because a bare format mention — "(.docx)", "**.docx**" — names
+    // the format an answer should be in, not a file that has to already exist.
+    [GeneratedRegex(
+        @"(?<=^|[\s(\[<*""'`])[\p{L}\p{N}][^\s""'`*()\[\]{}<>]*\.(?:docx|xlsx|pptx|pdf|csv|md|txt)\b",
+        RegexOptions.IgnoreCase)]
     private static partial Regex FileNameToken();
 
     private sealed record SourceRef(Guid Id, string Name, string Extension, string MimeType, string Path, bool IsGenerated);

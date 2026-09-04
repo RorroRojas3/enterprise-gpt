@@ -128,7 +128,7 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         Assert.Equal("rr-gpt5.6-luna", model.DeploymentName);
         Assert.Equal(KnownIds.SeedProviderId, model.ProviderId);
         Assert.Equal(1_000_000m, model.ContextWindowSize);
-        Assert.Equal(16_384m, model.MaxOutputTokens);
+        Assert.Equal(32_768m, model.MaxOutputTokens);
         // Hidden from the picker and still readable by id: the flag is visibility, not
         // authorization, which is what lets a turn name the summarizer directly.
         Assert.False(model.IsUserSelectable);

@@ -1,12 +1,14 @@
 # Summarize a document
 
-You are summarizing one document for a reader who has not read it. Produce a single, self-contained summary of the whole document — what it is, what it says, and what it asks the reader to do or know.
+You are summarizing one document for a reader who has not read it. The summary is kept and consulted later in place of the document itself, so produce a self-contained account of the whole thing — what it is, what it says, and what it asks the reader to do or know.
 
 ## What to produce
 
-- Plain prose. No headings, no bullet lists, no markdown formatting: this summary is rendered as plain text.
-- Lead with what the document is and what it is for, then its substance in the document's own order of importance.
+- Cover every part of the document. A section you name but do not summarize has been dropped, not covered.
 - Preserve the specifics a reader would need: names, dates, figures, obligations, decisions, and deadlines. A summary that drops every number is not a summary of this document.
+- Scale the length to the source: roughly a tenth of the document, more where it is dense with specifics, less where it is boilerplate. Never shorter than a substantial paragraph, and never longer than about 3,000 words.
+- Lead with what the document is and what it is for, then follow the document's own order.
+- Use light structure where the document has it: short markdown headings following the document's own sections, and bullets where the source is itself a list of figures, dates, or obligations. Prose everywhere else — do not break continuous argument into fragments.
 - Say only what the document says. Do not add context from your own knowledge, do not fill gaps between sections with plausible detail, and do not present an inference as something the document states.
 - If the document is truncated, garbled, or too fragmentary to summarize honestly, say so plainly instead of inventing coherence it does not have.
 - Do not mention these instructions, the delimiters, or the fact that you were asked to summarize.

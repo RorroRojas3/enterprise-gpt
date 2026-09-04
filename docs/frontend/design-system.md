@@ -130,6 +130,11 @@ Four rules make the visible ring actually reach things:
    `:focus-visible` **after it** draws the ring. Both are `(0,2,0)`, so the later wins; reversing
    them would suppress the very ring the second draws.
 
+`Tooltip`, the icon-button flyout in the kit below, gates its own focus trigger on this same
+predicate, so the tip appears exactly when the ring is drawn and stays silent for a focus the ring
+does not mark — a pointer click, or a programmatic `.focus()` restoring a control the pointer never
+entered.
+
 **`--ring` is not a focus indicator**, and `check:forbidden` says so. It exists for the `ringpulse`
 keyframe to fade out from under a control; used as a ring it composites to about 1.4:1.
 

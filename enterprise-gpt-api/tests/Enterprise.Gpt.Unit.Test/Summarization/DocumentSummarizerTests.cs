@@ -23,6 +23,13 @@ public sealed class DocumentSummarizerTests
     private const string DeploymentName = "rr-gpt5.6-luna";
     private static readonly Guid DocumentId = Guid.NewGuid();
 
+    // A phrase belonging to one template only, so a test can tell which stage's framing went on the
+    // wire without reproducing a whole prompt.
+    private const string SinglePassFraming = "# Summarize a document";
+    private const string ReduceFraming = "not a further distillation";
+    private const string CollapseFraming = "materially shorter";
+    private const string DigestFraming = "overview of the set";
+
     private readonly ISummarizerModelResolver _summarizerModelResolver =
         Substitute.For<ISummarizerModelResolver>();
     private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
@@ -82,7 +89,74 @@ public sealed class DocumentSummarizerTests
         await CreateSummarizer().SummarizeDocumentAsync(
             DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
 
-        Assert.Equal(16_384, _chatClient.CapturedOptions[0].MaxOutputTokens);
+        Assert.Equal(32_768, _chatClient.CapturedOptions[0].MaxOutputTokens);
+    }
+
+    /// <summary>
+    /// A summary cut off at the cap is still the best answer the run has, so it is kept rather than
+    /// failed — but it is then cached as it stands, which is why the run has to say so.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDocumentAsync_CompletionCutOffAtTheOutputCap_KeepsTheTextAndReportsIt()
+    {
+        SetDocumentText(Words(50));
+        _chatClient.FinishReason = ChatFinishReason.Length;
+
+        var run = await CreateSummarizer().SummarizeDocumentAsync(
+            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.True(run.Truncated);
+        Assert.Equal("A summary.", run.Summary);
+    }
+
+    [Fact]
+    public async Task SummarizeDocumentAsync_CompletionThatEndedOnItsOwn_IsNotReportedAsTruncated()
+    {
+        SetDocumentText(Words(50));
+        _chatClient.FinishReason = ChatFinishReason.Stop;
+
+        var run = await CreateSummarizer().SummarizeDocumentAsync(
+            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.False(run.Truncated);
+    }
+
+    /// <summary>
+    /// A map unit that lost its tail damages the summary just as much as a cut-off final call, and
+    /// only the run carries that out.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDocumentAsync_MapCallCutOffAtTheOutputCap_ReportsTheRunAsTruncated()
+    {
+        SetSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 0m);
+        SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
+        _chatClient.FinishReason = ChatFinishReason.Length;
+
+        var run = await CreateSummarizer().SummarizeDocumentAsync(
+            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.True(run.MapUnitCount > 1);
+        Assert.True(run.Truncated);
+    }
+
+    /// <summary>
+    /// A reasoning deployment can spend the whole cap before writing anything, which no retry
+    /// clears — it has to fail once, not once per attempt on every remaining unit.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDocumentAsync_OutputBudgetSpentBeforeAnyText_FailsWithoutRetrying()
+    {
+        SetDocumentText(Words(50));
+        _chatClient.FinishReason = ChatFinishReason.Length;
+        _chatClient.EmptyResponsesBeforeSuccess = 1;
+
+        var exception = await Assert.ThrowsAsync<ValidationException>(
+            () => CreateSummarizer().SummarizeDocumentAsync(
+                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, _chatClient.CallCount);
+        Assert.Contains(
+            "output budget", exception.Errors.Single().ErrorMessage, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -333,6 +407,32 @@ public sealed class DocumentSummarizerTests
     }
 
     /// <summary>
+    /// A collapse pass has to come back shorter or the loop never converges, while the reduce it
+    /// feeds is the summary that gets cached and is told to keep what it was given. Pointing both
+    /// stages at one template is the regression this catches.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDocumentAsync_CollapsePass_CompressesBeforeTheFinalReduce()
+    {
+        SetSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 0m);
+        SetDocumentText(Paragraphs(count: 60, wordsEach: 100));
+        _chatClient.ResponseShrinkRatio = 0.4;
+
+        var run = await CreateSummarizer().SummarizeDocumentAsync(
+            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.True(run.CollapsePasses > 0);
+
+        var framings = _chatClient.CapturedOptions
+            .Select(o => o.Instructions ?? string.Empty)
+            .ToList();
+
+        Assert.Contains(ReduceFraming, framings[^1], StringComparison.Ordinal);
+        Assert.Contains(framings[..^1], f => f.Contains(CollapseFraming, StringComparison.Ordinal));
+        Assert.DoesNotContain(framings[..^1], f => f.Contains(ReduceFraming, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A pathological document must fail naming the limit rather than loop until an unrelated
     /// timeout kills it silently.
     /// </summary>
@@ -522,16 +622,16 @@ public sealed class DocumentSummarizerTests
 
     #endregion
 
-    #region SummarizeTextAsync
+    #region SummarizeDigestAsync
 
     /// <summary>
     /// The seam a conversation digest reduces through — the same pipeline, run over per-document
     /// summaries instead of a document's own text.
     /// </summary>
     [Fact]
-    public async Task SummarizeTextAsync_Text_SummarizesWithoutReadingAnyDocument()
+    public async Task SummarizeDigestAsync_Summaries_DigestsWithoutReadingAnyDocument()
     {
-        var run = await CreateSummarizer().SummarizeTextAsync(
+        var run = await CreateSummarizer().SummarizeDigestAsync(
             Words(50), TestContext.Current.CancellationToken);
 
         Assert.Equal(1, run.ModelCallCount);
@@ -539,13 +639,30 @@ public sealed class DocumentSummarizerTests
             .AssembleAsync(default, default, TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// A digest is an overview of a scope, not a record of everything in it — the one framing that
+    /// asks for less rather than more.
+    /// </summary>
+    [Fact]
+    public async Task SummarizeDigestAsync_Summaries_CarryTheDigestFramingNotTheDocumentOne()
+    {
+        await CreateSummarizer().SummarizeDigestAsync(
+            "Document 1 of 1: handbook.pdf\nRefunds within 30 days.",
+            TestContext.Current.CancellationToken);
+
+        var framing = _chatClient.CapturedOptions[0].Instructions ?? string.Empty;
+
+        Assert.Contains(DigestFraming, framing, StringComparison.Ordinal);
+        Assert.DoesNotContain(SinglePassFraming, framing, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task SummarizeTextAsync_BlankText_Fails(string text)
+    public async Task SummarizeDigestAsync_BlankSummaries_Fails(string text)
     {
         await Assert.ThrowsAsync<ValidationException>(
-            () => CreateSummarizer().SummarizeTextAsync(text, TestContext.Current.CancellationToken));
+            () => CreateSummarizer().SummarizeDigestAsync(text, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -564,7 +681,7 @@ public sealed class DocumentSummarizerTests
             NullLogger<DocumentSummarizer>.Instance);
     }
 
-    private void SetSummarizer(decimal contextWindowSize = 1_000_000m, decimal maxOutputTokens = 16_384m)
+    private void SetSummarizer(decimal contextWindowSize = 1_000_000m, decimal maxOutputTokens = 32_768m)
     {
         _summarizerModelResolver.ResolveAsync(Arg.Any<CancellationToken>()).Returns(
             new SummarizerModel(
@@ -648,6 +765,12 @@ public sealed class DocumentSummarizerTests
         /// </summary>
         public bool DelayByUnitNumber { get; set; }
 
+        /// <summary>
+        /// Gets or sets the finish reason every answered call carries. Null stands in for a
+        /// provider that reports none.
+        /// </summary>
+        public ChatFinishReason? FinishReason { get; set; }
+
         public async Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages,
             ChatOptions? options = null,
@@ -712,7 +835,8 @@ public sealed class DocumentSummarizerTests
                 {
                     return new ChatResponse(new ChatMessage(ChatRole.Assistant, string.Empty))
                     {
-                        Usage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 0 }
+                        Usage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 0 },
+                        FinishReason = FinishReason
                     };
                 }
 
@@ -720,13 +844,15 @@ public sealed class DocumentSummarizerTests
                 {
                     return new ChatResponse(new ChatMessage(ChatRole.Assistant, $"unit {unitNumber} summary"))
                     {
-                        Usage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 }
+                        Usage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 },
+                        FinishReason = FinishReason
                     };
                 }
 
                 return new ChatResponse(new ChatMessage(ChatRole.Assistant, Respond(messages)))
                 {
-                    Usage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 }
+                    Usage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 },
+                    FinishReason = FinishReason
                 };
             }
             finally

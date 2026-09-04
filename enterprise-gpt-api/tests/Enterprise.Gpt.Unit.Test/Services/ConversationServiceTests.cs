@@ -1724,6 +1724,7 @@ public sealed class ConversationServiceTests : IDisposable
                     ModelCallCount: 1,
                     MapUnitCount: 0,
                     CollapsePasses: 0,
+                    Truncated: false,
                     KnownIds.SeedModelId,
                     "rr-gpt5.6-luna",
                     SummarizationPrompts.PromptVersion);

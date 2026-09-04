@@ -167,6 +167,38 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
         Assert.Empty(resolution.Matched);
     }
 
+    // How a create actually reaches the tool: the format named with its dot, bare or in the markdown
+    // the model writes it in, and the absolute sandbox path it saves to. None of those is a file that
+    // has to already exist, and reading one as a missing source refuses the request unrun.
+    [Theory]
+    [InlineData("Create a random Word document (.docx) with sample content")]
+    [InlineData("Produce a **.docx** report on last quarter")]
+    [InlineData("Generate a random .docx please")]
+    [InlineData("Write the file to /mnt/data/output.docx")]
+    public async Task ResolveAsync_ACreateNamingOnlyItsFormat_ReportsNothingUnresolved(string instruction)
+    {
+        var conversationId = await AddConversationAsync();
+
+        var resolution = await ResolveAsync(conversationId, instruction);
+
+        Assert.Empty(resolution.Unresolved);
+        Assert.Empty(resolution.Matched);
+    }
+
+    // The token has to reach the end of the name, not merely start a segment of it: "notes.txt" is a
+    // different file from "notes.txt.docx", and treating one as the other mounts nothing and says so.
+    [Fact]
+    public async Task ResolveAsync_ATokenThatOnlyPrefixesAnotherName_IsStillReportedMissing()
+    {
+        var conversationId = await AddConversationAsync();
+        await AddDocumentAsync(conversationId, "notes.txt.docx");
+
+        var resolution = await ResolveAsync(conversationId, "Convert notes.txt to pdf");
+
+        Assert.Equal(["notes.txt"], resolution.Unresolved);
+        Assert.Empty(resolution.Matched);
+    }
+
     [Fact]
     public async Task ReadAsync_AResolvedDocument_ReadsItFromTheContainerItsTypeBelongsTo()
     {

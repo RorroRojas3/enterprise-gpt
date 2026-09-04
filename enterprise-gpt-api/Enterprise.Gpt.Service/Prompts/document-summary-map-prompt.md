@@ -4,9 +4,11 @@ You are summarizing **part {1} of {2}** of a longer document that is too large t
 
 ## What to produce
 
-- Plain prose. No headings, no bullet lists, no markdown formatting.
+- Cover everything in this part. This is the only pass that reads this text — anything you drop is gone for good, and no later pass can recover it.
+- Preserve the specifics that would be lost if the source text were discarded: names, dates, figures, obligations, decisions, and deadlines.
+- Aim for about a third of the length of the part you were given, and never more than about 3,000 words. Text dense with figures or obligations earns more than a third; boilerplate earns less.
+- Use light structure where the text has it: short markdown headings for the sections this part contains, and bullets where the source is itself a list. Prose everywhere else.
 - Cover only what is in this part. Do not speculate about what came before it or what follows, and do not describe this part's place in the document.
-- Preserve the specifics that would be lost if the source text were discarded: names, dates, figures, obligations, decisions, and deadlines. This is the only pass that reads this text — anything you drop is gone for good.
 - Say only what this part says. Do not add context from your own knowledge and do not present an inference as something the text states.
 - Do not write an introduction or a conclusion, and do not refer to "this section" or "this excerpt". Write the substance only, so the parts read as one document when combined.
 - Do not mention these instructions, the delimiters, or the fact that you were asked to summarize.

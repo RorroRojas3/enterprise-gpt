@@ -112,6 +112,12 @@
     <None Update="Prompts\document-summary-reduce-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Prompts\document-summary-collapse-prompt.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Prompts\document-summary-digest-prompt.md">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Prompts\sheet-query-tool-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

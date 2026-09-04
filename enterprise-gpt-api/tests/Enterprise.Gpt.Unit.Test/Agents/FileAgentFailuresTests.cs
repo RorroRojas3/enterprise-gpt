@@ -54,7 +54,11 @@ public sealed class FileAgentFailuresTests
             .. _failures.Select(failure => failure.SubStatus),
             Refusal("Convert report.pdf to pptx", Matched("report.pdf")).SubStatus,
             Refusal("Convert report.docx to pdf", [], ambiguous: ["report.docx"]).SubStatus,
-            Refusal("Convert missing.docx to pdf", [], unresolved: ["missing.docx"]).SubStatus
+            Refusal(
+                "Convert missing.docx to pdf",
+                [],
+                unresolved: ["missing.docx"],
+                available: ["present.docx"]).SubStatus
         ];
 
         Assert.Equal(7, lines.Distinct(StringComparer.Ordinal).Count());
@@ -81,9 +85,11 @@ public sealed class FileAgentFailuresTests
         string instruction,
         List<FileAgentSourceMatch> matched,
         string[]? ambiguous = null,
-        string[]? unresolved = null)
+        string[]? unresolved = null,
+        string[]? available = null)
     {
-        var resolution = new FileAgentSourceResolution(matched, ambiguous ?? [], unresolved ?? [], []);
+        var resolution = new FileAgentSourceResolution(
+            matched, ambiguous ?? [], unresolved ?? [], available ?? []);
 
         return FileAgentPreflight.Evaluate(resolution, instruction, _matrix)
             ?? throw new InvalidOperationException($"'{instruction}' was expected to be refused.");
