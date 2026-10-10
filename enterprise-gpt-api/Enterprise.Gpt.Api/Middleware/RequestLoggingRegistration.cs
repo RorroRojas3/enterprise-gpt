@@ -1,4 +1,6 @@
 using Enterprise.Gpt.Api.Options;
+using Enterprise.Gpt.Common.Validation;
+using FluentValidation;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
@@ -15,31 +17,15 @@ internal static class RequestLoggingRegistration
     /// <param name="services">The service collection to register into.</param>
     /// <param name="configuration">Supplies the <c>RequestLogging</c> section.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
-    internal static IServiceCollection AddRequestLogging(this IServiceCollection services, IConfiguration configuration)
+    internal static IServiceCollection AddEnterpriseGptRequestLogging(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton<IValidator<RequestLoggingOptions>, RequestLoggingOptionsValidator>();
         services.AddOptions<RequestLoggingOptions>()
             .Bind(configuration.GetSection(RequestLoggingOptions.SectionName))
             // After binding, so a list the operator did configure replaces the default instead of
             // extending it — see the remarks on RequestLoggingOptions.
             .PostConfigure(options => options.ApplyListDefaults())
-            .ValidateDataAnnotations()
-            .Validate(
-                options => options.SlowRequestThreshold > TimeSpan.Zero,
-                "RequestLogging:SlowRequestThreshold must be greater than zero.")
-            .Validate(
-                options => Enum.IsDefined(options.RequestStartLevel),
-                "RequestLogging:RequestStartLevel must be a valid log level.")
-            .Validate(
-                options => Enum.IsDefined(options.Bodies.LogLevel),
-                "RequestLogging:Bodies:LogLevel must be a valid log level.")
-            // Spelled out rather than left to the [Range] on the property: ValidateDataAnnotations only
-            // inspects the root object, so an attribute on a nested options type is documentation only.
-            .Validate(
-                options => options.Bodies.MaxBodyBytes is > 0 and <= 1024 * 1024,
-                "RequestLogging:Bodies:MaxBodyBytes must be between 1 and 1048576.")
-            .Validate(
-                options => options.HasValidEntries(),
-                "RequestLogging list entries must be non-empty, and every path must start with '/'.")
+            .ValidateWithFluentValidation()
             // Validated at startup because the alternative diagnostics are all worse. A non-positive
             // threshold silently marks every request slow; an unrooted path or a null list entry throws
             // from the middleware's own field initialisers, which run once when the pipeline is built and
@@ -48,6 +34,7 @@ internal static class RequestLoggingRegistration
 
         // TryAdd so an application that registers its own redactor first keeps it.
         services.TryAddSingleton<IRequestBodyRedactor, JsonPropertyRedactor>();
+        services.TryAddSingleton(TimeProvider.System);
 
         return services;
     }
@@ -62,7 +49,7 @@ internal static class RequestLoggingRegistration
     /// middleware, so it costs nothing per request. The trade-off is that the switch is read once, at
     /// startup.
     /// </remarks>
-    internal static IApplicationBuilder UseRequestLogging(this IApplicationBuilder app)
+    internal static IApplicationBuilder UseEnterpriseGptRequestLogging(this IApplicationBuilder app)
     {
         var options = app.ApplicationServices.GetRequiredService<IOptions<RequestLoggingOptions>>().Value;
 

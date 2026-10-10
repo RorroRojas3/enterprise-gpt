@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -33,19 +34,16 @@ public sealed class DocumentRetrievalOptions
     /// Over-fetching is what gives fusion and the per-document cap something to choose between;
     /// retrieving exactly <see cref="MaxResults"/> would make both a no-op.
     /// </remarks>
-    [Range(1, 500)]
     public int CandidateCount { get; set; } = 40;
 
     /// <summary>
     /// Number of chunks the keyword pass returns before fusion. Default: 40.
     /// </summary>
-    [Range(1, 500)]
     public int LexicalCandidateCount { get; set; } = 40;
 
     /// <summary>
     /// Largest number of passages handed back to the model in one search. Default: 8.
     /// </summary>
-    [Range(1, 50)]
     public int MaxResults { get; set; } = 8;
 
     /// <summary>
@@ -56,7 +54,6 @@ public sealed class DocumentRetrievalOptions
     /// the sentences on the other side of the cut, and because chunks overlap by 128 tokens the seam
     /// is removed rather than duplicated when they are merged. Zero disables expansion.
     /// </remarks>
-    [Range(0, 5)]
     public int NeighborWindow { get; set; } = 1;
 
     /// <summary>
@@ -68,13 +65,11 @@ public sealed class DocumentRetrievalOptions
     /// nearest-neighbour search always returns <em>something</em>: without it a question the documents
     /// do not answer comes back with the least-bad chunks, which reads exactly like grounded evidence.
     /// </remarks>
-    [Range(0.0, 2.0)]
     public double MaxDistance { get; set; } = 0.62;
 
     /// <summary>
     /// Largest number of passages any single document may contribute to one search. Default: 3.
     /// </summary>
-    [Range(1, 50)]
     public int MaxPassagesPerDocument { get; set; } = 3;
 
     /// <summary>
@@ -86,13 +81,11 @@ public sealed class DocumentRetrievalOptions
     /// nothing — the result is not persisted — but it does compete with the answer for the model's
     /// context window.
     /// </remarks>
-    [Range(256, 32000)]
     public int MaxResultTokens { get; set; } = 3000;
 
     /// <summary>
     /// Largest number of query terms the keyword pass will search for. Default: 8.
     /// </summary>
-    [Range(1, 16)]
     public int MaxQueryTerms { get; set; } = 8;
 
     /// <summary>
@@ -102,7 +95,6 @@ public sealed class DocumentRetrievalOptions
     /// Retrieval runs inside a live chat turn, so a query that degrades has to fail fast rather than
     /// hold the stream open behind the provider's own timeout.
     /// </remarks>
-    [Range(1, 120)]
     public int CommandTimeoutSeconds { get; set; } = 15;
 
     /// <summary>
@@ -114,4 +106,35 @@ public sealed class DocumentRetrievalOptions
     /// vector-only retrieval.
     /// </remarks>
     public bool EnableLexicalSearch { get; set; } = true;
+}
+
+/// <summary>Validates <see cref="DocumentRetrievalOptions"/>.</summary>
+public sealed class DocumentRetrievalOptionsValidator : AbstractValidator<DocumentRetrievalOptions>
+{
+    public DocumentRetrievalOptionsValidator()
+    {
+        RuleFor(options => options.CandidateCount).InclusiveBetween(1, 500)
+            .WithMessage("Documents:Retrieval:CandidateCount must be between 1 and 500.");
+        RuleFor(options => options.LexicalCandidateCount).InclusiveBetween(1, 500)
+            .WithMessage("Documents:Retrieval:LexicalCandidateCount must be between 1 and 500.");
+        RuleFor(options => options.MaxResults).InclusiveBetween(1, 50)
+            .WithMessage("Documents:Retrieval:MaxResults must be between 1 and 50.");
+        RuleFor(options => options.NeighborWindow).InclusiveBetween(0, 5)
+            .WithMessage("Documents:Retrieval:NeighborWindow must be between 0 and 5.");
+        RuleFor(options => options.MaxDistance).InclusiveBetween(0d, 2d)
+            .WithMessage("Documents:Retrieval:MaxDistance must be between 0 and 2.");
+        RuleFor(options => options.MaxPassagesPerDocument).InclusiveBetween(1, 50)
+            .WithMessage("Documents:Retrieval:MaxPassagesPerDocument must be between 1 and 50.");
+        RuleFor(options => options.MaxResultTokens).InclusiveBetween(256, 32000)
+            .WithMessage("Documents:Retrieval:MaxResultTokens must be between 256 and 32000.");
+        RuleFor(options => options.MaxQueryTerms).InclusiveBetween(1, 16)
+            .WithMessage("Documents:Retrieval:MaxQueryTerms must be between 1 and 16.");
+        RuleFor(options => options.CommandTimeoutSeconds).InclusiveBetween(1, 120)
+            .WithMessage("Documents:Retrieval:CommandTimeoutSeconds must be between 1 and 120.");
+        // Over-fetching is what gives rank fusion and the per-document cap something to choose between.
+        RuleFor(options => options.CandidateCount).GreaterThanOrEqualTo(options => options.MaxResults)
+            .WithMessage("Documents:Retrieval:CandidateCount must be at least Documents:Retrieval:MaxResults.");
+        RuleFor(options => options.LexicalCandidateCount).GreaterThanOrEqualTo(options => options.MaxResults)
+            .WithMessage("Documents:Retrieval:LexicalCandidateCount must be at least Documents:Retrieval:MaxResults.");
+    }
 }

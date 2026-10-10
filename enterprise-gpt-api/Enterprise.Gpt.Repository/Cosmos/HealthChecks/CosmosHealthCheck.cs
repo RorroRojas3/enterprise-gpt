@@ -1,7 +1,7 @@
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Enterprise.Gpt.Api.Health;
+namespace Enterprise.Gpt.Repository.Cosmos.HealthChecks;
 
 /// <summary>
 /// Reports whether the transcript account is reachable.

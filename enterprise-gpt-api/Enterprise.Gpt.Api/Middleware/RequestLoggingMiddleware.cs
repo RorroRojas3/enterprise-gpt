@@ -226,7 +226,7 @@ public sealed class RequestLoggingMiddleware(
         {
             RequestLogMessages.OutcomeFaulted => LogLevel.Error,
             // Not a warning: a user navigating away mid-stream is ordinary traffic here, and already maps
-            // to a bodiless 499 in OperationCanceledExceptionHandler.
+            // to a bodiless 499 in GlobalExceptionHandler.
             RequestLogMessages.OutcomeClientAborted => LogLevel.Information,
             _ when statusCode >= StatusCodes.Status500InternalServerError => LogLevel.Error,
             _ when statusCode >= StatusCodes.Status400BadRequest => LogLevel.Warning,

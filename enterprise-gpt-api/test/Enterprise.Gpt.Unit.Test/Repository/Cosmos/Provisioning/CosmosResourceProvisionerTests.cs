@@ -1,20 +1,20 @@
-using Enterprise.Gpt.Api.Startup;
 using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Repository.Cosmos.Provisioning;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Api.Startup;
+namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.Provisioning;
 
 /// <summary>
 /// The indexing policy is asserted here rather than against the Cosmos emulator: the Linux emulator
 /// accepts a custom indexing policy and then ignores it, so reading one back there would prove
 /// nothing about what production is provisioned with.
 /// </summary>
-public sealed class CosmosBootstrapperTests
+public sealed class CosmosResourceProvisionerTests
 {
     [Fact]
     public void CreateTranscriptContainerProperties_PartitionsOnTheSyntheticKey()
     {
-        var properties = CosmosBootstrapper.CreateTranscriptContainerProperties("transcript");
+        var properties = CosmosResourceProvisioner.CreateTranscriptContainerProperties("transcript");
 
         Assert.Equal("transcript", properties.Id);
         Assert.Equal(PartitionKeys.Path, properties.PartitionKeyPath);
@@ -30,7 +30,7 @@ public sealed class CosmosBootstrapperTests
     [InlineData("/attachments/*")]
     public void CreateTranscriptContainerProperties_ExcludesThePropertiesNothingQueriesOn(string path)
     {
-        var properties = CosmosBootstrapper.CreateTranscriptContainerProperties("transcript");
+        var properties = CosmosResourceProvisioner.CreateTranscriptContainerProperties("transcript");
 
         Assert.Contains(properties.IndexingPolicy.ExcludedPaths, x => x.Path == path);
     }
@@ -38,7 +38,7 @@ public sealed class CosmosBootstrapperTests
     [Fact]
     public void CreateTranscriptContainerProperties_IndexesEverythingElse()
     {
-        var properties = CosmosBootstrapper.CreateTranscriptContainerProperties("transcript");
+        var properties = CosmosResourceProvisioner.CreateTranscriptContainerProperties("transcript");
 
         // The read predicate filters on type and conversationId and orders by dateCreated, so all
         // three must be indexed; including /* covers them without naming each one and going stale
@@ -52,7 +52,7 @@ public sealed class CosmosBootstrapperTests
     [Fact]
     public void CreateTranscriptContainerProperties_IndexesConsistently()
     {
-        var properties = CosmosBootstrapper.CreateTranscriptContainerProperties("transcript");
+        var properties = CosmosResourceProvisioner.CreateTranscriptContainerProperties("transcript");
 
         Assert.Equal(Microsoft.Azure.Cosmos.IndexingMode.Consistent, properties.IndexingPolicy.IndexingMode);
         Assert.True(properties.IndexingPolicy.Automatic);

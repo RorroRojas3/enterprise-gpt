@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.BackgroundJobs.Models;
-using Microsoft.Extensions.Configuration;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.BackgroundJobs;
 
@@ -96,13 +97,12 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="JobStatusStore"/> class.
     /// </summary>
-    /// <param name="configuration">Reads <c>BackgroundJobs:RetentionMinutes</c> (default 60).</param>
+    /// <param name="options">Supplies <see cref="BackgroundJobOptions.RetentionMinutes"/>.</param>
     /// <param name="logger">Logger used for eviction telemetry.</param>
-    public JobStatusStore(IConfiguration configuration, ILogger<JobStatusStore> logger)
+    public JobStatusStore(IOptions<BackgroundJobOptions> options, ILogger<JobStatusStore> logger)
     {
         _logger = logger;
-        var minutes = configuration.GetValue<int?>("BackgroundJobs:RetentionMinutes") ?? 60;
-        _retention = TimeSpan.FromMinutes(Math.Max(1, minutes));
+        _retention = TimeSpan.FromMinutes(options.Value.RetentionMinutes);
         _evictionTimer = new Timer(_ => EvictExpired(), state: null, dueTime: _retention, period: _retention);
     }
 

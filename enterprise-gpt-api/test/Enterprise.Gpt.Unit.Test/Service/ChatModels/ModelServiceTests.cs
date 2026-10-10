@@ -33,8 +33,6 @@ public sealed class ModelServiceTests : IDisposable
             NullLogger<ModelService>.Instance,
             _tokenService,
             _fixture.Context,
-            new CreateModelActionDtoValidator(),
-            new UpdateModelActionDtoValidator(),
             // The seeded row is the summarizer, which is what the guards below key off.
             Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
             _chatClientResolver);
@@ -160,15 +158,6 @@ public sealed class ModelServiceTests : IDisposable
         Assert.NotNull(persisted);
         Assert.Null(persisted.InputPricePerMillionTokens);
         Assert.Null(persisted.OutputPricePerMillionTokens);
-    }
-
-    [Fact]
-    public async Task CreateModelAsync_NegativePrice_Throws()
-    {
-        var request = CreateRequest() with { InputPricePerMillionTokens = -0.01m };
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateModelAsync(request, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -311,21 +300,6 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateModelAsync_InvalidRequest_ThrowsValidationExceptionAndPersistsNothing()
-    {
-        var request = CreateRequest() with { Name = string.Empty, ContextWindowSize = 0m };
-
-        using var before = _fixture.CreateContext();
-        var seeded = await before.Models.CountAsync(TestContext.Current.CancellationToken);
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateModelAsync(request, TestContext.Current.CancellationToken));
-
-        using var ctx = _fixture.CreateContext();
-        Assert.Equal(seeded, await ctx.Models.CountAsync(TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task CreateModelAsync_UnknownProvider_ThrowsNotFoundException()
     {
         var request = CreateRequest(providerId: Guid.NewGuid());
@@ -425,34 +399,6 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A hidden default resolves to nothing on the picker's own route, which leaves every client
-    /// with no model to start a turn on. The same invariant <c>DeactivateModelAsync</c> keeps from
-    /// the other side by clearing <c>IsDefault</c> on the row it retires.
-    /// </summary>
-    [Fact]
-    public async Task CreateModelAsync_DefaultAndNotUserSelectable_ThrowsValidationException()
-    {
-        var request = CreateRequest(name: "aaa-hidden-default", isDefault: true) with { IsUserSelectable = false };
-
-        var exception = await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateModelAsync(request, TestContext.Current.CancellationToken));
-
-        Assert.Contains(exception.Errors, x => x.PropertyName == nameof(CreateModelActionDto.IsDefault));
-    }
-
-    [Fact]
-    public async Task UpdateModelAsync_DefaultAndNotUserSelectable_ThrowsValidationException()
-    {
-        var model = await AddModelAsync("aaa-original");
-        var request = UpdateRequest(name: "aaa-original", isDefault: true) with { IsUserSelectable = false };
-
-        var exception = await Assert.ThrowsAsync<ValidationException>(
-            () => _service.UpdateModelAsync(model.Id, request, TestContext.Current.CancellationToken));
-
-        Assert.Contains(exception.Errors, x => x.PropertyName == nameof(UpdateModelActionDto.IsDefault));
-    }
-
-    /// <summary>
     /// Hiding a model that is not the default is ordinary and must stay allowed — the rule above
     /// is about the combination, not about hiding.
     /// </summary>
@@ -528,20 +474,6 @@ public sealed class ModelServiceTests : IDisposable
         var result = await _service.UpdateModelAsync(model.Id, request, TestContext.Current.CancellationToken);
 
         Assert.Equal(provider.Id, result.ProviderId);
-    }
-
-    [Fact]
-    public async Task UpdateModelAsync_InvalidRequest_ThrowsValidationException()
-    {
-        var model = await AddModelAsync("aaa-original");
-        var request = UpdateRequest() with { DeploymentName = string.Empty, MaxOutputTokens = 0m };
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.UpdateModelAsync(model.Id, request, TestContext.Current.CancellationToken));
-
-        var persisted = await FindModelAsync(model.Id);
-        Assert.NotNull(persisted);
-        Assert.Equal(model.Name, persisted.Name);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Repository.Cosmos.Options;
 
@@ -51,13 +52,16 @@ public sealed class CosmosDbOptions
     /// <summary>
     /// The configuration key that named the pre-cutover container.
     /// </summary>
-    /// <remarks>
-    /// Retained as a constant with no property behind it so startup can reject a deployment that
-    /// still sets it. Binding it and ignoring it would let a half-migrated configuration start
-    /// silently, and the failure that follows — every transcript reading as empty — looks like data
-    /// loss rather than like a setting that was never removed.
-    /// </remarks>
     public const string LegacyContainerKey = "CosmosDb:ContainerId";
+
+    /// <summary>
+    /// Gets or sets the pre-cutover container id, which must be unset.
+    /// </summary>
+    /// <remarks>
+    /// Bound only so startup can reject a deployment that still sets it: ignored, a half-migrated
+    /// configuration would start and every transcript would read as empty, which looks like data loss.
+    /// </remarks>
+    public string? ContainerId { get; set; }
 
     /// <summary>
     /// Gets or sets how many message documents a single transcript query page requests.
@@ -68,7 +72,6 @@ public sealed class CosmosDbOptions
     /// so it trades round trips against per-response size. Cosmos's 4 MB response ceiling is the
     /// hard limit above it.
     /// </remarks>
-    [Range(1, 1000)]
     public int PageSize { get; set; } = 100;
 
     /// <summary>
@@ -85,4 +88,21 @@ public sealed class CosmosDbOptions
     /// it is both cheaper and a single round trip.
     /// </remarks>
     public bool UsePartitionKeyDelete { get; set; }
+}
+
+internal sealed class CosmosDbOptionsValidator : AbstractValidator<CosmosDbOptions>
+{
+    public CosmosDbOptionsValidator()
+    {
+        // Messages name the key an operator edits and never echo the value: the connection string carries an account key.
+        RuleFor(options => options.ConnectionString).NotEmpty().WithMessage("CosmosDb:ConnectionString is required.");
+        RuleFor(options => options.DatabaseId).NotEmpty().WithMessage("CosmosDb:DatabaseId is required.");
+        RuleFor(options => options.TranscriptContainerId).NotEmpty().WithMessage("CosmosDb:TranscriptContainerId is required.");
+        RuleFor(options => options.PageSize).InclusiveBetween(1, 1000)
+            .WithMessage("CosmosDb:PageSize must be between 1 and 1000.");
+        // The cutover gate: a configuration still naming the pre-cutover container has not been migrated, and
+        // starting it would answer every transcript read with an empty result.
+        RuleFor(options => options.ContainerId).Null()
+            .WithMessage($"{CosmosDbOptions.LegacyContainerKey} names the pre-cutover container, whose documents this application can no longer read. Remove the setting and set CosmosDb:TranscriptContainerId instead; see docs/operations/runbooks.md.");
+    }
 }

@@ -218,11 +218,6 @@ namespace Enterprise.Gpt.Service.Conversations
         ITokenEstimatorResolver tokenEstimatorResolver,
         PromptOverheadCalculator promptOverheadCalculator,
         IMarkdownRenderer markdownRenderer,
-        IValidator<CreateConversationActionDto> createChatValidator,
-        IValidator<CreateConversationStreamActionDto> createChatStreamActionValidator,
-        IValidator<DeactivateConversationsBulkActionDto> deactivateChatBulkValidator,
-        IValidator<UpdateConversationActionDto> updateSessionValidator,
-        IValidator<SetMessageFeedbackActionDto> setMessageFeedbackValidator,
         IDocumentSummaryService documentSummaryService,
         IUserGrantReader userGrantReader,
         IOptions<SummarizationOptions> summarizationOptions,
@@ -248,11 +243,6 @@ namespace Enterprise.Gpt.Service.Conversations
         // Logged once per model rather than per turn: an unset context window is a permanent
         // property of a catalog row, and a warning on every turn would bury the rest of the log.
         private readonly ConcurrentDictionary<Guid, bool> _unboundedModelsReported = new();
-        private readonly IValidator<CreateConversationActionDto> _createChatValidator = createChatValidator;
-        private readonly IValidator<CreateConversationStreamActionDto> _createChatStreamActionValidator = createChatStreamActionValidator;
-        private readonly IValidator<DeactivateConversationsBulkActionDto> _deactivateChatBulkValidator = deactivateChatBulkValidator;
-        private readonly IValidator<UpdateConversationActionDto> _updateChatValidator = updateSessionValidator;
-        private readonly IValidator<SetMessageFeedbackActionDto> _setMessageFeedbackValidator = setMessageFeedbackValidator;
         private readonly IDocumentSummaryService _documentSummaryService = documentSummaryService;
         private readonly IUserGrantReader _userGrantReader = userGrantReader;
         private readonly SummarizationOptions _summarizationOptions = summarizationOptions.Value;
@@ -346,8 +336,6 @@ namespace Enterprise.Gpt.Service.Conversations
         public async Task<ConversationDto> CreateConversationAsync(CreateConversationActionDto request, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-
-            _createChatValidator.ValidateAndThrow(request);
 
             var userId = _tokenService.GetOid();
 
@@ -503,8 +491,6 @@ namespace Enterprise.Gpt.Service.Conversations
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            _deactivateChatBulkValidator.ValidateAndThrow(request);
-
             var userId = _tokenService.GetOid();
             var date = DateTimeOffset.UtcNow;
 
@@ -581,8 +567,6 @@ namespace Enterprise.Gpt.Service.Conversations
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            _createChatStreamActionValidator.ValidateAndThrow(request);
-
             // Read untracked: the write below is an ExecuteUpdate, and a tracked entity carrying the
             // pre-naming token values alongside it is exactly the mix EF warns about — a later
             // SaveChanges would write the stale counters back over the increment.
@@ -625,7 +609,12 @@ namespace Enterprise.Gpt.Service.Conversations
             if (model is null)
             {
                 _logger.LogError("Model with id {Id} not found", request.ModelId);
-                throw new InvalidOperationException($"Model with id {request.ModelId} not found");
+                throw new ValidationException(
+                [
+                    new ValidationFailure(
+                        nameof(CreateConversationStreamActionDto.ModelId),
+                        $"Model with id {request.ModelId} not found")
+                ]);
             }
 
             // Naming runs inline on a conversation's first turn, so it has to reach the same provider
@@ -819,8 +808,6 @@ namespace Enterprise.Gpt.Service.Conversations
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            _updateChatValidator.ValidateAndThrow(request);
-
             var userId = _tokenService.GetOid();
 
             var anyConversation = await _ctx.Conversations
@@ -896,18 +883,13 @@ namespace Enterprise.Gpt.Service.Conversations
 
         /// <inheritdoc />
         /// <remarks>
-        /// Deliberately not an iterator method: in an <c>async IAsyncEnumerable</c> the whole body
-        /// is deferred to the first <c>MoveNextAsync</c>, so the argument checks and validation
-        /// would not run until the caller enumerated. Lock acquisition stays inside the iterator
-        /// on purpose — hoisting it here would strand the lock for a caller that took the
-        /// enumerable and never enumerated it — but it still happens before the first fragment is
-        /// produced, which is what lets the controller answer contention with a clean 409.
+        /// Not an iterator, so the argument check runs on the call rather than at the first
+        /// <c>MoveNextAsync</c>. The lock is still taken inside the iterator, which would otherwise strand it
+        /// for a caller that never enumerates, but before the first fragment, so contention is a clean 409.
         /// </remarks>
         public IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
-
-            _createChatStreamActionValidator.ValidateAndThrow(request);
 
             var userId = _tokenService.GetOid();
 
@@ -2060,8 +2042,6 @@ namespace Enterprise.Gpt.Service.Conversations
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-
-            _setMessageFeedbackValidator.ValidateAndThrow(request);
 
             var userId = _tokenService.GetOid();
 

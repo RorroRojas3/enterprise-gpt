@@ -17,6 +17,6 @@ internal static class ChatClientTelemetryExtensions
     /// </remarks>
     /// <param name="builder">The pipeline being built.</param>
     /// <returns>The same <paramref name="builder"/> for chaining.</returns>
-    internal static ChatClientBuilder UseEnterpriseTelemetry(this ChatClientBuilder builder) =>
+    internal static ChatClientBuilder UseEnterpriseGptTelemetry(this ChatClientBuilder builder) =>
         builder.UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName);
 }

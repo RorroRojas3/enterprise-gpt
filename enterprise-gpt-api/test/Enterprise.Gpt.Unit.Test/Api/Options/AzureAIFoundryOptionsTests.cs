@@ -1,7 +1,8 @@
+using Enterprise.Gpt.Api.Options;
 using Enterprise.Gpt.Service.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Service.Options;
+namespace Enterprise.Gpt.Unit.Test.Api.Options;
 
 /// <summary>
 /// Covers what the Azure AI Foundry section adds over the shared v1-endpoint behaviour, and pins

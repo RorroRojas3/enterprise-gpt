@@ -1,6 +1,5 @@
 using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Middleware;
@@ -157,6 +156,6 @@ public sealed class JsonPropertyRedactorTests
             options.Bodies.RedactedPropertyNames = names;
         }
 
-        return new JsonPropertyRedactor(Options.Create(options));
+        return new JsonPropertyRedactor(Microsoft.Extensions.Options.Options.Create(options));
     }
 }

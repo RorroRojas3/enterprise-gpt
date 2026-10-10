@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Service.Options;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -7,7 +9,7 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the File Agent section against the same options pipeline <c>Program.cs</c> builds, so a
+/// Covers the File Agent section against the same options pipeline the host builds, so a
 /// range or a required-value rule that contradicts the shipped defaults fails here rather than at
 /// host start.
 /// </summary>
@@ -35,10 +37,10 @@ public sealed class FileAgentOptionsTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var services = new ServiceCollection();
 
+        services.AddSingleton<IValidator<FileAgentOptions>, FileAgentOptionsValidator>();
         services.AddOptions<FileAgentOptions>()
             .Bind(configuration.GetSection(FileAgentOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(options => options.ModelId != Guid.Empty, "FileAgent:ModelId is required.");
+            .ValidateWithFluentValidation();
 
         using var provider = services.BuildServiceProvider();
 

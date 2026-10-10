@@ -23,7 +23,7 @@ public interface IUserMcpCredentialService
     /// <param name="request">The credential as the user supplied it.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>What the caller may know about the stored credential.</returns>
-    /// <exception cref="ValidationException">The credential fails validation, or the server takes no user credential.</exception>
+    /// <exception cref="ValidationException">The server takes no user credential.</exception>
     /// <exception cref="NotFoundException">No active server with <paramref name="mcpServerId"/> exists.</exception>
     /// <exception cref="ForbiddenException">The caller does not hold the server's permission.</exception>
     Task<McpCredentialStatusDto> SaveAsync(
@@ -54,14 +54,12 @@ public interface IUserMcpCredentialService
 public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     ITokenService tokenService,
     EnterpriseGptDbContext ctx,
-    IValidator<SaveMcpCredentialActionDto> saveValidator,
     IUserSecretProtector protector,
     IMcpClientCache mcpClientCache) : IUserMcpCredentialService
 {
     private readonly ILogger<UserMcpCredentialService> _logger = logger;
     private readonly ITokenService _tokenService = tokenService;
     private readonly EnterpriseGptDbContext _ctx = ctx;
-    private readonly IValidator<SaveMcpCredentialActionDto> _saveValidator = saveValidator;
     private readonly IUserSecretProtector _protector = protector;
     private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
 
@@ -69,8 +67,6 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     public async Task<McpCredentialStatusDto> SaveAsync(
         Guid mcpServerId, SaveMcpCredentialActionDto request, CancellationToken cancellationToken = default)
     {
-        await _saveValidator.ValidateAndThrowAsync(request, cancellationToken);
-
         var oid = _tokenService.GetOid();
         var server = await LoadPermittedServerAsync(mcpServerId, oid, cancellationToken);
 

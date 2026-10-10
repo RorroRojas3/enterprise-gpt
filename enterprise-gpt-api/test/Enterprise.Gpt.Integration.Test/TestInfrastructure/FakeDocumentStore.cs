@@ -1,14 +1,13 @@
 using System.Collections.Concurrent;
-using Azure.Storage.Sas;
-using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Repository.Blob;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
-/// In-memory <see cref="IBlobStorageService"/> so upload tests exercise the real ingestion pipeline
+/// In-memory <see cref="IDocumentStore"/> so upload tests exercise the real ingestion pipeline
 /// without an Azure Storage account or the Azurite emulator.
 /// </summary>
-public sealed class FakeBlobStorageService : IBlobStorageService
+public sealed class FakeDocumentStore : IDocumentStore
 {
     private readonly ConcurrentDictionary<string, byte[]> _blobs = new();
     private readonly ConcurrentDictionary<string, byte> _uploadedPaths = new();
@@ -71,10 +70,10 @@ public sealed class FakeBlobStorageService : IBlobStorageService
     /// names a real service SAS carries them under — so a test can assert the download link really does
     /// rename the file rather than serving it under its storage key.
     /// </remarks>
-    public Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, BlobSasPermissions permissions,
+    public Uri? GenerateReadUri(string container, string blob, TimeSpan expiresIn,
         string? contentDisposition = null, string? contentType = null)
     {
-        List<string> query = [$"sig={Uri.EscapeDataString($"fake-{permissions}")}"];
+        List<string> query = ["sig=fake-Read"];
 
         if (!string.IsNullOrWhiteSpace(contentDisposition))
         {

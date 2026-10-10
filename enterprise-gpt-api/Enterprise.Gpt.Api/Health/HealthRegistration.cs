@@ -1,5 +1,7 @@
-using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Sql;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Enterprise.Gpt.Api.Health;
@@ -29,11 +31,11 @@ internal static class HealthRegistration
     /// <summary>Registers the readiness checks and the cache in front of them.</summary>
     /// <param name="services">The service collection to register into.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
-    internal static IServiceCollection AddEnterpriseHealthChecks(this IServiceCollection services)
+    internal static IServiceCollection AddEnterpriseGptHealthChecks(this IServiceCollection services)
     {
         services.AddHealthChecks()
-            .AddDbContextCheck<EnterpriseGptDbContext>("sql", tags: ReadyTags)
-            .AddCheck<CosmosHealthCheck>("cosmos", tags: ReadyTags);
+            .AddEnterpriseGptSqlHealthCheck("sql", ReadyTags)
+            .AddEnterpriseGptCosmosHealthCheck("cosmos", ReadyTags);
 
         // Applied afterwards rather than per registration: AddDbContextCheck takes no timeout, so the
         // relational probe would otherwise be bounded only by SqlClient's own connect timeout — three
@@ -46,6 +48,7 @@ internal static class HealthRegistration
             }
         });
 
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ReadinessProbe>();
 
         return services;
@@ -58,7 +61,7 @@ internal static class HealthRegistration
     /// Both are anonymous. A platform probe carries no bearer token, and an endpoint that answers 401
     /// to the load balancer is indistinguishable from one that is down.
     /// </remarks>
-    internal static IEndpointRouteBuilder MapEnterpriseHealthChecks(this IEndpointRouteBuilder app)
+    internal static IEndpointRouteBuilder MapEnterpriseGptHealthChecks(this IEndpointRouteBuilder app)
     {
         app.MapHealthChecks("/health", new HealthCheckOptions
         {

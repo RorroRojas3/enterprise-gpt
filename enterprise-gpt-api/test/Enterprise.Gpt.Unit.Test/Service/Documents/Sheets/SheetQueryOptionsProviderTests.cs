@@ -1,5 +1,7 @@
+using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Service.Documents.Sheets;
 using Enterprise.Gpt.Service.Options;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -155,7 +157,7 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
     }
 
     /// <summary>
-    /// The same options pipeline <c>Program.cs</c> builds, minus <c>ValidateOnStart</c>, which only moves
+    /// The same options pipeline the host builds, minus <c>ValidateOnStart</c>, which only moves
     /// the first validation earlier.
     /// </summary>
     private (ISheetQueryOptionsProvider Provider, IConfigurationRoot Configuration) Build(
@@ -166,11 +168,10 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
 
         services.AddSingleton<ILogger<SheetQueryOptionsProvider>>(new FakeLogger<SheetQueryOptionsProvider>(_logs));
         services.AddSingleton<ISheetQueryOptionsProvider, SheetQueryOptionsProvider>();
+        services.AddSingleton<IValidator<SheetQueryOptions>, SheetQueryOptionsValidator>();
         services.AddOptions<SheetQueryOptions>()
             .Bind(configuration.GetSection(SheetQueryOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(options => options.ToolTimeoutSeconds >= options.TimeoutSeconds,
-                "SheetQuery:ToolTimeoutSeconds must be at least SheetQuery:TimeoutSeconds.");
+            .ValidateWithFluentValidation();
 
         var container = services.BuildServiceProvider();
         _containers.Add(container);

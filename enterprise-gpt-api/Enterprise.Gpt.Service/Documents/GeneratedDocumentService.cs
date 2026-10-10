@@ -2,6 +2,8 @@ using System.Collections.Frozen;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Conversations;
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Blob;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Documents.Exceptions;
 using Enterprise.Gpt.Service.Documents.Models;
@@ -9,7 +11,6 @@ using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Options;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -51,14 +52,14 @@ public interface IGeneratedDocumentService
 /// <inheritdoc />
 public sealed class GeneratedDocumentService(
     ILogger<GeneratedDocumentService> logger,
-    IBlobStorageService blobStorageService,
-    IConfiguration configuration,
+    IDocumentStore documentStore,
+    IOptionsMonitor<BlobStorageOptions> storageOptions,
     IOptions<DocumentOptions> options,
     IServiceScopeFactory scopeFactory) : IGeneratedDocumentService
 {
     private readonly ILogger<GeneratedDocumentService> _logger = logger;
-    private readonly IBlobStorageService _blobStorageService = blobStorageService;
-    private readonly IConfiguration _configuration = configuration;
+    private readonly IDocumentStore _documentStore = documentStore;
+    private readonly IOptionsMonitor<BlobStorageOptions> _storageOptions = storageOptions;
     private readonly DocumentOptions _options = options.Value;
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
 
@@ -70,7 +71,7 @@ public sealed class GeneratedDocumentService(
         new[] { ".csv", ".docx", ".md", ".pdf", ".pptx", ".txt", ".xlsx" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     private string GeneratedContainer =>
-        DocumentStorage.RequireContainer(_configuration, _logger, DocumentStorage.GeneratedContainerKey);
+        DocumentStorage.RequireGeneratedContainer(_storageOptions.CurrentValue, _logger);
 
     /// <inheritdoc />
     public async Task<MessageAttachmentDto> StoreAsync(GeneratedDocumentRequest request, CancellationToken cancellationToken)
@@ -88,7 +89,7 @@ public sealed class GeneratedDocumentService(
         var blobPath = $"{request.UserId}/{request.ConversationId}/{documentId}{extension}";
         var mimeType = DocumentStorage.ResolveContentType(extension);
 
-        await _blobStorageService.UploadAsync(
+        await _documentStore.UploadAsync(
             GeneratedContainer,
             blobPath,
             request.Content,
@@ -274,7 +275,7 @@ public sealed class GeneratedDocumentService(
     {
         try
         {
-            await _blobStorageService.DeleteAsync(GeneratedContainer, blobPath, CancellationToken.None);
+            await _documentStore.DeleteAsync(GeneratedContainer, blobPath, CancellationToken.None);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {

@@ -10,7 +10,7 @@ namespace Enterprise.Gpt.Integration.Test.Agents;
 /// What the File Agent's own chat client is, as the container actually builds it.
 /// </summary>
 /// <remarks>
-/// Asserted against the composed pipeline rather than against <c>Program.cs</c>'s source, because
+/// Asserted against the composed pipeline rather than against the registration source, because
 /// both facts here are properties of a built client: they are settings on an instance, and reading
 /// them any other way would prove only that the code says what it says.
 /// </remarks>

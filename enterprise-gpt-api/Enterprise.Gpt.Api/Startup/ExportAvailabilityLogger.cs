@@ -1,8 +1,8 @@
 using Enterprise.Gpt.Api.Configuration;
+using Enterprise.Gpt.Api.Options;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.Exports;
 using Enterprise.Gpt.Service.Exports.Interfaces;
-using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Api.Startup;
@@ -52,7 +52,7 @@ internal sealed class ExportAvailabilityLogger(
                 continue;
             }
 
-            unavailable.Add(ExportRendererRegistration.IsEnabled(settings, format)
+            unavailable.Add(ExportsConfiguration.IsEnabled(settings, format)
                 ? $"{format.ToWireFormat()} (no renderer could be built)"
                 : $"{format.ToWireFormat()} (disabled by configuration)");
         }

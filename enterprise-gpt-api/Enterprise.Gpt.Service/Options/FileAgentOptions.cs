@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -58,7 +59,6 @@ public sealed class FileAgentOptions
     /// are not inherited. A run holds the conversation lock, so this is also what bounds how long a
     /// second turn waits on 409.
     /// </remarks>
-    [Range(30, 1800)]
     public int ToolTimeoutSeconds { get; set; } = 300;
 
     /// <summary>
@@ -70,7 +70,6 @@ public sealed class FileAgentOptions
     /// ceiling the surplus is dropped and the run says so, rather than failing a run that did produce
     /// what was asked for.
     /// </remarks>
-    [Range(1, 10)]
     public int MaxArtifactsPerRun { get; set; } = 3;
 
     /// <summary>
@@ -83,7 +82,6 @@ public sealed class FileAgentOptions
     /// it. The turn's own ceiling bounds how many tools the assistant may call, which is a different
     /// question, and neither is inherited from the other.
     /// </remarks>
-    [Range(2, 40)]
     public int MaxIterationsPerRun { get; set; } = 12;
 
     /// <summary>
@@ -95,7 +93,6 @@ public sealed class FileAgentOptions
     /// choice for a deployment that would rather pay for one attempt than two. Whatever this is, the
     /// run's own deadline still bounds the total.
     /// </remarks>
-    [Range(0, 3)]
     public int MaxVerificationRetries { get; set; } = 1;
 
     /// <summary>
@@ -107,7 +104,6 @@ public sealed class FileAgentOptions
     /// on a day nobody predicted. At the ceiling the tool is not attached and the assistant is told why,
     /// so the user gets a sentence rather than an error.
     /// </remarks>
-    [Range(1, 10_000)]
     public int? MaxRunsPerUserPerDay { get; set; }
 
     /// <summary>
@@ -118,6 +114,26 @@ public sealed class FileAgentOptions
     /// Measured from each agent tool call's recorded duration, which is the durable proxy for billed
     /// sandbox time — the precise figure lives in a metric, which nothing can query back.
     /// </remarks>
-    [Range(1, 1_000_000)]
     public int? MaxSandboxSecondsPerUserPerDay { get; set; }
+}
+
+/// <summary>Validates <see cref="FileAgentOptions"/>.</summary>
+public sealed class FileAgentOptionsValidator : AbstractValidator<FileAgentOptions>
+{
+    public FileAgentOptionsValidator()
+    {
+        RuleFor(options => options.ModelId).NotEqual(Guid.Empty).WithMessage("FileAgent:ModelId is required.");
+        RuleFor(options => options.ToolTimeoutSeconds).InclusiveBetween(30, 1800)
+            .WithMessage("FileAgent:ToolTimeoutSeconds must be between 30 and 1800.");
+        RuleFor(options => options.MaxArtifactsPerRun).InclusiveBetween(1, 10)
+            .WithMessage("FileAgent:MaxArtifactsPerRun must be between 1 and 10.");
+        RuleFor(options => options.MaxIterationsPerRun).InclusiveBetween(2, 40)
+            .WithMessage("FileAgent:MaxIterationsPerRun must be between 2 and 40.");
+        RuleFor(options => options.MaxVerificationRetries).InclusiveBetween(0, 3)
+            .WithMessage("FileAgent:MaxVerificationRetries must be between 0 and 3.");
+        RuleFor(options => options.MaxRunsPerUserPerDay).InclusiveBetween(1, 10_000)
+            .WithMessage("FileAgent:MaxRunsPerUserPerDay must be between 1 and 10000.");
+        RuleFor(options => options.MaxSandboxSecondsPerUserPerDay).InclusiveBetween(1, 1_000_000)
+            .WithMessage("FileAgent:MaxSandboxSecondsPerUserPerDay must be between 1 and 1000000.");
+    }
 }

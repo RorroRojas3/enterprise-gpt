@@ -1,14 +1,19 @@
 using Enterprise.Gpt.Entity.Transcripts;
 using Enterprise.Gpt.Repository.Cosmos.Options;
 using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
-namespace Enterprise.Gpt.Api.Startup;
+namespace Enterprise.Gpt.Repository.Cosmos.Provisioning;
 
 /// <summary>
 /// Creates the Cosmos DB database and containers the application reads and writes, and refuses to
 /// start against a transcript container whose shape it cannot use.
 /// </summary>
-public static class CosmosBootstrapper
+public sealed partial class CosmosResourceProvisioner(
+    CosmosClient cosmosClient,
+    IOptions<CosmosDbOptions> options,
+    ILogger<CosmosResourceProvisioner> logger)
 {
     /// <summary>
     /// The document properties excluded from the transcript container's index.
@@ -36,6 +41,47 @@ public static class CosmosBootstrapper
         "/attachments/*",
         "/\"_etag\"/?"
     ];
+
+    private readonly CosmosClient _cosmosClient = cosmosClient;
+    private readonly CosmosDbOptions _options = options.Value;
+    private readonly ILogger<CosmosResourceProvisioner> _logger = logger;
+
+    /// <summary>
+    /// Ensures the database and the transcript container exist, and validates the container's
+    /// partition key path.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the transcript container already exists with a different partition key path.
+    /// A container's key path is fixed at creation, so continuing would write documents whose
+    /// partition no read path can address — which surfaces as an empty transcript rather than an
+    /// error, the one failure mode this must not have.
+    /// </exception>
+    public async Task EnsureProvisionedAsync(CancellationToken cancellationToken)
+    {
+        var database = await _cosmosClient.CreateDatabaseIfNotExistsAsync(
+            _options.DatabaseId, cancellationToken: cancellationToken);
+
+        // Only the transcript container. The pre-cutover container is deliberately never opened:
+        // nothing reads or writes it, and creating it would resurrect an empty one on any account
+        // where an operator has already deleted it.
+        var transcript = await database.Database.CreateContainerIfNotExistsAsync(
+            CreateTranscriptContainerProperties(_options.TranscriptContainerId),
+            cancellationToken: cancellationToken);
+
+        var actualPath = transcript.Resource.PartitionKeyPath;
+
+        if (!string.Equals(actualPath, PartitionKeys.Path, StringComparison.Ordinal))
+        {
+            LogPartitionKeyMismatch(_logger, _options.TranscriptContainerId, actualPath, PartitionKeys.Path);
+
+            throw new InvalidOperationException(
+                $"Transcript container '{_options.TranscriptContainerId}' is partitioned on {actualPath}, but {PartitionKeys.Path} is required.");
+        }
+    }
+
+    #region Public static methods
 
     /// <summary>
     /// Builds the properties the transcript container is created with.
@@ -68,51 +114,12 @@ public static class CosmosBootstrapper
         return properties;
     }
 
-    /// <summary>
-    /// Ensures the database and the transcript container exist, and validates the container's
-    /// partition key path.
-    /// </summary>
-    /// <param name="cosmosClient">The account client.</param>
-    /// <param name="options">The bound and validated Cosmos settings.</param>
-    /// <param name="logger">The logger that records a partition key mismatch before startup fails.</param>
-    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the transcript container already exists with a different partition key path.
-    /// A container's key path is fixed at creation, so continuing would write documents whose
-    /// partition no read path can address — which surfaces as an empty transcript rather than an
-    /// error, the one failure mode this must not have.
-    /// </exception>
-    public static async Task EnsureProvisionedAsync(
-        CosmosClient cosmosClient,
-        CosmosDbOptions options,
-        ILogger logger,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(cosmosClient);
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(logger);
+    #endregion
 
-        var database = await cosmosClient.CreateDatabaseIfNotExistsAsync(
-            options.DatabaseId, cancellationToken: cancellationToken);
+    #region Logging
 
-        // Only the transcript container. The pre-cutover container is deliberately never opened:
-        // nothing reads or writes it, and creating it would resurrect an empty one on any account
-        // where an operator has already deleted it.
-        var transcript = await database.Database.CreateContainerIfNotExistsAsync(
-            CreateTranscriptContainerProperties(options.TranscriptContainerId),
-            cancellationToken: cancellationToken);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Transcript container '{ContainerId}' is partitioned on {ActualPath} but this application requires {ExpectedPath}. A container's partition key path cannot be changed; point CosmosDb:TranscriptContainerId at a new container.")]
+    private static partial void LogPartitionKeyMismatch(ILogger logger, string containerId, string actualPath, string expectedPath);
 
-        var actualPath = transcript.Resource.PartitionKeyPath;
-
-        if (!string.Equals(actualPath, PartitionKeys.Path, StringComparison.Ordinal))
-        {
-            logger.LogError(
-                "Transcript container '{ContainerId}' is partitioned on {ActualPath} but this application requires {ExpectedPath}. A container's partition key path cannot be changed; point CosmosDb:TranscriptContainerId at a new container.",
-                options.TranscriptContainerId, actualPath, PartitionKeys.Path);
-
-            throw new InvalidOperationException(
-                $"Transcript container '{options.TranscriptContainerId}' is partitioned on {actualPath}, but {PartitionKeys.Path} is required.");
-        }
-    }
+    #endregion
 }

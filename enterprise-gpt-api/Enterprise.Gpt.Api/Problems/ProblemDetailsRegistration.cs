@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Problems.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -40,12 +41,14 @@ internal static class ProblemDetailsRegistration
     };
 
     /// <summary>
-    /// Registers <see cref="IProblemDetailsService"/> together with the enrichment every problem carries.
+    /// Registers the exception handler and <see cref="IProblemDetailsService"/> with the enrichment every problem carries.
     /// </summary>
     /// <param name="services">The service collection to register into.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
-    internal static IServiceCollection AddEnterpriseProblemDetails(this IServiceCollection services)
+    internal static IServiceCollection AddEnterpriseGptProblemDetails(this IServiceCollection services)
     {
+        services.AddExceptionHandler<GlobalExceptionHandler>();
+
         return services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = context => Enrich(context.HttpContext, context.ProblemDetails));
     }

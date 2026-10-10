@@ -1,5 +1,6 @@
-using System.ComponentModel.DataAnnotations;
+using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Service.Options;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,7 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the sheet-query section against the same options pipeline <c>Program.cs</c> builds, so a
+/// Covers the sheet-query section against the same options pipeline the host builds, so a
 /// range or a cross-field rule that contradicts the shipped defaults fails here rather than at host
 /// start.
 /// </summary>
@@ -32,11 +33,10 @@ public sealed class SheetQueryOptionsTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var services = new ServiceCollection();
 
+        services.AddSingleton<IValidator<SheetQueryOptions>, SheetQueryOptionsValidator>();
         services.AddOptions<SheetQueryOptions>()
             .Bind(configuration.GetSection(SheetQueryOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(options => options.ToolTimeoutSeconds >= options.TimeoutSeconds,
-                "SheetQuery:ToolTimeoutSeconds must be at least SheetQuery:TimeoutSeconds.");
+            .ValidateWithFluentValidation();
 
         using var provider = services.BuildServiceProvider();
 
@@ -145,13 +145,15 @@ public sealed class SheetQueryOptionsTests
     /// them would assert nothing.
     /// </remarks>
     [Fact]
-    public void Options_EverySettableBoundCarriesARange()
+    public void Options_EverySettableBound_HasAValidationRule()
     {
+        var descriptor = new SheetQueryOptionsValidator().CreateDescriptor();
+
         var unranged = typeof(SheetQueryOptions)
             .GetProperties()
             .Where(p => p.CanWrite && p.PropertyType != typeof(bool))
             .Where(p => p.PropertyType.IsPrimitive || p.PropertyType == typeof(decimal))
-            .Where(p => p.GetCustomAttributes(typeof(RangeAttribute), inherit: false).Length == 0)
+            .Where(p => !descriptor.GetRulesForMember(p.Name).Any())
             .Select(p => p.Name);
 
         Assert.Empty(unranged);

@@ -1,173 +1,202 @@
-﻿using Azure.Storage.Blobs;
+using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
-using Enterprise.Gpt.Service.Documents.Exceptions;
 using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service.Documents
+namespace Enterprise.Gpt.Repository.Blob;
+
+/// <summary>
+/// Reads, writes and signs document files in blob storage.
+/// </summary>
+public interface IDocumentStore
 {
-    public interface IBlobStorageService
+    /// <summary>
+    /// Downloads the specified blob from the given container.
+    /// </summary>
+    /// <param name="container">The name of the blob container.</param>
+    /// <param name="blob">The name of the blob to download.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+    /// <returns>A byte array containing the blob's content.</returns>
+    Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Uploads a blob to the specified container with optional metadata.
+    /// </summary>
+    /// <param name="container">The name of the blob container.</param>
+    /// <param name="blob">The name of the blob to upload.</param>
+    /// <param name="data">The binary content to upload.</param>
+    /// <param name="metadata">A collection of user-defined metadata to associate with the blob.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+    Task UploadAsync(string container, string blob, byte[] data, Dictionary<string, string> metadata, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes the specified blob from the given container if it exists.
+    /// </summary>
+    /// <param name="container">The name of the blob container.</param>
+    /// <param name="blob">The name of the blob to delete.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
+    /// <returns>
+    /// True if the blob was found and deleted; false if the blob did not exist.
+    /// </returns>
+    Task<bool> DeleteAsync(string container, string blob, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Generates a read-only signed URI for the specified blob.
+    /// </summary>
+    /// <param name="container">The name of the blob container.</param>
+    /// <param name="blob">The name of the blob to sign.</param>
+    /// <param name="expiresIn">The duration after which the signature expires.</param>
+    /// <param name="contentDisposition">
+    /// Optional <c>Content-Disposition</c> the service returns instead of the blob's own, signed
+    /// into the token as <c>rscd</c>.
+    /// </param>
+    /// <param name="contentType">
+    /// Optional <c>Content-Type</c> the service returns instead of the blob's own, signed into the
+    /// token as <c>rsct</c>.
+    /// </param>
+    /// <returns>The signed URI, or <see langword="null"/> when the client holds no credential that can sign.</returns>
+    /// <remarks>
+    /// The response-header overrides exist because <see cref="UploadAsync"/> stores metadata but no
+    /// <c>BlobHttpHeaders</c>: without them a browser saves the file under its storage key and as
+    /// <c>application/octet-stream</c>.
+    /// </remarks>
+    Uri? GenerateReadUri(string container, string blob, TimeSpan expiresIn, string? contentDisposition = null, string? contentType = null);
+}
+
+/// <inheritdoc />
+public sealed partial class BlobDocumentStore(ILogger<BlobDocumentStore> logger, BlobServiceClient blobServiceClient) : IDocumentStore
+{
+    private readonly ILogger<BlobDocumentStore> _logger = logger;
+    private readonly BlobServiceClient _blobServiceClient = blobServiceClient;
+
+    /// <inheritdoc />
+    public async Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken)
     {
-        /// <summary>
-        /// Downloads the specified blob from the given container.
-        /// </summary>
-        /// <param name="container">The name of the blob container.</param>
-        /// <param name="blob">The name of the blob to download.</param>
-        /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
-        /// <returns>A byte array containing the blob's content.</returns>
-        Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken);
+        LogDownloading(_logger, blob, container);
 
-        /// <summary>
-        /// Uploads a blob to the specified container with optional metadata.
-        /// </summary>
-        /// <param name="container">The name of the blob container.</param>
-        /// <param name="blob">The name of the blob to upload.</param>
-        /// <param name="data">The binary content to upload.</param>
-        /// <param name="metadata">A collection of user-defined metadata to associate with the blob.</param>
-        /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
-        Task UploadAsync(string container, string blob, byte[] data, Dictionary<string, string> metadata, CancellationToken cancellationToken);
+        var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
+        var downloadInfo = await blobClient.DownloadAsync(cancellationToken);
 
-        /// <summary>
-        /// Deletes the specified blob from the given container if it exists.
-        /// </summary>
-        /// <param name="container">The name of the blob container.</param>
-        /// <param name="blob">The name of the blob to delete.</param>
-        /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
-        /// <returns>
-        /// True if the blob was found and deleted; false if the blob did not exist.
-        /// </returns>
-        Task<bool> DeleteAsync(string container, string blob, CancellationToken cancellationToken);
+        LogDownloaded(_logger, blob, container);
 
-        /// <summary>
-        /// Generates a Shared Access Signature (SAS) URI for the specified blob.
-        /// </summary>
-        /// <param name="container">The name of the blob container.</param>
-        /// <param name="blob">The name of the blob for which to generate the SAS URI.</param>
-        /// <param name="expiresIn">The duration after which the SAS should expire.</param>
-        /// <param name="permissions">The permissions to include in the SAS token.</param>
-        /// <param name="contentDisposition">
-        /// Optional <c>Content-Disposition</c> the service returns instead of the blob's own, signed
-        /// into the token as <c>rscd</c>.
-        /// </param>
-        /// <param name="contentType">
-        /// Optional <c>Content-Type</c> the service returns instead of the blob's own, signed into the
-        /// token as <c>rsct</c>.
-        /// </param>
-        /// <returns>A URI containing the SAS token granting the specified permissions.</returns>
-        /// <remarks>
-        /// The response-header overrides exist because <see cref="UploadAsync"/> stores metadata but no
-        /// <c>BlobHttpHeaders</c>: without them a browser saves the file under its storage key and as
-        /// <c>application/octet-stream</c>.
-        /// </remarks>
-        /// <exception cref="StorageNotConfiguredException">
-        /// Thrown when the underlying client is not configured to generate SAS URIs.
-        /// </exception>
-        Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, Azure.Storage.Sas.BlobSasPermissions permissions,
-            string? contentDisposition = null, string? contentType = null);
+        using var memoryStream = new MemoryStream();
+        await downloadInfo.Value.Content.CopyToAsync(memoryStream, cancellationToken);
+
+        return memoryStream.ToArray();
     }
 
-    public class BlobStorageService(ILogger<BlobStorageService> logger,
-        BlobServiceClient blobServiceClient) : IBlobStorageService
+    /// <inheritdoc />
+    public async Task UploadAsync(string container, string blob, byte[] data, Dictionary<string, string> metadata, CancellationToken cancellationToken)
     {
-        private readonly ILogger<BlobStorageService> _logger = logger;
-        private readonly BlobServiceClient _blobServiceClient = blobServiceClient;
+        LogUploading(_logger, blob, container);
 
-        /// <inheritdoc />
-        public async Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken)
+        var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
+        using var memoryStream = new MemoryStream(data);
+
+        var options = new BlobUploadOptions
         {
-            _logger.LogInformation("Downloading blob '{Blob}' from container '{Container}'", blob, container);
+            Metadata = metadata
+        };
+        await blobClient.UploadAsync(memoryStream, options, cancellationToken);
 
-            var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
-            var downloadInfo = await blobClient.DownloadAsync(cancellationToken);
-
-            _logger.LogInformation("Blob '{Blob}' downloaded successfully from container '{Container}'", blob, container);
-
-            using var memoryStream = new MemoryStream();
-            await downloadInfo.Value.Content.CopyToAsync(memoryStream, cancellationToken);
-            return memoryStream.ToArray();
-        }
-
-        /// <inheritdoc />
-        public async Task UploadAsync(string container, string blob, byte[] data, Dictionary<string, string> metadata, CancellationToken cancellationToken)
-        {
-            _logger.LogInformation("Uploading blob '{Blob}' to container '{Container}'", blob, container);
-
-            var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
-            using var memoryStream = new MemoryStream(data);
-
-            var options = new BlobUploadOptions
-            {
-                Metadata = metadata
-            };
-            await blobClient.UploadAsync(memoryStream, options, cancellationToken);
-
-            _logger.LogInformation("Blob '{Blob}' uploaded successfully to container '{Container}'", blob, container);
-        }
-
-        /// <inheritdoc />
-        public async Task<bool> DeleteAsync(string container, string blob, CancellationToken cancellationToken)
-        {
-            _logger.LogInformation("Deleting blob '{Blob}' from container '{Container}'", blob, container);
-
-            var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
-            var response = await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
-            if (response.Value)
-            {
-                _logger.LogInformation("Blob '{Blob}' deleted successfully from container '{Container}'", blob, container);
-            }
-            else
-            {
-                _logger.LogWarning("Blob '{Blob}' not found in container '{Container}'", blob, container);
-            }
-
-            return response.Value;
-        }
-
-        /// <inheritdoc />
-        public Uri GenerateSasUri(string container, string blob, TimeSpan expiresIn, BlobSasPermissions permissions,
-            string? contentDisposition = null, string? contentType = null)
-        {
-            _logger.LogInformation("Generating SAS URI for blob '{Blob}' in container '{Container}' with permissions '{Permissions}' expiring in {ExpiresIn}",
-                blob, container, permissions, expiresIn);
-
-            var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
-
-            if (!blobClient.CanGenerateSasUri)
-            {
-                _logger.LogError("BlobClient cannot generate SAS URI. Ensure the BlobServiceClient is configured with credentials that support SAS generation.");
-                throw new StorageNotConfiguredException();
-            }
-
-            var sasBuilder = new BlobSasBuilder
-            {
-                BlobContainerName = container,
-                BlobName = blob,
-                Resource = "b",
-                StartsOn = DateTimeOffset.UtcNow.AddMinutes(-5),
-                ExpiresOn = DateTimeOffset.UtcNow.Add(expiresIn)
-            };
-
-            // Left unset rather than assigned null: BlobSasBuilder signs every non-null field, so an
-            // empty override would be signed as an empty header and strip the real one.
-            if (!string.IsNullOrWhiteSpace(contentDisposition))
-            {
-                sasBuilder.ContentDisposition = contentDisposition;
-            }
-
-            if (!string.IsNullOrWhiteSpace(contentType))
-            {
-                sasBuilder.ContentType = contentType;
-            }
-
-            sasBuilder.SetPermissions(permissions);
-
-            var sasUri = blobClient.GenerateSasUri(sasBuilder);
-
-            // The URI itself is deliberately not logged: it grants read access to anyone holding it
-            // until it expires.
-            _logger.LogInformation("SAS URI generated successfully for blob '{Blob}' in container '{Container}'", blob, container);
-
-            return sasUri;
-        }
+        LogUploaded(_logger, blob, container);
     }
+
+    /// <inheritdoc />
+    public async Task<bool> DeleteAsync(string container, string blob, CancellationToken cancellationToken)
+    {
+        LogDeleting(_logger, blob, container);
+
+        var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
+        var response = await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+        if (response.Value)
+        {
+            LogDeleted(_logger, blob, container);
+        }
+        else
+        {
+            LogDeleteMissing(_logger, blob, container);
+        }
+
+        return response.Value;
+    }
+
+    /// <inheritdoc />
+    public Uri? GenerateReadUri(string container, string blob, TimeSpan expiresIn, string? contentDisposition = null, string? contentType = null)
+    {
+        LogSigning(_logger, blob, container, expiresIn);
+
+        var blobClient = _blobServiceClient.GetBlobContainerClient(container).GetBlobClient(blob);
+
+        if (!blobClient.CanGenerateSasUri)
+        {
+            LogCannotSign(_logger);
+
+            return null;
+        }
+
+        var sasBuilder = new BlobSasBuilder
+        {
+            BlobContainerName = container,
+            BlobName = blob,
+            Resource = "b",
+            StartsOn = DateTimeOffset.UtcNow.AddMinutes(-5),
+            ExpiresOn = DateTimeOffset.UtcNow.Add(expiresIn)
+        };
+
+        // Left unset rather than assigned null: BlobSasBuilder signs every non-null field, so an
+        // empty override would be signed as an empty header and strip the real one.
+        if (!string.IsNullOrWhiteSpace(contentDisposition))
+        {
+            sasBuilder.ContentDisposition = contentDisposition;
+        }
+
+        if (!string.IsNullOrWhiteSpace(contentType))
+        {
+            sasBuilder.ContentType = contentType;
+        }
+
+        sasBuilder.SetPermissions(BlobSasPermissions.Read);
+
+        var sasUri = blobClient.GenerateSasUri(sasBuilder);
+
+        // The URI itself is deliberately not logged: it grants read access to anyone holding it until it expires.
+        LogSigned(_logger, blob, container);
+
+        return sasUri;
+    }
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Downloading blob '{Blob}' from container '{Container}'")]
+    private static partial void LogDownloading(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Blob '{Blob}' downloaded successfully from container '{Container}'")]
+    private static partial void LogDownloaded(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Uploading blob '{Blob}' to container '{Container}'")]
+    private static partial void LogUploading(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Blob '{Blob}' uploaded successfully to container '{Container}'")]
+    private static partial void LogUploaded(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleting blob '{Blob}' from container '{Container}'")]
+    private static partial void LogDeleting(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Blob '{Blob}' deleted successfully from container '{Container}'")]
+    private static partial void LogDeleted(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Blob '{Blob}' not found in container '{Container}'")]
+    private static partial void LogDeleteMissing(ILogger logger, string blob, string container);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generating SAS URI for blob '{Blob}' in container '{Container}' with permissions 'Read' expiring in {ExpiresIn}")]
+    private static partial void LogSigning(ILogger logger, string blob, string container, TimeSpan expiresIn);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "BlobClient cannot generate SAS URI. Ensure the BlobServiceClient is configured with credentials that support SAS generation.")]
+    private static partial void LogCannotSign(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SAS URI generated successfully for blob '{Blob}' in container '{Container}'")]
+    private static partial void LogSigned(ILogger logger, string blob, string container);
+
+    #endregion
 }

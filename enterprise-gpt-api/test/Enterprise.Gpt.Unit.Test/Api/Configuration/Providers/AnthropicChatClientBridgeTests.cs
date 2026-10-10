@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Anthropic;
 using Enterprise.Gpt.Api.Configuration.Providers;
-using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Api.Options;
 using Microsoft.Extensions.AI;
 using Xunit;
 

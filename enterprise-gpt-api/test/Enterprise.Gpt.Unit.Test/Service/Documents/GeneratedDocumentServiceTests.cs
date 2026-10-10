@@ -2,6 +2,8 @@ using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Conversations;
 using Enterprise.Gpt.Entity.Documents;
 using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Blob;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Service.Documents;
 using Enterprise.Gpt.Service.Documents.Exceptions;
 using Enterprise.Gpt.Service.Documents.Models;
@@ -24,7 +26,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
     private const string DocumentsContainerName = "documents";
 
     private readonly SqliteDbContextFixture _fixture = new();
-    private readonly IBlobStorageService _blobStorageService = Substitute.For<IBlobStorageService>();
+    private readonly IDocumentStore _documentStore = Substitute.For<IDocumentStore>();
     private readonly GeneratedDocumentService _service;
 
     public GeneratedDocumentServiceTests()
@@ -49,7 +51,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "summary.xlsx", [1, 2, 3]),
             TestContext.Current.CancellationToken);
 
-        await _blobStorageService.Received(1).UploadAsync(
+        await _documentStore.Received(1).UploadAsync(
             GeneratedContainerName,
             $"{KnownIds.SeedUserId}/{conversation.Id}/{stored.Id}.xlsx",
             Arg.Any<byte[]>(),
@@ -109,7 +111,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "big.pdf", [1, 2, 3]),
             TestContext.Current.CancellationToken));
 
-        await _blobStorageService.DidNotReceive().UploadAsync(
+        await _documentStore.DidNotReceive().UploadAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(),
             Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
 
@@ -130,7 +132,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, fileName, [1]),
             TestContext.Current.CancellationToken));
 
-        await _blobStorageService.DidNotReceive().UploadAsync(
+        await _documentStore.DidNotReceive().UploadAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(),
             Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
     }
@@ -170,7 +172,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
 
         // The bytes were written before the row was attempted, so a refused insert must take them
         // back out rather than leave content nothing references.
-        await _blobStorageService.Received(1).DeleteAsync(
+        await _documentStore.Received(1).DeleteAsync(
             GeneratedContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
@@ -182,7 +184,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
     {
         var other = await AddUserAsync();
         var conversation = await AddConversationAsync(userId: other.Id);
-        _blobStorageService
+        _documentStore
             .DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("storage is unreachable"));
 
@@ -220,7 +222,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
         var document = await ctx.ConversationDocuments.SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(document.DateDeactivated);
-        await _blobStorageService.Received(1).DeleteAsync(
+        await _documentStore.Received(1).DeleteAsync(
             GeneratedContainerName,
             $"{KnownIds.SeedUserId}/{conversation.Id}/{stored.Id}.xlsx",
             Arg.Any<CancellationToken>());
@@ -231,7 +233,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
     {
         await _service.DiscardAsync(Guid.NewGuid());
 
-        await _blobStorageService.DidNotReceiveWithAnyArgs()
+        await _documentStore.DidNotReceiveWithAnyArgs()
             .DeleteAsync(default!, default!, TestContext.Current.CancellationToken);
     }
 
@@ -245,7 +247,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "summary.xlsx", [1, 2, 3]),
             TestContext.Current.CancellationToken);
 
-        _blobStorageService
+        _documentStore
             .DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("storage is down"));
 
@@ -259,8 +261,8 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
 
     private GeneratedDocumentService CreateService(IConfiguration configuration, long maxFileSizeBytes = 50L * 1024 * 1024) =>
         new(NullLogger<GeneratedDocumentService>.Instance,
-            _blobStorageService,
-            configuration,
+            _documentStore,
+            new StaticOptionsMonitor<BlobStorageOptions>(configuration.GetSection(BlobStorageOptions.SectionName).Get<BlobStorageOptions>() ?? new BlobStorageOptions()),
             Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes }),
             _fixture.ScopeFactory);
 

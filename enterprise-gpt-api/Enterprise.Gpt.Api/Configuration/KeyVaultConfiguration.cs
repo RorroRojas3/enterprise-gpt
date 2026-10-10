@@ -4,6 +4,7 @@ using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Enterprise.Gpt.Api.Configuration.Models;
 using Enterprise.Gpt.Api.Options;
+using Enterprise.Gpt.Common.Constants;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
@@ -17,12 +18,6 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </remarks>
 internal static class KeyVaultConfiguration
 {
-    /// <summary>Environment name the integration host runs under, spelled the same way in <c>Program.cs</c>.</summary>
-    private const string TestingEnvironmentName = "Testing";
-
-    // Key Vault throttles per vault, so a faster poll buys nothing and risks a 429 storm.
-    private static readonly TimeSpan MinimumReloadInterval = TimeSpan.FromMinutes(1);
-
     /// <summary>
     /// Reads the vault into configuration, and does nothing at all when the section leaves it off.
     /// </summary>
@@ -31,7 +26,7 @@ internal static class KeyVaultConfiguration
     /// Must run before anything reads configuration: <c>builder.Configuration</c> rebuilds on every
     /// source added, so the vault is read here and an unreachable one fails the host immediately.
     /// </remarks>
-    internal static KeyVaultSource? AddEnterpriseKeyVault(this WebApplicationBuilder builder)
+    internal static KeyVaultSource? AddEnterpriseGptKeyVault(this WebApplicationBuilder builder)
     {
         var source = Resolve(builder.Configuration, builder.Environment);
 
@@ -97,53 +92,31 @@ internal static class KeyVaultConfiguration
     {
         var options = configuration.GetSection(KeyVaultOptions.SectionName).Get<KeyVaultOptions>();
 
-        if (options is not { Enabled: true } || environment.IsEnvironment(TestingEnvironmentName))
+        if (options is not { Enabled: true } || environment.IsEnvironment(HostEnvironments.Testing))
         {
             return null;
         }
 
-        // Enabled with nothing to point at is a deployment mistake rather than a request to stay
-        // local: every secret it expects to find would silently be missing. Blank counts, because a
-        // template that leaves a variable unset writes an empty app setting rather than no setting.
-        if (string.IsNullOrWhiteSpace(options.VaultUri))
+        // Validated by hand rather than through IOptions: this runs before the host exists, because the
+        // vault it describes is itself a configuration source.
+        var result = new KeyVaultOptionsValidator().Validate(options);
+        if (!result.IsValid)
         {
-            throw new InvalidOperationException(
-                $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.VaultUri)} is required when {KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.Enabled)} is true.");
-        }
-
-        if (!Uri.TryCreate(options.VaultUri, UriKind.Absolute, out var vaultUri) || vaultUri.Scheme != Uri.UriSchemeHttps)
-        {
-            throw new InvalidOperationException(
-                $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.VaultUri)} must be an absolute https URI, for example https://contoso.vault.azure.net/.");
-        }
-
-        if (options.ReloadInterval is { } interval && interval < MinimumReloadInterval)
-        {
-            throw new InvalidOperationException(
-                $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.ReloadInterval)} must be at least {MinimumReloadInterval}, or unset to read the vault once at startup.");
-        }
-
-        Uri? dataProtectionKeyUri = null;
-        if (!string.IsNullOrWhiteSpace(options.DataProtectionKeyUri)
-            && (!Uri.TryCreate(options.DataProtectionKeyUri, UriKind.Absolute, out dataProtectionKeyUri)
-                || dataProtectionKeyUri.Scheme != Uri.UriSchemeHttps))
-        {
-            throw new InvalidOperationException(
-                $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.DataProtectionKeyUri)} must be an absolute https key identifier, for example https://contoso.vault.azure.net/keys/data-protection.");
+            throw new InvalidOperationException(result.Errors[0].ErrorMessage);
         }
 
         return new KeyVaultSource(
-            vaultUri,
+            new Uri(options.VaultUri!),
             string.IsNullOrWhiteSpace(options.ManagedIdentityClientId) ? null : options.ManagedIdentityClientId,
             options.ReloadInterval,
-            dataProtectionKeyUri);
+            string.IsNullOrWhiteSpace(options.DataProtectionKeyUri) ? null : new Uri(options.DataProtectionKeyUri));
     }
 
     /// <summary>
     /// Reports that the vault is in the chain, so an operator can tell a resolved secret from an
     /// environment variable that happened to carry the same key.
     /// </summary>
-    /// <param name="source">The result of <see cref="AddEnterpriseKeyVault"/>; <see langword="null"/> reports nothing.</param>
+    /// <param name="source">The result of <see cref="AddEnterpriseGptKeyVault"/>; <see langword="null"/> reports nothing.</param>
     internal static void LogStatus(KeyVaultSource? source, ILogger logger)
     {
         if (source is null)

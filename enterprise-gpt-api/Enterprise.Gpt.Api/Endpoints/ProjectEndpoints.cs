@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto.Actions.Projects;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Dto.Pagination;
@@ -41,8 +42,10 @@ public static class ProjectEndpoints
         group.MapGet("{id:guid}", GetProjectAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("", CreateProjectAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<CreateProjectActionDto>>()
             .ProducesValidationProblem();
         group.MapPut("{id:guid}", UpdateProjectAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<UpdateProjectActionDto>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapDelete("{id:guid}", DeactivateProjectAsync)

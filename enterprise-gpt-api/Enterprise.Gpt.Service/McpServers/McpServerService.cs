@@ -48,7 +48,7 @@ namespace Enterprise.Gpt.Service.McpServers
         /// <param name="request">The creation request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The created server.</returns>
-        /// <exception cref="ValidationException">The request fails validation, or the name is already in use by an active server or permission.</exception>
+        /// <exception cref="ValidationException">The name is already in use by an active server or permission.</exception>
         Task<McpServerDto> CreateMcpServerAsync(CreateMcpServerActionDto request, CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -60,7 +60,7 @@ namespace Enterprise.Gpt.Service.McpServers
         /// <param name="request">The update request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The updated server.</returns>
-        /// <exception cref="ValidationException">The request fails validation, or the name is already in use by an active server or permission.</exception>
+        /// <exception cref="ValidationException">The name is already in use by an active server or permission.</exception>
         /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
         Task<McpServerDto> UpdateMcpServerAsync(Guid id, UpdateMcpServerActionDto request, CancellationToken cancellationToken = default);
 
@@ -77,16 +77,12 @@ namespace Enterprise.Gpt.Service.McpServers
     public class McpServerService(ILogger<McpServerService> logger,
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
-        IValidator<CreateMcpServerActionDto> createValidator,
-        IValidator<UpdateMcpServerActionDto> updateValidator,
         IMcpClientCache mcpClientCache,
         IUserPermissionCache permissionCache) : IMcpServerService
     {
         private readonly ILogger<McpServerService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
-        private readonly IValidator<CreateMcpServerActionDto> _createValidator = createValidator;
-        private readonly IValidator<UpdateMcpServerActionDto> _updateValidator = updateValidator;
         private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
         private readonly IUserPermissionCache _permissionCache = permissionCache;
 
@@ -131,7 +127,6 @@ namespace Enterprise.Gpt.Service.McpServers
         /// <inheritdoc />
         public async Task<McpServerDto> CreateMcpServerAsync(CreateMcpServerActionDto request, CancellationToken cancellationToken = default)
         {
-            await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
             await EnsureNameIsAvailableAsync(request.Name, excludeServerId: null, cancellationToken);
 
             var oid = _tokenService.GetOid();
@@ -171,8 +166,6 @@ namespace Enterprise.Gpt.Service.McpServers
         /// <inheritdoc />
         public async Task<McpServerDto> UpdateMcpServerAsync(Guid id, UpdateMcpServerActionDto request, CancellationToken cancellationToken = default)
         {
-            await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
-
             var server = await _ctx.McpServers
                 .Include(s => s.Permissions.Where(p => !p.DateDeactivated.HasValue))
                 .FirstOrDefaultAsync(s => s.Id == id && !s.DateDeactivated.HasValue, cancellationToken)

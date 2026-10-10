@@ -1,11 +1,11 @@
-using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Api.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Service.Options;
+namespace Enterprise.Gpt.Unit.Test.Api.Options;
 
 /// <summary>
-/// Covers the accepted-value sets and the cross-field rule the startup validators in
-/// <c>Program.cs</c> read from, so the one non-obvious configuration constraint is pinned without
+/// Covers the accepted-value sets and the cross-field rule <c>AnthropicOptionsValidator</c>
+/// reads from, so the one non-obvious configuration constraint is pinned without
 /// booting a host.
 /// </summary>
 public sealed class AnthropicOptionsTests

@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using Azure;
 using Azure.AI.DocumentIntelligence;
-using Microsoft.Extensions.Configuration;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Documents.Extraction
 {
@@ -25,7 +26,7 @@ namespace Enterprise.Gpt.Service.Documents.Extraction
     }
 
     public class DocumentIntelligenceService(ILogger<DocumentIntelligenceService> logger,
-        IConfiguration configuration,
+        IOptions<DocumentIntelligenceOptions> options,
         DocumentIntelligenceClient client) : IDocumentIntelligenceService
     {
         // Matches the service's own recommended polling cadence closely enough to keep the status feed
@@ -34,13 +35,12 @@ namespace Enterprise.Gpt.Service.Documents.Extraction
 
         private readonly ILogger<DocumentIntelligenceService> _logger = logger;
         private readonly DocumentIntelligenceClient _client = client;
-        private readonly string _ocrModelId = configuration.GetValue<string>("DocumentIntelligence:OCRModelId")!;
+        private readonly string _ocrModelId = options.Value.OCRModelId;
 
         // An analysis that never reaches a terminal state would otherwise hold a background-processing slot
         // — there are only a handful — until the host shuts down, and its job would never become terminal
         // so its status snapshot would never be evicted either.
-        private readonly TimeSpan _analysisTimeout =
-            configuration.GetValue<TimeSpan?>("DocumentIntelligence:AnalysisTimeout") ?? TimeSpan.FromMinutes(10);
+        private readonly TimeSpan _analysisTimeout = options.Value.AnalysisTimeout;
 
         /// <inheritdoc />
         public async Task<AnalyzeResult> ReadAsync(byte[] bytes, Action<TimeSpan>? heartbeat, CancellationToken cancellationToken)

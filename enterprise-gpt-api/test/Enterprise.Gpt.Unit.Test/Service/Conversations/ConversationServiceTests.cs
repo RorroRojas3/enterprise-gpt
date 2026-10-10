@@ -110,7 +110,7 @@ public sealed class ConversationServiceTests : IDisposable
             {
                 options.Observers.Add(new ChatUsageObserver());
 
-                // As Program.cs installs it, so an agent exposed as a function classifies here the way
+                // As ChatClientPipeline installs it, so an agent exposed as a function classifies here the way
                 // it does in production rather than as an anonymous function.
                 options.UseAgentToolClassification();
             })
@@ -158,11 +158,6 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenEstimatorResolver,
             new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
-            new CreateConversationActionDtoValidator(),
-            new CreateConversationStreamActionDtoValidator(),
-            new DeactivateConversationsBulkActionDtoValidator(),
-            new UpdateConversationActionDtoValidator(),
-            new SetMessageFeedbackActionDtoValidator(),
             _documentSummaryService,
             _userGrantReader,
             Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
@@ -191,11 +186,6 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenEstimatorResolver,
             new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
-            new CreateConversationActionDtoValidator(),
-            new CreateConversationStreamActionDtoValidator(),
-            new DeactivateConversationsBulkActionDtoValidator(),
-            new UpdateConversationActionDtoValidator(),
-            new SetMessageFeedbackActionDtoValidator(),
             summaryService ?? _documentSummaryService,
             _userGrantReader,
             Microsoft.Extensions.Options.Options.Create(options ?? new SummarizationOptions { Enabled = true }),
@@ -222,11 +212,6 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenEstimatorResolver,
             new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
-            new CreateConversationActionDtoValidator(),
-            new CreateConversationStreamActionDtoValidator(),
-            new DeactivateConversationsBulkActionDtoValidator(),
-            new UpdateConversationActionDtoValidator(),
-            new SetMessageFeedbackActionDtoValidator(),
             _documentSummaryService,
             _userGrantReader,
             Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
@@ -1248,11 +1233,6 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenEstimatorResolver,
             new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
-            new CreateConversationActionDtoValidator(),
-            new CreateConversationStreamActionDtoValidator(),
-            new DeactivateConversationsBulkActionDtoValidator(),
-            new UpdateConversationActionDtoValidator(),
-            new SetMessageFeedbackActionDtoValidator(),
             _documentSummaryService,
             _userGrantReader,
             Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
@@ -2951,30 +2931,6 @@ public sealed class ConversationServiceTests : IDisposable
             conversation.Id, conversation.Id,
             new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
             TestContext.Current.CancellationToken));
-    }
-
-    /// <summary>
-    /// The string-enum converter allows integer values, and Microsoft documents that as allowing
-    /// undefined ones — so an unvalidated request would write a rating the enum has no name for,
-    /// and it would come back out of the transcript as a number rather than a string.
-    /// </summary>
-    [Fact]
-    public async Task SetMessageFeedbackAsync_RatingOutsideTheEnum_ThrowsValidationAndWritesNothing()
-    {
-        var conversation = await AddConversationAsync();
-        var messageId = Guid.NewGuid();
-        SetUpRatableMessage(conversation.Id, messageId);
-
-        var exception = await Assert.ThrowsAsync<ValidationException>(() => _service.SetMessageFeedbackAsync(
-            conversation.Id, messageId,
-            new SetMessageFeedbackActionDto { Rating = (MessageFeedbackRatings)7 },
-            TestContext.Current.CancellationToken));
-
-        Assert.Equal(
-            nameof(SetMessageFeedbackActionDto.Rating), Assert.Single(exception.Errors).PropertyName);
-        await _transcriptStore.DidNotReceive().PatchItemAsync(
-            Arg.Any<string>(), Arg.Any<PartitionKey>(),
-            Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -1,21 +1,34 @@
+using System.Net;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Exceptions;
+
 namespace Enterprise.Gpt.Service.McpServers.Exceptions;
 
 /// <summary>
-/// Thrown when an MCP server refuses the credential the user supplied — the token was revoked,
-/// expired, or never carried the scopes the server needs. Mapped to HTTP 428 by the global
-/// exception handler.
+/// Thrown when an MCP server refuses the credential the user supplied: revoked, expired, or missing
+/// the scopes the server needs; answered with 428.
 /// </summary>
 /// <remarks>
-/// Separated from <see cref="McpServerUnavailableException"/> so the reader is told to replace
-/// their own key rather than that a third-party service is down. Recognized from the 401 or 403
-/// the transport reports, which would otherwise be classified as a connectivity failure.
+/// Recognized from the 401 or 403 the transport reports, which would otherwise read as the
+/// connectivity failure <see cref="McpServerUnavailableException"/> describes.
 /// </remarks>
+/// <param name="mcpServerId">The id of the server that refused the credential.</param>
+/// <param name="serverName">The display name of that server.</param>
+/// <param name="innerException">The transport failure carrying the refusal.</param>
 public class McpCredentialRejectedException(Guid mcpServerId, string serverName, Exception innerException)
-    : Exception($"MCP server '{serverName}' rejected your API key.", innerException)
+    : ProblemException(
+        HttpStatusCode.PreconditionRequired,
+        ProblemCodes.McpCredentialRejected,
+        $"MCP server '{serverName}' rejected your API key.",
+        innerException)
 {
     /// <summary>Gets the id of the server that refused the credential.</summary>
     public Guid McpServerId { get; } = mcpServerId;
 
     /// <summary>Gets the display name of that server.</summary>
     public string ServerName { get; } = serverName;
+
+    /// <inheritdoc />
+    public override IReadOnlyDictionary<string, object?> Extensions =>
+        new Dictionary<string, object?> { ["serverName"] = ServerName, ["mcpServerId"] = McpServerId };
 }

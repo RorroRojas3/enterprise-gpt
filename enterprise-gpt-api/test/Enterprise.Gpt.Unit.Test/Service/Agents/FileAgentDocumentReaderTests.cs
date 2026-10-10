@@ -2,9 +2,10 @@ using System.Text;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Conversations;
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Blob;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.Agents.Models;
-using Enterprise.Gpt.Service.Documents;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,7 +21,7 @@ namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 public sealed class FileAgentDocumentReaderTests : IDisposable
 {
     private readonly SqliteDbContextFixture _fixture = new();
-    private readonly IBlobStorageService _blobStorageService = Substitute.For<IBlobStorageService>();
+    private readonly IDocumentStore _documentStore = Substitute.For<IDocumentStore>();
 
     public void Dispose() => _fixture.Dispose();
 
@@ -209,7 +210,7 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
         var generated = await AddDocumentAsync(
             conversationId, "made.xlsx", type: ConversationDocumentTypes.Generated);
 
-        _blobStorageService
+        _documentStore
             .DownloadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Encoding.UTF8.GetBytes("bytes"));
 
@@ -217,9 +218,9 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
             conversationId, KnownIds.SeedUserId, [uploaded, generated], TestContext.Current.CancellationToken);
 
         Assert.Equal(["source.docx", "made.xlsx"], files.Select(file => file.Name));
-        await _blobStorageService.Received(1)
+        await _documentStore.Received(1)
             .DownloadAsync("documents", "path/source.docx", Arg.Any<CancellationToken>());
-        await _blobStorageService.Received(1)
+        await _documentStore.Received(1)
             .DownloadAsync("generated-documents", "path/made.xlsx", Arg.Any<CancellationToken>());
     }
 
@@ -235,7 +236,7 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
             conversationId, Guid.NewGuid(), [documentId], TestContext.Current.CancellationToken);
 
         Assert.Empty(files);
-        await _blobStorageService.DidNotReceive()
+        await _documentStore.DidNotReceive()
             .DownloadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -257,14 +258,8 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
 
     private FileAgentDocumentReader CreateReader() => new(
         NullLogger<FileAgentDocumentReader>.Instance,
-        _blobStorageService,
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                [DocumentStorage.DocumentsContainerKey] = "documents",
-                [DocumentStorage.GeneratedContainerKey] = "generated-documents"
-            })
-            .Build(),
+        _documentStore,
+        new StaticOptionsMonitor<BlobStorageOptions>(new BlobStorageOptions { DocumentsContainer = "documents", GeneratedContainer = "generated-documents" }),
         _fixture.Context);
 
     private Task<FileAgentSourceResolution> ResolveAsync(Guid conversationId, string instruction) =>

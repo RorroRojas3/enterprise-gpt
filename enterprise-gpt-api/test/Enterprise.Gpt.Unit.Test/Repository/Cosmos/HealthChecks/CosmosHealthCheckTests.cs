@@ -1,11 +1,11 @@
-using Enterprise.Gpt.Api.Health;
+using Enterprise.Gpt.Repository.Cosmos.HealthChecks;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Api.Health;
+namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.HealthChecks;
 
 /// <summary>
 /// Covers the readiness probe for the transcript account, including what its result may not carry.

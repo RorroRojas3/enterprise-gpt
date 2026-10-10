@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -15,12 +16,22 @@ public sealed class RowWindowOptions
     /// Comfortably under the budget so a window survives chunking as one indivisible unit and keeps
     /// its header; at the budget it would regularly spill and degrade to bare rows.
     /// </remarks>
-    [Range(0.1, 1.0)]
     public double TargetTokenFraction { get; set; } = 0.75;
 
     /// <summary>
     /// Largest number of data rows in one window, whatever the token count. Default: 50.
     /// </summary>
-    [Range(1, 1_000)]
     public int MaxRows { get; set; } = 50;
+}
+
+/// <summary>Validates <see cref="RowWindowOptions"/>.</summary>
+public sealed class RowWindowOptionsValidator : AbstractValidator<RowWindowOptions>
+{
+    public RowWindowOptionsValidator()
+    {
+        RuleFor(options => options.TargetTokenFraction).InclusiveBetween(0.1d, 1d)
+            .WithMessage("Sheets:RowWindow:TargetTokenFraction must be between 0.1 and 1.");
+        RuleFor(options => options.MaxRows).InclusiveBetween(1, 1_000)
+            .WithMessage("Sheets:RowWindow:MaxRows must be between 1 and 1,000.");
+    }
 }

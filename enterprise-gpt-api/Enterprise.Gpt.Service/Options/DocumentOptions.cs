@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -23,7 +23,6 @@ public sealed class DocumentOptions
     /// Largest upload accepted, in bytes. Default: 50 MB. Azure Document Intelligence caps paid-tier
     /// (S0) inputs at 500 MB and free-tier (F0) inputs at 4 MB.
     /// </summary>
-    [Range(1, 500L * 1024 * 1024)]
     public long MaxFileSizeBytes { get; set; } = 50L * 1024 * 1024;
 
     /// <summary>
@@ -37,7 +36,6 @@ public sealed class DocumentOptions
     /// the caller's request. In-flight jobs are additional and bounded separately by
     /// <c>BackgroundJobs:MaxConcurrent</c>.
     /// </remarks>
-    [Range(1024L * 1024, 8L * 1024 * 1024 * 1024)]
     public long MaxQueuedBytes { get; set; } = 512L * 1024 * 1024;
 
     /// <summary>
@@ -49,7 +47,6 @@ public sealed class DocumentOptions
     /// <summary>
     /// Number of chunks sent to the embedding model per request. Default: 64.
     /// </summary>
-    [Range(1, 512)]
     public int EmbeddingBatchSize { get; set; } = 64;
 
     /// <summary>
@@ -60,11 +57,27 @@ public sealed class DocumentOptions
     /// expires — which is why the window is minutes rather than hours. Signing already back-dates
     /// the start by five minutes for clock skew, so the whole of this window is usable.
     /// </remarks>
-    [Range(1, 60)]
     public int DownloadUrlLifetimeMinutes { get; set; } = 5;
 
     /// <summary>
     /// Chunking parameters.
     /// </summary>
     public ChunkingOptions Chunking { get; set; } = new();
+}
+
+/// <summary>Validates <see cref="DocumentOptions"/>.</summary>
+public sealed class DocumentOptionsValidator : AbstractValidator<DocumentOptions>
+{
+    public DocumentOptionsValidator()
+    {
+        RuleFor(options => options.MaxFileSizeBytes).InclusiveBetween(1L, 500L * 1024 * 1024)
+            .WithMessage("Documents:MaxFileSizeBytes must be between 1 and 524288000.");
+        RuleFor(options => options.MaxQueuedBytes).InclusiveBetween(1024L * 1024, 8L * 1024 * 1024 * 1024)
+            .WithMessage("Documents:MaxQueuedBytes must be between 1048576 and 8589934592.");
+        RuleFor(options => options.EmbeddingBatchSize).InclusiveBetween(1, 512)
+            .WithMessage("Documents:EmbeddingBatchSize must be between 1 and 512.");
+        RuleFor(options => options.DownloadUrlLifetimeMinutes).InclusiveBetween(1, 60)
+            .WithMessage("Documents:DownloadUrlLifetimeMinutes must be between 1 and 60.");
+        RuleFor(options => options.Chunking).SetValidator(new ChunkingOptionsValidator());
+    }
 }

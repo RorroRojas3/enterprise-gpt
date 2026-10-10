@@ -1,40 +1,69 @@
+using Enterprise.Gpt.Api.Options;
 using Enterprise.Gpt.Api.Startup;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Service.Exports;
 using Enterprise.Gpt.Service.Exports.Fonts;
 using Enterprise.Gpt.Service.Exports.Interfaces;
 using Enterprise.Gpt.Service.Exports.Renderers;
-using Enterprise.Gpt.Service.Options;
+using FluentValidation;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using PdfSharp.Fonts;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
 /// <summary>
-/// Registers the conversation export renderers this deployment can actually use.
+/// Registers conversation export: the export service and the renderers this deployment can actually use.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Its own type rather than a local function in <c>Program.cs</c> because what it decides is a
-/// contract, not plumbing: a format with no renderer answers <c>503</c> with the
-/// <c>export-renderer-not-configured</c> problem, so "which formats does this deployment offer" is
-/// observable behaviour that deserves tests of its own.
-/// </para>
-/// <para>
-/// Two of the five formats can be absent, for different reasons. Any of them can be withdrawn by
-/// <c>Export:DisabledFormats</c>. PDF additionally needs a font — PDFsharp's cross-platform build
-/// reads none from the operating system on its own and throws on the first glyph without a resolver
-/// — and HTML needs its template file. Both are resolved here, at composition, so the route answers
-/// up front rather than faulting halfway into a response body.
-/// </para>
-/// <para>
-/// It logs nothing. The decisions are made before any logging pipeline exists, and
-/// <see cref="ExportAvailabilityLogger"/> reports them at startup from the built container instead —
-/// which is what keeps them out of a throwaway <c>LoggerFactory</c> and inside the pipeline an
-/// operator actually queries.
-/// </para>
+/// A format with no renderer answers <c>503</c> with the <c>export-renderer-not-configured</c> problem, so which
+/// renderers register is observable behaviour; <see cref="ExportAvailabilityLogger"/> reports it once the host starts.
 /// </remarks>
-internal static class ExportRendererRegistration
+internal static class ExportsConfiguration
 {
+    /// <summary>
+    /// Registers the export options, the export service and the available renderers.
+    /// </summary>
+    internal static IServiceCollection AddExports(this IServiceCollection services, IConfiguration configuration)
+    {
+        // DisabledFormats is validated against the tokens the route accepts, so a typo fails the start
+        // rather than withdrawing nothing.
+        services.AddSingleton<IValidator<ExportOptions>, ExportOptionsValidator>();
+        services.AddOptions<ExportOptions>()
+            .Bind(configuration.GetSection(ExportOptions.SectionName))
+            .ValidateWithFluentValidation()
+            .ValidateOnStart();
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IMarkdownBlockMapper, MarkdownBlockMapper>();
+
+        // Read eagerly: which renderers exist is decided at composition, before the container can resolve options.
+        AddExportRenderers(
+            services,
+            configuration.GetSection(ExportOptions.SectionName).Get<ExportOptions>() ?? new ExportOptions());
+        services.AddHostedService<ExportAvailabilityLogger>();
+
+        services.AddScoped<IConversationExportService, ConversationExportService>();
+
+        return services;
+    }
+
+    #region Private methods
+
+    private static void Register<TRenderer>(
+        IServiceCollection services, ExportOptions options, ConversationExportFormats format)
+        where TRenderer : class, IConversationExportRenderer
+    {
+        if (IsEnabled(options, format))
+        {
+            services.AddSingleton<IConversationExportRenderer, TRenderer>();
+        }
+    }
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Adds one <see cref="IConversationExportRenderer"/> per format this deployment can render.
     /// </summary>
@@ -96,13 +125,5 @@ internal static class ExportRendererRegistration
         !options.DisabledFormats.Any(disabled =>
             string.Equals(disabled?.Trim(), format.ToWireFormat(), StringComparison.OrdinalIgnoreCase));
 
-    private static void Register<TRenderer>(
-        IServiceCollection services, ExportOptions options, ConversationExportFormats format)
-        where TRenderer : class, IConversationExportRenderer
-    {
-        if (IsEnabled(options, format))
-        {
-            services.AddSingleton<IConversationExportRenderer, TRenderer>();
-        }
-    }
+    #endregion
 }

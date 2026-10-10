@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using Enterprise.Gpt.Api.Middleware;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Options;
 
@@ -152,4 +152,18 @@ public sealed class RequestLoggingOptions
 
     internal static bool IsRootedPath(string? path) =>
         !string.IsNullOrWhiteSpace(path) && path.StartsWith('/');
+}
+
+internal sealed class RequestLoggingOptionsValidator : AbstractValidator<RequestLoggingOptions>
+{
+    public RequestLoggingOptionsValidator()
+    {
+        RuleFor(options => options.SlowRequestThreshold).GreaterThan(TimeSpan.Zero)
+            .WithMessage("RequestLogging:SlowRequestThreshold must be greater than zero.");
+        RuleFor(options => options.RequestStartLevel).Must(level => Enum.IsDefined(level))
+            .WithMessage("RequestLogging:RequestStartLevel must be a valid log level.");
+        RuleFor(options => options.ExcludedPaths).Must((options, _) => options.HasValidEntries())
+            .WithMessage("RequestLogging list entries must be non-empty, and every path must start with '/'.");
+        RuleFor(options => options.Bodies).SetValidator(new BodyLoggingOptionsValidator());
+    }
 }

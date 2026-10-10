@@ -3,7 +3,6 @@ using System.Security.Claims;
 using Enterprise.Gpt.Api.Observability;
 using Enterprise.Gpt.Api.Options;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Observability;
@@ -106,7 +105,7 @@ public sealed class EndUserEnrichingProcessorTests : IDisposable
 
         var processor = new EndUserEnrichingProcessor(
             accessor,
-            Options.Create(new TelemetryOptions { CaptureUserId = captureUserId }));
+            Microsoft.Extensions.Options.Options.Create(new TelemetryOptions { CaptureUserId = captureUserId }));
 
         processor.OnEnd(activity);
     }

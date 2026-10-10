@@ -1,6 +1,7 @@
 using Enterprise.Gpt.Api.Middleware;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Repository.Blob;
 using Enterprise.Gpt.Repository.Cosmos;
-using Enterprise.Gpt.Service.Documents;
 using Enterprise.Gpt.Service.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -15,7 +16,7 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
 /// Hosts the real API pipeline for integration tests. Runs in the <c>Testing</c> environment
-/// (which skips the startup migration and Cosmos DB setup in <c>Program.cs</c>), points the
+/// (which skips the startup migration and Cosmos DB setup in <c>StartupBootstrapper</c>), points the
 /// DbContext at the Testcontainers SQL Server database, supplies well-formed fake configuration
 /// for the eagerly constructed Azure clients, and swaps the Entra ID JWT scheme for
 /// <see cref="TestAuthHandler"/>.
@@ -32,10 +33,10 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     public FakeGraphService GraphService { get; } = new();
 
     /// <summary>
-    /// Gets the in-memory blob store backing <see cref="IBlobStorageService"/> for the whole run, so
+    /// Gets the in-memory blob store backing <see cref="IDocumentStore"/> for the whole run, so
     /// upload tests can assert on the stored path without an Azure Storage account.
     /// </summary>
-    public FakeBlobStorageService BlobStorage { get; } = new();
+    public FakeDocumentStore BlobStorage { get; } = new();
 
     /// <summary>
     /// Gets the stub embedding generator, so upload tests can assert that chunks are embedded in batches.
@@ -51,10 +52,10 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     /// <inheritdoc />
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(HostEnvironments.Testing);
 
         // UseSetting (not ConfigureAppConfiguration) so the values reach the
-        // WebApplicationBuilder's initial configuration — Program.cs reads several of these
+        // WebApplicationBuilder's initial configuration — the composition reads several of these
         // inline during startup, before factory-added configuration sources would apply.
         // None of the Azure endpoints are ever called: the clients only need well-formed
         // URIs/keys to construct, and the Model endpoints never resolve them.
@@ -108,7 +109,7 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
 
         builder.ConfigureTestServices(services =>
         {
-            // Registered after Program.cs, so these defaults win over the JWT bearer scheme.
+            // Registered after the application's own services, so these defaults win over the JWT bearer scheme.
             services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
@@ -122,8 +123,8 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             services.RemoveAll<IGraphService>();
             services.AddSingleton<IGraphService>(GraphService);
 
-            services.RemoveAll<IBlobStorageService>();
-            services.AddSingleton<IBlobStorageService>(BlobStorage);
+            services.RemoveAll<IDocumentStore>();
+            services.AddSingleton<IDocumentStore>(BlobStorage);
 
             services.RemoveAll<IEmbeddingGenerator<string, Embedding<float>>>();
             services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(EmbeddingGenerator);

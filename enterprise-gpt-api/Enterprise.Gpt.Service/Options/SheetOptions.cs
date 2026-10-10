@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -20,7 +21,6 @@ public sealed class SheetOptions
     /// <summary>
     /// Largest number of populated rows accepted from a single sheet. Default: 20,000.
     /// </summary>
-    [Range(1, 1_048_576)]
     public int MaxRowsPerSheet { get; set; } = 20_000;
 
     /// <summary>
@@ -32,13 +32,11 @@ public sealed class SheetOptions
     /// hundred narrow sheets stay under the character ceiling while turning into millions of rows in
     /// the one save that persists a document.
     /// </remarks>
-    [Range(1, 1_048_576)]
     public int MaxRowsPerUpload { get; set; } = 50_000;
 
     /// <summary>
     /// Largest number of columns accepted from a single sheet. Default: 200.
     /// </summary>
-    [Range(1, 16_384)]
     public int MaxColumnsPerSheet { get; set; } = 200;
 
     /// <summary>
@@ -51,11 +49,29 @@ public sealed class SheetOptions
     /// size limit a real bound on what one file can cost the host, and it also fixes how far a package
     /// may inflate before it is opened at all.
     /// </remarks>
-    [Range(1_024, 512_000_000)]
     public int MaxCharactersPerUpload { get; set; } = 8_000_000;
 
     /// <summary>
     /// How a sheet's data rows are packed into retrievable windows.
     /// </summary>
     public RowWindowOptions RowWindow { get; set; } = new();
+}
+
+/// <summary>Validates <see cref="SheetOptions"/>.</summary>
+public sealed class SheetOptionsValidator : AbstractValidator<SheetOptions>
+{
+    public SheetOptionsValidator()
+    {
+        RuleFor(options => options.MaxRowsPerSheet).InclusiveBetween(1, 1_048_576)
+            .WithMessage("Sheets:MaxRowsPerSheet must be between 1 and 1048576.");
+        RuleFor(options => options.MaxRowsPerUpload).InclusiveBetween(1, 1_048_576)
+            .WithMessage("Sheets:MaxRowsPerUpload must be between 1 and 1048576.");
+        RuleFor(options => options.MaxColumnsPerSheet).InclusiveBetween(1, 16_384)
+            .WithMessage("Sheets:MaxColumnsPerSheet must be between 1 and 16384.");
+        RuleFor(options => options.MaxCharactersPerUpload).InclusiveBetween(1_024, 512_000_000)
+            .WithMessage("Sheets:MaxCharactersPerUpload must be between 1024 and 512000000.");
+        RuleFor(options => options.MaxRowsPerUpload).GreaterThanOrEqualTo(options => options.MaxRowsPerSheet)
+            .WithMessage("Sheets:MaxRowsPerUpload must be at least Sheets:MaxRowsPerSheet.");
+        RuleFor(options => options.RowWindow).SetValidator(new RowWindowOptionsValidator());
+    }
 }

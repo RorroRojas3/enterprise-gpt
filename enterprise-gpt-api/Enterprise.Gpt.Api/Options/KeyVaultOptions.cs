@@ -1,3 +1,5 @@
+using FluentValidation;
+
 namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
@@ -44,4 +46,37 @@ internal sealed class KeyVaultOptions
     /// reload and logs nothing, so polling is only observable through the vault's own diagnostics.
     /// </remarks>
     public TimeSpan? ReloadInterval { get; set; }
+}
+
+/// <summary>
+/// Rejects an enabled <see cref="KeyVaultOptions"/> section that only half-describes a vault.
+/// </summary>
+internal sealed class KeyVaultOptionsValidator : AbstractValidator<KeyVaultOptions>
+{
+    // Key Vault throttles per vault, so a faster poll buys nothing and risks a 429 storm.
+    internal static readonly TimeSpan MinimumReloadInterval = TimeSpan.FromMinutes(1);
+
+    public KeyVaultOptionsValidator()
+    {
+        // Blank counts as missing: a template that leaves a variable unset writes an empty app setting.
+        RuleFor(options => options.VaultUri)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty()
+            .WithMessage("KeyVault:VaultUri is required when KeyVault:Enabled is true.")
+            .Must(IsHttpsUri)
+            .WithMessage("KeyVault:VaultUri must be an absolute https URI, for example https://contoso.vault.azure.net/.");
+        RuleFor(options => options.ReloadInterval)
+            .Must(interval => interval is null || interval >= MinimumReloadInterval)
+            .WithMessage($"KeyVault:ReloadInterval must be at least {MinimumReloadInterval}, or unset to read the vault once at startup.");
+        RuleFor(options => options.DataProtectionKeyUri)
+            .Must(uri => string.IsNullOrWhiteSpace(uri) || IsHttpsUri(uri))
+            .WithMessage("KeyVault:DataProtectionKeyUri must be an absolute https key identifier, for example https://contoso.vault.azure.net/keys/data-protection.");
+    }
+
+    #region Private methods
+
+    private static bool IsHttpsUri(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
+
+    #endregion
 }

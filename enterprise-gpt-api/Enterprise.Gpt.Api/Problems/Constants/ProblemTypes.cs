@@ -1,4 +1,6 @@
+using System.Collections.Frozen;
 using Enterprise.Gpt.Api.Problems.Models;
+using Enterprise.Gpt.Common.Constants;
 
 namespace Enterprise.Gpt.Api.Problems.Constants;
 
@@ -27,27 +29,27 @@ internal static class ProblemTypes
 
     /// <summary>One or more request fields failed validation. Accompanied by an <c>errors</c> dictionary.</summary>
     public static readonly ProblemType Validation =
-        new($"{BaseUri}validation-error", "One or more validation errors occurred.");
+        new($"{BaseUri}{ProblemCodes.ValidationError}", "One or more validation errors occurred.");
 
     /// <summary>The request body exceeded the configured upload size limit. Accompanied by a <c>maxBytes</c> extension.</summary>
     public static readonly ProblemType UploadTooLarge =
-        new($"{BaseUri}upload-too-large", "Upload too large");
+        new($"{BaseUri}{ProblemCodes.UploadTooLarge}", "Upload too large");
 
     /// <summary>The requested resource does not exist, is deactivated, or does not belong to the caller.</summary>
     public static readonly ProblemType NotFound =
-        new($"{BaseUri}resource-not-found", "Resource not found");
+        new($"{BaseUri}{ProblemCodes.ResourceNotFound}", "Resource not found");
 
     /// <summary>The caller is authenticated but is not allowed to perform the request.</summary>
     public static readonly ProblemType Forbidden =
-        new($"{BaseUri}forbidden", "Access denied");
+        new($"{BaseUri}{ProblemCodes.Forbidden}", "Access denied");
 
     /// <summary>The caller lacks one or more named permission grants. Accompanied by a <c>permissions</c> extension.</summary>
     public static readonly ProblemType PermissionRequired =
-        new($"{BaseUri}permission-required", "Permission required");
+        new($"{BaseUri}{ProblemCodes.PermissionRequired}", "Permission required");
 
     /// <summary>The conversation already has a turn in flight; the caller can retry.</summary>
     public static readonly ProblemType ConversationBusy =
-        new($"{BaseUri}conversation-busy", "Conversation is busy");
+        new($"{BaseUri}{ProblemCodes.ConversationBusy}", "Conversation is busy");
 
     /// <summary>
     /// An MCP server could not be used: unreachable, or its on-behalf-of token could not be
@@ -56,14 +58,14 @@ internal static class ProblemTypes
     /// something the caller can act on. Accompanied by a <c>serverName</c> extension.
     /// </summary>
     public static readonly ProblemType McpServerUnavailable =
-        new($"{BaseUri}mcp-server-unavailable", "MCP server unavailable");
+        new($"{BaseUri}{ProblemCodes.McpServerUnavailable}", "MCP server unavailable");
 
     /// <summary>
     /// An MCP server needs an API key the caller supplies themselves and none is stored.
     /// Accompanied by <c>mcpServerId</c> and <c>serverName</c> extensions.
     /// </summary>
     public static readonly ProblemType McpCredentialRequired =
-        new($"{BaseUri}mcp-credential-required", "API key required");
+        new($"{BaseUri}{ProblemCodes.McpCredentialRequired}", "API key required");
 
     /// <summary>
     /// An MCP server refused the API key the caller stored. Accompanied by <c>mcpServerId</c> and
@@ -74,21 +76,21 @@ internal static class ProblemTypes
     /// differently; both mean the user has to supply a key before the request can proceed.
     /// </remarks>
     public static readonly ProblemType McpCredentialRejected =
-        new($"{BaseUri}mcp-credential-rejected", "API key rejected");
+        new($"{BaseUri}{ProblemCodes.McpCredentialRejected}", "API key rejected");
 
     /// <summary>
     /// The selected model's provider has no chat client in this deployment. Accompanied by a
     /// <c>providerId</c> extension.
     /// </summary>
     public static readonly ProblemType ProviderNotConfigured =
-        new($"{BaseUri}provider-not-configured", "Provider not configured");
+        new($"{BaseUri}{ProblemCodes.ProviderNotConfigured}", "Provider not configured");
 
     /// <summary>
     /// Blob storage cannot sign a download link in this deployment, so the file behind a document
     /// cannot be handed out.
     /// </summary>
     public static readonly ProblemType StorageNotConfigured =
-        new($"{BaseUri}storage-not-configured", "Storage not configured");
+        new($"{BaseUri}{ProblemCodes.StorageNotConfigured}", "Storage not configured");
 
     /// <summary>
     /// A conversation export was asked for in a format this deployment has no renderer for — the
@@ -97,5 +99,18 @@ internal static class ProblemTypes
     /// disable the one rather than the control.
     /// </summary>
     public static readonly ProblemType ExportRendererNotConfigured =
-        new($"{BaseUri}export-renderer-not-configured", "Export format not available");
+        new($"{BaseUri}{ProblemCodes.ExportRendererNotConfigured}", "Export format not available");
+
+    // Declared after every field it reads: static initializers run in textual order.
+    private static readonly FrozenDictionary<string, ProblemType> _byCode = new[]
+    {
+        Validation, UploadTooLarge, NotFound, Forbidden, PermissionRequired, ConversationBusy, McpServerUnavailable,
+        McpCredentialRequired, McpCredentialRejected, ProviderNotConfigured, StorageNotConfigured, ExportRendererNotConfigured
+    }.ToFrozenDictionary(problemType => problemType.Type[BaseUri.Length..], StringComparer.Ordinal);
+
+    /// <summary>
+    /// Gets the problem type a <see cref="ProblemCodes"/> value names, or <see langword="null"/> when it names none.
+    /// </summary>
+    public static ProblemType? ForCode(string problemCode) =>
+        _byCode.TryGetValue(problemCode, out var problemType) ? problemType : null;
 }

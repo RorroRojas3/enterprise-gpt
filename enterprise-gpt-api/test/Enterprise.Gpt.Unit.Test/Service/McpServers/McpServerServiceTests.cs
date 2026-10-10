@@ -31,8 +31,6 @@ public sealed class McpServerServiceTests : IDisposable
             NullLogger<McpServerService>.Instance,
             _tokenService,
             _fixture.Context,
-            new CreateMcpServerActionDtoValidator(),
-            new UpdateMcpServerActionDtoValidator(),
             _mcpClientCache,
             _permissionCache);
     }
@@ -383,24 +381,6 @@ public sealed class McpServerServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateMcpServerAsync_OnBehalfOfWithoutScope_ThrowsValidationException()
-    {
-        var request = CreateRequest("aaa-obo", McpAuthTypes.EntraIdOnBehalfOf, scope: null);
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateMcpServerAsync(request, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task CreateMcpServerAsync_AuthTypeNoneWithScope_ThrowsValidationException()
-    {
-        var request = CreateRequest("aaa-none", McpAuthTypes.None, scope: "api://client-id/access_as_user");
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateMcpServerAsync(request, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task UpdateMcpServerAsync_Rename_SyncsLinkedPermissionAndInvalidatesCache()
     {
         var server = await AddMcpServerAsync("aaa-original");
@@ -734,15 +714,4 @@ public sealed class McpServerServiceTests : IDisposable
         Assert.Equal("repos,wit", persisted.Headers!["X-MCP-Toolsets"]);
     }
 
-    [Fact]
-    public async Task CreateMcpServerAsync_ReservedHeaderName_ThrowsValidationException()
-    {
-        var request = CreateRequest("aaa-hdr-reserved") with
-        {
-            Headers = new Dictionary<string, string> { ["Authorization"] = "Bearer nope" }
-        };
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateMcpServerAsync(request, TestContext.Current.CancellationToken));
-    }
 }

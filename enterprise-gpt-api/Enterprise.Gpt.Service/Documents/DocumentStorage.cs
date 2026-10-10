@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Service.Documents.Exceptions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Enterprise.Gpt.Service.Documents;
@@ -22,20 +22,22 @@ internal static class DocumentStorage
     /// <summary>The setting naming the container generated documents live in.</summary>
     public const string GeneratedContainerKey = "AzureStorage:GeneratedContainer";
 
-    /// <summary>Reads a container name out of configuration.</summary>
-    /// <param name="configuration">The application configuration.</param>
+    /// <summary>Returns the container uploaded documents live in.</summary>
+    /// <param name="options">The current storage options; pass <c>IOptionsMonitor.CurrentValue</c> so a reload applies without a restart.</param>
     /// <param name="logger">The caller's logger, so the failure is attributed to it.</param>
-    /// <param name="key">One of the two container settings above.</param>
-    /// <returns>The configured container name.</returns>
-    /// <remarks>
-    /// Read on each use rather than cached at construction, so a reloaded configuration takes effect
-    /// without a restart.
-    /// </remarks>
     /// <exception cref="StorageNotConfiguredException">The container name is not configured.</exception>
-    public static string RequireContainer(IConfiguration configuration, ILogger logger, string key)
-    {
-        var container = configuration.GetValue<string>(key);
+    public static string RequireDocumentsContainer(BlobStorageOptions options, ILogger logger) =>
+        RequireContainer(options.DocumentsContainer, DocumentsContainerKey, logger);
 
+    /// <summary>Returns the container generated documents live in.</summary>
+    /// <param name="options">The current storage options.</param>
+    /// <param name="logger">The caller's logger, so the failure is attributed to it.</param>
+    /// <exception cref="StorageNotConfiguredException">The container name is not configured.</exception>
+    public static string RequireGeneratedContainer(BlobStorageOptions options, ILogger logger) =>
+        RequireContainer(options.GeneratedContainer, GeneratedContainerKey, logger);
+
+    private static string RequireContainer(string? container, string key, ILogger logger)
+    {
         if (string.IsNullOrWhiteSpace(container))
         {
             // Diagnosable as the operator condition it is. Left to the Azure SDK, a missing

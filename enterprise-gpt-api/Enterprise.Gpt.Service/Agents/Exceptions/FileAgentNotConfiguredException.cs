@@ -1,5 +1,3 @@
-using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
-
 namespace Enterprise.Gpt.Service.Agents.Exceptions;
 
 /// <summary>
@@ -8,11 +6,6 @@ namespace Enterprise.Gpt.Service.Agents.Exceptions;
 /// interpreter. Raised at startup by the file-agent bootstrapper, and again per turn, because the
 /// row can be deactivated or repointed after the application is already running.
 /// </summary>
-/// <remarks>
-/// Derived from <see cref="Exception"/> rather than <see cref="InvalidOperationException"/> for the
-/// reason <see cref="ProviderNotConfiguredException"/> gives: the handler maps the latter to 400,
-/// which would report an operator's configuration gap as the caller's bad request.
-/// </remarks>
 public class FileAgentNotConfiguredException : Exception
 {
     /// <summary>

@@ -108,7 +108,7 @@ internal static class SpikeConfiguration
     /// <remarks>Off by default: a run that silently rewrote the fixture it was meant to diff would prove nothing.</remarks>
     public static bool IsRecording => Flag("Record");
 
-    /// <summary>Gets the OpenAI-compatible v1 endpoint, derived exactly as <c>Program.cs</c> derives it.</summary>
+    /// <summary>Gets the OpenAI-compatible v1 endpoint, derived exactly as <c>AzureOpenAIProviderConfiguration</c> derives it.</summary>
     public static Uri Endpoint => AzureOpenAI.V1Endpoint;
 
     public static string ApiKey => AzureOpenAI.ApiKey;

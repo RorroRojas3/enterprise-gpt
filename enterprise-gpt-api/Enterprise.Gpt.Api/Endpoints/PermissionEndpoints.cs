@@ -41,10 +41,12 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPost("", CreatePermissionAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .AddEndpointFilter<ValidationEndpointFilter<CreatePermissionActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapPut("{id:guid}", UpdatePermissionAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .AddEndpointFilter<ValidationEndpointFilter<UpdatePermissionActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);

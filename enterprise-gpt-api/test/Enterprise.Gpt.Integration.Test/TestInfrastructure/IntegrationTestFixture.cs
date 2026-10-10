@@ -28,7 +28,7 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 /// <summary>
 /// Collection fixture that owns the SQL Server 2025 Testcontainer and the shared
 /// <see cref="CustomWebApplicationFactory"/> for the whole integration run. The 2025 image is
-/// required because <c>Program.cs</c> pins <c>UseCompatibilityLevel(170)</c>, which older
+/// required because <c>SqlPersistenceConfiguration</c> pins <c>UseCompatibilityLevel(170)</c>, which older
 /// engines reject. Creates the schema with <c>EnsureCreatedAsync</c> (applying the HasData
 /// seeds) and adds the fixed <see cref="TestUsers"/> identities, including the admin's
 /// <c>Administrator</c> permission.

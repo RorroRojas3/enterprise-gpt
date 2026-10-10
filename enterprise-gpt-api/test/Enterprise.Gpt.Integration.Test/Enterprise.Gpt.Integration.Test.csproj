@@ -18,7 +18,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
     <!-- Security pin over the version Testcontainers brings; see Directory.Packages.props. -->
     <PackageReference Include="SSH.NET" />
-    <!-- Real SQL Server 2025 in Docker: Program.cs pins UseCompatibilityLevel(170),
+    <!-- Real SQL Server 2025 in Docker: SqlPersistenceConfiguration pins UseCompatibilityLevel(170),
          which pre-2025 engines (including LocalDB) reject. -->
     <PackageReference Include="Testcontainers.MsSql" />
     <PackageReference Include="xunit.v3" />

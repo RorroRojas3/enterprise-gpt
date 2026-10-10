@@ -7,7 +7,7 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// One conversation with the hosted Code Interpreter, over the same Responses-route client
-/// <c>Program.cs</c> registers under <c>ChatClientKeys.AzureOpenAI</c>.
+/// <c>AzureOpenAIProviderConfiguration</c> registers under <c>ChatClientKeys.AzureOpenAI</c>.
 /// </summary>
 /// <remarks>
 /// No function invocation, tool tracking or options decorator: a failure inside middleware would be

@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -41,7 +42,6 @@ public sealed class TokenEstimationOptions
     /// figure for OpenAI's chat format and is configurable because it is a property of the
     /// provider's format, not of this application.
     /// </remarks>
-    [Range(0, 100)]
     public int PerMessageFramingTokens { get; set; } = 4;
 
     /// <summary>
@@ -55,7 +55,6 @@ public sealed class TokenEstimationOptions
     /// under-report the prompt; a schema-accurate count is more work than the accuracy is worth
     /// until the reconciliation metric says otherwise.
     /// </remarks>
-    [Range(0, 10000)]
     public int PerToolSchemaTokens { get; set; } = 120;
 
     /// <summary>
@@ -66,7 +65,6 @@ public sealed class TokenEstimationOptions
     /// and a value far above one is a configuration mistake that would silently shrink every
     /// conversation's replayed history.
     /// </remarks>
-    [Range(1, 100)]
     public double MaxCalibrationMultiplier { get; set; } = 3;
 
     /// <summary>
@@ -88,5 +86,26 @@ public sealed class TokenEstimationOptions
     public double CalibrationFor(Guid providerId)
     {
         return ProviderCalibration.TryGetValue(providerId.ToString(), out var multiplier) ? multiplier : 1d;
+    }
+}
+
+/// <summary>Validates <see cref="TokenEstimationOptions"/>.</summary>
+public sealed class TokenEstimationOptionsValidator : AbstractValidator<TokenEstimationOptions>
+{
+    public TokenEstimationOptionsValidator()
+    {
+        RuleFor(options => options.FallbackEncoding).NotEmpty().WithMessage("Tokenization:FallbackEncoding is required.");
+        RuleFor(options => options.PerMessageFramingTokens).InclusiveBetween(0, 100)
+            .WithMessage("Tokenization:PerMessageFramingTokens must be between 0 and 100.");
+        RuleFor(options => options.PerToolSchemaTokens).InclusiveBetween(0, 10000)
+            .WithMessage("Tokenization:PerToolSchemaTokens must be between 0 and 10000.");
+        RuleFor(options => options.MaxCalibrationMultiplier).InclusiveBetween(1d, 100d)
+            .WithMessage("Tokenization:MaxCalibrationMultiplier must be between 1 and 100.");
+        RuleFor(options => options.ProviderCalibration)
+            .Must((options, calibration) => calibration.Values.All(multiplier => multiplier > 0 && multiplier <= options.MaxCalibrationMultiplier))
+            .WithMessage("Every Tokenization:ProviderCalibration value must be greater than zero and at most Tokenization:MaxCalibrationMultiplier.");
+        RuleFor(options => options.ProviderCalibration)
+            .Must(calibration => calibration.Keys.All(key => Guid.TryParse(key, out _)))
+            .WithMessage("Every Tokenization:ProviderCalibration key must be a provider id in GUID form.");
     }
 }

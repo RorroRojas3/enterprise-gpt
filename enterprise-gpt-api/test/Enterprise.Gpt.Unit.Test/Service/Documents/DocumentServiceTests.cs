@@ -1,5 +1,4 @@
 using System.Text;
-using Azure.Storage.Sas;
 using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
@@ -7,6 +6,8 @@ using Enterprise.Gpt.Entity.Conversations;
 using Enterprise.Gpt.Entity.Documents;
 using Enterprise.Gpt.Entity.Projects;
 using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Blob;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
 using Enterprise.Gpt.Service.BackgroundJobs.Models;
@@ -26,6 +27,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
@@ -40,7 +42,7 @@ public sealed class DocumentServiceTests : IDisposable
     private readonly SqliteDbContextFixture _fixture = new();
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator =
         Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
-    private readonly IBlobStorageService _blobStorageService = Substitute.For<IBlobStorageService>();
+    private readonly IDocumentStore _documentStore = Substitute.For<IDocumentStore>();
     private readonly IDocumentTextExtractorFactory _extractorFactory = Substitute.For<IDocumentTextExtractorFactory>();
     private readonly IDocumentTextExtractor _extractor = Substitute.For<IDocumentTextExtractor>();
     private readonly ITextChunker _textChunker = Substitute.For<ITextChunker>();
@@ -71,13 +73,17 @@ public sealed class DocumentServiceTests : IDisposable
             .Build());
     }
 
-    private DocumentService CreateService(IConfiguration configuration)
+    private DocumentService CreateService(IConfiguration configuration) =>
+        CreateService(new StaticOptionsMonitor<BlobStorageOptions>(
+            configuration.GetSection(BlobStorageOptions.SectionName).Get<BlobStorageOptions>() ?? new BlobStorageOptions()));
+
+    private DocumentService CreateService(IOptionsMonitor<BlobStorageOptions> storageOptions)
     {
         return new DocumentService(
             NullLogger<DocumentService>.Instance,
             _embeddingGenerator,
-            _blobStorageService,
-            configuration,
+            _documentStore,
+            storageOptions,
             Microsoft.Extensions.Options.Options.Create(new DocumentOptions { EmbeddingBatchSize = 2 }),
             _extractorFactory,
             _textChunker,
@@ -332,7 +338,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         var expectedPath = $"{KnownIds.SeedUserId}/{conversation.Id}/{result.Id}.pdf";
 
-        await _blobStorageService.Received(1).UploadAsync(
+        await _documentStore.Received(1).UploadAsync(
             ContainerName, expectedPath, Arg.Any<byte[]>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
@@ -452,7 +458,7 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
 
-        await _blobStorageService.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _documentStore.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -467,7 +473,7 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
 
-        await _blobStorageService.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _documentStore.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -478,7 +484,7 @@ public sealed class DocumentServiceTests : IDisposable
         SetUpPipeline(chunkCount: 1);
         _extractor.ExtractAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new ValidationException("unreadable"));
-        _blobStorageService.DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _documentStore.DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("storage unreachable"));
 
         await Assert.ThrowsAsync<ValidationException>(
@@ -494,7 +500,7 @@ public sealed class DocumentServiceTests : IDisposable
         await _service.CreateConversationDocumentAsync(
             "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
-        await _blobStorageService.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _documentStore.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -653,7 +659,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         var expectedPath = $"{KnownIds.SeedUserId}/projects/{project.Id}/{result.Id}.pdf";
 
-        await _blobStorageService.Received(1).UploadAsync(
+        await _documentStore.Received(1).UploadAsync(
             ContainerName, expectedPath, Arg.Any<byte[]>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
@@ -670,7 +676,7 @@ public sealed class DocumentServiceTests : IDisposable
         await _service.CreateProjectDocumentAsync(
             "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
 
-        await _blobStorageService.Received(1).UploadAsync(
+        await _documentStore.Received(1).UploadAsync(
             ContainerName,
             Arg.Any<string>(),
             Arg.Any<byte[]>(),
@@ -720,7 +726,7 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
 
-        await _blobStorageService.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _documentStore.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
         Assert.False(await ctx.ProjectDocuments.AnyAsync(TestContext.Current.CancellationToken));
@@ -782,9 +788,8 @@ public sealed class DocumentServiceTests : IDisposable
 
     private void SetUpSigning(string uri = SignedUri)
     {
-        _blobStorageService.GenerateSasUri(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-                Arg.Any<string?>(), Arg.Any<string?>())
+        _documentStore.GenerateReadUri(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), Arg.Any<string?>())
             .Returns(new Uri(uri));
     }
 
@@ -799,13 +804,16 @@ public sealed class DocumentServiceTests : IDisposable
             DocumentId: documentId, Target: target);
     }
 
-    [Fact]
-    public async Task CancelUploadAsync_UnknownJob_ThrowsNotFound()
+    [Theory]
+    [InlineData("job-1")]
+    // A route segment of %20 binds a blank id; it is as unknown as any other.
+    [InlineData(" ")]
+    public async Task CancelUploadAsync_UnknownJob_ThrowsNotFound(string jobId)
     {
-        _jobStatusStore.Get("job-1").Returns((JobStatusSnapshot?)null);
+        _jobStatusStore.Get(jobId).Returns((JobStatusSnapshot?)null);
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken));
+            () => _service.CancelUploadAsync(jobId, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -902,7 +910,7 @@ public sealed class DocumentServiceTests : IDisposable
         var stored = await ctx.ConversationDocuments.SingleOrDefaultAsync(x => x.ConversationId == conversation.Id, TestContext.Current.CancellationToken);
         Assert.NotNull(stored);
         Assert.NotNull(stored.DateDeactivated);
-        await _blobStorageService.Received(1).DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _documentStore.Received(1).DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
     #endregion
 
@@ -1135,13 +1143,29 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
+        _documentStore.Received(1).GenerateReadUri(
             ContainerName,
             document.Path,
             TimeSpan.FromMinutes(5),
-            BlobSasPermissions.Read,
             Arg.Any<string?>(),
             Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task GetConversationDocumentDownloadAsync_ContainerRenamedAfterConstruction_SignsAgainstTheNewName()
+    {
+        SetUpSigning();
+        var storage = new StaticOptionsMonitor<BlobStorageOptions>(
+            new BlobStorageOptions { DocumentsContainer = ContainerName, GeneratedContainer = GeneratedContainerName });
+        var service = CreateService(storage);
+        var conversation = await AddConversationAsync();
+        var document = await AddConversationDocumentAsync(conversation);
+
+        storage.CurrentValue = new BlobStorageOptions { DocumentsContainer = "renamed", GeneratedContainer = GeneratedContainerName };
+        await service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
+
+        _documentStore.Received(1).GenerateReadUri(
+            "renamed", document.Path, Arg.Any<TimeSpan>(), Arg.Any<string?>(), Arg.Any<string?>());
     }
 
     [Fact]
@@ -1156,11 +1180,10 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
+        _documentStore.Received(1).GenerateReadUri(
             GeneratedContainerName,
             document.Path,
             Arg.Any<TimeSpan>(),
-            BlobSasPermissions.Read,
             Arg.Any<string?>(),
             Arg.Any<string?>());
     }
@@ -1176,11 +1199,10 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
+        _documentStore.Received(1).GenerateReadUri(
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Any<TimeSpan>(),
-            Arg.Any<BlobSasPermissions>(),
             "attachment; filename=\"quarterly report.pdf\"; filename*=UTF-8''quarterly%20report.pdf",
             "application/pdf");
     }
@@ -1196,11 +1218,10 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
+        _documentStore.Received(1).GenerateReadUri(
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Any<TimeSpan>(),
-            Arg.Any<BlobSasPermissions>(),
             "attachment; filename=\"informe ao.pdf\"; filename*=UTF-8''informe%20%22a%C3%B1o%22.pdf",
             Arg.Any<string?>());
     }
@@ -1218,9 +1239,8 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-            Arg.Any<string?>(), "application/pdf");
+        _documentStore.Received(1).GenerateReadUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), "application/pdf");
     }
 
     [Fact]
@@ -1234,9 +1254,8 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-            Arg.Any<string?>(), "application/octet-stream");
+        _documentStore.Received(1).GenerateReadUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), "application/octet-stream");
     }
 
     [Fact]
@@ -1250,9 +1269,8 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-            "attachment; filename=\"creportsq3.pdf\"; filename*=UTF-8''c%3A%2Freports%2Fq3.pdf",
+        _documentStore.Received(1).GenerateReadUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), "attachment; filename=\"creportsq3.pdf\"; filename*=UTF-8''c%3A%2Freports%2Fq3.pdf",
             Arg.Any<string?>());
     }
 
@@ -1313,9 +1331,8 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
 
-        _blobStorageService.DidNotReceive().GenerateSasUri(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-            Arg.Any<string?>(), Arg.Any<string?>());
+        _documentStore.DidNotReceive().GenerateReadUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), Arg.Any<string?>());
     }
 
     [Fact]
@@ -1371,10 +1388,9 @@ public sealed class DocumentServiceTests : IDisposable
         // request is fine and the document exists, the deployment just cannot sign links.
         var conversation = await AddConversationAsync();
         var document = await AddConversationDocumentAsync(conversation);
-        _blobStorageService.GenerateSasUri(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-                Arg.Any<string?>(), Arg.Any<string?>())
-            .Throws(new StorageNotConfiguredException());
+        _documentStore.GenerateReadUri(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), Arg.Any<string?>())
+            .Returns((Uri?)null);
 
         await Assert.ThrowsAsync<StorageNotConfiguredException>(
             () => _service.GetConversationDocumentDownloadAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
@@ -1404,11 +1420,10 @@ public sealed class DocumentServiceTests : IDisposable
 
         await _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken);
 
-        _blobStorageService.Received(1).GenerateSasUri(
+        _documentStore.Received(1).GenerateReadUri(
             ContainerName,
             document.Path,
             TimeSpan.FromMinutes(5),
-            BlobSasPermissions.Read,
             "attachment; filename=\"handbook.pdf\"; filename*=UTF-8''handbook.pdf",
             "application/pdf");
     }
@@ -1426,9 +1441,8 @@ public sealed class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.GetProjectDocumentDownloadAsync(project.Id, document.Id, TestContext.Current.CancellationToken));
 
-        _blobStorageService.DidNotReceive().GenerateSasUri(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<BlobSasPermissions>(),
-            Arg.Any<string?>(), Arg.Any<string?>());
+        _documentStore.DidNotReceive().GenerateReadUri(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), Arg.Any<string?>());
     }
 
     [Fact]

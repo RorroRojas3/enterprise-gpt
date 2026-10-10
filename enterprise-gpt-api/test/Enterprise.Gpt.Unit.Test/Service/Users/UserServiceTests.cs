@@ -33,8 +33,6 @@ public sealed class UserServiceTests : IDisposable
             _tokenService,
             _graphService,
             _fixture.Context,
-            new CreateUserActionDtoValidator(),
-            new UpdateUserActionDtoValidator(),
             _permissionCache);
     }
 
@@ -567,18 +565,6 @@ public sealed class UserServiceTests : IDisposable
             _service.CreateUserAsync(request, TestContext.Current.CancellationToken));
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("not-an-email")]
-    public async Task CreateUserAsync_InvalidEmail_ThrowsValidationWithoutCallingGraph(string email)
-    {
-        var request = new CreateUserActionDto { Email = email };
-
-        await Assert.ThrowsAsync<ValidationException>(() =>
-            _service.CreateUserAsync(request, TestContext.Current.CancellationToken));
-        await _graphService.DidNotReceiveWithAnyArgs().GetUserByEmailAsync(default!, TestContext.Current.CancellationToken);
-    }
-
     [Fact]
     public async Task CreateUserAsync_GraphMiss_PropagatesNotFound()
     {
@@ -740,22 +726,6 @@ public sealed class UserServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateUserAsync_InvalidRequest_ThrowsValidation()
-    {
-        var targetOid = Guid.NewGuid();
-        await AddUserAsync(targetOid);
-        var request = new UpdateUserActionDto
-        {
-            FirstName = "",
-            LastName = "Hopper",
-            Email = "not-an-email"
-        };
-
-        await Assert.ThrowsAsync<ValidationException>(() =>
-            _service.UpdateUserAsync(targetOid, request, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task DeactivateUserAsync_ActiveUser_SoftDeletesUserAndCascadesGrants()
     {
         var permission = await AddPermissionAsync("granted-permission");
@@ -874,8 +844,6 @@ public sealed class UserServiceTests : IDisposable
             _tokenService,
             _graphService,
             _fixture.Context,
-            new CreateUserActionDtoValidator(),
-            new UpdateUserActionDtoValidator(),
             cache);
 
         _graphService.GetUserAsync(oid, Arg.Any<CancellationToken>()).Returns(_ =>

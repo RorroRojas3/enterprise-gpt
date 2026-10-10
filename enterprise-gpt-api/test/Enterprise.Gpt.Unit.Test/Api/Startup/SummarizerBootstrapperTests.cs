@@ -10,7 +10,6 @@ using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
@@ -36,7 +35,7 @@ public sealed class SummarizerBootstrapperTests : IDisposable
         var services = new ServiceCollection();
         services.AddSingleton(_chatClientResolver);
         services.AddSingleton<ISummarizerModelResolver>(_ => new SummarizerModelResolver(
-            _fixture.Context, Options.Create(new SummarizationOptions { ModelId = modelId })));
+            _fixture.Context, Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = modelId })));
 
         return services.BuildServiceProvider();
     }

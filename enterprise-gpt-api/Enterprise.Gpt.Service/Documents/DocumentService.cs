@@ -1,10 +1,11 @@
 using System.Diagnostics;
-using Azure.Storage.Sas;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Dto.Pagination;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Blob;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.BackgroundJobs.Constants;
@@ -24,7 +25,6 @@ using FluentValidation.Results;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -195,8 +195,8 @@ namespace Enterprise.Gpt.Service.Documents
     /// </remarks>
     public class DocumentService(ILogger<DocumentService> logger,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        IBlobStorageService blobStorageService,
-        IConfiguration configuration,
+        IDocumentStore documentStore,
+        IOptionsMonitor<BlobStorageOptions> storageOptions,
         IOptions<DocumentOptions> options,
         IDocumentTextExtractorFactory extractorFactory,
         ITextChunker textChunker,
@@ -221,8 +221,8 @@ namespace Enterprise.Gpt.Service.Documents
 
         private readonly ILogger<DocumentService> _logger = logger;
         private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator = embeddingGenerator;
-        private readonly IBlobStorageService _blobStorageService = blobStorageService;
-        private readonly IConfiguration _configuration = configuration;
+        private readonly IDocumentStore _documentStore = documentStore;
+        private readonly IOptionsMonitor<BlobStorageOptions> _storageOptions = storageOptions;
         private readonly DocumentOptions _options = options.Value;
         private readonly IDocumentTextExtractorFactory _extractorFactory = extractorFactory;
         private readonly ITextChunker _textChunker = textChunker;
@@ -236,7 +236,7 @@ namespace Enterprise.Gpt.Service.Documents
         /// <summary>The container every uploaded document blob lives in.</summary>
         /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
         private string DocumentsContainer =>
-            DocumentStorage.RequireContainer(_configuration, _logger, DocumentStorage.DocumentsContainerKey);
+            DocumentStorage.RequireDocumentsContainer(_storageOptions.CurrentValue, _logger);
 
         /// <summary>The container every generated document blob lives in.</summary>
         /// <remarks>
@@ -245,7 +245,7 @@ namespace Enterprise.Gpt.Service.Documents
         /// </remarks>
         /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
         private string GeneratedContainer =>
-            DocumentStorage.RequireContainer(_configuration, _logger, DocumentStorage.GeneratedContainerKey);
+            DocumentStorage.RequireGeneratedContainer(_storageOptions.CurrentValue, _logger);
 
         /// <inheritdoc />
         public async Task<JobDto> QueueConversationDocumentAsync(Guid conversationId, FileDto file, CancellationToken cancellationToken)
@@ -601,8 +601,6 @@ namespace Enterprise.Gpt.Service.Documents
         /// <inheritdoc />
         public async Task CancelUploadAsync(string jobId, CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(jobId);
-
             var userId = _tokenService.GetOid();
             var snapshot = _jobStatusStore.Get(jobId);
 
@@ -658,13 +656,13 @@ namespace Enterprise.Gpt.Service.Documents
             // two are set from the same clock microseconds apart.
             var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
 
-            var sasUri = _blobStorageService.GenerateSasUri(
+            var sasUri = _documentStore.GenerateReadUri(
                 document.IsGenerated ? GeneratedContainer : DocumentsContainer,
                 document.Path,
                 lifetime,
-                BlobSasPermissions.Read,
                 BuildContentDisposition(document.Name),
-                DocumentStorage.ResolveContentType(document.Extension));
+                DocumentStorage.ResolveContentType(document.Extension))
+                ?? throw new StorageNotConfiguredException();
 
             // The link is a bearer credential until it expires, so only the document id is recorded.
             _logger.LogInformation("Issued a download link for document {DocumentId} to user {UserId}, expiring at {ExpiresAt}", documentId, userId, expiresAt);
@@ -933,7 +931,7 @@ namespace Enterprise.Gpt.Service.Documents
         {
             _jobStatusStore.Report(jobId, JobStatuses.Uploading, UploadStart, "Storing the file");
 
-            await _blobStorageService.UploadAsync(DocumentsContainer, blobPath, file.Content, metadata, cancellationToken);
+            await _documentStore.UploadAsync(DocumentsContainer, blobPath, file.Content, metadata, cancellationToken);
 
             _jobStatusStore.Report(jobId, JobStatuses.Uploading, ExtractStart, "Stored the file");
         }
@@ -1041,7 +1039,7 @@ namespace Enterprise.Gpt.Service.Documents
         {
             try
             {
-                await _blobStorageService.DeleteAsync(DocumentsContainer, blobPath, CancellationToken.None);
+                await _documentStore.DeleteAsync(DocumentsContainer, blobPath, CancellationToken.None);
             }
             catch (Exception ex)
             {

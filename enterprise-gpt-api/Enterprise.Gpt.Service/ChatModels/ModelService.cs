@@ -57,7 +57,6 @@ namespace Enterprise.Gpt.Service.ChatModels
         /// <param name="request">The creation request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The created model.</returns>
-        /// <exception cref="ValidationException">The request fails validation.</exception>
         /// <exception cref="NotFoundException">The referenced provider does not exist.</exception>
         Task<ModelDto> CreateModelAsync(CreateModelActionDto request, CancellationToken cancellationToken = default);
 
@@ -69,7 +68,7 @@ namespace Enterprise.Gpt.Service.ChatModels
         /// <param name="request">The update request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The updated model.</returns>
-        /// <exception cref="ValidationException">The request fails validation.</exception>
+        /// <exception cref="ValidationException">The model is the configured summarizer and the new provider has no chat client.</exception>
         /// <exception cref="NotFoundException">No active model with <paramref name="id"/> exists, or the referenced provider does not exist.</exception>
         Task<ModelDto> UpdateModelAsync(Guid id, UpdateModelActionDto request, CancellationToken cancellationToken = default);
 
@@ -89,16 +88,12 @@ namespace Enterprise.Gpt.Service.ChatModels
     public class ModelService(ILogger<ModelService> logger,
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
-        IValidator<CreateModelActionDto> createValidator,
-        IValidator<UpdateModelActionDto> updateValidator,
         IOptions<SummarizationOptions> summarizationOptions,
         IChatClientResolver chatClientResolver) : IModelService
     {
         private readonly ILogger<ModelService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
-        private readonly IValidator<CreateModelActionDto> _createValidator = createValidator;
-        private readonly IValidator<UpdateModelActionDto> _updateValidator = updateValidator;
         private readonly IOptions<SummarizationOptions> _summarizationOptions = summarizationOptions;
         private readonly IChatClientResolver _chatClientResolver = chatClientResolver;
 
@@ -136,7 +131,6 @@ namespace Enterprise.Gpt.Service.ChatModels
         /// <inheritdoc />
         public async Task<ModelDto> CreateModelAsync(CreateModelActionDto request, CancellationToken cancellationToken = default)
         {
-            await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
             await EnsureProviderExistsAsync(request.ProviderId, cancellationToken);
 
             var oid = _tokenService.GetOid();
@@ -165,8 +159,6 @@ namespace Enterprise.Gpt.Service.ChatModels
         /// <inheritdoc />
         public async Task<ModelDto> UpdateModelAsync(Guid id, UpdateModelActionDto request, CancellationToken cancellationToken = default)
         {
-            await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
-
             var model = await _ctx.Models
                 .Where(x => x.Id == id && !x.DateDeactivated.HasValue)
                 .FirstOrDefaultAsync(cancellationToken) ?? throw new NotFoundException("Model not found.");

@@ -205,7 +205,7 @@ public sealed class RequestLoggingResilienceTests
         var services = new ServiceCollection();
         services.AddSingleton(TimeProvider.System);
         services.AddFakeLogging();
-        services.AddRequestLogging(configuration);
+        services.AddEnterpriseGptRequestLogging(configuration);
 
         return services.BuildServiceProvider();
     }
@@ -215,7 +215,7 @@ public sealed class RequestLoggingResilienceTests
     {
         var provider = BuildProvider(settings);
         var app = new ApplicationBuilder(provider);
-        app.UseRequestLogging();
+        app.UseEnterpriseGptRequestLogging();
         app.Run(_ => Task.CompletedTask);
 
         return (app.Build(), provider.GetRequiredService<FakeLogCollector>(), provider);

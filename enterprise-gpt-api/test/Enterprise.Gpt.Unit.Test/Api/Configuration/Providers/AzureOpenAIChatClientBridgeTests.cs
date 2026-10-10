@@ -117,7 +117,7 @@ public sealed class AzureOpenAIChatClientBridgeTests
         // still experimental, in OpenAI 2.12.0 and Microsoft.Extensions.AI.OpenAI 10.9.0
         // respectively, and remain so at the newest release of each. Scoped to the construction
         // rather than the file so the assertions below cannot quietly pick up a third experimental
-        // API — the same containment Program.cs applies at the real registration.
+        // API — the same containment AzureOpenAIProviderConfiguration applies at the real registration.
 #pragma warning disable OPENAI001, MEAI001
         var chatClient = new OpenAIClient(
                 new ApiKeyCredential(settings.ApiKey),

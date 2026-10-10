@@ -1,9 +1,9 @@
 using Enterprise.Gpt.Api.Configuration;
+using Enterprise.Gpt.Api.Options;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.Exports;
 using Enterprise.Gpt.Service.Exports.Fonts;
 using Enterprise.Gpt.Service.Exports.Interfaces;
-using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -22,7 +22,7 @@ namespace Enterprise.Gpt.Unit.Test.Api.Configuration;
 /// should not be doing it concurrently with the tests that read it.
 /// </remarks>
 [Collection(PdfFontCollection.Name)]
-public sealed class ExportRendererRegistrationTests
+public sealed class ExportsConfigurationTests
 {
     private static readonly string EmptyDirectory =
         Path.Combine(Path.GetTempPath(), $"export-fonts-none-{Guid.NewGuid():N}");
@@ -32,7 +32,7 @@ public sealed class ExportRendererRegistrationTests
     {
         var services = new ServiceCollection();
 
-        ExportRendererRegistration.AddExportRenderers(
+        ExportsConfiguration.AddExportRenderers(
             services,
             options,
             // A resolver pointed at a directory that does not exist reports itself unusable only when
@@ -140,7 +140,7 @@ public sealed class ExportRendererRegistrationTests
         ConversationExportFormats format, string token)
     {
         Assert.False(
-            ExportRendererRegistration.IsEnabled(new ExportOptions { DisabledFormats = [token] }, format));
-        Assert.True(ExportRendererRegistration.IsEnabled(new ExportOptions(), format));
+            ExportsConfiguration.IsEnabled(new ExportOptions { DisabledFormats = [token] }, format));
+        Assert.True(ExportsConfiguration.IsEnabled(new ExportOptions(), format));
     }
 }

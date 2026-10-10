@@ -1,3 +1,4 @@
+
 namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
@@ -8,7 +9,7 @@ namespace Enterprise.Gpt.Service.Options;
 /// <para>
 /// Two providers sit on this endpoint and differ only in the surface they call —
 /// <see cref="AzureOpenAIOptions"/> uses the Responses API and supports reasoning,
-/// <see cref="AzureAIFoundryOptions"/> uses Chat Completions and does not. The URL handling is
+/// <c>AzureAIFoundryOptions</c> uses Chat Completions and does not. The URL handling is
 /// identical for both, and <see cref="IsUrlResourceRoot"/> in particular encodes a subtlety that is
 /// easy to get wrong twice, so it is stated once here.
 /// </para>

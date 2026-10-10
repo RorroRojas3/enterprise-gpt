@@ -5,10 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="FluentValidation" />
     <!-- The Data Protection key ring lives in this database rather than in blob storage: the app
          already owns a migration pipeline for it, and a key ring the deployment cannot lose in a
-         slot swap is what keeps stored user credentials readable. Key Vault wraps it in
-         Program.cs, so the database alone never decrypts them. -->
+         slot swap is what keeps stored user credentials readable. Key Vault wraps it at startup,
+         so the database alone never decrypts them. -->
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Azure.Cosmos" />
     <!-- Required by Microsoft.Azure.Cosmos's build check even though the store serializes with
@@ -17,10 +19,19 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <!-- Health checks. The EF Core package rather than a community SQL check: readiness has to prove the
+         application's own connection works, which is the DbContext's, not a second one built from the
+         same string. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Enterprise.Gpt.Entity\Enterprise.Gpt.Entity.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Enterprise.Gpt.Unit.Test" />
   </ItemGroup>
 
 </Project>

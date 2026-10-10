@@ -1,4 +1,7 @@
-namespace Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Options;
+using FluentValidation;
+
+namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
 /// Connection settings for the Azure AI Foundry chat client, bound from the <c>AzureAIFoundry</c>
@@ -41,4 +44,22 @@ public sealed class AzureAIFoundryOptions : AzureV1EndpointOptions
     /// not a 500.
     /// </remarks>
     public bool Enabled { get; set; }
+}
+
+internal sealed class AzureAIFoundryOptionsValidator : AbstractValidator<AzureAIFoundryOptions>
+{
+    public AzureAIFoundryOptionsValidator()
+    {
+        When(options => options.Enabled, () =>
+        {
+            RuleFor(options => options.Url).Must((options, _) => options.IsUrlAbsolute)
+                .WithMessage("AzureAIFoundry:Url must be an absolute http or https URI when AzureAIFoundry:Enabled is true, for example https://my-resource.services.ai.azure.com/.");
+            RuleFor(options => options.Url).Must((options, _) => options.IsUrlResourceRoot)
+                .WithMessage("AzureAIFoundry:Url must be the resource root, without /openai/v1 — the client appends it — when AzureAIFoundry:Enabled is true.");
+            RuleFor(options => options.ApiKey).NotEmpty()
+                .WithMessage("AzureAIFoundry:ApiKey is required when AzureAIFoundry:Enabled is true.");
+            RuleFor(options => options.DefaultModel).NotEmpty()
+                .WithMessage("AzureAIFoundry:DefaultModel is required when AzureAIFoundry:Enabled is true.");
+        });
+    }
 }

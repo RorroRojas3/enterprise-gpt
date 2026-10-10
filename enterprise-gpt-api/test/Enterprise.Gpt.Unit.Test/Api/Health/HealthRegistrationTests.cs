@@ -37,7 +37,7 @@ public sealed class HealthRegistrationTests
     private static ICollection<HealthCheckRegistration> Registrations()
     {
         var services = new ServiceCollection();
-        services.AddEnterpriseHealthChecks();
+        services.AddEnterpriseGptHealthChecks();
 
         return services.BuildServiceProvider()
             .GetRequiredService<IOptions<HealthCheckServiceOptions>>()

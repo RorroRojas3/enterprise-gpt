@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using Enterprise.Gpt.Service.Documents.Sheets;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -33,7 +33,6 @@ public sealed class SheetQueryOptions
     /// <summary>
     /// Largest number of rows one filter result may return. Default: 50.
     /// </summary>
-    [Range(1, 500)]
     public int MaxResultRows { get; set; } = 50;
 
     /// <summary>
@@ -43,13 +42,11 @@ public sealed class SheetQueryOptions
     /// The row cap alone bounds nothing about width: fifty rows of a two-hundred-column export is
     /// tens of thousands of characters competing with the answer for the model's context window.
     /// </remarks>
-    [Range(1_000, 200_000)]
     public int MaxResultCharacters { get; set; } = 20_000;
 
     /// <summary>
     /// Largest number of groups a grouped aggregate may return. Default: 200.
     /// </summary>
-    [Range(1, 2_000)]
     public int MaxGroups { get; set; } = 200;
 
     /// <summary>
@@ -60,7 +57,6 @@ public sealed class SheetQueryOptions
     /// this is refused rather than trimmed — silently dropping a filter would return rows the model
     /// believes it excluded.
     /// </remarks>
-    [Range(1, 20)]
     public int MaxFilters { get; set; } = 5;
 
     /// <summary>
@@ -70,7 +66,6 @@ public sealed class SheetQueryOptions
     /// The tool runs inside a live chat turn, so a degraded query has to fail fast rather than hold
     /// the stream open behind the provider's own timeout.
     /// </remarks>
-    [Range(1, 120)]
     public int TimeoutSeconds { get; set; } = 10;
 
     /// <summary>
@@ -82,6 +77,28 @@ public sealed class SheetQueryOptions
     /// abandon every query before that timeout could report one, which reads as a broken tool rather
     /// than a slow database. Startup validation enforces it.
     /// </remarks>
-    [Range(1, 300)]
     public int ToolTimeoutSeconds { get; set; } = 30;
+}
+
+/// <summary>Validates <see cref="SheetQueryOptions"/>.</summary>
+public sealed class SheetQueryOptionsValidator : AbstractValidator<SheetQueryOptions>
+{
+    public SheetQueryOptionsValidator()
+    {
+        RuleFor(options => options.MaxResultRows).InclusiveBetween(1, 500)
+            .WithMessage("SheetQuery:MaxResultRows must be between 1 and 500.");
+        RuleFor(options => options.MaxResultCharacters).InclusiveBetween(1_000, 200_000)
+            .WithMessage("SheetQuery:MaxResultCharacters must be between 1000 and 200000.");
+        RuleFor(options => options.MaxGroups).InclusiveBetween(1, 2_000)
+            .WithMessage("SheetQuery:MaxGroups must be between 1 and 2000.");
+        RuleFor(options => options.MaxFilters).InclusiveBetween(1, 20)
+            .WithMessage("SheetQuery:MaxFilters must be between 1 and 20.");
+        RuleFor(options => options.TimeoutSeconds).InclusiveBetween(1, 120)
+            .WithMessage("SheetQuery:TimeoutSeconds must be between 1 and 120.");
+        RuleFor(options => options.ToolTimeoutSeconds).InclusiveBetween(1, 300)
+            .WithMessage("SheetQuery:ToolTimeoutSeconds must be between 1 and 300.");
+        // A call deadline shorter than the statement's own timeout would abandon every query first.
+        RuleFor(options => options.ToolTimeoutSeconds).GreaterThanOrEqualTo(options => options.TimeoutSeconds)
+            .WithMessage("SheetQuery:ToolTimeoutSeconds must be at least SheetQuery:TimeoutSeconds.");
+    }
 }

@@ -2,12 +2,16 @@ using Enterprise.Gpt.Api.ExceptionHandlers;
 using Enterprise.Gpt.Api.Problems.Constants;
 using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.ChatModels.Exceptions;
 using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 using Enterprise.Gpt.Service.Conversations.Exceptions;
 using Enterprise.Gpt.Service.Documents.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
 using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Exports.Exceptions;
 using Enterprise.Gpt.Service.McpServers.Exceptions;
+using FluentValidation;
+using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -91,9 +95,6 @@ public class GlobalExceptionHandlerTests
     [Fact]
     public async Task TryHandleAsync_ProviderNotConfiguredException_Returns503WithTheProviderId()
     {
-        // 503 rather than the 400 the InvalidOperationException arm above it produces: rebasing this
-        // exception on InvalidOperationException would silently downgrade the contract, and only this
-        // assertion would notice.
         var httpContext = CreateHttpContext();
         var exception = new ProviderNotConfiguredException(Providers.AmazonBedrock);
 
@@ -110,8 +111,6 @@ public class GlobalExceptionHandlerTests
     [Fact]
     public async Task TryHandleAsync_StorageNotConfiguredException_Returns503()
     {
-        // Same reasoning as the arm above, and the same trap: this arm sits after
-        // InvalidOperationException => 400, so deriving from it would silently downgrade the contract.
         var httpContext = CreateHttpContext();
         var exception = new StorageNotConfiguredException();
 
@@ -180,21 +179,151 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
-    public async Task TryHandleAsync_InvalidOperationException_Returns400WithTheRfcType()
+    public async Task TryHandleAsync_SummarizerNotConfiguredException_Returns503WithTheProviderNotConfiguredType()
     {
-        // A generic .NET exception is not a domain concept, so it carries no application-specific
-        // type and ProblemDetailsDefaults fills in the RFC 9110 status-section link.
         var httpContext = CreateHttpContext();
-        var exception = new InvalidOperationException("The model is not active.");
+        var exception = new SummarizerNotConfiguredException(Guid.NewGuid());
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(exception.Message, problem.Detail);
+        Assert.Equal(ProblemTypes.ProviderNotConfigured.Type, problem.Type);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_ConflictExceptionWithoutAProblemCode_Returns409WithTheRfcType()
+    {
+        var httpContext = CreateHttpContext();
+        var exception = new SummarizerProtectedException(Guid.NewGuid());
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status409Conflict, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(exception.Message, problem.Detail);
+        Assert.Equal("https://tools.ietf.org/html/rfc9110#section-15.5.10", problem.Type);
+        Assert.Equal("Conflict", problem.Title);
+    }
+
+    [Theory]
+    [MemberData(nameof(UnmappedFrameworkExceptions))]
+    public async Task TryHandleAsync_UnmappedFrameworkException_Returns500WithoutLeakingDetails(Exception exception)
+    {
+        var httpContext = CreateHttpContext();
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status500InternalServerError, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal("An unexpected internal server error occurred.", problem.Detail);
+    }
+
+    public static TheoryData<Exception> UnmappedFrameworkExceptions =>
+    [
+        new InvalidOperationException("The model is not active."),
+        new ArgumentException("bad argument"),
+        new KeyNotFoundException("missing key")
+    ];
+
+    [Fact]
+    public async Task TryHandleAsync_ValidationException_Returns400WithErrorsKeyedByProperty()
+    {
+        var httpContext = CreateHttpContext();
+        var exception = new ValidationException(
+        [
+            new ValidationFailure("Name", "'Name' must not be empty."),
+            new ValidationFailure("ContextWindowSize", "'Context Window Size' must be greater than 0.")
+        ]);
 
         var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
 
         Assert.True(handled);
         Assert.Equal(StatusCodes.Status400BadRequest, httpContext.Response.StatusCode);
         var problem = await ReadProblemAsync(httpContext);
-        Assert.Equal(exception.Message, problem.Detail);
-        Assert.Equal("https://tools.ietf.org/html/rfc9110#section-15.5.1", problem.Type);
-        Assert.Equal("Bad Request", problem.Title);
+        Assert.Equal(2, problem.Errors.Count);
+        Assert.Equal("'Name' must not be empty.", Assert.Single(problem.Errors["Name"]));
+        Assert.Equal("'Context Window Size' must be greater than 0.", Assert.Single(problem.Errors["ContextWindowSize"]));
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_MultipleFailuresOnOneProperty_GroupsThemUnderOneKey()
+    {
+        var httpContext = CreateHttpContext();
+        var exception = new ValidationException(
+        [
+            new ValidationFailure("Name", "'Name' must not be empty."),
+            new ValidationFailure("Name", "'Name' must be 128 characters or fewer.")
+        ]);
+
+        var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(2, Assert.Single(problem.Errors).Value.Length);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_ValidationException_UsesTheValidationProblemType()
+    {
+        var httpContext = CreateHttpContext();
+        var exception = new ValidationException([new ValidationFailure("Name", "'Name' must not be empty.")]);
+
+        await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
+
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal(ProblemTypes.Validation.Type, problem.Type);
+        Assert.Equal(ProblemTypes.Validation.Title, problem.Title);
+        Assert.Null(problem.Detail);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_CancelledByTheClient_Returns499WithNoBody()
+    {
+        // No body: the client that would read it has already disconnected.
+        var httpContext = CreateHttpContext();
+        httpContext.RequestAborted = new CancellationToken(canceled: true);
+
+        var handled = await _handler.TryHandleAsync(
+            httpContext, new OperationCanceledException(), TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status499ClientClosedRequest, httpContext.Response.StatusCode);
+        Assert.Equal(0, httpContext.Response.Body.Length);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_CancelledWhileTheClientIsConnected_Returns500()
+    {
+        // An HttpClient timeout surfaces as a TaskCanceledException with the caller still waiting.
+        var httpContext = CreateHttpContext();
+
+        var handled = await _handler.TryHandleAsync(
+            httpContext, new TaskCanceledException("The request timed out."), TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status500InternalServerError, httpContext.Response.StatusCode);
+        var problem = await ReadProblemAsync(httpContext);
+        Assert.Equal("An unexpected internal server error occurred.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_CancelledByTheClientAfterTheResponseStarted_LeavesTheStatusAlone()
+    {
+        var httpContext = CreateHttpContext();
+        httpContext.RequestAborted = new CancellationToken(canceled: true);
+        MarkResponseStarted(httpContext);
+
+        var handled = await _handler.TryHandleAsync(
+            httpContext, new OperationCanceledException(), TestContext.Current.CancellationToken);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status200OK, httpContext.Response.StatusCode);
+        Assert.Equal(0, httpContext.Response.Body.Length);
     }
 
     [Fact]

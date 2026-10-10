@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Api.Filters;
 using Enterprise.Gpt.Dto.Actions.Conversations;
 using Enterprise.Gpt.Dto.Conversations;
 using Enterprise.Gpt.Dto.Documents;
@@ -73,9 +74,11 @@ public static class ConversationEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         group.MapPost("", CreateConversationAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<CreateConversationActionDto>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPut("", UpdateConversationAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<UpdateConversationActionDto>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         // ProducesProblem(400) rather than ProducesValidationProblem(): the request has no
@@ -89,9 +92,11 @@ public static class ConversationEndpoints
         // a validation problem naming `messageId` when the target is not an assistant message,
         // and a plain binding failure when the body names a rating the enum does not define.
         group.MapPost("{id:guid}/messages/{messageId:guid}/feedback", SetMessageFeedbackAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<SetMessageFeedbackActionDto>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapDelete("bulk", DeactivateConversationsBulkAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<DeactivateConversationsBulkActionDto>>()
             .ProducesValidationProblem();
         // No 404 declared on purpose: deactivating a conversation that is missing or already
         // deactivated logs a warning and returns, so this route only ever answers 204.
@@ -101,6 +106,7 @@ public static class ConversationEndpoints
         // Its error surface is the widest in the API because a turn resolves a model, acquires the
         // conversation lock and connects to whatever MCP servers the caller selected.
         group.MapPost("{id:guid}/stream", StreamConversationAsync)
+            .AddEndpointFilter<ValidationEndpointFilter<CreateConversationStreamActionDto>>()
             .Produces(StatusCodes.Status200OK, contentType: "text/event-stream")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)

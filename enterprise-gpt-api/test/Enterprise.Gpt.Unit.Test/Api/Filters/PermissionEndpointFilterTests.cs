@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
@@ -32,7 +31,7 @@ public sealed class PermissionEndpointFilterTests : IDisposable
     {
         return new UserPermissionCache(
             NullLogger<UserPermissionCache>.Instance,
-            Options.Create(new UserPermissionCacheOptions()),
+            Microsoft.Extensions.Options.Options.Create(new UserPermissionCacheOptions()),
             TimeProvider.System);
     }
 

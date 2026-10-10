@@ -72,7 +72,7 @@ namespace Enterprise.Gpt.Service.Users
         /// <param name="request">The creation request carrying the email and permissions to assign.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The created user.</returns>
-        /// <exception cref="ValidationException">The request fails validation, or an active user with that email already exists.</exception>
+        /// <exception cref="ValidationException">An active user with that email already exists.</exception>
         /// <exception cref="NotFoundException">The directory has no user with that email, the directory user has no email address, or a requested permission does not exist.</exception>
         Task<UserDto> CreateUserAsync(CreateUserActionDto request, CancellationToken cancellationToken = default);
 
@@ -85,7 +85,7 @@ namespace Enterprise.Gpt.Service.Users
         /// <param name="request">The update request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The updated user.</returns>
-        /// <exception cref="ValidationException">The request fails validation, or the caller would revoke their own Administrator permission.</exception>
+        /// <exception cref="ValidationException">The caller would revoke their own Administrator permission.</exception>
         /// <exception cref="NotFoundException">No active user with <paramref name="id"/> exists, or a requested permission does not exist.</exception>
         Task<UserDto> UpdateUserAsync(Guid id, UpdateUserActionDto request, CancellationToken cancellationToken = default);
 
@@ -110,8 +110,6 @@ namespace Enterprise.Gpt.Service.Users
         ITokenService tokenService,
         IGraphService graphService,
         EnterpriseGptDbContext ctx,
-        IValidator<CreateUserActionDto> createValidator,
-        IValidator<UpdateUserActionDto> updateValidator,
         IUserPermissionCache permissionCache) : IUserService
     {
         /// <summary>
@@ -124,8 +122,6 @@ namespace Enterprise.Gpt.Service.Users
         private readonly ITokenService _tokenService = tokenService;
         private readonly IGraphService _graphService = graphService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
-        private readonly IValidator<CreateUserActionDto> _createValidator = createValidator;
-        private readonly IValidator<UpdateUserActionDto> _updateValidator = updateValidator;
         private readonly IUserPermissionCache _permissionCache = permissionCache;
 
         /// <inheritdoc />
@@ -351,8 +347,6 @@ namespace Enterprise.Gpt.Service.Users
         /// <inheritdoc />
         public async Task<UserDto> CreateUserAsync(CreateUserActionDto request, CancellationToken cancellationToken = default)
         {
-            await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
-
             var graphUser = await _graphService.GetUserByEmailAsync(request.Email, cancellationToken);
 
             // Keying on the directory object id rather than a generated id is what guarantees the
@@ -425,8 +419,6 @@ namespace Enterprise.Gpt.Service.Users
         /// <inheritdoc />
         public async Task<UserDto> UpdateUserAsync(Guid id, UpdateUserActionDto request, CancellationToken cancellationToken = default)
         {
-            await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
-
             var user = await _ctx.Users
                 .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
                     .ThenInclude(p => p.Permission)

@@ -1,5 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Service.Options;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -8,7 +9,7 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the summarization section against the same options pipeline <c>Program.cs</c> builds, so
+/// Covers the summarization section against the same options pipeline the host builds, so
 /// a range or a cross-field rule that contradicts the shipped defaults fails here rather than at
 /// host start.
 /// </summary>
@@ -39,10 +40,10 @@ public sealed class SummarizationOptionsTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         var services = new ServiceCollection();
 
+        services.AddSingleton<IValidator<SummarizationOptions>, SummarizationOptionsValidator>();
         services.AddOptions<SummarizationOptions>()
             .Bind(configuration.GetSection(SummarizationOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(options => options.ModelId != Guid.Empty, "Summarization:ModelId is required.");
+            .ValidateWithFluentValidation();
 
         using var provider = services.BuildServiceProvider();
 
@@ -158,13 +159,15 @@ public sealed class SummarizationOptionsTests
     /// over them would assert nothing. Adding a numeric knob without a range is still a failure.
     /// </remarks>
     [Fact]
-    public void Options_EverySettableTuningProperty_CarriesARange()
+    public void Options_EverySettableTuningProperty_HasAValidationRule()
     {
+        var descriptor = new SummarizationOptionsValidator().CreateDescriptor();
+
         var unranged = typeof(SummarizationOptions)
             .GetProperties()
             .Where(p => p.CanWrite && p.PropertyType != typeof(Guid) && p.PropertyType != typeof(bool))
             .Where(p => p.PropertyType.IsPrimitive || p.PropertyType == typeof(decimal))
-            .Where(p => p.GetCustomAttributes(typeof(RangeAttribute), inherit: false).Length == 0)
+            .Where(p => !descriptor.GetRulesForMember(p.Name).Any())
             .Select(p => p.Name);
 
         Assert.Empty(unranged);

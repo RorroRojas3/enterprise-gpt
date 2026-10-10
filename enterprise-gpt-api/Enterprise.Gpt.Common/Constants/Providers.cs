@@ -53,7 +53,7 @@ namespace Enterprise.Gpt.Common.Constants
         /// provider id.
         /// </summary>
         /// <remarks>
-        /// The single source of truth shared by the registrations in <c>Program.cs</c> and the runtime
+        /// The single source of truth shared by the registrations in <c>ChatClientsConfiguration</c> and the runtime
         /// lookup in <c>ChatClientResolver</c>. A provider absent from this map has no chat client and
         /// cannot serve a conversation, whatever rows exist in <c>Core.Ref.Provider</c>.
         /// </remarks>

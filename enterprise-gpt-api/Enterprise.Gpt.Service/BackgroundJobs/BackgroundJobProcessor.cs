@@ -3,10 +3,11 @@ using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.BackgroundJobs.Constants;
 using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
 using Enterprise.Gpt.Service.BackgroundJobs.Models;
-using Microsoft.Extensions.Configuration;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.BackgroundJobs
 {
@@ -32,14 +33,14 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
         /// <param name="store">The snapshot store updated on failure.</param>
         /// <param name="cancellations">Supplies each job token and is released when the job ends.</param>
         /// <param name="scopeFactory">Used to create a fresh DI scope per job (required for scoped services such as <c>EnterpriseGptDbContext</c>).</param>
-        /// <param name="configuration">Reads <c>BackgroundJobs:MaxConcurrent</c>; values <c>&lt;= 0</c> resolve to <c>Environment.ProcessorCount * 2</c>.</param>
+        /// <param name="options">Supplies <see cref="BackgroundJobOptions.MaxConcurrent"/>; values <c>&lt;= 0</c> resolve to <c>Environment.ProcessorCount * 2</c>.</param>
         /// <param name="logger">Diagnostic logger.</param>
         public BackgroundJobProcessor(
             IBackgroundJobQueue queue,
             IJobStatusStore store,
             IJobCancellationRegistry cancellations,
             IServiceScopeFactory scopeFactory,
-            IConfiguration configuration,
+            IOptions<BackgroundJobOptions> options,
             ILogger<BackgroundJobProcessor> logger)
         {
             _queue = queue;
@@ -48,7 +49,7 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
             _scopeFactory = scopeFactory;
             _logger = logger;
 
-            var configured = configuration.GetValue<int?>("BackgroundJobs:MaxConcurrent") ?? 0;
+            var configured = options.Value.MaxConcurrent;
             _maxConcurrent = configured > 0 ? configured : Environment.ProcessorCount * 2;
             _gate = new SemaphoreSlim(_maxConcurrent, _maxConcurrent);
         }

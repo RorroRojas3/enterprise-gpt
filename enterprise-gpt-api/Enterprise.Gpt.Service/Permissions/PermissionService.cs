@@ -44,7 +44,7 @@ namespace Enterprise.Gpt.Service.Permissions
         /// <param name="request">The creation request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The created permission.</returns>
-        /// <exception cref="ValidationException">The request fails validation, or the name is already in use by an active permission or MCP server.</exception>
+        /// <exception cref="ValidationException">The name is already in use by an active permission or MCP server.</exception>
         Task<PermissionDto> CreatePermissionAsync(CreatePermissionActionDto request, CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -54,7 +54,7 @@ namespace Enterprise.Gpt.Service.Permissions
         /// <param name="request">The update request.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The updated permission.</returns>
-        /// <exception cref="ValidationException">The request fails validation, the permission is a built-in, the permission is managed by an MCP server, or the name is already in use.</exception>
+        /// <exception cref="ValidationException">The permission is a built-in, the permission is managed by an MCP server, or the name is already in use.</exception>
         /// <exception cref="NotFoundException">No active permission with <paramref name="id"/> exists.</exception>
         Task<PermissionDto> UpdatePermissionAsync(Guid id, UpdatePermissionActionDto request, CancellationToken cancellationToken = default);
 
@@ -92,15 +92,11 @@ namespace Enterprise.Gpt.Service.Permissions
     public class PermissionService(ILogger<PermissionService> logger,
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
-        IValidator<CreatePermissionActionDto> createValidator,
-        IValidator<UpdatePermissionActionDto> updateValidator,
         IUserPermissionCache permissionCache) : IPermissionService
     {
         private readonly ILogger<PermissionService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
-        private readonly IValidator<CreatePermissionActionDto> _createValidator = createValidator;
-        private readonly IValidator<UpdatePermissionActionDto> _updateValidator = updateValidator;
         private readonly IUserPermissionCache _permissionCache = permissionCache;
 
         /// <inheritdoc />
@@ -137,7 +133,6 @@ namespace Enterprise.Gpt.Service.Permissions
         /// <inheritdoc />
         public async Task<PermissionDto> CreatePermissionAsync(CreatePermissionActionDto request, CancellationToken cancellationToken = default)
         {
-            await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
             await EnsureNameIsAvailableAsync(request.Name, excludePermissionId: null, cancellationToken);
 
             var oid = _tokenService.GetOid();
@@ -161,8 +156,6 @@ namespace Enterprise.Gpt.Service.Permissions
         /// <inheritdoc />
         public async Task<PermissionDto> UpdatePermissionAsync(Guid id, UpdatePermissionActionDto request, CancellationToken cancellationToken = default)
         {
-            await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
-
             var permission = await _ctx.Permissions
                 .FirstOrDefaultAsync(p => p.Id == id && !p.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException("Permission not found.");

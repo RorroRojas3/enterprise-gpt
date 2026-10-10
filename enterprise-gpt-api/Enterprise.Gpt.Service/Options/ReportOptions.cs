@@ -1,4 +1,5 @@
-using System.ComponentModel.DataAnnotations;
+using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -22,7 +23,6 @@ public sealed class ReportOptions
     /// unbounded scan. A year and a day covers every calendar comparison a reader is likely to
     /// want, including a leap year.
     /// </remarks>
-    [Range(1, 3660)]
     public int MaxRangeDays { get; set; } = 366;
 
     /// <summary>
@@ -35,6 +35,17 @@ public sealed class ReportOptions
     /// window regardless of this, so truncation makes the breakdown incomplete and never makes the
     /// headline figures wrong.
     /// </remarks>
-    [Range(1, 5000)]
     public int MaxGroups { get; set; } = 500;
+}
+
+/// <summary>Validates <see cref="ReportOptions"/>.</summary>
+public sealed class ReportOptionsValidator : AbstractValidator<ReportOptions>
+{
+    public ReportOptionsValidator()
+    {
+        RuleFor(options => options.MaxRangeDays).InclusiveBetween(1, 3660)
+            .WithMessage("Reports:MaxRangeDays must be between 1 and 3660.");
+        RuleFor(options => options.MaxGroups).InclusiveBetween(1, 5000)
+            .WithMessage("Reports:MaxGroups must be between 1 and 5000.");
+    }
 }

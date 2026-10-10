@@ -1,4 +1,7 @@
-namespace Enterprise.Gpt.Service.Options;
+using Amazon;
+using FluentValidation;
+
+namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
 /// Connection settings for the Amazon Bedrock chat provider, bound from the <c>AmazonBedrock</c>
@@ -55,4 +58,23 @@ public sealed class AmazonBedrockOptions
     /// SDK requires to construct a client.
     /// </remarks>
     public string DefaultModelId { get; set; } = string.Empty;
+}
+
+internal sealed class AmazonBedrockOptionsValidator : AbstractValidator<AmazonBedrockOptions>
+{
+    public AmazonBedrockOptionsValidator()
+    {
+        When(options => options.Enabled, () =>
+        {
+            RuleFor(options => options.ApiKey).NotEmpty()
+                .WithMessage("AmazonBedrock:ApiKey is required when AmazonBedrock:Enabled is true.");
+            RuleFor(options => options.DefaultModelId).NotEmpty()
+                .WithMessage("AmazonBedrock:DefaultModelId is required when AmazonBedrock:Enabled is true.");
+            // Not GetBySystemName: it fabricates an endpoint for an unknown name, turning a typo into a DNS error.
+            // The list is baked into the pinned AWSSDK.Core, so a newer region fails here until it is bumped.
+            RuleFor(options => options.Region)
+                .Must(region => RegionEndpoint.EnumerableAllRegions.Any(endpoint => endpoint.SystemName == region))
+                .WithMessage("AmazonBedrock:Region must be a known AWS region system name, for example us-east-1. Regions added to AWS after the pinned AWSSDK.Core version are not recognized until it is upgraded.");
+        });
+    }
 }

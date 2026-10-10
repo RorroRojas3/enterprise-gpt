@@ -20,7 +20,7 @@ internal static class AzureAIFoundryDefaults
     /// <returns>A callback suitable for <c>ConfigureOptionsChatClient</c>.</returns>
     /// <remarks>
     /// Takes no settings: this provider has nothing per-deployment to stamp onto a request. It is
-    /// still a factory rather than a bare lambda so the registration in <c>Program.cs</c> reads the
+    /// still a factory rather than a bare lambda so the registration in <see cref="AzureAIFoundryProviderConfiguration"/> reads the
     /// same as every other provider's.
     /// </remarks>
     public static Action<ChatOptions> Create()

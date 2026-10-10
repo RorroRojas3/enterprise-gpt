@@ -3,9 +3,9 @@ using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
 using Enterprise.Gpt.Service.BackgroundJobs.Models;
 using Enterprise.Gpt.Service.Options;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.BackgroundJobs;
@@ -19,9 +19,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
     private static readonly Guid OwnerId = Guid.NewGuid();
     private static readonly JobTarget Target = new(JobTargetKinds.Conversation, Guid.NewGuid());
 
-    private readonly IConfiguration _configuration = new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?> { ["BackgroundJobs:MaxConcurrent"] = "1" })
-        .Build();
+    private readonly IOptions<BackgroundJobOptions> _options = Microsoft.Extensions.Options.Options.Create(new BackgroundJobOptions { MaxConcurrent = 1 });
 
     private readonly BackgroundJobQueue _queue = new(
         Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = 1024, MaxQueuedBytes = 8192 }),
@@ -34,13 +32,13 @@ public sealed class BackgroundJobProcessorTests : IDisposable
 
     public BackgroundJobProcessorTests()
     {
-        _store = new JobStatusStore(_configuration, NullLogger<JobStatusStore>.Instance);
+        _store = new JobStatusStore(_options, NullLogger<JobStatusStore>.Instance);
         _processor = new BackgroundJobProcessor(
             _queue,
             _store,
             _registry,
             _services.GetRequiredService<IServiceScopeFactory>(),
-            _configuration,
+            _options,
             NullLogger<BackgroundJobProcessor>.Instance);
     }
 

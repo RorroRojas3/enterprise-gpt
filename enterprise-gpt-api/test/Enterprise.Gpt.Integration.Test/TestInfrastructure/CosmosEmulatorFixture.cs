@@ -1,8 +1,8 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
-using Enterprise.Gpt.Api.Startup;
 using Enterprise.Gpt.Repository.Cosmos;
 using Enterprise.Gpt.Repository.Cosmos.Options;
+using Enterprise.Gpt.Repository.Cosmos.Provisioning;
 using Enterprise.Gpt.Repository.Cosmos.Serialization;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -99,8 +99,8 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
 
         // The production bootstrap, so the container these tests run against is provisioned exactly
         // as a deployment's is.
-        await CosmosBootstrapper.EnsureProvisionedAsync(
-            _client, options, NullLogger.Instance, CancellationToken.None);
+        await new CosmosResourceProvisioner(_client, Options.Create(options), NullLogger<CosmosResourceProvisioner>.Instance)
+            .EnsureProvisionedAsync(CancellationToken.None);
 
         Container = _client.GetContainer(options.DatabaseId, options.TranscriptContainerId);
         Store = new CosmosTranscriptStore(_client, Options.Create(options), NullLogger<CosmosTranscriptStore>.Instance);

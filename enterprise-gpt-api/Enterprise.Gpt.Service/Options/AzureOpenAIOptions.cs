@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -9,12 +10,12 @@ namespace Enterprise.Gpt.Service.Options;
 /// <remarks>
 /// <para>
 /// This is the Responses-API provider: it is the only one that can serve a reasoning model, because
-/// reasoning summaries exist on no other surface. <see cref="AzureAIFoundryOptions"/> is its
+/// reasoning summaries exist on no other surface. <c>AzureAIFoundryOptions</c> is its
 /// Chat-Completions counterpart on the same endpoint.
 /// </para>
 /// <para>
-/// Unlike <see cref="AmazonBedrockOptions"/>, <see cref="AnthropicOptions"/> and
-/// <see cref="AzureAIFoundryOptions"/> there is no <c>Enabled</c> flag: this provider always serves
+/// Unlike <c>AmazonBedrockOptions</c>, <c>AnthropicOptions</c> and
+/// <c>AzureAIFoundryOptions</c> there is no <c>Enabled</c> flag: this provider always serves
 /// the default model and owns the embedding generator, so a deployment missing its settings is
 /// broken rather than opted out. Before this type existed the four keys were read with raw
 /// <c>GetValue&lt;string&gt;</c> and a blank URL became <c>new Uri("")</c> inside a lazy client
@@ -82,4 +83,28 @@ public sealed class AzureOpenAIOptions : AzureV1EndpointOptions
     /// </summary>
     public bool IsReasoningSummaryRequested =>
         !string.Equals(ReasoningSummary, "none", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Validates <see cref="AzureOpenAIOptions"/>.</summary>
+public sealed class AzureOpenAIOptionsValidator : AbstractValidator<AzureOpenAIOptions>
+{
+    public AzureOpenAIOptionsValidator()
+    {
+        RuleFor(options => options.Url).Must((options, _) => options.IsUrlAbsolute)
+            .WithMessage("AzureOpenAI:Url must be an absolute http or https URI, for example https://my-resource.services.ai.azure.com/.");
+        // The client appends the v1 path itself; configured here, every request goes to /openai/v1/openai/v1/…
+        // and the 404 that produces names neither the setting nor the cause.
+        RuleFor(options => options.Url).Must((options, _) => options.IsUrlResourceRoot)
+            .WithMessage("AzureOpenAI:Url must be the resource root, without /openai/v1 — the client appends it.");
+        RuleFor(options => options.ApiKey).NotEmpty().WithMessage("AzureOpenAI:ApiKey is required.");
+        RuleFor(options => options.DefaultModel).NotEmpty().WithMessage("AzureOpenAI:DefaultModel is required.");
+        RuleFor(options => options.EmbeddingModel).NotEmpty().WithMessage("AzureOpenAI:EmbeddingModel is required.");
+        // Null-guarded before the lookup: the case-insensitive comparer throws on a null rather than reporting a miss.
+        RuleFor(options => options.ReasoningSummary)
+            .Must(value => !string.IsNullOrWhiteSpace(value) && AzureOpenAIOptions.ReasoningSummaries.Contains(value))
+            .WithMessage("AzureOpenAI:ReasoningSummary must be one of auto, concise, detailed, none.");
+        RuleFor(options => options.ReasoningEffort)
+            .Must(value => !string.IsNullOrWhiteSpace(value) && AzureOpenAIOptions.ReasoningEfforts.Contains(value))
+            .WithMessage("AzureOpenAI:ReasoningEffort must be one of minimal, low, medium, high.");
+    }
 }

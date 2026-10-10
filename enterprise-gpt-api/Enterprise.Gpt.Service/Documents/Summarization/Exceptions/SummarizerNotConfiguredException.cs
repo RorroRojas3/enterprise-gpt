@@ -1,19 +1,18 @@
-using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using System.Net;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Exceptions;
 
 namespace Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
 
 /// <summary>
 /// Thrown when the pinned summarizer cannot be used: <c>Summarization:ModelId</c> names no active
-/// <c>Core.Ref.Model</c> row, or the row it names is not filled in well enough to size a call.
-/// Raised at startup by the summarizer bootstrapper, and again per request, because the row can be
-/// deactivated or edited after the application is already running.
+/// <c>Core.Ref.Model</c> row, or the row is not filled in well enough to size a call; answered with 503.
 /// </summary>
 /// <remarks>
-/// Derived from <see cref="Exception"/> rather than <see cref="InvalidOperationException"/> for the
-/// reason <see cref="ProviderNotConfiguredException"/> gives: the handler maps the latter to 400,
-/// which would report an operator's configuration gap as the caller's bad request.
+/// It shares <see cref="ProblemCodes.ProviderNotConfigured"/>: to a caller both mean this deployment
+/// cannot serve the model. Raised at startup and again per request, since the row can change at runtime.
 /// </remarks>
-public class SummarizerNotConfiguredException : Exception
+public class SummarizerNotConfiguredException : ProblemException
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="SummarizerNotConfiguredException"/> class for a
@@ -32,12 +31,11 @@ public class SummarizerNotConfiguredException : Exception
     /// <param name="modelId">The configured model id.</param>
     /// <param name="message">What is wrong with the row.</param>
     /// <remarks>
-    /// A row can resolve and still be unusable — a context window of zero is the seeded default for
-    /// a catalog row nobody has filled in. Reporting that as "names no active model" would send an
-    /// operator looking for a missing row that is in fact present.
+    /// A row can resolve and still be unusable, such as a seeded context window of zero; "names no
+    /// active model" would send an operator looking for a row that is present.
     /// </remarks>
     public SummarizerNotConfiguredException(Guid modelId, string message)
-        : base(message)
+        : base(HttpStatusCode.ServiceUnavailable, ProblemCodes.ProviderNotConfigured, message)
     {
         ModelId = modelId;
     }

@@ -40,7 +40,7 @@ public sealed class ChatClientTelemetryTests : IDisposable
     public async Task UseEnterpriseTelemetry_ACompletedTurn_EmitsASpanOnTheExportedSource()
     {
         using var client = new ChatClientBuilder(new StubChatClient())
-            .UseEnterpriseTelemetry()
+            .UseEnterpriseGptTelemetry()
             .Build();
 
         await client.GetResponseAsync("hello", cancellationToken: TestContext.Current.CancellationToken);

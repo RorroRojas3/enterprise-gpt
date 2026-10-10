@@ -69,7 +69,7 @@ public interface IProjectService
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The created project.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ValidationException">The request fails validation, or the caller already has an active project of that name.</exception>
+    /// <exception cref="ValidationException">The caller already has an active project of that name.</exception>
     Task<ProjectDto> CreateProjectAsync(CreateProjectActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -80,7 +80,7 @@ public interface IProjectService
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The updated project.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ValidationException">The request fails validation, or the caller already has another active project of that name.</exception>
+    /// <exception cref="ValidationException">The caller already has another active project of that name.</exception>
     /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
     Task<ProjectDto> UpdateProjectAsync(Guid id, UpdateProjectActionDto request, CancellationToken cancellationToken = default);
 
@@ -143,9 +143,7 @@ public interface IProjectService
 /// </remarks>
 public class ProjectService(ILogger<ProjectService> logger,
     ITokenService tokenService,
-    EnterpriseGptDbContext ctx,
-    IValidator<CreateProjectActionDto> createValidator,
-    IValidator<UpdateProjectActionDto> updateValidator) : IProjectService
+    EnterpriseGptDbContext ctx) : IProjectService
 {
     /// <summary>
     /// The wire-visible key for a name failure in the problem details <c>errors</c> dictionary.
@@ -156,8 +154,6 @@ public class ProjectService(ILogger<ProjectService> logger,
     private readonly ILogger<ProjectService> _logger = logger;
     private readonly ITokenService _tokenService = tokenService;
     private readonly EnterpriseGptDbContext _ctx = ctx;
-    private readonly IValidator<CreateProjectActionDto> _createValidator = createValidator;
-    private readonly IValidator<UpdateProjectActionDto> _updateValidator = updateValidator;
 
     /// <inheritdoc />
     public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
@@ -272,8 +268,6 @@ public class ProjectService(ILogger<ProjectService> logger,
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await _createValidator.ValidateAndThrowAsync(request, cancellationToken);
-
         var userId = _tokenService.GetOid();
         await EnsureNameIsAvailableAsync(userId, request.Name, excludingProjectId: null, cancellationToken);
 
@@ -296,8 +290,6 @@ public class ProjectService(ILogger<ProjectService> logger,
     public async Task<ProjectDto> UpdateProjectAsync(Guid id, UpdateProjectActionDto request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        await _updateValidator.ValidateAndThrowAsync(request, cancellationToken);
 
         var userId = _tokenService.GetOid();
 

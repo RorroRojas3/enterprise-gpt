@@ -22,7 +22,7 @@ namespace Enterprise.Gpt.Service.Documents
     /// reveals itself as a failed job minutes later, which is a poor experience and burns OCR spend.
     /// </para>
     /// </remarks>
-    public sealed class UploadedFileValidator : AbstractValidator<FileDto>
+    public sealed class FileDtoValidator : AbstractValidator<FileDto>
     {
         // How much of a text file to scan for the NUL bytes that mark it as binary. Scanning the head is
         // enough to catch a renamed executable or image without walking a large file twice.
@@ -38,11 +38,11 @@ namespace Enterprise.Gpt.Service.Documents
         private static readonly byte[] _utf32BigEndianBom = [0x00, 0x00, 0xFE, 0xFF];
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="UploadedFileValidator"/> class.
+        /// Initializes a new instance of the <see cref="FileDtoValidator"/> class.
         /// </summary>
         /// <param name="options">Supplies the maximum accepted upload size.</param>
         /// <param name="extractorFactory">Supplies the set of formats that can actually be read.</param>
-        public UploadedFileValidator(IOptions<DocumentOptions> options, IDocumentTextExtractorFactory extractorFactory)
+        public FileDtoValidator(IOptions<DocumentOptions> options, IDocumentTextExtractorFactory extractorFactory)
         {
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(extractorFactory);

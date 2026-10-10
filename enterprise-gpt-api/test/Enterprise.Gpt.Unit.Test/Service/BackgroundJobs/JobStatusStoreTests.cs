@@ -1,7 +1,7 @@
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.BackgroundJobs.Models;
-using Microsoft.Extensions.Configuration;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -13,7 +13,7 @@ public sealed class JobStatusStoreTests : IDisposable
     private static readonly JobTarget Target = new(JobTargetKinds.Conversation, Guid.NewGuid());
 
     private readonly JobStatusStore _store = new(
-        new ConfigurationBuilder().AddInMemoryCollection([]).Build(),
+        Microsoft.Extensions.Options.Options.Create(new BackgroundJobOptions()),
         NullLogger<JobStatusStore>.Instance);
 
     public void Dispose() => _store.Dispose();

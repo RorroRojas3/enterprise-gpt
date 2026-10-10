@@ -38,10 +38,12 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .ProducesProblem(StatusCodes.Status404NotFound);
             group.MapPost("", CreateMcpServerAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .AddEndpointFilter<ValidationEndpointFilter<CreateMcpServerActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden);
             group.MapPut("{id:guid}", UpdateMcpServerAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
+                .AddEndpointFilter<ValidationEndpointFilter<UpdateMcpServerActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);
@@ -55,6 +57,7 @@ namespace Enterprise.Gpt.Api.Endpoints
             // McpToolProvider enforces it — from the database, so a revoked grant takes effect on
             // the next request.
             group.MapPut("{id:guid}/credential", SaveMcpCredentialAsync)
+                .AddEndpointFilter<ValidationEndpointFilter<SaveMcpCredentialActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
                 .ProducesProblem(StatusCodes.Status404NotFound);

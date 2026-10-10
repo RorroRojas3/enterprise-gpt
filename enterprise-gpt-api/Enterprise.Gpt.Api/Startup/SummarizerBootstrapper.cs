@@ -16,8 +16,8 @@ namespace Enterprise.Gpt.Api.Startup;
 /// after somebody switches the feature on months later.
 /// </para>
 /// <para>
-/// Called inline from <c>Program.cs</c> beside <see cref="CosmosBootstrapper"/> rather than
-/// registered as an <see cref="IHostedService"/>, and for the same reason: it needs a live backing
+/// Run by <see cref="StartupBootstrapper"/> after the schema and Cosmos provisioning rather than
+/// registered as an <see cref="IHostedService"/>, because it needs a live backing
 /// store. <c>WebApplicationFactory</c> starts the host the first time its service provider is
 /// touched, which the integration fixture does <em>before</em> it creates the schema, so a hosted
 /// service reading <c>Core.Ref.Model</c> would query a database that has no tables yet.

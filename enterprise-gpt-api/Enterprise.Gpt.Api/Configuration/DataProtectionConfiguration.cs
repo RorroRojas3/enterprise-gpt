@@ -1,5 +1,6 @@
 using Enterprise.Gpt.Api.Configuration.Models;
 using Enterprise.Gpt.Api.Options;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -11,9 +12,6 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class DataProtectionConfiguration
 {
-    /// <summary>Environment name the integration host runs under, spelled as in <c>Program.cs</c>.</summary>
-    private const string TestingEnvironmentName = "Testing";
-
     /// <summary>
     /// Name this application is known by within the Data Protection system.
     /// </summary>
@@ -33,7 +31,7 @@ internal static class DataProtectionConfiguration
     /// The database rather than blob storage: an App Service slot swap does not take the key ring
     /// with it the way the per-slot default location does.
     /// </remarks>
-    internal static void AddEnterpriseDataProtection(this WebApplicationBuilder builder, KeyVaultSource? keyVault)
+    internal static void AddEnterpriseGptDataProtection(this WebApplicationBuilder builder, KeyVaultSource? keyVault)
     {
         var dataProtection = builder.Services.AddDataProtection()
             .SetApplicationName(ApplicationName)
@@ -50,7 +48,7 @@ internal static class DataProtectionConfiguration
         // makes read access to that database sufficient to decrypt them — the one thing this
         // feature promises it is not. Refused rather than warned: a warning in a startup log is
         // not what should stand between a deployment and that.
-        if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment(TestingEnvironmentName))
+        if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment(HostEnvironments.Testing))
         {
             throw new InvalidOperationException(
                 $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.DataProtectionKeyUri)} is required outside development: without it the Data Protection key ring is stored unencrypted beside the credentials it protects.");

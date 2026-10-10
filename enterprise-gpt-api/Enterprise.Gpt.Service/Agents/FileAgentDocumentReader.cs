@@ -1,12 +1,14 @@
 using System.Text.RegularExpressions;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Repository.Blob;
+using Enterprise.Gpt.Repository.Blob.Options;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Agents.Models;
 using Enterprise.Gpt.Service.Documents;
 using Enterprise.Gpt.Service.Documents.Retrieval;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Agents;
 
@@ -63,13 +65,13 @@ public interface IFileAgentDocumentReader
 /// <inheritdoc />
 public sealed partial class FileAgentDocumentReader(
     ILogger<FileAgentDocumentReader> logger,
-    IBlobStorageService blobStorageService,
-    IConfiguration configuration,
+    IDocumentStore documentStore,
+    IOptionsMonitor<BlobStorageOptions> storageOptions,
     EnterpriseGptDbContext ctx) : IFileAgentDocumentReader
 {
     private readonly ILogger<FileAgentDocumentReader> _logger = logger;
-    private readonly IBlobStorageService _blobStorageService = blobStorageService;
-    private readonly IConfiguration _configuration = configuration;
+    private readonly IDocumentStore _documentStore = documentStore;
+    private readonly IOptionsMonitor<BlobStorageOptions> _storageOptions = storageOptions;
     private readonly EnterpriseGptDbContext _ctx = ctx;
 
     /// <inheritdoc />
@@ -158,12 +160,11 @@ public sealed partial class FileAgentDocumentReader(
                 continue;
             }
 
-            var container = DocumentStorage.RequireContainer(
-                _configuration,
-                _logger,
-                file.IsGenerated ? DocumentStorage.GeneratedContainerKey : DocumentStorage.DocumentsContainerKey);
+            var container = file.IsGenerated
+                ? DocumentStorage.RequireGeneratedContainer(_storageOptions.CurrentValue, _logger)
+                : DocumentStorage.RequireDocumentsContainer(_storageOptions.CurrentValue, _logger);
 
-            var bytes = await _blobStorageService
+            var bytes = await _documentStore
                 .DownloadAsync(container, file.Path, cancellationToken)
                 .ConfigureAwait(false);
 

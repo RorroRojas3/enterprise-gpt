@@ -203,7 +203,7 @@ public sealed class ChatUsageScopeTests
     }
 
     /// <summary>
-    /// Program.cs registers the observer in the container and never hands it to
+    /// ChatClientsConfiguration registers the observer in the container and never hands it to
     /// <c>UseToolTracking</c> explicitly, relying on the middleware to collect every registered
     /// <see cref="IChatProgressObserver"/> when the client is built. That is the single point of
     /// failure for the whole feature — miss it and every turn silently records zero tokens — so the

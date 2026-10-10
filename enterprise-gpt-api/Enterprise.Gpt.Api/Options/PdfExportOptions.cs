@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Options;
+namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
 /// PDF rendering configuration, bound from the <c>Export:Pdf</c> section.

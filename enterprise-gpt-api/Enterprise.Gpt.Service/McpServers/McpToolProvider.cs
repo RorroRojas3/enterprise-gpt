@@ -481,11 +481,9 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
             // The SDK's `CopyAdditionalHeaders` throws this when `HttpRequestHeaders` refuses a
             // header name. `_reservedNames` now covers every name it refuses and
             // `BuildTransportHeaders` drops them, so this is unreachable today — it is the net
-            // under a future loosening of that set, and the reason it is worth keeping is what
-            // happens without it: `GlobalExceptionHandler` maps a bare
-            // `InvalidOperationException` to 400 with `exception.Message`, and the SDK's
-            // message quotes the offending header's **value**. That would put a configured
-            // value on the wire, which is the one thing this feature promises it never does.
+            // under a future loosening of that set. Without it the request fails as an opaque 500
+            // rather than the 502 that names the server, and the SDK's message, which quotes the
+            // offending header's **value**, lands in the error log.
             //
             // `ObjectDisposedException` is excluded because it derives from this one and means
             // something else entirely here: a disposed client or double-disposed transport is

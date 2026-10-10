@@ -15,7 +15,7 @@ namespace Enterprise.Gpt.Unit.Test.Api.Configuration;
 /// </summary>
 /// <remarks>
 /// The enabled path reaches a vault by design, so only its refusals run end to end; the paths that
-/// must add nothing are asserted against <c>AddEnterpriseKeyVault</c> itself.
+/// must add nothing are asserted against <c>AddEnterpriseGptKeyVault</c> itself.
 /// </remarks>
 public sealed class KeyVaultConfigurationTests
 {
@@ -209,7 +209,7 @@ public sealed class KeyVaultConfigurationTests
 
         var sourcesBefore = ((IConfigurationBuilder)builder.Configuration).Sources.Count;
 
-        Assert.Null(builder.AddEnterpriseKeyVault());
+        Assert.Null(builder.AddEnterpriseGptKeyVault());
         Assert.Equal(sourcesBefore, ((IConfigurationBuilder)builder.Configuration).Sources.Count);
     }
 

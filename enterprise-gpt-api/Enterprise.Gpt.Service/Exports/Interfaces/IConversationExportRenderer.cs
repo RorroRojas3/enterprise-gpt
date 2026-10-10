@@ -10,7 +10,7 @@ namespace Enterprise.Gpt.Service.Exports.Interfaces;
 /// One implementation per <see cref="ConversationExportFormats"/> member, resolved by
 /// <see cref="Format"/>. A format whose renderer is not registered is reported as
 /// <see cref="Exceptions.ExportRendererNotConfiguredException"/> rather than as a 500 — see
-/// <c>Program.cs</c>, where PDF registration depends on a usable font being found.
+/// <c>ExportsConfiguration</c>, where PDF registration depends on a usable font being found.
 /// </remarks>
 public interface IConversationExportRenderer
 {

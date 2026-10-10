@@ -9,13 +9,13 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
-public sealed class UploadedFileValidatorTests
+public sealed class FileDtoValidatorTests
 {
     private static readonly byte[] _pdfBytes = [.. "%PDF-1.7"u8.ToArray(), .. new byte[16]];
     private static readonly byte[] _ooxmlBytes = [0x50, 0x4B, 0x03, 0x04, .. new byte[16]];
     private static readonly byte[] _ole2Bytes = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, .. new byte[16]];
 
-    private static UploadedFileValidator CreateValidator(long maxFileSizeBytes = 50L * 1024 * 1024)
+    private static FileDtoValidator CreateValidator(long maxFileSizeBytes = 50L * 1024 * 1024)
     {
         var factory = Substitute.For<IDocumentTextExtractorFactory>();
         factory.SupportedExtensionNames.Returns([".csv", ".doc", ".docx", ".md", ".pdf", ".pptx", ".txt", ".xlsx"]);
@@ -26,7 +26,7 @@ public sealed class UploadedFileValidatorTests
 
         var options = Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes });
 
-        return new UploadedFileValidator(options, factory);
+        return new FileDtoValidator(options, factory);
     }
 
     private static FileDto File(string fileName, byte[] content)

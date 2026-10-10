@@ -4,7 +4,7 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the predicates <c>Program.cs</c> wires as startup validators, and the endpoint the chat
+/// Covers the predicates <c>AzureOpenAIOptionsValidator</c> checks at startup, and the endpoint the chat
 /// client is built against.
 /// </summary>
 public sealed class AzureOpenAIOptionsTests

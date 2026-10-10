@@ -2,6 +2,8 @@ using System.Reflection;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Enterprise.Gpt.Api.Options;
 using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Validation;
+using FluentValidation;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -59,22 +61,16 @@ internal static class TelemetryRegistration
     /// secrets, never in <c>appsettings.json</c>. With none configured the whole distro is skipped, which
     /// is what keeps local runs and the test host free of an exporter retrying in the background.
     /// </remarks>
-    internal static IServiceCollection AddEnterpriseTelemetry(this IServiceCollection services, IConfiguration configuration)
+    internal static IServiceCollection AddEnterpriseGptTelemetry(this IServiceCollection services, IConfiguration configuration)
     {
         var section = configuration.GetSection(TelemetryOptions.SectionName);
 
         // Bound even when the exporter below is skipped, so a malformed value fails the deployment that
         // wrote it rather than the first one that happens to configure a connection string.
+        services.AddSingleton<IValidator<TelemetryOptions>, TelemetryOptionsValidator>();
         services.AddOptions<TelemetryOptions>()
             .Bind(section)
-            .Validate(options => !string.IsNullOrWhiteSpace(options.RoleName),
-                "AzureMonitor:RoleName is required.")
-            .Validate(options => options.TracesPerSecond is null || options.SamplingRatio is null,
-                "AzureMonitor:TracesPerSecond and AzureMonitor:SamplingRatio select different samplers — set at most one.")
-            .Validate(options => options.TracesPerSecond is null or > 0,
-                "AzureMonitor:TracesPerSecond must be greater than zero.")
-            .Validate(options => options.SamplingRatio is null or (> 0 and <= 1),
-                "AzureMonitor:SamplingRatio must be greater than zero and at most one.")
+            .ValidateWithFluentValidation()
             .ValidateOnStart();
 
         var telemetry = section.Get<TelemetryOptions>() ?? new TelemetryOptions();

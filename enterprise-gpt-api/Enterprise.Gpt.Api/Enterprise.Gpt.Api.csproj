@@ -6,12 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Per-tool token tracking. The core package supplies UseToolTracking(), which Program.cs
-         inserts ahead of UseFunctionInvocation() in every chat-client chain; the .Mcp and .Agent
+    <!-- Per-tool token tracking. The core package supplies UseToolTracking(), which the provider
+         configurations insert ahead of UseFunctionInvocation() in every chat-client chain; the .Mcp and .Agent
          satellites supply the classifiers that turn an MCP tool or an agent-as-tool into something
          other than an anonymous function, and .UI supplies the serializable event contract the
-         streaming endpoint writes. All four are referenced directly because Program.cs and
-         ConversationEndpoints.cs use types from each. -->
+         streaming endpoint writes. All four are referenced directly because the provider
+         configurations and ConversationEndpoints.cs use types from each. -->
     <PackageReference Include="Andes.Extensions.AI" />
     <PackageReference Include="Andes.Extensions.AI.Agent" />
     <PackageReference Include="Andes.Extensions.AI.Mcp" />
@@ -21,8 +21,8 @@
          separate adapter to reference. -->
     <PackageReference Include="Anthropic" />
     <!-- Amazon Bedrock. The MEAI package supplies IAmazonBedrockRuntime.AsIChatClient(), which wraps
-         Converse/ConverseStream; BedrockRuntime itself is a direct dependency because Program.cs
-         constructs AmazonBedrockRuntimeClient and its config to wire bearer-token auth. -->
+         Converse/ConverseStream; BedrockRuntime itself is a direct dependency because
+         AmazonBedrockProviderConfiguration constructs AmazonBedrockRuntimeClient and its config to wire bearer-token auth. -->
     <PackageReference Include="AWSSDK.BedrockRuntime" />
     <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" />
     <PackageReference Include="Azure.AI.DocumentIntelligence" />
@@ -53,10 +53,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Agents.AI" />
-    <!-- Health checks. The EF Core package rather than a community SQL check: readiness has to prove the
-         application's own connection works, which is the DbContext's, not a second one built from the
-         same string. -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
@@ -66,8 +62,8 @@
     <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Newtonsoft.Json" />
-    <!-- Direct rather than transitive through Microsoft.Extensions.AI.OpenAI: Program.cs and
-         Configuration/Providers/AzureOpenAIDefaults.cs construct OpenAIClient and the OpenAI.Responses request
+    <!-- Direct rather than transitive through Microsoft.Extensions.AI.OpenAI: AzureOpenAIProviderConfiguration and
+         AzureOpenAIDefaults construct OpenAIClient and the OpenAI.Responses request
          types by hand. Its version is a ceiling; see Directory.Packages.props. -->
     <PackageReference Include="OpenAI" />
     <PackageReference Include="Scalar.AspNetCore" />

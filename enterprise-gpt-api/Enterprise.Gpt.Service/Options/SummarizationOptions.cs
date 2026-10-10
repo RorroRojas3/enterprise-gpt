@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using FluentValidation;
+
 
 namespace Enterprise.Gpt.Service.Options;
 
@@ -62,7 +63,6 @@ public sealed class SummarizationOptions
     /// the token estimate's own approximation: the deployment name is not a tokenizer-library model
     /// name, so counting falls back to the configured encoding and can under-report.
     /// </remarks>
-    [Range(0.1, 1.0)]
     public double SafetyFraction { get; set; } = 0.85;
 
     /// <summary>
@@ -73,7 +73,6 @@ public sealed class SummarizationOptions
     /// Strictly below the per-call budget because a map unit is sized before its own framing is
     /// added, and because token counts are not exactly additive across the joins the splitter makes.
     /// </remarks>
-    [Range(0.1, 1.0)]
     public double MapUnitFraction { get; set; } = 0.90;
 
     /// <summary>
@@ -84,7 +83,6 @@ public sealed class SummarizationOptions
     /// Bounded so that one large document cannot monopolise the background job processor's own
     /// concurrency gate, which summarization shares with document ingestion.
     /// </remarks>
-    [Range(1, 32)]
     public int MaxConcurrency { get; set; } = 4;
 
     /// <summary>
@@ -95,7 +93,6 @@ public sealed class SummarizationOptions
     /// A placeholder rather than a measured value — no pre-production latency baseline exists for
     /// this deployment. Its job is to stop one stalled call holding a processing slot indefinitely.
     /// </remarks>
-    [Range(1, 1800)]
     public int CallTimeoutSeconds { get; set; } = 180;
 
     /// <summary>
@@ -106,7 +103,6 @@ public sealed class SummarizationOptions
     /// A document whose partial summaries do not shrink fast enough must fail with a message naming
     /// the limit rather than loop until an unrelated timeout kills it silently.
     /// </remarks>
-    [Range(1, 20)]
     public int MaxCollapsePasses { get; set; } = 5;
 
     /// <summary>
@@ -117,7 +113,6 @@ public sealed class SummarizationOptions
     /// Every retry that reaches the model is billed, so the count stays small. Zero disables
     /// retrying entirely, which is a supported choice rather than a degraded one.
     /// </remarks>
-    [Range(0, 5)]
     public int MaxCallRetries { get; set; } = 2;
 
     /// <summary>
@@ -130,7 +125,6 @@ public sealed class SummarizationOptions
     /// run with no ceiling of its own is a turn that never ends. A breach is reported to the model
     /// as a message it can relay, not as a failed turn.
     /// </remarks>
-    [Range(30, 1800)]
     public int ToolTimeoutSeconds { get; set; } = 300;
 
     /// <summary>
@@ -144,7 +138,6 @@ public sealed class SummarizationOptions
     /// of tokens; it earns its place if the summarizer is ever repointed at a small-window model,
     /// which is exactly when the ceiling stops being theoretical.
     /// </remarks>
-    [Range(1, 1000)]
     public int MaxMapUnits { get; set; } = 40;
 
     /// <summary>
@@ -156,6 +149,35 @@ public sealed class SummarizationOptions
     /// an unusually large scope turns one request into an unbounded number of runs. Refusing names
     /// the limit and points at summarizing individual documents instead.
     /// </remarks>
-    [Range(1, 200)]
     public int MaxDigestDocuments { get; set; } = 25;
+}
+
+/// <summary>Validates <see cref="SummarizationOptions"/>.</summary>
+public sealed class SummarizationOptionsValidator : AbstractValidator<SummarizationOptions>
+{
+    public SummarizationOptionsValidator()
+    {
+        RuleFor(options => options.ModelId).NotEqual(Guid.Empty).WithMessage("Summarization:ModelId is required.");
+        RuleFor(options => options.SafetyFraction).InclusiveBetween(0.1d, 1d)
+            .WithMessage("Summarization:SafetyFraction must be between 0.1 and 1.");
+        RuleFor(options => options.MapUnitFraction).InclusiveBetween(0.1d, 1d)
+            .WithMessage("Summarization:MapUnitFraction must be between 0.1 and 1.");
+        RuleFor(options => options.MaxConcurrency).InclusiveBetween(1, 32)
+            .WithMessage("Summarization:MaxConcurrency must be between 1 and 32.");
+        RuleFor(options => options.CallTimeoutSeconds).InclusiveBetween(1, 1800)
+            .WithMessage("Summarization:CallTimeoutSeconds must be between 1 and 1800.");
+        RuleFor(options => options.MaxCollapsePasses).InclusiveBetween(1, 20)
+            .WithMessage("Summarization:MaxCollapsePasses must be between 1 and 20.");
+        RuleFor(options => options.MaxCallRetries).InclusiveBetween(0, 5)
+            .WithMessage("Summarization:MaxCallRetries must be between 0 and 5.");
+        RuleFor(options => options.ToolTimeoutSeconds).InclusiveBetween(30, 1800)
+            .WithMessage("Summarization:ToolTimeoutSeconds must be between 30 and 1800.");
+        RuleFor(options => options.MaxMapUnits).InclusiveBetween(1, 1000)
+            .WithMessage("Summarization:MaxMapUnits must be between 1 and 1000.");
+        RuleFor(options => options.MaxDigestDocuments).InclusiveBetween(1, 200)
+            .WithMessage("Summarization:MaxDigestDocuments must be between 1 and 200.");
+        // A run deadline below one call's own timeout kills every run before its first call returns.
+        RuleFor(options => options.ToolTimeoutSeconds).GreaterThanOrEqualTo(options => options.CallTimeoutSeconds)
+            .WithMessage("Summarization:ToolTimeoutSeconds must be at least Summarization:CallTimeoutSeconds.");
+    }
 }

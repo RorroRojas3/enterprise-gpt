@@ -1,5 +1,5 @@
 using Anthropic.Models.Messages;
-using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Api.Options;
 using Microsoft.Extensions.AI;
 
 namespace Enterprise.Gpt.Api.Configuration.Providers;
@@ -9,7 +9,7 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// Anthropic chat client.
 /// </summary>
 /// <remarks>
-/// Kept out of <c>Program.cs</c> for two reasons: it is the only place that needs
+/// Kept apart from <see cref="AnthropicProviderConfiguration"/> for two reasons: it is the only place that needs
 /// <c>Anthropic.Models.Messages</c>, whose <c>Model</c> type would otherwise collide with
 /// <see cref="Enterprise.Gpt.Entity.ChatModels.Model"/>, and confining the SDK's request types to one file keeps
 /// them out of the provider-agnostic <c>ChatOptions</c> that <c>ConversationService</c> builds.

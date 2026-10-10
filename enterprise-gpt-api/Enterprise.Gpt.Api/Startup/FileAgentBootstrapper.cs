@@ -20,8 +20,8 @@ namespace Enterprise.Gpt.Api.Startup;
 /// switches the feature on months later.
 /// </para>
 /// <para>
-/// Called inline from <c>Program.cs</c> beside the other two bootstrappers rather than registered as
-/// an <see cref="IHostedService"/>, and for the same reason: it needs a live backing store, and
+/// Run by <see cref="StartupBootstrapper"/> rather than registered as an <see cref="IHostedService"/>,
+/// for the same reason as <see cref="SummarizerBootstrapper"/>: it needs a live backing store, and
 /// <c>WebApplicationFactory</c> starts the host before the integration fixture creates the schema.
 /// </para>
 /// </remarks>

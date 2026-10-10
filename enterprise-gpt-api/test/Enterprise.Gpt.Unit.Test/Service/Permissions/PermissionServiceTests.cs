@@ -30,8 +30,6 @@ public sealed class PermissionServiceTests : IDisposable
             NullLogger<PermissionService>.Instance,
             _tokenService,
             _fixture.Context,
-            new CreatePermissionActionDtoValidator(),
-            new UpdatePermissionActionDtoValidator(),
             _permissionCache);
     }
 
@@ -226,15 +224,6 @@ public sealed class PermissionServiceTests : IDisposable
         Assert.Equal(KnownIds.SeedUserId, persisted.ModifiedById);
         Assert.Equal(persisted.DateCreated, persisted.DateModified);
         Assert.Null(persisted.DateDeactivated);
-    }
-
-    [Fact]
-    public async Task CreatePermissionAsync_InvalidRequest_ThrowsValidationException()
-    {
-        var request = new CreatePermissionActionDto { Name = string.Empty };
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreatePermissionAsync(request, TestContext.Current.CancellationToken));
     }
 
     [Fact]

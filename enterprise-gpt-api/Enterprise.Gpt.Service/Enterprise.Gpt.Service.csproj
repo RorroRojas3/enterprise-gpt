@@ -14,7 +14,6 @@
     <!-- The streamed event contract ConversationService projects a turn into. -->
     <PackageReference Include="Andes.Extensions.AI.UI" />
     <PackageReference Include="Azure.AI.DocumentIntelligence" />
-    <PackageReference Include="Azure.Storage.Blobs" />
     <!-- CSV (.csv) text extraction — see Documents/Extraction/CsvTextExtractor.cs. A correct RFC 4180 reader has to
          handle quoted multi-line fields, escaped quotes and ragged rows, and getting any of those wrong
          corrupts cell data silently; MS-PL/Apache-2.0 and no dependencies of its own on net8.0+. -->

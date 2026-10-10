@@ -19,7 +19,7 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// Azure OpenAI chat client.
 /// </summary>
 /// <remarks>
-/// Kept out of <c>Program.cs</c> for the same reason as <see cref="AnthropicDefaults"/>:
+/// Kept apart from <see cref="AzureOpenAIProviderConfiguration"/> for the same reason as <see cref="AnthropicDefaults"/>:
 /// confining the SDK's request types to one file keeps them out of the provider-agnostic
 /// <c>ChatOptions</c> that <c>ConversationService</c> builds. Contrast
 /// <see cref="AzureAIFoundryDefaults"/>, which reaches the same resource over Chat Completions

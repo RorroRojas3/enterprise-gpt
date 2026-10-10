@@ -77,11 +77,8 @@ public sealed class ConversationExportService(
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly TimeProvider _timeProvider = timeProvider;
 
-    // Indexer assignment, not ToDictionary: the latter throws on a duplicate key, and the throw would
-    // land in this scoped service's constructor on every export request — surfacing as a 400 with a
-    // LINQ message in the body, because ArgumentException is the handler's bad-request arm. Last
-    // registration wins instead, matching how the container resolves a single service, so a
-    // deployment overriding one format's renderer does not have to remove the original first.
+    // Indexer assignment, not ToDictionary: a duplicate key would throw in this scoped constructor and
+    // fail every export. Last registration wins, matching how the container resolves a single service.
     private readonly Dictionary<ConversationExportFormats, IConversationExportRenderer> _renderers =
         BuildRegistry(renderers);
 

@@ -30,9 +30,7 @@ public sealed class ProjectServiceTests : IDisposable
         _service = new ProjectService(
             NullLogger<ProjectService>.Instance,
             _tokenService,
-            _fixture.Context,
-            new CreateProjectActionDtoValidator(),
-            new UpdateProjectActionDtoValidator());
+            _fixture.Context);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -609,13 +607,6 @@ public sealed class ProjectServiceTests : IDisposable
         var result = await _service.CreateProjectAsync(CreateRequest("Research"), TestContext.Current.CancellationToken);
 
         Assert.Equal("Research", result.Name);
-    }
-
-    [Fact]
-    public async Task CreateProjectAsync_EmptyName_ThrowsValidationException()
-    {
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateProjectAsync(CreateRequest(string.Empty), TestContext.Current.CancellationToken));
     }
 
     [Fact]

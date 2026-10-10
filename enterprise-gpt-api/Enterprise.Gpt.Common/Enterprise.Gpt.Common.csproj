@@ -4,4 +4,12 @@
     <RootNamespace>Enterprise.Gpt.Common</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Validation/ is the one place Common takes packages: every layer that registers options
+         validates them through it. -->
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
 </Project>

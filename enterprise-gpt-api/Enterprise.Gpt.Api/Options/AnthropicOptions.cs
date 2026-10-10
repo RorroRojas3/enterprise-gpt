@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
+using FluentValidation;
 
-namespace Enterprise.Gpt.Service.Options;
+namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
 /// Connection settings for the Anthropic chat provider, bound from the <c>Anthropic</c> configuration
@@ -139,4 +140,38 @@ public sealed class AnthropicOptions
         !string.Equals(Thinking, DisabledThinking, StringComparison.OrdinalIgnoreCase)
         || !(string.Equals(Effort, "xhigh", StringComparison.OrdinalIgnoreCase)
              || string.Equals(Effort, "max", StringComparison.OrdinalIgnoreCase));
+}
+
+internal sealed class AnthropicOptionsValidator : AbstractValidator<AnthropicOptions>
+{
+    public AnthropicOptionsValidator()
+    {
+        When(options => options.Enabled, () =>
+        {
+            RuleFor(options => options.ApiKey).NotEmpty()
+                .WithMessage("Anthropic:ApiKey is required when Anthropic:Enabled is true.");
+            RuleFor(options => options.DefaultModelId).NotEmpty()
+                .WithMessage("Anthropic:DefaultModelId is required when Anthropic:Enabled is true.");
+            // The Bedrock section takes 'anthropic.'-prefixed ids, and copying one across is the mistake it invites.
+            RuleFor(options => options.DefaultModelId)
+                .Must(id => !id.StartsWith("anthropic.", StringComparison.OrdinalIgnoreCase))
+                .WithMessage("Anthropic:DefaultModelId must be a bare Anthropic model id; the 'anthropic.' prefix belongs to Bedrock.");
+            RuleFor(options => options.DefaultMaxOutputTokens).GreaterThan(0)
+                .WithMessage("Anthropic:DefaultMaxOutputTokens must be greater than zero.");
+            RuleFor(options => options.Timeout).GreaterThan(TimeSpan.Zero)
+                .WithMessage("Anthropic:Timeout must be greater than zero.");
+            RuleFor(options => options.MaxRetries).GreaterThanOrEqualTo(0)
+                .WithMessage("Anthropic:MaxRetries cannot be negative.");
+            // Null-guarded before the lookup: the case-insensitive comparer throws on a null rather than reporting a miss.
+            RuleFor(options => options.Thinking)
+                .Must(value => !string.IsNullOrWhiteSpace(value) && AnthropicOptions.ThinkingModes.Contains(value))
+                .WithMessage("Anthropic:Thinking must be 'adaptive' or 'disabled'.");
+            RuleFor(options => options.Effort)
+                .Must(value => !string.IsNullOrWhiteSpace(value) && AnthropicOptions.EffortLevels.Contains(value))
+                .WithMessage("Anthropic:Effort must be one of low, medium, high, xhigh, max.");
+            // Above 'high' effort the model rejects every request with disabled thinking as a 400.
+            RuleFor(options => options.Thinking).Must((options, _) => options.IsThinkingEffortCombinationValid)
+                .WithMessage("Anthropic:Thinking 'disabled' is not accepted with Anthropic:Effort 'xhigh' or 'max'.");
+        });
+    }
 }

@@ -33,7 +33,6 @@ public sealed class UserMcpCredentialServiceTests : IDisposable
             NullLogger<UserMcpCredentialService>.Instance,
             _tokenService,
             _fixture.Context,
-            new SaveMcpCredentialActionDtoValidator(),
             _protector,
             _mcpClientCache);
     }
@@ -246,19 +245,6 @@ public sealed class UserMcpCredentialServiceTests : IDisposable
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.SaveAsync(server.Id, Request(), TestContext.Current.CancellationToken));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("short")]
-    [InlineData("github pat with spaces")]
-    [InlineData("github_pat\nnewline")]
-    public async Task SaveAsync_UnusableKey_FailsValidation(string apiKey)
-    {
-        var server = await AddMcpServerAsync("aaa-validation");
-
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _service.SaveAsync(server.Id, Request(apiKey), TestContext.Current.CancellationToken));
     }
 
     [Fact]

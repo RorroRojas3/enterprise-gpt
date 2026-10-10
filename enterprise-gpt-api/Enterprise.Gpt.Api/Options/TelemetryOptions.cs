@@ -1,3 +1,5 @@
+using FluentValidation;
+
 namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
@@ -43,4 +45,18 @@ internal sealed class TelemetryOptions
 
     /// <summary>Whether server spans carry the caller's Entra object id as <c>enduser.id</c>.</summary>
     public bool CaptureUserId { get; set; } = true;
+}
+
+internal sealed class TelemetryOptionsValidator : AbstractValidator<TelemetryOptions>
+{
+    public TelemetryOptionsValidator()
+    {
+        RuleFor(options => options.RoleName).NotEmpty().WithMessage("AzureMonitor:RoleName is required.");
+        RuleFor(options => options.SamplingRatio).Null().When(options => options.TracesPerSecond is not null)
+            .WithMessage("AzureMonitor:TracesPerSecond and AzureMonitor:SamplingRatio select different samplers — set at most one.");
+        RuleFor(options => options.TracesPerSecond).Must(rate => rate is null or > 0)
+            .WithMessage("AzureMonitor:TracesPerSecond must be greater than zero.");
+        RuleFor(options => options.SamplingRatio).Must(ratio => ratio is null or (> 0 and <= 1))
+            .WithMessage("AzureMonitor:SamplingRatio must be greater than zero and at most one.");
+    }
 }

@@ -22,7 +22,7 @@ internal static class ProblemDetailsTestHelpers
     {
         return new ServiceCollection()
             .AddLogging()
-            .AddEnterpriseProblemDetails()
+            .AddEnterpriseGptProblemDetails()
             .BuildServiceProvider()
             .GetRequiredService<IProblemDetailsService>();
     }

@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using Enterprise.Gpt.Api.Middleware;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Options;
 
@@ -69,7 +69,6 @@ public sealed class BodyLoggingOptions
     /// <see cref="HttpRequestRewindExtensions.EnableBuffering(HttpRequest)"/> spools the entire body —
     /// to disk past its own threshold — regardless of how little of it is ever read.
     /// </remarks>
-    [Range(1, 1024 * 1024)]
     public int MaxBodyBytes { get; set; } = 4096;
 
     /// <summary>
@@ -103,7 +102,7 @@ public sealed class BodyLoggingOptions
     /// </summary>
     /// <remarks>
     /// Applied by <see cref="IRequestBodyRedactor"/>. Register a different implementation into the
-    /// container before <c>AddRequestLogging</c> runs to redact by some other rule.
+    /// container before <c>AddEnterpriseGptRequestLogging</c> runs to redact by some other rule.
     /// </remarks>
     public IList<string> RedactedPropertyNames { get; set; } = [];
 
@@ -136,4 +135,15 @@ public sealed class BodyLoggingOptions
         ExcludedPaths.All(RequestLoggingOptions.IsRootedPath)
         && AllowedContentTypes.All(contentType => !string.IsNullOrWhiteSpace(contentType))
         && RedactedPropertyNames.All(name => !string.IsNullOrWhiteSpace(name));
+}
+
+internal sealed class BodyLoggingOptionsValidator : AbstractValidator<BodyLoggingOptions>
+{
+    public BodyLoggingOptionsValidator()
+    {
+        RuleFor(options => options.LogLevel).Must(level => Enum.IsDefined(level))
+            .WithMessage("RequestLogging:Bodies:LogLevel must be a valid log level.");
+        RuleFor(options => options.MaxBodyBytes).InclusiveBetween(1, 1024 * 1024)
+            .WithMessage("RequestLogging:Bodies:MaxBodyBytes must be between 1 and 1048576.");
+    }
 }

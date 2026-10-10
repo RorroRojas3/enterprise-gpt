@@ -141,7 +141,7 @@ public sealed class TelemetryRegistrationTests
         var configuration = new ConfigurationBuilder().AddJsonFile("api-appsettings.json").Build();
 
         var services = new ServiceCollection();
-        services.AddEnterpriseTelemetry(configuration);
+        services.AddEnterpriseGptTelemetry(configuration);
 
         Validator(services).Validate();
         // The connection string carries an ingestion key; appsettings.json is committed.
@@ -198,7 +198,7 @@ public sealed class TelemetryRegistrationTests
     private static IServiceCollection Register(Dictionary<string, string?> settings)
     {
         var services = new ServiceCollection();
-        services.AddEnterpriseTelemetry(Configuration(settings));
+        services.AddEnterpriseGptTelemetry(Configuration(settings));
 
         return services;
     }
