@@ -1,10 +1,12 @@
 using System.Text.Json;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service.Serialization;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Repository.Cosmos.Serialization;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Transcripts;
+namespace Enterprise.Gpt.Unit.Test.Entity.Transcripts;
 
 public sealed class TranscriptDocumentTests
 {

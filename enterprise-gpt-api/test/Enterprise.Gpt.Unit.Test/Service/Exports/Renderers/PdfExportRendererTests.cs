@@ -1,14 +1,14 @@
 using System.Text;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Fonts;
-using Enterprise.Gpt.Service.Export.Renderers;
-using PdfSharp.Fonts;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Models;
+using Enterprise.Gpt.Service.Exports.Renderers;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using PdfSharp.Pdf.IO;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports.Renderers;
 
 /// <summary>
 /// Exercises the PDF renderer end to end, against whatever fonts the machine running the suite has.
@@ -147,42 +147,4 @@ public sealed class PdfExportRendererTests(PdfFontFixture fonts)
 
         Assert.Equal("etc-passwd.pdf", export.FileName);
     }
-}
-
-/// <summary>
-/// Installs one process-wide font resolver for every PDF test.
-/// </summary>
-public sealed class PdfFontFixture
-{
-    /// <summary>
-    /// Why the PDF tests skip when they do — a machine with no font PDFsharp can read is exactly the
-    /// deployment the <c>export-renderer-not-configured</c> problem exists for, so it is a skip
-    /// rather than a failure.
-    /// </summary>
-    public const string SkipReason =
-        "No usable export font was found on this machine, so PDF rendering is unavailable here — "
-        + "the same condition that makes the route answer 503. See Export/Fonts/README.md.";
-
-    public PdfFontFixture()
-    {
-        var resolver = new ExportFontResolver();
-        IsUsable = resolver.IsUsable;
-
-        if (IsUsable)
-        {
-            GlobalFontSettings.FontResolver = resolver;
-        }
-    }
-
-    /// <summary>Gets whether this machine resolved a body face.</summary>
-    public bool IsUsable { get; }
-}
-
-/// <summary>
-/// Serializes the PDF tests, because the font resolver they share is process-global.
-/// </summary>
-[CollectionDefinition(Name)]
-public sealed class PdfFontCollection : ICollectionFixture<PdfFontFixture>
-{
-    public const string Name = "PdfFonts";
 }

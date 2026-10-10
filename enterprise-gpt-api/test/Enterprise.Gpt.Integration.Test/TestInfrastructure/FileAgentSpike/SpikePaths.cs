@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Locates the two places the spike's evidence lives: the copies in the test output, which every run
@@ -40,8 +40,8 @@ internal static class SpikePaths
     /// <exception cref="InvalidOperationException">The source tree this assembly was compiled from is absent.</exception>
     public static string RequireConversionMatrixSourcePath()
     {
-        // ...\tests\Enterprise.Gpt.Integration.Test\FileAgentSpike -> ...\Enterprise.Gpt.Service
-        var solutionDirectory = Directory.GetParent(SpikeSourceDirectory())?.Parent?.Parent
+        // ...\test\Enterprise.Gpt.Integration.Test\TestInfrastructure\FileAgentSpike -> ...\Enterprise.Gpt.Service
+        var solutionDirectory = Directory.GetParent(SpikeSourceDirectory())?.Parent?.Parent?.Parent
             ?? throw SourceTreeMissing(SpikeSourceDirectory());
 
         var directory = RequireSourceDirectory(

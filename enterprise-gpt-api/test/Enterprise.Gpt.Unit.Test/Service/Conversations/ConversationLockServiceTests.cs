@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Conversations;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations;
 
 /// <summary>
 /// Covers <see cref="ConversationLockService"/>: that it grants a conversation to exactly one

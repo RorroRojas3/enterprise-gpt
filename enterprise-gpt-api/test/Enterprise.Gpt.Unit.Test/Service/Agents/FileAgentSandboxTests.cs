@@ -1,8 +1,8 @@
-using Enterprise.Gpt.Api.Agents;
+using Enterprise.Gpt.Service.Agents;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// What a completed run's messages are read for. Every fact here was established against a live

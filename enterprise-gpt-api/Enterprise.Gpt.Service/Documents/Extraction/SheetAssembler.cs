@@ -1,23 +1,15 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
 using System.Buffers;
 using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Options;
 
-namespace Enterprise.Gpt.Service.Extraction;
-
-/// <summary>
-/// The segments a sheet is retrieved through and the structured grid behind them.
-/// </summary>
-/// <param name="CellCharacters">Length of the serialized cell data, to charge against the upload's budget.</param>
-internal sealed record SheetAssembly(
-    IReadOnlyList<DocumentSegmentDto> Segments,
-    SheetStructureDto Structure,
-    int CellCharacters);
+namespace Enterprise.Gpt.Service.Documents.Extraction;
 
 /// <summary>
 /// Turns one sheet's rows into a schema card, header-repeating row windows, and the columns and rows
@@ -201,7 +193,7 @@ internal static class SheetAssembler
         int firstDataRow,
         int rowCount,
         string[] columnNames,
-        SheetColumnType[] columnTypes,
+        SheetColumnTypes[] columnTypes,
         string[]? header,
         int budget,
         ITextChunker chunker,
@@ -309,7 +301,7 @@ internal static class SheetAssembler
                 continue;
             }
 
-            if (Classify(cell) == SheetColumnType.Text)
+            if (Classify(cell) == SheetColumnTypes.Text)
             {
                 sawText = true;
                 continue;
@@ -362,9 +354,9 @@ internal static class SheetAssembler
         return names;
     }
 
-    private static SheetColumnType[] InferColumnTypes(IReadOnlyList<string[]> rows, int firstDataRow, int columnCount)
+    private static SheetColumnTypes[] InferColumnTypes(IReadOnlyList<string[]> rows, int firstDataRow, int columnCount)
     {
-        var candidates = new SheetColumnType?[columnCount];
+        var candidates = new SheetColumnTypes?[columnCount];
         var sampled = Math.Min(rows.Count, firstDataRow + TypeSampleRows);
 
         for (var r = firstDataRow; r < sampled; r++)
@@ -379,37 +371,37 @@ internal static class SheetAssembler
                 }
 
                 var kind = Classify(row[c]);
-                candidates[c] = candidates[c] is { } existing && existing != kind ? SheetColumnType.Text : kind;
+                candidates[c] = candidates[c] is { } existing && existing != kind ? SheetColumnTypes.Text : kind;
             }
         }
 
-        var types = new SheetColumnType[columnCount];
+        var types = new SheetColumnTypes[columnCount];
 
         for (var c = 0; c < columnCount; c++)
         {
-            types[c] = candidates[c] ?? SheetColumnType.Text;
+            types[c] = candidates[c] ?? SheetColumnTypes.Text;
         }
 
         return types;
     }
 
-    private static SheetColumnType Classify(string value)
+    private static SheetColumnTypes Classify(string value)
     {
         if (bool.TryParse(value, out _))
         {
-            return SheetColumnType.Boolean;
+            return SheetColumnTypes.Boolean;
         }
 
         if (double.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out _))
         {
-            return SheetColumnType.Number;
+            return SheetColumnTypes.Number;
         }
 
         // Exactly the formats extraction renders a date cell as, and no others: a loose parse would
         // read an order code or a version string as a date.
         return DateTime.TryParseExact(value, _dateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
-            ? SheetColumnType.Date
-            : SheetColumnType.Text;
+            ? SheetColumnTypes.Date
+            : SheetColumnTypes.Text;
     }
 
     private static string SerializeCells(string[] row, string[] columnNames, ArrayBufferWriter<byte> buffer, Utf8JsonWriter writer)
@@ -434,13 +426,13 @@ internal static class SheetAssembler
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
-    private static string TypeName(SheetColumnType type)
+    private static string TypeName(SheetColumnTypes type)
     {
         return type switch
         {
-            SheetColumnType.Number => "number",
-            SheetColumnType.Date => "date",
-            SheetColumnType.Boolean => "boolean",
+            SheetColumnTypes.Number => "number",
+            SheetColumnTypes.Date => "date",
+            SheetColumnTypes.Boolean => "boolean",
             _ => "text"
         };
     }

@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Repository.Cosmos.Options;
 
 /// <summary>
 /// Connection and container settings for the conversation transcript store, bound from the
@@ -21,7 +21,7 @@ namespace Enterprise.Gpt.Service.Settings;
 /// else.
 /// </para>
 /// </remarks>
-public sealed class CosmosOptions
+public sealed class CosmosDbOptions
 {
     /// <summary>
     /// The configuration section this type binds from.

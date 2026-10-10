@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Configuration;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Resolves the settings the capability spike needs, and decides whether it may run at all.

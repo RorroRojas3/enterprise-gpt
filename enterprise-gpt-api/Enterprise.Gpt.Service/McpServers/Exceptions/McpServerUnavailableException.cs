@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions
+namespace Enterprise.Gpt.Service.McpServers.Exceptions
 {
     /// <summary>
     /// Thrown when an MCP server cannot be used: connecting to it or listing its tools fails

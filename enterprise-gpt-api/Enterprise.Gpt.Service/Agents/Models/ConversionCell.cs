@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Enterprise.Gpt.Common.Enums;
 
 namespace Enterprise.Gpt.Service.Agents.Models;

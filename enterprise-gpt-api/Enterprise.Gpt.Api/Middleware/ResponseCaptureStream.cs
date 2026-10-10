@@ -1,4 +1,5 @@
 using System.Text;
+using Enterprise.Gpt.Api.Options;
 
 namespace Enterprise.Gpt.Api.Middleware;
 

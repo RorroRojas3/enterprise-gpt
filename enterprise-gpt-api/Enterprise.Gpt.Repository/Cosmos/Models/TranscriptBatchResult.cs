@@ -1,6 +1,4 @@
 using System.Net;
-using Enterprise.Gpt.Common.Enums;
-using Microsoft.Azure.Cosmos;
 
 namespace Enterprise.Gpt.Repository.Cosmos.Models;
 

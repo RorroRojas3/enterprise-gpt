@@ -1,8 +1,9 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
 /// <summary>
 /// Covers the generated sheet-query SQL. The statements cannot be executed here — SQLite derives its own
@@ -73,16 +74,16 @@ public sealed class SheetQuerySqlTests
         Assert.Contains("TOP (@maxRows)", SheetQuerySql.BuildRowList([]), StringComparison.Ordinal);
         Assert.Contains(
             "TOP (@maxGroups)",
-            SheetQuerySql.BuildGroupedAggregate(SheetQueryOperation.Sum, SheetColumnType.Number, []),
+            SheetQuerySql.BuildGroupedAggregate(SheetQueryOperations.Sum, SheetColumnTypes.Number, []),
             StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData(SheetColumnType.Number, "TRY_CONVERT(float,")]
-    [InlineData(SheetColumnType.Date, "TRY_CONVERT(datetime2,")]
-    public void BuildAggregate_ReadsTheColumnAsItsOwnInferredType(SheetColumnType type, string expected)
+    [InlineData(SheetColumnTypes.Number, "TRY_CONVERT(float,")]
+    [InlineData(SheetColumnTypes.Date, "TRY_CONVERT(datetime2,")]
+    public void BuildAggregate_ReadsTheColumnAsItsOwnInferredType(SheetColumnTypes type, string expected)
     {
-        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperation.Min, type, []);
+        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperations.Min, type, []);
 
         Assert.Contains(expected, sql, StringComparison.Ordinal);
     }
@@ -90,7 +91,7 @@ public sealed class SheetQuerySqlTests
     [Fact]
     public void BuildAggregate_BooleanColumn_ComparesAsTextRatherThanReturningBit()
     {
-        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperation.Max, SheetColumnType.Boolean, []);
+        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperations.Max, SheetColumnTypes.Boolean, []);
 
         Assert.DoesNotContain("RETURNING", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("bit", sql, StringComparison.Ordinal);
@@ -100,7 +101,7 @@ public sealed class SheetQuerySqlTests
     [Fact]
     public void BuildAggregate_CountWithNoColumn_CountsRowsRatherThanValues()
     {
-        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperation.Count, null, []);
+        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperations.Count, null, []);
 
         Assert.DoesNotContain("JSON_VALUE(r.[Cells], @valuePath)", sql, StringComparison.Ordinal);
         Assert.Equal(3, CountOccurrences(sql, "COUNT(*)"));
@@ -109,7 +110,7 @@ public sealed class SheetQuerySqlTests
     [Fact]
     public void BuildAggregate_CountWithAColumn_CountsPopulatedCellsRatherThanReadableOnes()
     {
-        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperation.Count, SheetColumnType.Number, []);
+        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperations.Count, SheetColumnTypes.Number, []);
 
         // Counting the coerced value would answer "how many of them parse as a number" to a question
         // that asked how many rows have one at all.
@@ -120,7 +121,7 @@ public sealed class SheetQuerySqlTests
     [Fact]
     public void BuildAggregate_ReportsBothTheMatchedRowsAndTheRowsThatContributed()
     {
-        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperation.Sum, SheetColumnType.Number, []);
+        var sql = SheetQuerySql.BuildAggregate(SheetQueryOperations.Sum, SheetColumnTypes.Number, []);
 
         Assert.Contains("COUNT(*) AS [MatchedRows]", sql, StringComparison.Ordinal);
         Assert.Contains("COUNT(TRY_CONVERT(float,", sql, StringComparison.Ordinal);
@@ -130,7 +131,7 @@ public sealed class SheetQuerySqlTests
     [Fact]
     public void BuildGroupedAggregate_GroupsAndOrdersOnTheGroupKeyRatherThanTheAggregate()
     {
-        var sql = SheetQuerySql.BuildGroupedAggregate(SheetQueryOperation.Sum, SheetColumnType.Number, []);
+        var sql = SheetQuerySql.BuildGroupedAggregate(SheetQueryOperations.Sum, SheetColumnTypes.Number, []);
 
         Assert.Contains("GROUP BY JSON_VALUE(r.[Cells], @groupPath)", sql, StringComparison.Ordinal);
         Assert.Contains("ORDER BY [GroupKey]", sql, StringComparison.Ordinal);
@@ -163,7 +164,7 @@ public sealed class SheetQuerySqlTests
 
         var sql = SheetQuerySql.BuildRowList([.. Enumerable
             .Range(0, filterCount)
-            .Select(_ => new SheetFilterSpec(SheetColumnType.Text, SheetFilterComparator.Eq))]);
+            .Select(_ => new SheetFilterSpec(SheetColumnTypes.Text, SheetFilterComparators.Eq))]);
 
         for (var i = 0; i < filterCount; i++)
         {
@@ -179,7 +180,7 @@ public sealed class SheetQuerySqlTests
     [Fact]
     public void BuildRowList_NotEqual_KeepsRowsWithNoValueInTheColumn()
     {
-        var sql = SheetQuerySql.BuildRowList([new SheetFilterSpec(SheetColumnType.Text, SheetFilterComparator.Neq)]);
+        var sql = SheetQuerySql.BuildRowList([new SheetFilterSpec(SheetColumnTypes.Text, SheetFilterComparators.Neq)]);
 
         // A bare <> is NULL for a row whose cell is absent, which would drop rows that genuinely are not
         // equal to the value named.
@@ -191,7 +192,7 @@ public sealed class SheetQuerySqlTests
     public void BuildRowList_Contains_MatchesTheCellsOwnTextWithWildcardsEscaped()
     {
         var sql = SheetQuerySql.BuildRowList(
-            [new SheetFilterSpec(SheetColumnType.Number, SheetFilterComparator.Contains)]);
+            [new SheetFilterSpec(SheetColumnTypes.Number, SheetFilterComparators.Contains)]);
 
         // Matched as text whatever the column holds, so a contains filter never coerces.
         Assert.DoesNotContain("TRY_CONVERT", sql, StringComparison.Ordinal);
@@ -212,9 +213,9 @@ public sealed class SheetQuerySqlTests
     public void Builders_NullFilters_Throw()
     {
         Assert.Throws<ArgumentNullException>(
-            () => SheetQuerySql.BuildAggregate(SheetQueryOperation.Sum, SheetColumnType.Number, null!));
+            () => SheetQuerySql.BuildAggregate(SheetQueryOperations.Sum, SheetColumnTypes.Number, null!));
         Assert.Throws<ArgumentNullException>(
-            () => SheetQuerySql.BuildGroupedAggregate(SheetQueryOperation.Sum, SheetColumnType.Number, null!));
+            () => SheetQuerySql.BuildGroupedAggregate(SheetQueryOperations.Sum, SheetColumnTypes.Number, null!));
         Assert.Throws<ArgumentNullException>(() => SheetQuerySql.BuildRowList(null!));
     }
 
@@ -222,24 +223,24 @@ public sealed class SheetQuerySqlTests
     public void BuildAggregate_AnAggregateWithNoColumnType_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => SheetQuerySql.BuildAggregate(SheetQueryOperation.Sum, null, []));
+            () => SheetQuerySql.BuildAggregate(SheetQueryOperations.Sum, null, []));
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => SheetQuerySql.BuildAggregate(SheetQueryOperation.Filter, SheetColumnType.Number, []));
+            () => SheetQuerySql.BuildAggregate(SheetQueryOperations.Filter, SheetColumnTypes.Number, []));
     }
 
     private static IEnumerable<string> AllStatements()
     {
         SheetFilterSpec[] filters =
         [
-            new(SheetColumnType.Number, SheetFilterComparator.Gte),
-            new(SheetColumnType.Text, SheetFilterComparator.Contains),
-            new(SheetColumnType.Date, SheetFilterComparator.Lt),
-            new(SheetColumnType.Boolean, SheetFilterComparator.Neq)
+            new(SheetColumnTypes.Number, SheetFilterComparators.Gte),
+            new(SheetColumnTypes.Text, SheetFilterComparators.Contains),
+            new(SheetColumnTypes.Date, SheetFilterComparators.Lt),
+            new(SheetColumnTypes.Boolean, SheetFilterComparators.Neq)
         ];
 
-        yield return SheetQuerySql.BuildAggregate(SheetQueryOperation.Sum, SheetColumnType.Number, filters);
-        yield return SheetQuerySql.BuildAggregate(SheetQueryOperation.Count, null, filters);
-        yield return SheetQuerySql.BuildGroupedAggregate(SheetQueryOperation.Avg, SheetColumnType.Number, filters);
+        yield return SheetQuerySql.BuildAggregate(SheetQueryOperations.Sum, SheetColumnTypes.Number, filters);
+        yield return SheetQuerySql.BuildAggregate(SheetQueryOperations.Count, null, filters);
+        yield return SheetQuerySql.BuildGroupedAggregate(SheetQueryOperations.Avg, SheetColumnTypes.Number, filters);
         yield return SheetQuerySql.BuildRowList(filters);
     }
 

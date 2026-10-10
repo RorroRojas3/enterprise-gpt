@@ -1,20 +1,20 @@
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Common.Constants;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
 /// Covers the callback that shapes an Azure AI Foundry turn, in isolation from the SDK bridge.
 /// <see cref="AzureAIFoundryChatClientBridgeTests"/> covers what actually reaches the wire; this
 /// covers the decisions the callback makes before it gets there.
 /// </summary>
-public sealed class AzureAIFoundryChatDefaultsTests
+public sealed class AzureAIFoundryDefaultsTests
 {
     private static ChatOptions Apply(ChatOptions options)
     {
-        AzureAIFoundryChatDefaults.Create()(options);
+        AzureAIFoundryDefaults.Create()(options);
 
         return options;
     }
@@ -50,7 +50,7 @@ public sealed class AzureAIFoundryChatDefaultsTests
     [Fact]
     public void Create_Always_LeavesTheConversationIdAlone()
     {
-        // The asymmetry with AzureOpenAIChatDefaults is deliberate, not an oversight. The Responses
+        // The asymmetry with AzureOpenAIDefaults is deliberate, not an oversight. The Responses
         // adapter reads ConversationId as previous_response_id and has to have it cleared; Chat
         // Completions is stateless and the adapter has nowhere to put it, so there is nothing to
         // clear. AzureAIFoundryChatClientBridgeTests pins that it stays off the wire regardless.

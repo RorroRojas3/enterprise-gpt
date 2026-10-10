@@ -1,9 +1,10 @@
-using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.User;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Dto.Actions.Users;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Dto.Users;
+using Enterprise.Gpt.Service.Users;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Enterprise.Gpt.Api.Endpoints
 {

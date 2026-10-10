@@ -1,7 +1,8 @@
 ﻿using System.Text.Json.Serialization;
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Conversations;
 
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Documents
 {
     /// <summary>
     /// A document held by a conversation, as returned by the conversation document listing and

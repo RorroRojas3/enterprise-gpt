@@ -1,7 +1,7 @@
-using Microsoft.Data.SqlTypes;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.Data.SqlTypes;
 
-namespace Enterprise.Gpt.Entity
+namespace Enterprise.Gpt.Entity.Base
 {
     /// <summary>
     /// Base type for a single retrieval unit of an ingested document: a span of text sized for the

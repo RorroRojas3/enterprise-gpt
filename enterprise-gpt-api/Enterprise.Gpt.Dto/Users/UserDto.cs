@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
+using Enterprise.Gpt.Dto.Permissions;
 
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Users
 {
     public sealed record UserDto
     {

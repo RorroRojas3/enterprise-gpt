@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Service.Serialization;
+namespace Enterprise.Gpt.Repository.Cosmos.Serialization;
 
 /// <summary>
 /// Writes every <see cref="DateTimeOffset"/> stored in Cosmos DB as a UTC instant in a

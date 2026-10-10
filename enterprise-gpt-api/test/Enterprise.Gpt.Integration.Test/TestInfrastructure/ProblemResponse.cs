@@ -1,9 +1,4 @@
-using System.Net.Http.Json;
-using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 

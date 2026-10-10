@@ -1,9 +1,9 @@
 {
   "permissions": {
-    "allow": []
+    "allow": [],
+    "deny": ["mcp__plugin_andes-angular_angular-cli__ai_tutor"]
   },
   "model": "opus",
-  "enableAllProjectMcpServers": true,
   "enabledPlugins": {
     "github@claude-plugins-official": true,
     "andes-core@andes": true,

@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// The one sandbox conversation every probe shares, and the findings they accumulate into it.
@@ -102,13 +102,4 @@ public sealed class SandboxSpikeFixture : IAsyncLifetime
             _session = null;
         }
     }
-}
-
-/// <summary>
-/// Serializes every sandbox probe onto one session.
-/// </summary>
-[CollectionDefinition(Name)]
-public sealed class SandboxSpikeCollection : ICollectionFixture<SandboxSpikeFixture>
-{
-    public const string Name = "FileAgentSpike";
 }

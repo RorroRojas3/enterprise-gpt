@@ -1,11 +1,10 @@
 using System.Text.Json.Serialization;
-using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Entity.Transcripts;
+namespace Enterprise.Gpt.Entity.Transcripts.Models;
 
 /// <summary>
-/// A reader's verdict on one assistant message (US-1102).
+/// A reader's verdict on one assistant message.
 /// </summary>
 /// <remarks>
 /// Stamped rather than versioned: the transcript is append-only for its messages, but a rating is

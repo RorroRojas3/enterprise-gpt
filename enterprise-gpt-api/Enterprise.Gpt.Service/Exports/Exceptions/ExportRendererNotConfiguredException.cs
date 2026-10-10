@@ -1,6 +1,6 @@
-using Enterprise.Gpt.Service.Export;
+using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.Exports.Exceptions;
 
 /// <summary>
 /// Thrown when a conversation export is asked for in a format this deployment has no renderer for —

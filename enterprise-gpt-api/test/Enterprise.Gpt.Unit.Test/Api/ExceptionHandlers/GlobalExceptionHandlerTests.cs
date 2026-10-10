@@ -1,14 +1,19 @@
+using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Api.Problems.Constants;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Exceptions;
+using Enterprise.Gpt.Service.Documents.Exceptions;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Exports.Exceptions;
+using Enterprise.Gpt.Service.McpServers.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
-using Enterprise.Gpt.Api.ExceptionHandlers;
-using Enterprise.Gpt.Api.Problems;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Export;
 using Xunit;
 using static Enterprise.Gpt.Unit.Test.TestInfrastructure.ProblemDetailsTestHelpers;
 
-namespace Enterprise.Gpt.Unit.Test.ExceptionHandlers;
+namespace Enterprise.Gpt.Unit.Test.Api.ExceptionHandlers;
 
 public class GlobalExceptionHandlerTests
 {

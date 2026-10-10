@@ -2,19 +2,19 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Anthropic;
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
 /// Pins the request the Anthropic SDK's Microsoft.Extensions.AI bridge actually puts on the wire.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="AnthropicChatDefaultsTests"/> exercises the callback in isolation, which cannot see the
+/// <see cref="AnthropicDefaultsTests"/> exercises the callback in isolation, which cannot see the
 /// behaviour the callback is written around: the bridge treats the raw parameters as an overlay base
 /// and merges messages, tools, and system content onto them, but leaves <c>Model</c> and
 /// <c>MaxTokens</c> untouched. That behaviour is the opposite of what the SDK's own documentation for
@@ -87,7 +87,7 @@ public sealed class AnthropicChatClientBridgeTests
             .AsIChatClient(settings.DefaultModelId, settings.DefaultMaxOutputTokens);
 
         var options = new ChatOptions { ModelId = "claude-from-catalog", MaxOutputTokens = 1234 };
-        AnthropicChatDefaults.Create(settings)(options);
+        AnthropicDefaults.Create(settings)(options);
 
         await chatClient.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "Hello")],

@@ -1,14 +1,8 @@
+using Enterprise.Gpt.Service.Agents.Models;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Api.Agents;
-
-/// <summary>One file a sandbox run produced, as the response described it.</summary>
-/// <param name="FileId">The hosted file's id.</param>
-/// <param name="ContainerId">
-/// The code interpreter container the file lives in. Without it a download resolves against the
-/// standard Files API, which cannot see a file the sandbox wrote, and answers 404.
-/// </param>
-internal sealed record SandboxArtifact(string FileId, string? Name, string? ContainerId);
+namespace Enterprise.Gpt.Service.Agents;
 
 /// <summary>
 /// Moves files in and out of the hosted code interpreter.
@@ -167,4 +161,3 @@ internal sealed class FileAgentSandbox(IHostedFileClient files, ILogger logger)
     private static string? ContainerIdOf(object? rawRepresentation) =>
         rawRepresentation?.GetType().GetProperty("ContainerId")?.GetValue(rawRepresentation) as string;
 }
-#pragma warning restore MEAI001

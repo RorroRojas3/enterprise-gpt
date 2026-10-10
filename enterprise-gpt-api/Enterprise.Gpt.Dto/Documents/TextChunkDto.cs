@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Documents
 {
     /// <summary>
     /// A single retrieval unit produced by the chunker: a token-bounded span of document text.

@@ -1,5 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
-
 namespace Enterprise.Gpt.Service.Conversations.Tokenization.Models;
 
 /// <summary>

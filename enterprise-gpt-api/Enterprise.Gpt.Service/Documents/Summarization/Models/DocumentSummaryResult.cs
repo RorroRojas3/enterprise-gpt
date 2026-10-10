@@ -1,27 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity.Base;
-using Enterprise.Gpt.Entity.Conversations;
-using Enterprise.Gpt.Entity.Documents;
-using Enterprise.Gpt.Entity.Projects;
-using Enterprise.Gpt.Entity.Usage;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository.Sql.DbContexts;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Observability;
-using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
-using FluentValidation.Results;
-using FluentValidation;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-
-namespace Enterprise.Gpt.Service.Documents.Summarization.Models;
+﻿namespace Enterprise.Gpt.Service.Documents.Summarization.Models;
 
 /// <summary>
 /// One document's summary, and whether producing it cost anything.

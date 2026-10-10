@@ -1,13 +1,15 @@
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
 /// Covers the deterministic spreadsheet lookup against a real SQL Server 2025, which is the only place
@@ -346,7 +348,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
             new SeedSheet(
                 1,
                 "Notes",
-                [new SeedSheetColumn("Note", SheetColumnType.Text)],
+                [new SeedSheetColumn("Note", SheetColumnTypes.Text)],
                 [
                     new Dictionary<string, string> { ["Note"] = wide },
                     new Dictionary<string, string> { ["Note"] = wide }
@@ -356,7 +358,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         var scope = new DocumentRetrievalScope(
             conversationId,
             null,
-            [new RetrievableDocument(documentId, DocumentSource.Conversation, "notes.xlsx")]);
+            [new RetrievableDocument(documentId, DocumentSources.Conversation, "notes.xlsx")]);
 
         var result = await QueryAsync(
             scope, "filter", options: new SheetQueryOptions { MaxResultCharacters = 1_000 });
@@ -457,7 +459,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
             new SeedSheet(
                 1,
                 "Regions",
-                [new SeedSheetColumn("Region", SheetColumnType.Text), new SeedSheetColumn("Amount", SheetColumnType.Number)],
+                [new SeedSheetColumn("Region", SheetColumnTypes.Text), new SeedSheetColumn("Amount", SheetColumnTypes.Number)],
                 [
                     new Dictionary<string, string> { ["Region"] = "Café", ["Amount"] = "10" },
                     new Dictionary<string, string> { ["Region"] = "cafe", ["Amount"] = "5" }
@@ -467,7 +469,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         var scope = new DocumentRetrievalScope(
             conversationId,
             null,
-            [new RetrievableDocument(documentId, DocumentSource.Conversation, "regions.xlsx")]);
+            [new RetrievableDocument(documentId, DocumentSources.Conversation, "regions.xlsx")]);
 
         var grouped = await QueryAsync(scope, "sum", column: "Amount", groupBy: "Region");
         var filtered = await QueryAsync(scope, "sum", column: "Amount", filters: [Filter("Region", "eq", "cafe")]);
@@ -532,7 +534,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         var scope = new DocumentRetrievalScope(
             conversationId,
             projectId,
-            [new RetrievableDocument(documentId, DocumentSource.Project, "budget.xlsx")]);
+            [new RetrievableDocument(documentId, DocumentSources.Project, "budget.xlsx")]);
 
         Assert.Equal(6750d, (await QueryAsync(scope, "sum", column: "Revenue")).Value);
     }
@@ -553,7 +555,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         // A scope with no project is what a standalone conversation resolves to, and the project half of
         // every statement is gated on that being null.
         var scope = new DocumentRetrievalScope(
-            conversationId, null, [new RetrievableDocument(documentId, DocumentSource.Project, "budget.xlsx")]);
+            conversationId, null, [new RetrievableDocument(documentId, DocumentSources.Project, "budget.xlsx")]);
 
         Assert.Equal(0, (await QueryAsync(scope, "count")).Value);
     }
@@ -570,12 +572,12 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         Name: "Regional Revenue",
         Columns:
         [
-            new SeedSheetColumn("SKU", SheetColumnType.Text),
-            new SeedSheetColumn("Region", SheetColumnType.Text),
-            new SeedSheetColumn("Revenue", SheetColumnType.Number),
-            new SeedSheetColumn("Quarter", SheetColumnType.Text),
-            new SeedSheetColumn("Shipped", SheetColumnType.Boolean),
-            new SeedSheetColumn("OrderDate", SheetColumnType.Date)
+            new SeedSheetColumn("SKU", SheetColumnTypes.Text),
+            new SeedSheetColumn("Region", SheetColumnTypes.Text),
+            new SeedSheetColumn("Revenue", SheetColumnTypes.Number),
+            new SeedSheetColumn("Quarter", SheetColumnTypes.Text),
+            new SeedSheetColumn("Shipped", SheetColumnTypes.Boolean),
+            new SeedSheetColumn("OrderDate", SheetColumnTypes.Date)
         ],
         Rows:
         [
@@ -619,7 +621,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         return new DocumentRetrievalScope(
             conversationId,
             null,
-            [new RetrievableDocument(documentId, DocumentSource.Conversation, "budget.xlsx")]);
+            [new RetrievableDocument(documentId, DocumentSources.Conversation, "budget.xlsx")]);
     }
 
     /// <summary>
@@ -638,7 +640,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
             new SeedSheet(
                 1,
                 "Shifts",
-                [new SeedSheetColumn("Shift", SheetColumnType.Text), new SeedSheetColumn("Start", SheetColumnType.Date)],
+                [new SeedSheetColumn("Shift", SheetColumnTypes.Text), new SeedSheetColumn("Start", SheetColumnTypes.Date)],
                 [
                     new Dictionary<string, string> { ["Shift"] = "A", ["Start"] = "06:30:00" },
                     new Dictionary<string, string> { ["Shift"] = "B", ["Start"] = "14:00:00" },
@@ -649,7 +651,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         return new DocumentRetrievalScope(
             conversationId,
             null,
-            [new RetrievableDocument(documentId, DocumentSource.Conversation, "shifts.xlsx")]);
+            [new RetrievableDocument(documentId, DocumentSources.Conversation, "shifts.xlsx")]);
     }
 
     private async Task<SheetQueryResult> QueryAsync(

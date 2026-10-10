@@ -1,11 +1,20 @@
 using System.Text;
-using Enterprise.Gpt.Service.Rendering;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Conversations.Rendering;
+using Enterprise.Gpt.Service.Exports.Models;
 using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using CodeBlock = Enterprise.Gpt.Service.Exports.Models.CodeBlock;
+using HeadingBlock = Enterprise.Gpt.Service.Exports.Models.HeadingBlock;
+using ListBlock = Enterprise.Gpt.Service.Exports.Models.ListBlock;
+using ListItemBlock = Enterprise.Gpt.Service.Exports.Models.ListItemBlock;
 using Md = Markdig.Syntax;
+using ParagraphBlock = Enterprise.Gpt.Service.Exports.Models.ParagraphBlock;
+using QuoteBlock = Enterprise.Gpt.Service.Exports.Models.QuoteBlock;
+using ThematicBreakBlock = Enterprise.Gpt.Service.Exports.Models.ThematicBreakBlock;
 
-namespace Enterprise.Gpt.Service.Export;
+namespace Enterprise.Gpt.Service.Exports;
 
 /// <summary>
 /// Turns a message's markdown into the renderer-neutral block model.

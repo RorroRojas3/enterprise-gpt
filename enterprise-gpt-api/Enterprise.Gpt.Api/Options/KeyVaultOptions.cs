@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Api.Configuration;
+namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
 /// Selects and tunes the Azure Key Vault configuration source, bound from the <c>KeyVault</c> section.

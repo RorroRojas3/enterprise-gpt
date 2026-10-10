@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Dto;
+namespace Enterprise.Gpt.Dto.Documents;
 
 /// <summary>
 /// A document uploaded into a project, as returned by the project document listing. Carries no chunk

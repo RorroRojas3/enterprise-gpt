@@ -1,12 +1,11 @@
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Reports;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Service.Reports;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Reports;
 
 /// <summary>
 /// The refusals <c>ReportService</c> makes before it touches the database.
@@ -37,7 +36,7 @@ public sealed class ReportServiceTests : IDisposable
     public ReportServiceTests()
     {
         _service = new ReportService(
-            _fixture.Context, Options.Create(_options), NullLogger<ReportService>.Instance);
+            _fixture.Context, Microsoft.Extensions.Options.Options.Create(_options), NullLogger<ReportService>.Instance);
     }
 
     public void Dispose()

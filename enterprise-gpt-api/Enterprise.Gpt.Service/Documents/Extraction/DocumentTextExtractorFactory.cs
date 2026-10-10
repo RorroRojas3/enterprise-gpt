@@ -1,11 +1,12 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Common.Extensions;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Common.Extensions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
 
-namespace Enterprise.Gpt.Service.Extraction
+namespace Enterprise.Gpt.Service.Documents.Extraction
 {
     /// <summary>
     /// Selects the <see cref="IDocumentTextExtractor"/> that can read a given file extension, and is the

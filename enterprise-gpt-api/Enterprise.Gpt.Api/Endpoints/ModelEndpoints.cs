@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Http.HttpResults;
-using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Model;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
+﻿using Enterprise.Gpt.Api.Filters;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Dto.Actions.ChatModels;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Service.ChatModels;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Enterprise.Gpt.Api.Endpoints
 {

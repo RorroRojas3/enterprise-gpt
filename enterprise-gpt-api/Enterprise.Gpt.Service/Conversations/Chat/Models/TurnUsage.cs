@@ -1,8 +1,4 @@
-using Andes.Extensions.AI;
-using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Usage;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Agents;
 
 namespace Enterprise.Gpt.Service.Conversations.Chat.Models;
 

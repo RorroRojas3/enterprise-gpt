@@ -1,11 +1,13 @@
-using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Project;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Dto.Actions.Projects;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Dto.Projects;
+using Enterprise.Gpt.Service.Projects;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public class ProjectEndpointsTests
 {

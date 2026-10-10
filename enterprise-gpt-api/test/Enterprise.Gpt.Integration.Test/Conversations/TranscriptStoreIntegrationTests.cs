@@ -1,11 +1,13 @@
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Entity.Transcripts.Models;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Repository.Cosmos.Models;
 using Microsoft.Azure.Cosmos;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Conversations;
 
 /// <summary>
 /// Proves the storage foundation against a real Cosmos DB emulator. Transactional batch atomicity
@@ -329,9 +331,11 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
         var (userId, conversationId, partition) = await SeedConversationAsync(0, cancellationToken);
 
         var user = TranscriptMessageDocument.Create(
-            userId, conversationId, Guid.NewGuid(), ChatRoles.User, "Question", DateTimeOffset.UtcNow) with { Tokens = 7 };
+            userId, conversationId, Guid.NewGuid(), ChatRoles.User, "Question", DateTimeOffset.UtcNow) with
+        { Tokens = 7 };
         var assistant = TranscriptMessageDocument.Create(
-            userId, conversationId, Guid.NewGuid(), ChatRoles.Assistant, "Answer", DateTimeOffset.UtcNow.AddTicks(1)) with { Tokens = 11 };
+            userId, conversationId, Guid.NewGuid(), ChatRoles.Assistant, "Answer", DateTimeOffset.UtcNow.AddTicks(1)) with
+        { Tokens = 11 };
 
         var result = await _fixture.Store.ExecuteBatchAsync(partition, batch => batch
             .Create(user.Id, user)

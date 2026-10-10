@@ -1,11 +1,11 @@
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Repository;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Conversations;
 
 /// <summary>
 /// Covers the <c>Core.ConversationUsageTurn</c> table against a real SQL Server. The unique index

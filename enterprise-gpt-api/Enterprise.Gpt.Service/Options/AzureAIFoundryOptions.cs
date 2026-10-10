@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Connection settings for the Azure AI Foundry chat client, bound from the <c>AzureAIFoundry</c>
@@ -10,7 +10,7 @@ namespace Enterprise.Gpt.Service.Settings;
 /// OpenAI-compatible v1 endpoint. It carries no reasoning settings, and that absence is the design
 /// rather than an omission: reasoning <em>parameters</em> — effort and summary verbosity — are a
 /// Responses-API request feature, so a model served here cannot be asked for them however the
-/// catalog row is configured, and <c>AzureAIFoundryChatDefaults</c> enforces that at request time.
+/// catalog row is configured, and <c>AzureAIFoundryDefaults</c> enforces that at request time.
 /// </para>
 /// <para>
 /// That is a statement about the request, not the response. Some Foundry Models — DeepSeek-R1 among

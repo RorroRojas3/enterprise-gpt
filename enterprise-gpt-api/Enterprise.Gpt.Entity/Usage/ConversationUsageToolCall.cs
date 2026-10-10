@@ -1,8 +1,11 @@
-using Enterprise.Gpt.Common.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.McpServers;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Usage;
 
 /// <summary>
 /// One tool invocation made while serving a <see cref="ConversationUsage"/> call: which tool ran,

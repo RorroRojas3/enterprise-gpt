@@ -1,12 +1,15 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
 using Enterprise.Gpt.Service.Observability;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using System.ComponentModel;
-using System.Diagnostics;
 
-namespace Enterprise.Gpt.Service.Tool;
+namespace Enterprise.Gpt.Service.Documents.Sheets;
 
 /// <summary>
 /// Exposes the deterministic spreadsheet lookup to the assistant as a callable function.

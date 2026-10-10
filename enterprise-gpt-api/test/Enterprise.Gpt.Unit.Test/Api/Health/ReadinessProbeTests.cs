@@ -3,10 +3,9 @@ using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Health;
+namespace Enterprise.Gpt.Unit.Test.Api.Health;
 
 /// <summary>
 /// Covers the cache that keeps an anonymous readiness route from probing SQL and Cosmos once per caller.

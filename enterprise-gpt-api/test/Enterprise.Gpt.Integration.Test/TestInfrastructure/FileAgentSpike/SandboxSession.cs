@@ -3,7 +3,7 @@ using Microsoft.Extensions.AI;
 using OpenAI;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// One conversation with the hosted Code Interpreter, over the same Responses-route client

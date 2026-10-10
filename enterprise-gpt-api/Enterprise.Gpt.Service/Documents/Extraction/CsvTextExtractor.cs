@@ -1,18 +1,20 @@
-using CsvHelper;
-using CsvHelper.Configuration;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
 using System.Globalization;
 using System.Text;
+using CsvHelper;
+using CsvHelper.Configuration;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Options;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 // CsvHelper ships a ValidationException of its own; the 400 this extractor raises is the
 // FluentValidation one every other extractor raises.
 using ValidationException = FluentValidation.ValidationException;
 
-namespace Enterprise.Gpt.Service.Extraction;
+namespace Enterprise.Gpt.Service.Documents.Extraction;
 
 /// <summary>
 /// Reads delimited text (<c>.csv</c>) files locally, as a single-sheet workbook.

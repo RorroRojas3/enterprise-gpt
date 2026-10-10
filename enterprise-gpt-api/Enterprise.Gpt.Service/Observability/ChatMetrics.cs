@@ -1,5 +1,5 @@
 ﻿using System.Diagnostics.Metrics;
-using Enterprise.Gpt.Common.Observability;
+using Enterprise.Gpt.Common.Constants;
 
 namespace Enterprise.Gpt.Service.Observability;
 

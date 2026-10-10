@@ -1,10 +1,11 @@
 using System.Text;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Retrieval;
 using Microsoft.EntityFrameworkCore;
 
-namespace Enterprise.Gpt.Service.Summarization;
+namespace Enterprise.Gpt.Service.Documents.Summarization;
 
 /// <summary>
 /// Reassembles a document's text from the chunk rows ingestion already wrote.
@@ -32,7 +33,7 @@ public interface IDocumentTextAssembler
     /// original formatting does not.
     /// </para>
     /// </remarks>
-    Task<string> AssembleAsync(Guid documentId, DocumentSource source, CancellationToken cancellationToken);
+    Task<string> AssembleAsync(Guid documentId, DocumentSources source, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -51,7 +52,7 @@ public sealed class DocumentTextAssembler(
     /// <inheritdoc />
     public async Task<string> AssembleAsync(
         Guid documentId,
-        DocumentSource source,
+        DocumentSources source,
         CancellationToken cancellationToken)
     {
         var texts = await ReadChunkTextsAsync(documentId, source, cancellationToken)
@@ -84,11 +85,11 @@ public sealed class DocumentTextAssembler(
     /// </remarks>
     private async Task<List<string>> ReadChunkTextsAsync(
         Guid documentId,
-        DocumentSource source,
+        DocumentSources source,
         CancellationToken cancellationToken) =>
         source switch
         {
-            DocumentSource.Conversation => await _ctx.ConversationDocumentChunks
+            DocumentSources.Conversation => await _ctx.ConversationDocumentChunks
                 .AsNoTracking()
                 .Where(c => c.ConversationDocumentId == documentId
                     && !c.DateDeactivated.HasValue
@@ -98,7 +99,7 @@ public sealed class DocumentTextAssembler(
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false),
 
-            DocumentSource.Project => await _ctx.ProjectDocumentChunks
+            DocumentSources.Project => await _ctx.ProjectDocumentChunks
                 .AsNoTracking()
                 .Where(c => c.ProjectDocumentId == documentId
                     && !c.DateDeactivated.HasValue

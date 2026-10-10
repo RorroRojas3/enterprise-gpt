@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Dto.Actions.Mcp;
+using Enterprise.Gpt.Dto.Actions.McpServers;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Validators;
+namespace Enterprise.Gpt.Unit.Test.Dto.Actions.McpServers;
 
 public class SaveMcpCredentialActionValidatorTests
 {

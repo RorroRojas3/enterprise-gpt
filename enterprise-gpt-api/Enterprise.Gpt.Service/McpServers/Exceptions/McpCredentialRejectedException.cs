@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.McpServers.Exceptions;
 
 /// <summary>
 /// Thrown when an MCP server refuses the credential the user supplied — the token was revoked,

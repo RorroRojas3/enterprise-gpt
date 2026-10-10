@@ -1,20 +1,21 @@
+using Enterprise.Gpt.Dto.Actions.Users;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Service.Users;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Enterprise.Gpt.Dto.Actions.User;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 using GraphUser = Microsoft.Graph.Models.User;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Users;
 
 public sealed class UserServiceTests : IDisposable
 {
@@ -866,7 +867,7 @@ public sealed class UserServiceTests : IDisposable
 
         var cache = new UserPermissionCache(
             NullLogger<UserPermissionCache>.Instance,
-            Options.Create(new UserPermissionCacheOptions()),
+            Microsoft.Extensions.Options.Options.Create(new UserPermissionCacheOptions()),
             TimeProvider.System);
         var service = new UserService(
             NullLogger<UserService>.Instance,

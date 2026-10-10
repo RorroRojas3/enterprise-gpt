@@ -1,11 +1,11 @@
+using System.Runtime.CompilerServices;
 using Andes.Extensions.AI;
-using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using System.Runtime.CompilerServices;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 
 /// <summary>
 /// Covers <see cref="ChatUsageScope"/> against the real tool-tracking middleware: that a completed

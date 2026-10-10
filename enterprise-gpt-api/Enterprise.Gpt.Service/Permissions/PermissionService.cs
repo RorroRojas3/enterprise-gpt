@@ -1,17 +1,17 @@
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Dto.Actions.Permissions;
+using Enterprise.Gpt.Dto.Permissions;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Permission;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Mappers;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Permissions
 {
     public interface IPermissionService
     {

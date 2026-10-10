@@ -1,8 +1,8 @@
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tokenization;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Documents.Summarization;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 public sealed class MapUnitSplitterTests
 {

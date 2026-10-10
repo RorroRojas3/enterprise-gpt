@@ -1,7 +1,9 @@
+using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.Agents;
+using Enterprise.Gpt.Service.Agents.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// Covers what a run refuses before it opens a sandbox session — and, just as importantly, what it

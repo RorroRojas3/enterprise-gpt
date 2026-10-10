@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Enterprise.Gpt.Service.Export;
+namespace Enterprise.Gpt.Service.Exports;
 
 /// <summary>
 /// The one palette, type scale and font stack every export format renders with.

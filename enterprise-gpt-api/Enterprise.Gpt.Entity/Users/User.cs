@@ -1,7 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Permissions;
 
-namespace Enterprise.Gpt.Entity
+namespace Enterprise.Gpt.Entity.Users
 {
     [Table(nameof(User), Schema = "Core")]
     public class User : BaseModifiedEntity

@@ -1,5 +1,3 @@
-using Enterprise.Gpt.Service.Exceptions;
-
 namespace Enterprise.Gpt.Service.Documents.Summarization.Models;
 
 /// <summary>

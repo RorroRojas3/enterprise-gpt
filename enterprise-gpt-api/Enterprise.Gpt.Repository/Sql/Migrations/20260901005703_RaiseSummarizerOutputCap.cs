@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Enterprise.Gpt.Repository.Migrations
+namespace Enterprise.Gpt.Repository.Sql.Migrations
 {
     /// <inheritdoc />
     public partial class RaiseSummarizerOutputCap : Migration

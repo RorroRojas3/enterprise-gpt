@@ -1,25 +1,8 @@
+using Enterprise.Gpt.Common.Enums;
 using FluentValidation;
 using FluentValidation.Results;
 
 namespace Enterprise.Gpt.Service.Reports;
-
-/// <summary>
-/// The dimensions <c>GET api/reports/usage</c> can group by.
-/// </summary>
-public enum UsageGroupKey
-{
-    /// <summary>The catalog model that served each call.</summary>
-    Model,
-
-    /// <summary>The provider that served each call.</summary>
-    Provider,
-
-    /// <summary>The user each call was charged to.</summary>
-    User,
-
-    /// <summary>The UTC day each call finished on.</summary>
-    Day
-}
 
 /// <summary>
 /// The <c>?groupBy=</c> values <c>GET api/reports/usage</c> accepts.
@@ -28,7 +11,7 @@ public enum UsageGroupKey
 /// The same three-part shape as the sort-key tables in
 /// <see cref="Enterprise.Gpt.Service.Sorting"/>, and for the same reason: a token has to be the
 /// same string in the enumeration, the display list and the lookup, or the set a rejection
-/// advertises drifts away from the set that is actually accepted. <c>UsageGroupKeysTests</c> is
+/// advertises drifts away from the set that is actually accepted. <c>UsageGroupKeyNamesTests</c> is
 /// what keeps the three in step.
 /// <para>
 /// It does not reuse <c>SortParameters.ResolveKey</c>, which reports a rejection under the
@@ -36,7 +19,7 @@ public enum UsageGroupKey
 /// control it does not have.
 /// </para>
 /// </remarks>
-public static class UsageGroupKeys
+public static class UsageGroupKeyNames
 {
     /// <summary>
     /// The <c>errors</c> key a rejected grouping is reported under: the query-parameter name the
@@ -49,16 +32,16 @@ public static class UsageGroupKeys
     /// </summary>
     public static IReadOnlyList<string> Supported { get; } = ["model", "provider", "user", "day"];
 
-    private static readonly Dictionary<string, UsageGroupKey> ByName =
+    private static readonly Dictionary<string, UsageGroupKeys> ByName =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["model"] = UsageGroupKey.Model,
-            ["provider"] = UsageGroupKey.Provider,
-            ["user"] = UsageGroupKey.User,
-            ["day"] = UsageGroupKey.Day
+            ["model"] = UsageGroupKeys.Model,
+            ["provider"] = UsageGroupKeys.Provider,
+            ["user"] = UsageGroupKeys.User,
+            ["day"] = UsageGroupKeys.Day
         };
 
-    private static readonly Dictionary<UsageGroupKey, string> NamesByKey =
+    private static readonly Dictionary<UsageGroupKeys, string> NamesByKey =
         ByName.ToDictionary(entry => entry.Value, entry => entry.Key);
 
     /// <summary>
@@ -73,7 +56,7 @@ public static class UsageGroupKeys
     /// Model, because the question the dashboard exists to answer first is which models the money
     /// went to, and because it is the grouping the design board draws.
     /// </remarks>
-    public const UsageGroupKey Default = UsageGroupKey.Model;
+    public const UsageGroupKeys Default = UsageGroupKeys.Model;
 
     /// <summary>
     /// Resolves the <c>?groupBy=</c> value a caller sent.
@@ -84,7 +67,7 @@ public static class UsageGroupKeys
     /// <paramref name="groupBy"/> names no accepted dimension. Surfaces as a 400 keyed
     /// <see cref="GroupByKey"/>.
     /// </exception>
-    public static UsageGroupKey Resolve(string? groupBy)
+    public static UsageGroupKeys Resolve(string? groupBy)
     {
         if (string.IsNullOrWhiteSpace(groupBy))
         {
@@ -115,5 +98,5 @@ public static class UsageGroupKeys
     /// The response echoes the grouping it applied, so a client that sent nothing still knows what
     /// it received.
     /// </remarks>
-    public static string ToToken(UsageGroupKey key) => NamesByKey[key];
+    public static string ToToken(UsageGroupKeys key) => NamesByKey[key];
 }

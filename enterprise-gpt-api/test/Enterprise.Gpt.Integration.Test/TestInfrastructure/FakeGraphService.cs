@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using Enterprise.Gpt.Service;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Users;
 using GraphUser = Microsoft.Graph.Models.User;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;

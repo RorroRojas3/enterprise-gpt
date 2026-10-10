@@ -1,8 +1,9 @@
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Documents.Sheets;
 
 /// <summary>
 /// Serves the spreadsheet lookup's configuration as it stands now.
@@ -47,7 +48,7 @@ public sealed class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDis
     {
         _factory = factory;
         _logger = logger;
-        _current = factory.Create(Options.DefaultName);
+        _current = factory.Create(Microsoft.Extensions.Options.Options.DefaultName);
 
         // Only the unnamed instance: a named one would signal here and rebuild the wrong configuration.
         foreach (var source in sources.Where(s => string.IsNullOrEmpty(s.Name)))
@@ -74,7 +75,7 @@ public sealed class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDis
     {
         try
         {
-            _current = _factory.Create(Options.DefaultName);
+            _current = _factory.Create(Microsoft.Extensions.Options.Options.DefaultName);
         }
         catch (Exception ex) when (ex is OptionsValidationException or InvalidOperationException)
         {

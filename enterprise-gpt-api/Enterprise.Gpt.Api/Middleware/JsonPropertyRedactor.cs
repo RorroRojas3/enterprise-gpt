@@ -1,5 +1,6 @@
-using Microsoft.Extensions.Options;
 using System.Text.Json;
+using Enterprise.Gpt.Api.Options;
+using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Api.Middleware;
 

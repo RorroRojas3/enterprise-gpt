@@ -1,10 +1,9 @@
+using System.Security.Claims;
+using Enterprise.Gpt.Api.Middleware;
+using Enterprise.Gpt.Api.Options;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Api.Middleware;
-using System.Security.Claims;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;

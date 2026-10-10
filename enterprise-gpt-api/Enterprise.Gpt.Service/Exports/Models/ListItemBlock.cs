@@ -1,5 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
-
 namespace Enterprise.Gpt.Service.Exports.Models;
 
 /// <summary>One item of a list, which may itself contain paragraphs, code, or nested lists.</summary>

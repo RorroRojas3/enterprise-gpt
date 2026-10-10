@@ -1,11 +1,10 @@
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tokenization;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Microsoft.ML.Tokenizers;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tokenization;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Tokenization;
 
 public sealed class TokenEstimatorTests
 {
@@ -21,7 +20,7 @@ public sealed class TokenEstimatorTests
             settings.ProviderCalibration[ProviderId.ToString()] = multiplier;
         }
 
-        var options = Options.Create(settings);
+        var options = Microsoft.Extensions.Options.Options.Create(settings);
 
         return new TiktokenTokenEstimator(
             ProviderId, new TokenizerProvider(options, NullLogger<TokenizerProvider>.Instance), options);

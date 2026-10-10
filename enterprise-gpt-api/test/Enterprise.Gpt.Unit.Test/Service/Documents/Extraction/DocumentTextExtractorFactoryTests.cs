@@ -1,12 +1,13 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
 using FluentValidation;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Extraction;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Extraction;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 public sealed class DocumentTextExtractorFactoryTests
 {

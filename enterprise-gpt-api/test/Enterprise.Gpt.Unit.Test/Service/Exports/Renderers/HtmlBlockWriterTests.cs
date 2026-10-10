@@ -1,8 +1,10 @@
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Renderers;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Models;
+using Enterprise.Gpt.Service.Exports.Renderers;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports.Renderers;
 
 /// <summary>
 /// The HTML emitter is the third consumer of the block model, and the only one whose output is

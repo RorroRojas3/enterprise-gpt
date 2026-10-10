@@ -1,16 +1,19 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Settings;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
+using Enterprise.Gpt.Service.Options;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service.Tool;
+namespace Enterprise.Gpt.Service.Documents.Sheets;
 
 /// <summary>
 /// Computes exact answers over the cells of an ingested spreadsheet.
@@ -243,8 +246,8 @@ public sealed class SheetQueryService(
             .ToArray();
 
         return (
-            [.. spreadsheets.Where(d => d.Source is DocumentSource.Conversation).Select(d => d.Id)],
-            [.. spreadsheets.Where(d => d.Source is DocumentSource.Project).Select(d => d.Id)]);
+            [.. spreadsheets.Where(d => d.Source is DocumentSources.Conversation).Select(d => d.Id)],
+            [.. spreadsheets.Where(d => d.Source is DocumentSources.Project).Select(d => d.Id)]);
     }
 
     private async Task<IReadOnlyList<ResolvedSheet>> ResolveSheetsAsync(
@@ -287,7 +290,7 @@ public sealed class SheetQueryService(
             records.AddRange(sheets.Select(s => new SheetRecord(
                 s.Id,
                 s.DocumentId,
-                DocumentSource.Conversation,
+                DocumentSources.Conversation,
                 s.SheetIndex,
                 s.SheetName,
                 s.RowCount,
@@ -318,7 +321,7 @@ public sealed class SheetQueryService(
             records.AddRange(sheets.Select(s => new SheetRecord(
                 s.Id,
                 s.DocumentId,
-                DocumentSource.Project,
+                DocumentSources.Project,
                 s.SheetIndex,
                 s.SheetName,
                 s.RowCount,
@@ -396,7 +399,7 @@ public sealed class SheetQueryService(
     }
 
     private bool TryResolveQuery(
-        SheetQueryOperation operation,
+        SheetQueryOperations operation,
         ResolvedSheet sheet,
         string? column,
         string? groupBy,
@@ -422,7 +425,7 @@ public sealed class SheetQueryService(
             return false;
         }
 
-        var isFilter = operation is SheetQueryOperation.Filter;
+        var isFilter = operation is SheetQueryOperations.Filter;
 
         if (isFilter && (!string.IsNullOrWhiteSpace(column) || !string.IsNullOrWhiteSpace(groupBy)))
         {
@@ -439,7 +442,7 @@ public sealed class SheetQueryService(
             return false;
         }
 
-        if (!isFilter && valueColumn is null && operation is not SheetQueryOperation.Count)
+        if (!isFilter && valueColumn is null && operation is not SheetQueryOperations.Count)
         {
             refusal = Refusal(
                 echoed,
@@ -528,15 +531,15 @@ public sealed class SheetQueryService(
         // Sum and average always read the column as a number, whatever a bounded sample inferred it to
         // be: a column with one stray cell among its first rows infers as text and would otherwise be
         // permanently untotallable. Whatever the coercion drops is counted and reported.
-        SheetColumnType? valueType = operation switch
+        SheetColumnTypes? valueType = operation switch
         {
-            SheetQueryOperation.Sum or SheetQueryOperation.Avg => SheetColumnType.Number,
-            SheetQueryOperation.Count or SheetQueryOperation.Filter => valueColumn?.Type,
+            SheetQueryOperations.Sum or SheetQueryOperations.Avg => SheetColumnTypes.Number,
+            SheetQueryOperations.Count or SheetQueryOperations.Filter => valueColumn?.Type,
             _ => valueColumn!.Type
         };
 
-        if (operation is SheetQueryOperation.Sum or SheetQueryOperation.Avg
-            && valueColumn!.Type is not SheetColumnType.Number)
+        if (operation is SheetQueryOperations.Sum or SheetQueryOperations.Avg
+            && valueColumn!.Type is not SheetColumnTypes.Number)
         {
             notes.Add(
                 $"Column '{valueColumn.Name}' is not uniformly numeric, so only the rows whose value reads as a "
@@ -604,7 +607,7 @@ public sealed class SheetQueryService(
     {
         var result = query.Operation switch
         {
-            SheetQueryOperation.Filter =>
+            SheetQueryOperations.Filter =>
                 await ListRowsAsync(scope, echoed, query, cancellationToken).ConfigureAwait(false),
             _ when query.GroupColumn is not null =>
                 await AggregateGroupedAsync(scope, echoed, query, cancellationToken).ConfigureAwait(false),
@@ -643,7 +646,7 @@ public sealed class SheetQueryService(
 
         // Zero is the answer to a count, not a failure to reach one, and a note saying otherwise is what
         // the model would relay instead of the figure.
-        if (row.MatchedRows == 0 && query.Operation is not SheetQueryOperation.Count)
+        if (row.MatchedRows == 0 && query.Operation is not SheetQueryOperations.Count)
         {
             result.Note = "No rows matched, so there was nothing to compute.";
         }
@@ -910,11 +913,11 @@ public sealed class SheetQueryService(
         return described;
     }
 
-    private static string Describe(SheetColumnType type) => type switch
+    private static string Describe(SheetColumnTypes type) => type switch
     {
-        SheetColumnType.Number => "numbers",
-        SheetColumnType.Date => "dates",
-        SheetColumnType.Boolean => "true or false values",
+        SheetColumnTypes.Number => "numbers",
+        SheetColumnTypes.Date => "dates",
+        SheetColumnTypes.Boolean => "true or false values",
         _ => "text"
     };
 
@@ -923,7 +926,7 @@ public sealed class SheetQueryService(
     /// aggregate coerced a value at all.
     /// </summary>
     private static int SkippedValues(ResolvedQuery query, int matchedRows, int valueRows) =>
-        query.Operation is SheetQueryOperation.Count || query.ValueType is null or SheetColumnType.Text
+        query.Operation is SheetQueryOperations.Count || query.ValueType is null or SheetColumnTypes.Text
             ? 0
             : Math.Max(0, matchedRows - valueRows);
 
@@ -953,45 +956,45 @@ public sealed class SheetQueryService(
     /// Maps the model's own operation text onto the closed set, so a caller can name the operation
     /// without trusting the unvalidated string a result echoes back.
     /// </summary>
-    internal static bool TryParseOperation(string? value, out SheetQueryOperation operation)
+    internal static bool TryParseOperation(string? value, out SheetQueryOperations operation)
     {
         operation = value?.Trim().ToLowerInvariant() switch
         {
-            "sum" or "total" => SheetQueryOperation.Sum,
-            "avg" or "average" or "mean" => SheetQueryOperation.Avg,
-            "min" => SheetQueryOperation.Min,
-            "max" => SheetQueryOperation.Max,
-            "count" => SheetQueryOperation.Count,
-            "filter" => SheetQueryOperation.Filter,
+            "sum" or "total" => SheetQueryOperations.Sum,
+            "avg" or "average" or "mean" => SheetQueryOperations.Avg,
+            "min" => SheetQueryOperations.Min,
+            "max" => SheetQueryOperations.Max,
+            "count" => SheetQueryOperations.Count,
+            "filter" => SheetQueryOperations.Filter,
             _ => default
         };
 
-        return operation is not default(SheetQueryOperation);
+        return operation is not default(SheetQueryOperations);
     }
 
-    private static bool TryParseComparator(string? value, out SheetFilterComparator comparator)
+    private static bool TryParseComparator(string? value, out SheetFilterComparators comparator)
     {
         comparator = value?.Trim().ToLowerInvariant() switch
         {
-            "eq" or "=" or "==" => SheetFilterComparator.Eq,
-            "neq" or "!=" or "<>" => SheetFilterComparator.Neq,
-            "gt" or ">" => SheetFilterComparator.Gt,
-            "gte" or ">=" => SheetFilterComparator.Gte,
-            "lt" or "<" => SheetFilterComparator.Lt,
-            "lte" or "<=" => SheetFilterComparator.Lte,
-            "contains" => SheetFilterComparator.Contains,
+            "eq" or "=" or "==" => SheetFilterComparators.Eq,
+            "neq" or "!=" or "<>" => SheetFilterComparators.Neq,
+            "gt" or ">" => SheetFilterComparators.Gt,
+            "gte" or ">=" => SheetFilterComparators.Gte,
+            "lt" or "<" => SheetFilterComparators.Lt,
+            "lte" or "<=" => SheetFilterComparators.Lte,
+            "contains" => SheetFilterComparators.Contains,
             _ => default
         };
 
-        return comparator is not default(SheetFilterComparator);
+        return comparator is not default(SheetFilterComparators);
     }
 
     private static bool TryBindFilterValue(
-        ResolvedSheetColumn column, SheetFilterComparator comparator, string? value, out object bound)
+        ResolvedSheetColumn column, SheetFilterComparators comparator, string? value, out object bound)
     {
         var text = value ?? string.Empty;
 
-        if (comparator is SheetFilterComparator.Contains)
+        if (comparator is SheetFilterComparators.Contains)
         {
             // Matched against the cell's own text whatever the column holds, so the value needs no
             // conversion — only its wildcards escaped.
@@ -1002,7 +1005,7 @@ public sealed class SheetQueryService(
 
         switch (column.Type)
         {
-            case SheetColumnType.Number:
+            case SheetColumnTypes.Number:
                 if (double.TryParse(
                     text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var number))
                 {
@@ -1015,7 +1018,7 @@ public sealed class SheetQueryService(
 
                 return false;
 
-            case SheetColumnType.Date:
+            case SheetColumnTypes.Date:
                 // A cell holding only a time converts to datetime2 as 1900-01-01 plus that time, and the
                 // value is free text the model composes, so anything without a date of its own is
                 // re-anchored rather than left on today, where every comparison would miss.
@@ -1030,7 +1033,7 @@ public sealed class SheetQueryService(
 
                 return false;
 
-            case SheetColumnType.Boolean:
+            case SheetColumnTypes.Boolean:
                 // Cells are stored as TRUE and FALSE, and the comparison collation is case-insensitive,
                 // so normalizing the model's wording is all this needs.
                 bound = text.Trim().ToLowerInvariant() switch
@@ -1054,17 +1057,17 @@ public sealed class SheetQueryService(
     private sealed record SheetRecord(
         Guid Id,
         Guid DocumentId,
-        DocumentSource Source,
+        DocumentSources Source,
         int SheetIndex,
         string SheetName,
         int RowCount,
         IReadOnlyList<ResolvedSheetColumn> Columns);
 
     private sealed record ResolvedQuery(
-        SheetQueryOperation Operation,
+        SheetQueryOperations Operation,
         ResolvedSheet Sheet,
         ResolvedSheetColumn? ValueColumn,
-        SheetColumnType? ValueType,
+        SheetColumnTypes? ValueType,
         string? ValuePath,
         ResolvedSheetColumn? GroupColumn,
         string? GroupPath,

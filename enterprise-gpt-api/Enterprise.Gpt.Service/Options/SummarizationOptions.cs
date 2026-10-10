@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Settings for document summarization, bound from the <c>Summarization</c> configuration section

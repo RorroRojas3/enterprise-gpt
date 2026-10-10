@@ -1,8 +1,12 @@
-using Enterprise.Gpt.Common.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Usage;
 
 /// <summary>
 /// One model call charged to a conversation: which model and provider served it, what it cost,

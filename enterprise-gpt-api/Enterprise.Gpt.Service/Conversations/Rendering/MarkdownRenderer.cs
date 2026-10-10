@@ -2,7 +2,7 @@ using System.Net;
 using Markdig;
 using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service.Rendering;
+namespace Enterprise.Gpt.Service.Conversations.Rendering;
 
 /// <summary>
 /// Renders a message's markdown to the HTML stored beside it.

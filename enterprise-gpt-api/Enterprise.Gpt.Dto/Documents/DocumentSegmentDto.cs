@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Documents
 {
     /// <summary>
     /// A contiguous span of text produced by a document text extractor, before chunking.

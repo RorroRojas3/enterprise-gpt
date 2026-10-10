@@ -1,8 +1,7 @@
 using System.Text.Json.Serialization;
 using Enterprise.Gpt.Common.Constants;
-using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Entity.Transcripts;
+namespace Enterprise.Gpt.Entity.Transcripts.Models;
 
 /// <summary>
 /// A conversation's header: its name, its counters, and the dates the client reads.

@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Common.Enums;
 using System.ComponentModel.DataAnnotations;
+using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Base;
 
 /// <summary>
 /// Base type for one column of an ingested sheet: the name a query may address it by, and the value
@@ -28,5 +28,5 @@ public class BaseDocumentSheetColumn : BaseModifiedEntity
     /// <summary>
     /// The value kind inferred from a bounded sample of the column's own cells.
     /// </summary>
-    public SheetColumnType InferredType { get; set; }
+    public SheetColumnTypes InferredType { get; set; }
 }

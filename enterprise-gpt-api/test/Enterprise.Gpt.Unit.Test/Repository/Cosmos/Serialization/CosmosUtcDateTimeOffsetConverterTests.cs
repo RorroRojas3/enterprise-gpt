@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Enterprise.Gpt.Service.Serialization;
+using Enterprise.Gpt.Repository.Cosmos.Serialization;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Serialization;
+namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.Serialization;
 
 /// <summary>
 /// These are correctness tests for transcript ordering, not formatting tests. Cosmos DB has no date

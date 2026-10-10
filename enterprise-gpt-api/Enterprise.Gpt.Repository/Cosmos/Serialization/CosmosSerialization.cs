@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Service.Serialization;
+namespace Enterprise.Gpt.Repository.Cosmos.Serialization;
 
 /// <summary>
 /// Builds the System.Text.Json options the Cosmos DB client serializes every document with.

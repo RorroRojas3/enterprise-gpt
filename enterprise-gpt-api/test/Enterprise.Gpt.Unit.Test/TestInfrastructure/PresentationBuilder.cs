@@ -1,7 +1,6 @@
-using DocumentFormat.OpenXml;
+using System.IO.Compression;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
-using System.IO.Compression;
 using A = DocumentFormat.OpenXml.Drawing;
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;

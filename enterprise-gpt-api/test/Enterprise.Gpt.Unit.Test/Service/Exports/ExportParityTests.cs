@@ -2,15 +2,17 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Models;
+using Enterprise.Gpt.Service.Exports.Renderers;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Renderers;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
 /// <summary>
 /// One conversation, every format, the same document.

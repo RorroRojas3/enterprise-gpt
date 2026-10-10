@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.Documents.Exceptions;
 
 /// <summary>
 /// Thrown when blob storage cannot be used as configured — a container is not named, or

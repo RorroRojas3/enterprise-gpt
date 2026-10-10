@@ -1,8 +1,14 @@
-﻿using Enterprise.Gpt.Common.Extensions;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
+﻿using System.Collections.Frozen;
+using System.Data;
+using System.Data.Common;
+using System.Globalization;
+using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Common.Extensions;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
@@ -10,13 +16,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Collections.Frozen;
-using System.Data;
-using System.Data.Common;
-using System.Globalization;
-using System.Text;
 
-namespace Enterprise.Gpt.Service.Tool;
+namespace Enterprise.Gpt.Service.Documents.Retrieval;
 
 /// <summary>
 /// Searches the documents attached to a conversation, and to its project, for the passages most
@@ -78,7 +79,7 @@ public sealed class DocumentRetrievalService(
 {
     /// <summary>
     /// Dimension of the stored embeddings, fixed by the <c>vector(1536)</c> column on
-    /// <see cref="Entity.BaseDocumentChunk.Embedding"/>. A query vector of any other size is a
+    /// <see cref="Entity.Base.BaseDocumentChunk.Embedding"/>. A query vector of any other size is a
     /// misconfigured embedding deployment, and SQL Server would reject it with a type error that says
     /// nothing about the cause.
     /// </summary>
@@ -152,7 +153,7 @@ public sealed class DocumentRetrievalService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        documents.AddRange(conversationDocuments.Select(d => new RetrievableDocument(d.Id, DocumentSource.Conversation, d.Name)));
+        documents.AddRange(conversationDocuments.Select(d => new RetrievableDocument(d.Id, DocumentSources.Conversation, d.Name)));
 
         // Read from the conversation rather than taken from the caller, and confirmed active rather than
         // assumed. Reading it here ties the project to a conversation that is genuinely in it, so this
@@ -178,7 +179,7 @@ public sealed class DocumentRetrievalService(
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            documents.AddRange(projectDocuments.Select(d => new RetrievableDocument(d.Id, DocumentSource.Project, d.Name)));
+            documents.AddRange(projectDocuments.Select(d => new RetrievableDocument(d.Id, DocumentSources.Project, d.Name)));
         }
 
         return new DocumentRetrievalScope(conversationId, activeProjectId, documents);
@@ -709,7 +710,7 @@ public sealed class DocumentRetrievalService(
                 continue;
             }
 
-            if (chunk.Key.Source == DocumentSource.Conversation)
+            if (chunk.Key.Source == DocumentSources.Conversation)
             {
                 conversationDocumentIds.Add(chunk.Key.DocumentId);
             }
@@ -856,7 +857,7 @@ public sealed class DocumentRetrievalService(
             },
             reader => new ChunkCandidate(
                 reader.GetGuid(0),
-                (DocumentSource)reader.GetByte(1),
+                (DocumentSources)reader.GetByte(1),
                 reader.GetInt32(2),
                 reader.GetDouble(3),
                 MatchCount: 0),
@@ -886,7 +887,7 @@ public sealed class DocumentRetrievalService(
             },
             reader => new ChunkCandidate(
                 reader.GetGuid(0),
-                (DocumentSource)reader.GetByte(1),
+                (DocumentSources)reader.GetByte(1),
                 reader.GetInt32(2),
                 Distance: null,
                 reader.GetInt32(3)),
@@ -920,7 +921,7 @@ public sealed class DocumentRetrievalService(
                 }
             },
             reader => new ChunkText(
-                new ChunkKey(reader.GetGuid(0), (DocumentSource)reader.GetByte(1), reader.GetInt32(2)),
+                new ChunkKey(reader.GetGuid(0), (DocumentSources)reader.GetByte(1), reader.GetInt32(2)),
                 reader.IsDBNull(3) ? null : reader.GetInt32(3),
                 reader.GetString(4),
                 reader.GetDouble(5)),
@@ -1006,12 +1007,3 @@ public sealed class DocumentRetrievalService(
             _ => $"{first} {second}"
         };
 }
-
-/// <summary>
-/// A chunk with its fused rank-fusion score and the evidence each pass contributed.
-/// </summary>
-/// <param name="Key">Which chunk this is.</param>
-/// <param name="Score">The Reciprocal Rank Fusion score across both passes; higher is better.</param>
-/// <param name="Distance">The cosine distance, or <see langword="null"/> when only the keyword pass found it.</param>
-/// <param name="MatchCount">The number of query terms found in the chunk; zero when only the vector pass found it.</param>
-internal readonly record struct ScoredChunk(ChunkKey Key, double Score, double? Distance, int MatchCount);

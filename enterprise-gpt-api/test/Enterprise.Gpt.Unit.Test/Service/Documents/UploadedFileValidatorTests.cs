@@ -1,14 +1,13 @@
-using Microsoft.Extensions.Options;
-using NSubstitute;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Validators;
 using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Options;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Validators;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
 public sealed class UploadedFileValidatorTests
 {
@@ -25,7 +24,7 @@ public sealed class UploadedFileValidatorTests
                 or FileExtensions.Docx or FileExtensions.Pptx or FileExtensions.Md or FileExtensions.Txt
                 or FileExtensions.Xlsx);
 
-        var options = Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes });
+        var options = Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes });
 
         return new UploadedFileValidator(options, factory);
     }

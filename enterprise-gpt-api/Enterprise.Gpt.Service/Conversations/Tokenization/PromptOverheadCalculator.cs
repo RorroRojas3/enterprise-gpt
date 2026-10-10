@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Options;
 
-namespace Enterprise.Gpt.Service.Tokenization;
+namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 
 /// <summary>
 /// Accounts for the prompt tokens that belong to no message.

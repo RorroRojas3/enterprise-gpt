@@ -1,7 +1,8 @@
 using Enterprise.Gpt.Service.Agents;
+using Enterprise.Gpt.Service.Agents.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// Covers what a run that produced no file tells the user and the model.

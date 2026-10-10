@@ -1,11 +1,13 @@
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Web;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;
@@ -266,7 +268,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var status = await WaitForTerminalStateAsync(client, job.Id);
 
         Assert.Equal("Succeeded", status.State);
-        Assert.Equal(nameof(JobStatus.Processed), status.Status);
+        Assert.Equal(nameof(JobStatuses.Processed), status.Status);
         Assert.Equal(100, status.Progress);
         Assert.NotNull(status.DocumentId);
         Assert.Null(status.ErrorMessage);
@@ -463,7 +465,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var status = await WaitForTerminalStateAsync(client, job.Id);
 
         Assert.Equal("Failed", status.State);
-        Assert.Equal(nameof(JobStatus.Failed), status.Status);
+        Assert.Equal(nameof(JobStatuses.Failed), status.Status);
         Assert.NotNull(status.ErrorMessage);
         Assert.Contains("No readable text", status.ErrorMessage);
     }
@@ -558,7 +560,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var status = await WaitForTerminalStateAsync(client, job.Id);
 
         Assert.Equal("Succeeded", status.State);
-        Assert.Equal(nameof(JobStatus.Processed), status.Status);
+        Assert.Equal(nameof(JobStatuses.Processed), status.Status);
         Assert.Equal(100, status.Progress);
         Assert.NotNull(status.DocumentId);
 
@@ -1263,10 +1265,10 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var status = await WaitForTerminalStateAsync(client, job.Id);
         // The coarse state stays inside the four-value vocabulary; the stage names what happened.
         Assert.Equal("Failed", status.State);
-        Assert.Equal(nameof(JobStatus.Cancelled), status.Status);
+        Assert.Equal(nameof(JobStatuses.Cancelled), status.Status);
 
         var documents = await _fixture.FindConversationDocumentsAsync(conversationId, TestContext.Current.CancellationToken);
-        Assert.Empty(documents.Where(x => !x.DateDeactivated.HasValue));
+        Assert.DoesNotContain(documents, x => !x.DateDeactivated.HasValue);
     }
 
     [Fact]

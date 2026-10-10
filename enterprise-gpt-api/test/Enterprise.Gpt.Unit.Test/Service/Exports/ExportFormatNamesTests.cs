@@ -1,7 +1,8 @@
-using Enterprise.Gpt.Service.Export;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
 /// <summary>
 /// Three tables list the wire tokens — the parse lookup, the advertised supported set, and

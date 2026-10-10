@@ -1,9 +1,9 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Enterprise.Gpt.Api.Startup;
-using Enterprise.Gpt.Service.Serialization;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Options;
+using Enterprise.Gpt.Repository.Cosmos.Serialization;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -76,7 +76,7 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
                 "The Azure Cosmos DB emulator container could not be started. These tests need Docker and the image mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest; run 'dotnet test --filter \"Category!=Integration\"' to skip them.", ex);
         }
 
-        var options = new CosmosOptions
+        var options = new CosmosDbOptions
         {
             ConnectionString = $"AccountEndpoint=https://localhost:{_container.GetMappedPublicPort(GatewayPort)}/;AccountKey={EmulatorKey};",
             DatabaseId = "transcript-tests",
@@ -103,7 +103,7 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
             _client, options, NullLogger.Instance, CancellationToken.None);
 
         Container = _client.GetContainer(options.DatabaseId, options.TranscriptContainerId);
-        Store = new TranscriptStore(_client, Options.Create(options), NullLogger<TranscriptStore>.Instance);
+        Store = new CosmosTranscriptStore(_client, Options.Create(options), NullLogger<CosmosTranscriptStore>.Instance);
     }
 
     /// <inheritdoc />
@@ -112,16 +112,4 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
         _client?.Dispose();
         await _container.DisposeAsync();
     }
-}
-
-/// <summary>
-/// Serializes the emulator-backed test classes onto one container.
-/// </summary>
-[CollectionDefinition(Name)]
-public class CosmosEmulatorCollection : ICollectionFixture<CosmosEmulatorFixture>
-{
-    /// <summary>
-    /// The collection name the emulator-backed test classes join via <c>[Collection]</c>.
-    /// </summary>
-    public const string Name = "CosmosEmulator";
 }

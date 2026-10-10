@@ -1,13 +1,4 @@
-using System.Buffers;
-using System.Globalization;
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text;
-using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
 
 namespace Enterprise.Gpt.Service.Documents.Extraction.Models;
 

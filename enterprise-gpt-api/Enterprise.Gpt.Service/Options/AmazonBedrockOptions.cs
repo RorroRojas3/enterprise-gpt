@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Connection settings for the Amazon Bedrock chat provider, bound from the <c>AmazonBedrock</c>

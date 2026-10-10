@@ -1,19 +1,7 @@
-using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
 
-namespace Enterprise.Gpt.Service.Summarization;
-
-/// <summary>
-/// What one summarization stage is allowed to send, measured in tokens.
-/// </summary>
-/// <param name="PerCallTokens">
-/// The most a single call's variable content — the document, or the partial summaries being
-/// reduced — may occupy, after the output reservation, the framing and the safety fraction.
-/// </param>
-/// <param name="MapUnitTokens">
-/// The most one map unit may occupy. Strictly below <paramref name="PerCallTokens"/>, because a
-/// unit is sized before the map prompt's own framing is added to it.
-/// </param>
-public sealed record SummarizationBudget(long PerCallTokens, long MapUnitTokens);
+namespace Enterprise.Gpt.Service.Documents.Summarization;
 
 /// <summary>
 /// Decides how much of the summarizer's context window one summarization call may use.
@@ -51,7 +39,7 @@ public static class SummarizationBudgetCalculator
     /// <para>
     /// A <paramref name="summarizer"/> whose <c>ContextWindowSize</c> is zero or less is
     /// <em>unconfigured, and refused</em> — the opposite of what
-    /// <see cref="Tokenization.ContextBudgetCalculator.Apply"/> means by the same value, where it
+    /// <see cref="Conversations.Tokenization.ContextBudgetCalculator.Apply"/> means by the same value, where it
     /// reads as unbounded. That reading is right for a chat turn, whose alternative is trimming a
     /// user's conversation to nothing over an unset catalog field. It is wrong here: zero is the
     /// seeded default, and inheriting the unbounded convention would send a multi-million-token

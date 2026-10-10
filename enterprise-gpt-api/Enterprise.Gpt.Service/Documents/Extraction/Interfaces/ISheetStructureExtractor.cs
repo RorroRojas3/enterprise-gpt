@@ -1,13 +1,7 @@
-using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
 
-namespace Enterprise.Gpt.Service.Extraction;
-
-/// <summary>
-/// The text segments and the structured cell data a spreadsheet yielded from one parse.
-/// </summary>
-public sealed record SheetExtractionResult(
-    IReadOnlyList<DocumentSegmentDto> Segments,
-    IReadOnlyList<SheetStructureDto> Sheets);
+namespace Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
 
 /// <summary>
 /// A text extractor that also surfaces the grid behind the text it produced.

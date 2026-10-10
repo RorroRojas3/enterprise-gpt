@@ -1,7 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Usage;
 
 /// <summary>
 /// One model turn within a <see cref="ConversationUsage"/> call: what the provider reported for a

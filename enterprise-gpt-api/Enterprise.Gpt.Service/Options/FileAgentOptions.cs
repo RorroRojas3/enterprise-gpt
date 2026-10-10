@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Settings for the File Agent, bound from the <c>FileAgent</c> configuration section and validated

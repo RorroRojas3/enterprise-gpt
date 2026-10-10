@@ -1,18 +1,21 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
+using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
-using System.Text;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Retrieval;
 
 /// <summary>
 /// Covers the parts of <see cref="DocumentRetrievalService"/> that decide what the model sees:
@@ -48,7 +51,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         NullLogger<DocumentRetrievalService>.Instance,
         _embeddingGenerator,
         _textChunker,
-        Options.Create(_options),
+        Microsoft.Extensions.Options.Options.Create(_options),
         _fixture.Context);
 
     #region Scope resolution
@@ -64,7 +67,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
         Assert.True(scope.HasDocuments);
         Assert.Equal(["first.pdf", "second.pdf"], scope.Documents.Select(d => d.Name));
-        Assert.All(scope.Documents, d => Assert.Equal(DocumentSource.Conversation, d.Source));
+        Assert.All(scope.Documents, d => Assert.Equal(DocumentSources.Conversation, d.Source));
         Assert.Null(scope.ProjectId);
     }
 
@@ -121,7 +124,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
         Assert.Equal(projectId, scope.ProjectId);
         Assert.Equal(["conversation.pdf", "project.pdf"], scope.Documents.Select(d => d.Name));
-        Assert.Equal(DocumentSource.Project, scope.Documents.Single(d => d.Name == "project.pdf").Source);
+        Assert.Equal(DocumentSources.Project, scope.Documents.Single(d => d.Name == "project.pdf").Source);
     }
 
     [Fact]
@@ -173,7 +176,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     public async Task SearchAsync_BlankQuery_ReturnsEmptyWithoutEmbedding()
     {
         var scope = new DocumentRetrievalScope(Guid.NewGuid(), null,
-            [new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "handbook.pdf")]);
+            [new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "handbook.pdf")]);
 
         var result = await CreateService().SearchAsync(scope, "   ", null, TestContext.Current.CancellationToken);
 
@@ -187,7 +190,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     public async Task SearchAsync_QueryLongerThanTheCap_IsNotRunAndSaysWhy()
     {
         var scope = new DocumentRetrievalScope(Guid.NewGuid(), null,
-            [new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "handbook.pdf")]);
+            [new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "handbook.pdf")]);
 
         var result = await CreateService().SearchAsync(
             scope, new string('a', 2000), null, TestContext.Current.CancellationToken);
@@ -205,7 +208,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     public async Task SearchAsync_OverlongQueryEndingOnASurrogatePair_EchoesWholeCharacters()
     {
         var scope = new DocumentRetrievalScope(Guid.NewGuid(), null,
-            [new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "handbook.pdf")]);
+            [new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "handbook.pdf")]);
 
         // Cut exactly where the 1024th char would be the high half of a pair.
         var query = new string('a', 1023) + "\U0001F600" + new string('b', 100);
@@ -356,10 +359,10 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
         var dense = new List<ChunkCandidate>
         {
-            Dense(new ChunkKey(loud, DocumentSource.Conversation, 0), 0.10),
-            Dense(new ChunkKey(loud, DocumentSource.Conversation, 1), 0.11),
-            Dense(new ChunkKey(loud, DocumentSource.Conversation, 2), 0.12),
-            Dense(new ChunkKey(quiet, DocumentSource.Conversation, 0), 0.13)
+            Dense(new ChunkKey(loud, DocumentSources.Conversation, 0), 0.10),
+            Dense(new ChunkKey(loud, DocumentSources.Conversation, 1), 0.11),
+            Dense(new ChunkKey(loud, DocumentSources.Conversation, 2), 0.12),
+            Dense(new ChunkKey(quiet, DocumentSources.Conversation, 0), 0.13)
         };
 
         var selected = CreateService().SelectHits(dense, [], termCount: 0);
@@ -403,7 +406,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         var documentId = Guid.NewGuid();
 
         var keys = CreateService().ExpandToNeighbours(
-            [new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 5), 1.0, 0.1, 0)]);
+            [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 5), 1.0, 0.1, 0)]);
 
         Assert.Equal([4, 5, 6], keys.Select(k => k.Index).Order());
     }
@@ -415,7 +418,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         var documentId = Guid.NewGuid();
 
         var keys = CreateService().ExpandToNeighbours(
-            [new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.1, 0)]);
+            [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.1, 0)]);
 
         Assert.Equal([0, 1, 2], keys.Select(k => k.Index).Order());
     }
@@ -428,8 +431,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
         var keys = CreateService().ExpandToNeighbours(
         [
-            new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 3), 1.0, 0.1, 0),
-            new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 4), 0.9, 0.2, 0)
+            new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 3), 1.0, 0.1, 0),
+            new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 4), 0.9, 0.2, 0)
         ]);
 
         Assert.Equal([2, 3, 4, 5], keys.Select(k => k.Index).Order());
@@ -443,8 +446,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
         var keys = CreateService().ExpandToNeighbours(
         [
-            new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 7), 1.0, 0.1, 0),
-            new ScoredChunk(new ChunkKey(documentId, DocumentSource.Project, 7), 1.0, 0.1, 0)
+            new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 7), 1.0, 0.1, 0),
+            new ScoredChunk(new ChunkKey(documentId, DocumentSources.Project, 7), 1.0, 0.1, 0)
         ]);
 
         Assert.Equal(2, keys.Count);
@@ -526,7 +529,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 1), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.2, 0) };
         var chunks = new[]
         {
             Chunk(documentId, 0, "Refunds are handled by the finance team.", page: 4, distance: 0.5),
@@ -551,8 +554,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         var scope = ScopeWith(documentId, "handbook.pdf");
         var hits = new[]
         {
-            new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 1), 1.0, 0.2, 0),
-            new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 9), 0.9, 0.3, 0)
+            new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.2, 0),
+            new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 9), 0.9, 0.3, 0)
         };
         var chunks = new[]
         {
@@ -571,7 +574,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 5), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 5), 1.0, 0.2, 0) };
         var chunks = new[]
         {
             Chunk(documentId, 1, "A neighbour of nothing.", page: 1, distance: 0.9),
@@ -589,7 +592,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 1), 1.0, 0.4, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.4, 0) };
         var chunks = new[]
         {
             Chunk(documentId, 1, "The match.", page: 1, distance: 0.4),
@@ -607,7 +610,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "notes.txt");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
         var chunks = new[] { Chunk(documentId, 0, "Some note.", page: null, distance: 0.2) };
 
         var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks));
@@ -623,8 +626,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         var vector = Guid.NewGuid();
         var scope = new DocumentRetrievalScope(Guid.NewGuid(), null,
         [
-            new RetrievableDocument(keyword, DocumentSource.Conversation, "runbook.pdf"),
-            new RetrievableDocument(vector, DocumentSource.Conversation, "essay.pdf")
+            new RetrievableDocument(keyword, DocumentSources.Conversation, "runbook.pdf"),
+            new RetrievableDocument(vector, DocumentSources.Conversation, "essay.pdf")
         ]);
 
         // A keyword-only hit has no distance until read-back, and by construction its distance is worse
@@ -632,8 +635,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         // exact-token match — the whole reason the keyword pass exists — last, every single time.
         var hits = new[]
         {
-            new ScoredChunk(new ChunkKey(keyword, DocumentSource.Conversation, 0), 0.9, null, 3),
-            new ScoredChunk(new ChunkKey(vector, DocumentSource.Conversation, 0), 0.2, 0.30, 0)
+            new ScoredChunk(new ChunkKey(keyword, DocumentSources.Conversation, 0), 0.9, null, 3),
+            new ScoredChunk(new ChunkKey(vector, DocumentSources.Conversation, 0), 0.2, 0.30, 0)
         };
         var chunks = new[]
         {
@@ -651,7 +654,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 2), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 2), 1.0, 0.2, 0) };
         var chunks = new[]
         {
             Chunk(documentId, 1, "The tail of the previous page.", page: 4, distance: 0.8),
@@ -686,7 +689,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "budget.xlsx");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
         var chunks = new[] { Chunk(documentId, 0, "SKU | Region\nW-1 | East", page: 3, distance: 0.2) };
         var sheetNames = new Dictionary<(Guid DocumentId, int SheetIndex), string> { [(documentId, 3)] = "Regional Revenue" };
 
@@ -703,7 +706,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         // the reference rather than claim one the file does not have.
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "orders.csv");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
         var chunks = new[] { Chunk(documentId, 0, "SKU | Region", page: 1, distance: 0.2) };
 
         var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks));
@@ -716,7 +719,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0) };
+        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
         var chunks = new[] { Chunk(documentId, 0, "Refunds are issued within 30 days.", page: 12, distance: 0.2) };
         var sheetNames = new Dictionary<(Guid DocumentId, int SheetIndex), string> { [(documentId, 12)] = "Never Used" };
 
@@ -732,13 +735,13 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         var near = Guid.NewGuid();
         var scope = new DocumentRetrievalScope(Guid.NewGuid(), null,
         [
-            new RetrievableDocument(far, DocumentSource.Conversation, "far.pdf"),
-            new RetrievableDocument(near, DocumentSource.Conversation, "near.pdf")
+            new RetrievableDocument(far, DocumentSources.Conversation, "far.pdf"),
+            new RetrievableDocument(near, DocumentSources.Conversation, "near.pdf")
         ]);
         var hits = new[]
         {
-            new ScoredChunk(new ChunkKey(far, DocumentSource.Conversation, 0), 1.0, 0.7, 0),
-            new ScoredChunk(new ChunkKey(near, DocumentSource.Conversation, 0), 1.0, 0.1, 0)
+            new ScoredChunk(new ChunkKey(far, DocumentSources.Conversation, 0), 1.0, 0.7, 0),
+            new ScoredChunk(new ChunkKey(near, DocumentSources.Conversation, 0), 1.0, 0.1, 0)
         };
         var chunks = new[]
         {
@@ -768,8 +771,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         List<ChunkCandidate> dense =
         [
             .. Enumerable.Range(0, 12)
-                .Select(i => Dense(new ChunkKey(workbook, DocumentSource.Conversation, i), 0.10 + (i * 0.001))),
-            Dense(new ChunkKey(handbook, DocumentSource.Conversation, 0), 0.30)
+                .Select(i => Dense(new ChunkKey(workbook, DocumentSources.Conversation, i), 0.10 + (i * 0.001))),
+            Dense(new ChunkKey(handbook, DocumentSources.Conversation, 0), 0.30)
         ];
 
         var selected = CreateService().SelectHits(dense, [], termCount: 0);
@@ -804,7 +807,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         const string Header = "Sheet: Regional Revenue\nSKU | Region | Revenue";
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "budget.xlsx");
-        ScoredChunk[] hits = [new(new ChunkKey(documentId, DocumentSource.Conversation, 0), 1.0, 0.2, 0)];
+        ScoredChunk[] hits = [new(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0)];
         ChunkText[] chunks =
         [
             Chunk(documentId, 0, $"{Header}\nW-1 | East | 1200", page: null, distance: 0.2),
@@ -862,7 +865,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
 
     #region Helpers
 
-    private static ChunkKey NewKey(int index) => new(Guid.NewGuid(), DocumentSource.Conversation, index);
+    private static ChunkKey NewKey(int index) => new(Guid.NewGuid(), DocumentSources.Conversation, index);
 
     private static ChunkCandidate Dense(ChunkKey key, double distance) =>
         new(key.DocumentId, key.Source, key.Index, distance, MatchCount: 0);
@@ -871,10 +874,10 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         new(key.DocumentId, key.Source, key.Index, Distance: null, matchCount);
 
     private static ChunkText Chunk(Guid documentId, int index, string text, int? page, double distance) =>
-        new(new ChunkKey(documentId, DocumentSource.Conversation, index), page, text, distance);
+        new(new ChunkKey(documentId, DocumentSources.Conversation, index), page, text, distance);
 
     private static DocumentRetrievalScope ScopeWith(Guid documentId, string name) =>
-        new(Guid.NewGuid(), null, [new RetrievableDocument(documentId, DocumentSource.Conversation, name)]);
+        new(Guid.NewGuid(), null, [new RetrievableDocument(documentId, DocumentSources.Conversation, name)]);
 
     private static RetrievedPassage Passage(string text) =>
         new() { Citation = "doc.pdf", DocumentName = "doc.pdf", Page = 1, Score = 0.9, Text = text };

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using Enterprise.Gpt.Service.Documents.Sheets;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Bounds for the deterministic spreadsheet lookup tool, bound from the <c>SheetQuery</c>

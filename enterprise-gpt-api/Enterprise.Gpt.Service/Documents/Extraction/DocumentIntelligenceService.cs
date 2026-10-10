@@ -1,10 +1,10 @@
+using System.Diagnostics;
 using Azure;
 using Azure.AI.DocumentIntelligence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Documents.Extraction
 {
     public interface IDocumentIntelligenceService
     {

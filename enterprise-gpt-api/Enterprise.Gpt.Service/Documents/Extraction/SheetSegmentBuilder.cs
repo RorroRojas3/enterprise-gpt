@@ -1,10 +1,10 @@
-using FluentValidation;
-using FluentValidation.Results;
-using Enterprise.Gpt.Dto;
 using System.Buffers;
 using System.Text;
+using Enterprise.Gpt.Dto.Documents;
+using FluentValidation;
+using FluentValidation.Results;
 
-namespace Enterprise.Gpt.Service.Extraction;
+namespace Enterprise.Gpt.Service.Documents.Extraction;
 
 /// <summary>
 /// Shared text shaping and refusal messages for the spreadsheet extractors, so <c>.xlsx</c> and

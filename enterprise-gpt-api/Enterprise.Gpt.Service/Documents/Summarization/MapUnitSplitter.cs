@@ -1,8 +1,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using Enterprise.Gpt.Service.Tokenization;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
 
-namespace Enterprise.Gpt.Service.Summarization;
+namespace Enterprise.Gpt.Service.Documents.Summarization;
 
 /// <summary>
 /// Splits an oversized document into units that each fit one summarizer call.

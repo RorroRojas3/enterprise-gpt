@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Api.Observability;
+namespace Enterprise.Gpt.Api.Options;
 
 /// <summary>
 /// Tuning for the Azure Monitor exporter, bound from the <c>AzureMonitor</c> configuration section.

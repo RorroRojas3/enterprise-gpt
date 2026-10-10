@@ -1,8 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Enterprise.Gpt.Api.Problems;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
+﻿using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Problems.Constants;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Security;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Enterprise.Gpt.Api.Filters
 {

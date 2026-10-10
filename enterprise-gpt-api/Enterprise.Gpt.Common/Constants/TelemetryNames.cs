@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Common.Observability;
+namespace Enterprise.Gpt.Common.Constants;
 
 /// <summary>
 /// The telemetry source names this application produces and exports under.

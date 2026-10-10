@@ -1,16 +1,16 @@
 using Anthropic.Models.Messages;
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
 /// Covers the Anthropic-native request settings stamped onto every turn, and in particular the two
 /// fields the SDK's Microsoft.Extensions.AI bridge does <em>not</em> overlay.
 /// </summary>
-public sealed class AnthropicChatDefaultsTests
+public sealed class AnthropicDefaultsTests
 {
     /// <summary>
     /// Every thinking mode the startup validators accept, so a mode added to
@@ -36,7 +36,7 @@ public sealed class AnthropicChatDefaultsTests
 
     private static MessageCreateParams Apply(AnthropicOptions settings, ChatOptions options)
     {
-        AnthropicChatDefaults.Create(settings)(options);
+        AnthropicDefaults.Create(settings)(options);
 
         return Assert.IsType<MessageCreateParams>(options.RawRepresentationFactory!.Invoke(null!));
     }
@@ -179,7 +179,7 @@ public sealed class AnthropicChatDefaultsTests
         };
         var options = new ChatOptions { RawRepresentationFactory = _ => callerSupplied };
 
-        AnthropicChatDefaults.Create(Settings())(options);
+        AnthropicDefaults.Create(Settings())(options);
 
         Assert.Same(callerSupplied, options.RawRepresentationFactory!.Invoke(null!));
     }

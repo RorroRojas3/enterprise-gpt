@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using Enterprise.Gpt.Service.Prompts;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Prompts;
 
 public sealed partial class SummarizationPromptsTests
 {

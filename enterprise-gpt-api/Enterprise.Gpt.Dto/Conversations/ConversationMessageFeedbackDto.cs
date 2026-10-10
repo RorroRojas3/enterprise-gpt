@@ -4,7 +4,7 @@ using Enterprise.Gpt.Common.Enums;
 namespace Enterprise.Gpt.Dto.Conversations;
 
 /// <summary>
-/// A reader's rating of one assistant message (US-1102).
+/// A reader's rating of one assistant message.
 /// </summary>
 /// <remarks>
 /// A nested block rather than a bare <c>rating</c> field, so a later story can add a comment or

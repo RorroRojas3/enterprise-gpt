@@ -1,11 +1,10 @@
-using Microsoft.AspNetCore.Hosting;
+using System.Net;
+using System.Net.Http.Json;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Testing;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using System.Net;
-using System.Net.Http.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Middleware;

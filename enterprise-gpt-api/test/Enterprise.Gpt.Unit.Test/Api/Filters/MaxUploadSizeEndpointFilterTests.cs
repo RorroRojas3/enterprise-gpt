@@ -1,11 +1,11 @@
+using Enterprise.Gpt.Api.Filters;
+using Enterprise.Gpt.Api.Problems.Constants;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Api.Problems;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Filters;
+namespace Enterprise.Gpt.Unit.Test.Api.Filters;
 
 public sealed class MaxUploadSizeEndpointFilterTests
 {

@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;

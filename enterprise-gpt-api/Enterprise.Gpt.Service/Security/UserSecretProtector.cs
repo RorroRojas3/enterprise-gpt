@@ -1,6 +1,6 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
-using System.Security.Cryptography;
 
 namespace Enterprise.Gpt.Service.Security;
 

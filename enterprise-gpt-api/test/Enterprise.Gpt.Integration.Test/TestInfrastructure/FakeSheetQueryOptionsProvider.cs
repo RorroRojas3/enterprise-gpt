@@ -1,4 +1,6 @@
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Options;
+
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 

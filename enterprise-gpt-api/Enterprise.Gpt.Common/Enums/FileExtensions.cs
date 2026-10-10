@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel;
 
-namespace Enterprise.Gpt.Dto.Enums
+namespace Enterprise.Gpt.Common.Enums
 {
     public enum FileExtensions
     {

@@ -1,4 +1,4 @@
-﻿namespace Enterprise.Gpt.Dto
+﻿namespace Enterprise.Gpt.Dto.Pagination
 {
     public class PaginatedResponseDto<T>
     {

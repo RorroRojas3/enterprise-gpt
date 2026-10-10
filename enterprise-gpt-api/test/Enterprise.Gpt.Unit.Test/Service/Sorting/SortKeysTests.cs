@@ -1,8 +1,12 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Conversations;
+using Enterprise.Gpt.Service.Projects;
 using Enterprise.Gpt.Service.Sorting;
+using Enterprise.Gpt.Service.Users;
 using FluentValidation;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Sorting;
+namespace Enterprise.Gpt.Unit.Test.Service.Sorting;
 
 /// <summary>
 /// Each listing's sort keys are written down three times over — as an enumeration, as the advertised
@@ -17,9 +21,9 @@ public sealed class SortKeysTests
     public static TheoryData<string, IReadOnlyList<string>, int> Listings =>
         new()
         {
-            { "conversations", ConversationSortKeys.Supported, Enum.GetValues<ConversationSortKey>().Length },
-            { "projects", ProjectSortKeys.Supported, Enum.GetValues<ProjectSortKey>().Length },
-            { "users", UserSortKeys.Supported, Enum.GetValues<UserSortKey>().Length }
+            { "conversations", ConversationSortKeyNames.Supported, Enum.GetValues<ConversationSortKeys>().Length },
+            { "projects", ProjectSortKeyNames.Supported, Enum.GetValues<ProjectSortKeys>().Length },
+            { "users", UserSortKeyNames.Supported, Enum.GetValues<UserSortKeys>().Length }
         };
 
     [Theory]
@@ -34,31 +38,31 @@ public sealed class SortKeysTests
     [Fact]
     public void ConversationSortKeys_EverySupportedToken_ResolvesToADistinctKey()
     {
-        var resolved = ConversationSortKeys.Supported
-            .Select(token => ConversationSortKeys.Resolve(token, null).Key)
+        var resolved = ConversationSortKeyNames.Supported
+            .Select(token => ConversationSortKeyNames.Resolve(token, null).Key)
             .ToList();
 
-        Assert.Equal(ConversationSortKeys.Supported.Count, resolved.Distinct().Count());
+        Assert.Equal(ConversationSortKeyNames.Supported.Count, resolved.Distinct().Count());
     }
 
     [Fact]
     public void ProjectSortKeys_EverySupportedToken_ResolvesToADistinctKey()
     {
-        var resolved = ProjectSortKeys.Supported
-            .Select(token => ProjectSortKeys.Resolve(token, null).Key)
+        var resolved = ProjectSortKeyNames.Supported
+            .Select(token => ProjectSortKeyNames.Resolve(token, null).Key)
             .ToList();
 
-        Assert.Equal(ProjectSortKeys.Supported.Count, resolved.Distinct().Count());
+        Assert.Equal(ProjectSortKeyNames.Supported.Count, resolved.Distinct().Count());
     }
 
     [Fact]
     public void UserSortKeys_EverySupportedToken_ResolvesToADistinctKey()
     {
-        var resolved = UserSortKeys.Supported
-            .Select(token => UserSortKeys.Resolve(token, null).Key)
+        var resolved = UserSortKeyNames.Supported
+            .Select(token => UserSortKeyNames.Resolve(token, null).Key)
             .ToList();
 
-        Assert.Equal(UserSortKeys.Supported.Count, resolved.Distinct().Count());
+        Assert.Equal(UserSortKeyNames.Supported.Count, resolved.Distinct().Count());
     }
 
     [Theory]
@@ -68,9 +72,9 @@ public sealed class SortKeysTests
         _ = keyCount;
         var rendered = listing switch
         {
-            "conversations" => ConversationSortKeys.SupportedList,
-            "projects" => ProjectSortKeys.SupportedList,
-            _ => UserSortKeys.SupportedList
+            "conversations" => ConversationSortKeyNames.SupportedList,
+            "projects" => ProjectSortKeyNames.SupportedList,
+            _ => UserSortKeyNames.SupportedList
         };
 
         Assert.All(supported, token => Assert.Contains($"'{token}'", rendered));
@@ -88,9 +92,9 @@ public sealed class SortKeysTests
 
         Assert.Throws<ValidationException>(() => _ = listing switch
         {
-            "conversations" => ConversationSortKeys.Resolve(foreign, null).Key.ToString(),
-            "projects" => ProjectSortKeys.Resolve(foreign, null).Key.ToString(),
-            _ => UserSortKeys.Resolve(foreign, null).Key.ToString()
+            "conversations" => ConversationSortKeyNames.Resolve(foreign, null).Key.ToString(),
+            "projects" => ProjectSortKeyNames.Resolve(foreign, null).Key.ToString(),
+            _ => UserSortKeyNames.Resolve(foreign, null).Key.ToString()
         });
     }
 
@@ -99,9 +103,9 @@ public sealed class SortKeysTests
     {
         // A caller who sends only `?dir=` has named no field, and the listing's own default is the
         // one that must answer — not a 400 about a parameter they left out.
-        Assert.Equal(ProjectSortKey.Created, ProjectSortKeys.Resolve(null, "asc").Key);
-        Assert.Equal(ConversationSortKey.Created, ConversationSortKeys.Resolve("   ", null).Key);
-        Assert.Equal(UserSortKey.Name, UserSortKeys.Resolve(null, null).Key);
+        Assert.Equal(ProjectSortKeys.Created, ProjectSortKeyNames.Resolve(null, "asc").Key);
+        Assert.Equal(ConversationSortKeys.Created, ConversationSortKeyNames.Resolve("   ", null).Key);
+        Assert.Equal(UserSortKeys.Name, UserSortKeyNames.Resolve(null, null).Key);
     }
 
     [Fact]
@@ -109,10 +113,10 @@ public sealed class SortKeysTests
     {
         // A name reads A-Z and a date reads newest first, so an omitted direction cannot resolve to
         // one constant across every field.
-        Assert.Equal(SortDirection.Ascending, ProjectSortKeys.Resolve("name", null).Direction);
-        Assert.Equal(SortDirection.Descending, ProjectSortKeys.Resolve("created", null).Direction);
-        Assert.Equal(SortDirection.Ascending, UserSortKeys.Resolve("name", null).Direction);
-        Assert.Equal(SortDirection.Descending, UserSortKeys.Resolve("created", null).Direction);
+        Assert.Equal(SortDirections.Ascending, ProjectSortKeyNames.Resolve("name", null).Direction);
+        Assert.Equal(SortDirections.Descending, ProjectSortKeyNames.Resolve("created", null).Direction);
+        Assert.Equal(SortDirections.Ascending, UserSortKeyNames.Resolve("name", null).Direction);
+        Assert.Equal(SortDirections.Descending, UserSortKeyNames.Resolve("created", null).Direction);
     }
 
     [Fact]
@@ -126,18 +130,18 @@ public sealed class SortKeysTests
     }
 
     [Theory]
-    [InlineData("asc", SortDirection.Ascending)]
-    [InlineData("DESC", SortDirection.Descending)]
-    public void ResolveDirection_IsCaseInsensitive(string dir, SortDirection expected)
+    [InlineData("asc", SortDirections.Ascending)]
+    [InlineData("DESC", SortDirections.Descending)]
+    public void ResolveDirection_IsCaseInsensitive(string dir, SortDirections expected)
     {
-        Assert.Equal(expected, SortParameters.ResolveDirection(dir, SortDirection.Ascending));
+        Assert.Equal(expected, SortParameters.ResolveDirection(dir, SortDirections.Ascending));
     }
 
     [Fact]
     public void ResolveDirection_UnknownValue_NamesBothAcceptedTokens()
     {
         var failure = Assert.Throws<ValidationException>(
-            () => SortParameters.ResolveDirection("sideways", SortDirection.Ascending));
+            () => SortParameters.ResolveDirection("sideways", SortDirections.Ascending));
 
         var error = Assert.Single(failure.Errors);
         Assert.Equal(SortParameters.DirectionKey, error.PropertyName);

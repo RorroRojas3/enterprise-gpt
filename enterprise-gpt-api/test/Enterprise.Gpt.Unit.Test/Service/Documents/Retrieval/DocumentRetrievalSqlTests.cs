@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Service.Documents.Retrieval;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Retrieval;
 
 /// <summary>
 /// Covers the generated retrieval SQL. The statements cannot be executed here — SQLite has no

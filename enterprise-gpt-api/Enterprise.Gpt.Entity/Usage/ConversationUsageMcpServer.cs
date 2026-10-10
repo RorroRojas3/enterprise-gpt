@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.McpServers;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Usage;
 
 /// <summary>
 /// An MCP server that was attached to a <see cref="ConversationUsage"/> call — selected by the

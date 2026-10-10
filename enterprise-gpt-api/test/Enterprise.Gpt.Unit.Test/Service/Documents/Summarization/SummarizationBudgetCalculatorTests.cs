@@ -1,9 +1,10 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Summarization;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 public sealed class SummarizationBudgetCalculatorTests
 {

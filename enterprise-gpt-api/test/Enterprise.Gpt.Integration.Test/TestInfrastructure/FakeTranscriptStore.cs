@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Models;
 using Microsoft.Azure.Cosmos;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -74,7 +76,7 @@ public sealed class FakeTranscriptStore : ITranscriptStore
     {
         // Mirrors the real store's guard so an over-long patch fails here rather than only in
         // production, where Cosmos rejects the request outright.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, TranscriptStore.MaxPatchOperations);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, CosmosTranscriptStore.MaxPatchOperations);
 
         _patches.Enqueue((id, operations));
 

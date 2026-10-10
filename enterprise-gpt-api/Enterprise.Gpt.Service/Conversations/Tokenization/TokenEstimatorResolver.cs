@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Constants;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service.Tokenization;
+namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 
 /// <summary>
 /// Resolves the token estimator registered for a provider.

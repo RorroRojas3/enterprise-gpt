@@ -1,5 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
-
 namespace Enterprise.Gpt.Service.BackgroundJobs.Constants;
 
 /// <summary>Wording every path that reports a cancelled job shares.</summary>

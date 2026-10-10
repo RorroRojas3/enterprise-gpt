@@ -1,12 +1,11 @@
 using System.Text.Json;
+using Enterprise.Gpt.Common.Validation;
+using Enterprise.Gpt.Entity.McpServers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations
+namespace Enterprise.Gpt.Repository.Sql.Configurations.McpServers
 {
     public sealed class McpServerConfiguration : IEntityTypeConfiguration<McpServer>
     {

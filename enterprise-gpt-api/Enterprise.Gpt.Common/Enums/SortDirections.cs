@@ -1,9 +1,9 @@
-namespace Enterprise.Gpt.Service.Sorting;
+namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>
 /// The direction a sorted listing runs in.
 /// </summary>
-public enum SortDirection
+public enum SortDirections
 {
     /// <summary>
     /// Lowest value first: earliest date, <c>A</c> before <c>Z</c>, <see langword="false"/> before

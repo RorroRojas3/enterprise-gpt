@@ -1,6 +1,7 @@
+using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Problems.Constants;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
-using Enterprise.Gpt.Api.Problems;
 
 namespace Enterprise.Gpt.Api.Filters
 {

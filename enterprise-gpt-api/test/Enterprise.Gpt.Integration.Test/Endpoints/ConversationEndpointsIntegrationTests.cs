@@ -1,9 +1,11 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Chat;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Conversations;
+using Enterprise.Gpt.Dto.Conversations;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;

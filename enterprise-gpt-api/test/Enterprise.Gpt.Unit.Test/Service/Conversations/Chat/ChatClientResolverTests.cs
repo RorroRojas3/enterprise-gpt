@@ -1,12 +1,12 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 
 /// <summary>
 /// Covers the mapping from a model's provider to the keyed chat client that serves it, including the

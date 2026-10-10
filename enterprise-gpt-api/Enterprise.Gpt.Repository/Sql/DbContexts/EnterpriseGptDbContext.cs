@@ -1,72 +1,86 @@
-﻿using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+﻿using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Sql.Configurations.ChatModels;
+using Enterprise.Gpt.Repository.Sql.Configurations.Conversations;
+using Enterprise.Gpt.Repository.Sql.Configurations.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.McpServers;
+using Enterprise.Gpt.Repository.Sql.Configurations.Permissions;
+using Enterprise.Gpt.Repository.Sql.Configurations.Projects;
+using Enterprise.Gpt.Repository.Sql.Configurations.Usage;
+using Enterprise.Gpt.Repository.Sql.Configurations.Users;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository.Configurations;
 
-namespace Enterprise.Gpt.Repository
+namespace Enterprise.Gpt.Repository.Sql.DbContexts
 {
     public class EnterpriseGptDbContext(DbContextOptions<EnterpriseGptDbContext> options)
         : DbContext(options), IDataProtectionKeyContext
     {
         #region DbSets
-        public DbSet<Provider> Providers { get; set; }
+        public DbSet<Provider> Providers => Set<Provider>();
 
-        public DbSet<Conversation> Conversations { get; set; }
+        public DbSet<Conversation> Conversations => Set<Conversation>();
 
-        public DbSet<Model> Models { get; set; }
+        public DbSet<Model> Models => Set<Model>();
 
-        public DbSet<ConversationUsage> ConversationUsage { get; set; }
+        public DbSet<ConversationUsage> ConversationUsage => Set<ConversationUsage>();
 
-        public DbSet<ConversationUsageMcpServer> ConversationUsageMcpServers { get; set; }
+        public DbSet<ConversationUsageMcpServer> ConversationUsageMcpServers => Set<ConversationUsageMcpServer>();
 
-        public DbSet<ConversationUsageToolCall> ConversationUsageToolCalls { get; set; }
+        public DbSet<ConversationUsageToolCall> ConversationUsageToolCalls => Set<ConversationUsageToolCall>();
 
-        public DbSet<ConversationUsageTurn> ConversationUsageTurns { get; set; }
+        public DbSet<ConversationUsageTurn> ConversationUsageTurns => Set<ConversationUsageTurn>();
 
-        public DbSet<ConversationDocument> ConversationDocuments { get; set; }
+        public DbSet<ConversationDocument> ConversationDocuments => Set<ConversationDocument>();
 
-        public DbSet<ConversationDocumentChunk> ConversationDocumentChunks { get; set; }
+        public DbSet<ConversationDocumentChunk> ConversationDocumentChunks => Set<ConversationDocumentChunk>();
 
-        public DbSet<ConversationDocumentSummary> ConversationDocumentSummaries { get; set; }
+        public DbSet<ConversationDocumentSummary> ConversationDocumentSummaries => Set<ConversationDocumentSummary>();
 
-        public DbSet<ConversationDocumentSheet> ConversationDocumentSheets { get; set; }
+        public DbSet<ConversationDocumentSheet> ConversationDocumentSheets => Set<ConversationDocumentSheet>();
 
-        public DbSet<ConversationDocumentSheetColumn> ConversationDocumentSheetColumns { get; set; }
+        public DbSet<ConversationDocumentSheetColumn> ConversationDocumentSheetColumns => Set<ConversationDocumentSheetColumn>();
 
-        public DbSet<ConversationDocumentSheetRow> ConversationDocumentSheetRows { get; set; }
+        public DbSet<ConversationDocumentSheetRow> ConversationDocumentSheetRows => Set<ConversationDocumentSheetRow>();
 
-        public DbSet<Project> Projects { get; set; }
+        public DbSet<Project> Projects => Set<Project>();
 
-        public DbSet<ProjectDocument> ProjectDocuments { get; set; }
+        public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
 
-        public DbSet<ProjectDocumentChunk> ProjectDocumentChunks { get; set; }
+        public DbSet<ProjectDocumentChunk> ProjectDocumentChunks => Set<ProjectDocumentChunk>();
 
-        public DbSet<ProjectDocumentSummary> ProjectDocumentSummaries { get; set; }
+        public DbSet<ProjectDocumentSummary> ProjectDocumentSummaries => Set<ProjectDocumentSummary>();
 
-        public DbSet<ProjectDocumentSheet> ProjectDocumentSheets { get; set; }
+        public DbSet<ProjectDocumentSheet> ProjectDocumentSheets => Set<ProjectDocumentSheet>();
 
-        public DbSet<ProjectDocumentSheetColumn> ProjectDocumentSheetColumns { get; set; }
+        public DbSet<ProjectDocumentSheetColumn> ProjectDocumentSheetColumns => Set<ProjectDocumentSheetColumn>();
 
-        public DbSet<ProjectDocumentSheetRow> ProjectDocumentSheetRows { get; set; }
+        public DbSet<ProjectDocumentSheetRow> ProjectDocumentSheetRows => Set<ProjectDocumentSheetRow>();
 
-        public DbSet<User> Users { get; set; }
+        public DbSet<User> Users => Set<User>();
 
-        public DbSet<UserPermission> UserPermissions { get; set; }
+        public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
 
-        public DbSet<Permission> Permissions { get; set; }
+        public DbSet<Permission> Permissions => Set<Permission>();
 
-        public DbSet<McpServer> McpServers { get; set; }
+        public DbSet<McpServer> McpServers => Set<McpServer>();
 
-        public DbSet<UserMcpCredential> UserMcpCredentials { get; set; }
+        public DbSet<UserMcpCredential> UserMcpCredentials => Set<UserMcpCredential>();
 
-        public DbSet<MessageFeedback> MessageFeedback { get; set; }
+        public DbSet<MessageFeedback> MessageFeedback => Set<MessageFeedback>();
 
         /// <summary>
         /// The Data Protection key ring, owned by the framework rather than by this application:
         /// no configuration maps it and nothing here reads it. It is a <c>DbSet</c> only because
         /// <see cref="IDataProtectionKeyContext"/> requires one.
         /// </summary>
-        public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
+        public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)

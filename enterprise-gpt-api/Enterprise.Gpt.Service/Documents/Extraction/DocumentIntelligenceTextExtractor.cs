@@ -1,12 +1,13 @@
 using Azure;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Converters;
 
-namespace Enterprise.Gpt.Service.Extraction
+namespace Enterprise.Gpt.Service.Documents.Extraction
 {
     /// <summary>
     /// Reads PDF and Word documents with Azure AI Document Intelligence, so scanned and image-only files

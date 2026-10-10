@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using System.Text.Json;
 
-namespace Enterprise.Gpt.Dto.Actions.Mcp;
+namespace Enterprise.Gpt.Common.Validation;
 
 /// <summary>
 /// The rules both MCP server action validators apply to the configured request headers, and the

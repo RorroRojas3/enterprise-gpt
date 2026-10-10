@@ -1,20 +1,22 @@
+using Enterprise.Gpt.Dto.Actions.ChatModels;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Service.ChatModels;
+using Enterprise.Gpt.Service.ChatModels.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Enterprise.Gpt.Dto.Actions.Model;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.ChatModels;
 
 public sealed class ModelServiceTests : IDisposable
 {
@@ -34,7 +36,7 @@ public sealed class ModelServiceTests : IDisposable
             new CreateModelActionDtoValidator(),
             new UpdateModelActionDtoValidator(),
             // The seeded row is the summarizer, which is what the guards below key off.
-            Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
             _chatClientResolver);
     }
 

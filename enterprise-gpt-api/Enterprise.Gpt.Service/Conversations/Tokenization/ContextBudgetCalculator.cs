@@ -1,33 +1,7 @@
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Conversations.Tokenization.Models;
 
-namespace Enterprise.Gpt.Service.Tokenization;
-
-/// <summary>
-/// One message as the budget calculator sees it.
-/// </summary>
-/// <param name="Role">Who produced the message.</param>
-/// <param name="Tokens">What it contributes to the prompt.</param>
-public readonly record struct BudgetMessage(ChatRoles Role, long Tokens);
-
-/// <summary>
-/// What a turn's history looked like after the budget was applied.
-/// </summary>
-/// <param name="KeptIndexes">
-/// The positions, in the original list, of the messages that fit — in their original order.
-/// </param>
-/// <param name="DroppedMessages">How many messages were dropped.</param>
-/// <param name="DroppedTokens">How many tokens those messages held.</param>
-/// <param name="IsUnbounded">Whether the model declared no context window, so nothing was measured.</param>
-/// <param name="Fits">
-/// Whether the result fits the budget. False only when what cannot be dropped — the system message
-/// and the current prompt — exceeds it on its own.
-/// </param>
-public sealed record ContextBudgetResult(
-    IReadOnlyList<int> KeptIndexes,
-    int DroppedMessages,
-    long DroppedTokens,
-    bool IsUnbounded,
-    bool Fits);
+namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 
 /// <summary>
 /// Decides which of a conversation's messages fit the model that is about to answer.

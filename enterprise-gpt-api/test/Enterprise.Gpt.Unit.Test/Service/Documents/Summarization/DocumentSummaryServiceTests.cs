@@ -1,18 +1,21 @@
 ﻿using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tool;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 /// <summary>
 /// Covers the seam between the engine and the money: that a stored summary is reused for nothing,
@@ -31,14 +34,14 @@ public sealed class DocumentSummaryServiceTests : IDisposable
     public DocumentSummaryServiceTests()
     {
         _summarizer
-            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(Run(Summary));
 
         _service = new DocumentSummaryService(
             _summarizer,
             _fixture.Context,
             _fixture.ScopeFactory,
-            Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
             NullLogger<DocumentSummaryService>.Instance);
     }
 
@@ -52,7 +55,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         var (conversationId, documentId) = await AddConversationDocumentAsync();
 
         var result = await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(Summary, result.Text);
         Assert.False(result.FromCache);
@@ -83,7 +86,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         var (conversationId, documentId) = await AddConversationDocumentAsync();
 
         await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
         var usage = await ctx.ConversationUsage.SingleAsync(TestContext.Current.CancellationToken);
@@ -111,7 +114,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         var (conversationId, documentId) = await AddConversationDocumentAsync();
 
         await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
         var conversation = await ctx.Conversations.SingleAsync(
@@ -134,7 +137,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         var (conversationId, documentId) = await AddConversationDocumentAsync();
 
         await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Empty(_fixture.Context.ChangeTracker.Entries<ConversationDocumentSummary>());
         Assert.Empty(_fixture.Context.ChangeTracker.Entries<ConversationUsage>());
@@ -153,7 +156,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         using var cts = new CancellationTokenSource();
 
         _summarizer
-            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(async _ =>
             {
                 await cts.CancelAsync();
@@ -162,7 +165,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
             });
 
         var result = await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, cts.Token);
+            conversationId, documentId, DocumentSources.Conversation, cts.Token);
 
         Assert.Equal(Summary, result.Text);
 
@@ -180,12 +183,12 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         var (conversationId, documentId) = await AddConversationDocumentAsync();
 
         await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         _summarizer.ClearReceivedCalls();
 
         var result = await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(result.FromCache);
         Assert.Equal(0, result.ModelCallCount);
@@ -213,10 +216,10 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         var secondConversationId = await AddConversationAsync();
 
         await _service.GetOrCreateAsync(
-            firstConversationId, documentId, DocumentSource.Project, TestContext.Current.CancellationToken);
+            firstConversationId, documentId, DocumentSources.Project, TestContext.Current.CancellationToken);
 
         var result = await _service.GetOrCreateAsync(
-            secondConversationId, documentId, DocumentSource.Project, TestContext.Current.CancellationToken);
+            secondConversationId, documentId, DocumentSources.Project, TestContext.Current.CancellationToken);
 
         Assert.True(result.FromCache);
 
@@ -237,7 +240,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await AddStoredSummaryAsync(documentId, "Written under an older prompt.", promptVersion: "0");
 
         var result = await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.False(result.FromCache);
         Assert.Equal(Summary, result.Text);
@@ -261,7 +264,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await AddStoredSummaryAsync(documentId, "Older.", promptVersion: "0", inputTokens: 5_000, outputTokens: 4_000);
 
         await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
         var row = await ctx.ConversationDocumentSummaries.SingleAsync(TestContext.Current.CancellationToken);
@@ -281,7 +284,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await AddStoredSummaryAsync(documentId, "Deactivated.", deactivated: true);
 
         var result = await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.False(result.FromCache);
 
@@ -316,13 +319,13 @@ public sealed class DocumentSummaryServiceTests : IDisposable
             _summarizer,
             _fixture.Context,
             _fixture.ScopeFactory,
-            Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId, MaxDigestDocuments = 1 }),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId, MaxDigestDocuments = 1 }),
             NullLogger<DocumentSummaryService>.Instance);
 
         var scope = new DocumentRetrievalScope(conversationId, null,
         [
-            new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "a.pdf"),
-            new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "b.pdf")
+            new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "a.pdf"),
+            new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "b.pdf")
         ]);
 
         var exception = await Assert.ThrowsAsync<ValidationException>(() => service.CreateDigestAsync(
@@ -350,8 +353,8 @@ public sealed class DocumentSummaryServiceTests : IDisposable
 
         var scope = new DocumentRetrievalScope(conversationId, null,
         [
-            new RetrievableDocument(firstId, DocumentSource.Conversation, "handbook.pdf"),
-            new RetrievableDocument(secondId, DocumentSource.Conversation, "policy.pdf")
+            new RetrievableDocument(firstId, DocumentSources.Conversation, "handbook.pdf"),
+            new RetrievableDocument(secondId, DocumentSources.Conversation, "policy.pdf")
         ]);
 
         var digest = await _service.CreateDigestAsync(
@@ -360,9 +363,9 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         Assert.Equal("Both documents concern refunds.", digest);
 
         await _summarizer.Received(1).SummarizeDocumentAsync(
-            secondId, DocumentSource.Conversation, Arg.Any<CancellationToken>());
+            secondId, DocumentSources.Conversation, Arg.Any<CancellationToken>());
         await _summarizer.DidNotReceive().SummarizeDocumentAsync(
-            firstId, Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>());
+            firstId, Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -376,7 +379,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
             .Returns(Run("A digest."));
 
         var scope = new DocumentRetrievalScope(conversationId, null,
-            [new RetrievableDocument(documentId, DocumentSource.Conversation, "handbook.pdf")]);
+            [new RetrievableDocument(documentId, DocumentSources.Conversation, "handbook.pdf")]);
 
         await _service.CreateDigestAsync(conversationId, scope, TestContext.Current.CancellationToken);
 

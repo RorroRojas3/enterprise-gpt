@@ -1,8 +1,4 @@
-﻿using Enterprise.Gpt.Common.Enums;
-using FluentValidation;
-using System.Text.Json.Serialization;
-
-namespace Enterprise.Gpt.Dto.Actions.Conversations;
+﻿namespace Enterprise.Gpt.Dto.Actions.Conversations;
 
 /// <summary>
 /// Sets whether a conversation is one of the caller's favourites.

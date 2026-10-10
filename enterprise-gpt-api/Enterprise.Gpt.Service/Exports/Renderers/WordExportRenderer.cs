@@ -3,9 +3,11 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Exports.Models;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
-namespace Enterprise.Gpt.Service.Export.Renderers;
+namespace Enterprise.Gpt.Service.Exports.Renderers;
 
 /// <summary>
 /// Writes a conversation as an Office Open XML word-processing document.
@@ -71,7 +73,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             {
                 // A prompt is banded rather than bubbled — the same tint and left rule the HTML and
                 // PDF exports draw, because a right-aligned bubble does not survive page flow.
-                var style = message.Role is ChatRoles.User ? ExportBlockStyle.Prompt : ExportBlockStyle.None;
+                var style = message.Role is ChatRoles.User ? ExportBlockStyles.Prompt : ExportBlockStyles.None;
 
                 body.AppendChild(StyledParagraph(
                     StyleIds.MessageLabel, [new ExportRun(message.Label)], main, style: style));
@@ -97,7 +99,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         ExportBlock block,
         MainDocumentPart main,
         int indentLevel,
-        ExportBlockStyle style)
+        ExportBlockStyles style)
     {
         switch (block)
         {
@@ -118,7 +120,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             case QuoteBlock quote:
                 foreach (var child in quote.Children)
                 {
-                    AppendBlock(parent, child, main, indentLevel + 1, style | ExportBlockStyle.Quote);
+                    AppendBlock(parent, child, main, indentLevel + 1, style | ExportBlockStyles.Quote);
                 }
                 break;
 
@@ -143,7 +145,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     // wrapping is not. Shading is on the paragraph rather than the runs so a short line still reads
     // as part of the block.
     private static void AppendCode(
-        OpenXmlCompositeElement parent, CodeBlock code, int indentLevel, ExportBlockStyle style)
+        OpenXmlCompositeElement parent, CodeBlock code, int indentLevel, ExportBlockStyles style)
     {
         // The fence's language, the way the app labels a code block and the HTML export repeats.
         if (!string.IsNullOrWhiteSpace(code.Language))
@@ -177,7 +179,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         ListBlock list,
         MainDocumentPart main,
         int indentLevel,
-        ExportBlockStyle style)
+        ExportBlockStyles style)
     {
         // Word's numbering levels stop at nine, and a list nested deeper than this is unreadable in
         // any case; past the cap the items keep their text and share the deepest level.
@@ -203,7 +205,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     }
 
     private Paragraph NumberedParagraph(
-        IReadOnlyList<ExportRun> runs, MainDocumentPart main, bool ordered, int level, ExportBlockStyle style)
+        IReadOnlyList<ExportRun> runs, MainDocumentPart main, bool ordered, int level, ExportBlockStyles style)
     {
         // No paragraph indent: the numbering level carries its own, and one set here would override
         // it and pull every bullet back to the margin.
@@ -225,7 +227,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         TableBlock table,
         MainDocumentPart main,
         int indentLevel,
-        ExportBlockStyle style)
+        ExportBlockStyles style)
     {
         var rows = table.HeaderRow is null ? table.Rows : [table.HeaderRow, .. table.Rows];
 
@@ -307,7 +309,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
                 var fill = isHeader
                     ? ExportTheme.Colors.SurfaceAlt
-                    : style.HasFlag(ExportBlockStyle.Prompt) ? ExportTheme.Colors.UserBand : null;
+                    : style.HasFlag(ExportBlockStyles.Prompt) ? ExportTheme.Colors.UserBand : null;
 
                 if (fill is not null)
                 {
@@ -339,7 +341,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         IReadOnlyList<ExportRun> runs,
         MainDocumentPart main,
         int indentLevel = 0,
-        ExportBlockStyle style = ExportBlockStyle.None)
+        ExportBlockStyles style = ExportBlockStyles.None)
     {
         var paragraph = new Paragraph(Properties(styleId, indentLevel, style));
 
@@ -357,7 +359,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     /// complaint and is refused by Word.
     /// </remarks>
     private static ParagraphProperties Properties(
-        string styleId, int indentLevel, ExportBlockStyle style, NumberingProperties? numbering = null)
+        string styleId, int indentLevel, ExportBlockStyles style, NumberingProperties? numbering = null)
     {
         var properties = new ParagraphProperties(new ParagraphStyleId { Val = styleId });
 
@@ -366,11 +368,11 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             properties.AppendChild(numbering);
         }
 
-        var prompt = style.HasFlag(ExportBlockStyle.Prompt);
+        var prompt = style.HasFlag(ExportBlockStyles.Prompt);
 
         // Word draws one rule per paragraph, so a quote inside a prompt keeps the prompt's: the
         // outer container is the one a reader loses more by not seeing.
-        if (prompt || style.HasFlag(ExportBlockStyle.Quote))
+        if (prompt || style.HasFlag(ExportBlockStyles.Quote))
         {
             properties.AppendChild(new ParagraphBorders(
                 new LeftBorder

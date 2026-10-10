@@ -1,7 +1,7 @@
 using Enterprise.Gpt.Service.Agents;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// Covers reading a target format out of an instruction, which is what decides whether a conversion is

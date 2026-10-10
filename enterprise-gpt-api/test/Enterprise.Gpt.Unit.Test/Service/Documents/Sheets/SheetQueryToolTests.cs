@@ -1,14 +1,17 @@
-using Enterprise.Gpt.Common.Observability;
-using Enterprise.Gpt.Service.Tool;
+using System.Text.Json;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using System.Text.Json;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
 /// <summary>
 /// Covers the function the model actually sees: its name and schema, that the turn's own scope is what
@@ -139,7 +142,7 @@ public sealed class SheetQueryToolTests
                 Arg.Any<string?>(),
                 Arg.Any<IReadOnlyList<SheetFilter>?>(),
                 Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("Login failed for user 'sa'. Server=prod-sql-01;Password=hunter2"));
+            .ThrowsAsync(new InvalidOperationException("Login failed for user 'sa'. Server=prod-sql-01;Password=hunter2"));
 
         var function = CreateFunction();
 
@@ -195,7 +198,7 @@ public sealed class SheetQueryToolTests
                 Arg.Any<string?>(),
                 Arg.Any<IReadOnlyList<SheetFilter>?>(),
                 Arg.Any<CancellationToken>())
-            .Throws(new OperationCanceledException());
+            .ThrowsAsync(new OperationCanceledException());
 
         var function = CreateFunction();
 
@@ -345,7 +348,7 @@ public sealed class SheetQueryToolTests
                 Arg.Any<string?>(),
                 Arg.Any<IReadOnlyList<SheetFilter>?>(),
                 Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("boom"));
+            .ThrowsAsync(new InvalidOperationException("boom"));
 
         using var collector = CollectQueryDurations();
 
@@ -418,7 +421,7 @@ public sealed class SheetQueryToolTests
         ConversationId,
         null,
         [
-            new RetrievableDocument(BudgetId, DocumentSource.Conversation, "budget.xlsx"),
-            new RetrievableDocument(HandbookId, DocumentSource.Conversation, "handbook.pdf")
+            new RetrievableDocument(BudgetId, DocumentSources.Conversation, "budget.xlsx"),
+            new RetrievableDocument(HandbookId, DocumentSources.Conversation, "handbook.pdf")
         ]);
 }

@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
 
 /// <summary>
 /// Thrown when a job finished its work but lost the race for the terminal state to a cancel that

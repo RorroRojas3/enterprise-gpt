@@ -1,8 +1,10 @@
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Models;
 using Microsoft.Azure.Cosmos;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Transcripts;
+namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.Models;
 
 public sealed class TranscriptBatchTests
 {
@@ -52,7 +54,7 @@ public sealed class TranscriptBatchTests
     {
         var batch = new TranscriptBatch();
         var operations = Enumerable
-            .Range(0, TranscriptStore.MaxPatchOperations + 1)
+            .Range(0, CosmosTranscriptStore.MaxPatchOperations + 1)
             .Select(index => PatchOperation.Set($"/p{index}", index))
             .ToList();
 

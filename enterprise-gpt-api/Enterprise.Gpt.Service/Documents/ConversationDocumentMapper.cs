@@ -1,10 +1,10 @@
 using System.Linq.Expressions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Entity.Documents;
 using Microsoft.EntityFrameworkCore;
 
-namespace Enterprise.Gpt.Service.Mappers;
+namespace Enterprise.Gpt.Service.Documents;
 
 /// <summary>
 /// Maps <see cref="ConversationDocument"/> to its DTOs, in both the materialized and the

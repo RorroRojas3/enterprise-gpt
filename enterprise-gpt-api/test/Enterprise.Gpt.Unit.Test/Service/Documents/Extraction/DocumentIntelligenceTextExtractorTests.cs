@@ -1,19 +1,18 @@
+using System.Text;
 using Azure;
 using Azure.AI.DocumentIntelligence;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Converters;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using System.Text;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Extraction;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 public sealed class DocumentIntelligenceTextExtractorTests
 {
@@ -113,7 +112,7 @@ public sealed class DocumentIntelligenceTextExtractorTests
     {
         // The service refused the document itself, which is the caller's problem to fix — a 400, not a 500.
         _documentIntelligence.ReadAsync(Arg.Any<byte[]>(), Arg.Any<Action<TimeSpan>?>(), Arg.Any<CancellationToken>())
-            .Throws(new RequestFailedException(status, "unsupported or corrupt"));
+            .ThrowsAsync(new RequestFailedException(status, "unsupported or corrupt"));
 
         var exception = await Assert.ThrowsAsync<ValidationException>(
             () => _extractor.ExtractAsync(File(), progress: null, TestContext.Current.CancellationToken));
@@ -130,7 +129,7 @@ public sealed class DocumentIntelligenceTextExtractorTests
         // Throttling and outages are not the document's fault; reporting them as bad input would tell the
         // user to fix a file that is fine.
         _documentIntelligence.ReadAsync(Arg.Any<byte[]>(), Arg.Any<Action<TimeSpan>?>(), Arg.Any<CancellationToken>())
-            .Throws(new RequestFailedException(status, "service unavailable"));
+            .ThrowsAsync(new RequestFailedException(status, "service unavailable"));
 
         await Assert.ThrowsAsync<RequestFailedException>(
             () => _extractor.ExtractAsync(File(), progress: null, TestContext.Current.CancellationToken));

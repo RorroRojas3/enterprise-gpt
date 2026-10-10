@@ -1,17 +1,26 @@
-﻿using Enterprise.Gpt.Entity.Transcripts;
+﻿using System.Text.Json;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Permissions;
+using Enterprise.Gpt.Service.Prompts;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Tool;
-using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -1139,7 +1148,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                     Id = Guid.NewGuid(),
                     ColumnIndex = 0,
                     ColumnName = "SKU",
-                    InferredType = SheetColumnType.Text,
+                    InferredType = SheetColumnTypes.Text,
                     DateCreated = date,
                     DateModified = date
                 }
@@ -1507,7 +1516,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
     /// <summary>
     /// Evicts the singleton permission cache. These helpers write grants straight through the
-    /// DbContext, so the eviction <see cref="Enterprise.Gpt.Service.IPermissionService"/> performs on
+    /// DbContext, so the eviction <see cref="IPermissionService"/> performs on
     /// the production path never runs and a later test would authorize against a stale grant set.
     /// </summary>
     private void ClearPermissionCache()
@@ -1561,7 +1570,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted summary.</returns>
     public async Task<Guid> AddDocumentSummaryAsync(
-        Guid documentId, DocumentSource source, Guid modelId, CancellationToken cancellationToken = default)
+        Guid documentId, DocumentSources source, Guid modelId, CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
@@ -1570,8 +1579,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
         BaseDocumentSummary summary = source switch
         {
-            DocumentSource.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
-            DocumentSource.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
+            DocumentSources.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
+            DocumentSources.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
         };
 
@@ -1601,16 +1610,16 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<BaseDocumentSummary?> FindDocumentSummaryAsync(
-        Guid id, DocumentSource source, CancellationToken cancellationToken = default)
+        Guid id, DocumentSources source, CancellationToken cancellationToken = default)
     {
         using var scope = Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
         return source switch
         {
-            DocumentSource.Conversation => await ctx.ConversationDocumentSummaries
+            DocumentSources.Conversation => await ctx.ConversationDocumentSummaries
                 .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken),
-            DocumentSource.Project => await ctx.ProjectDocumentSummaries
+            DocumentSources.Project => await ctx.ProjectDocumentSummaries
                 .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
         };

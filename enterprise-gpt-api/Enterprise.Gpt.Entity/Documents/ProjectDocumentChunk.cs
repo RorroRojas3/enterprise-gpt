@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Documents;
 
 /// <summary>
 /// A chunk of a document uploaded into a project.

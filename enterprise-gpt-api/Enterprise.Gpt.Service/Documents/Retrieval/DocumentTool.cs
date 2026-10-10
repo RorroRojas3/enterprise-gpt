@@ -1,9 +1,10 @@
+using System.ComponentModel;
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using System.ComponentModel;
 
-namespace Enterprise.Gpt.Service.Tool;
+namespace Enterprise.Gpt.Service.Documents.Retrieval;
 
 /// <summary>
 /// Exposes retrieval over a conversation's documents to the assistant as a callable function.

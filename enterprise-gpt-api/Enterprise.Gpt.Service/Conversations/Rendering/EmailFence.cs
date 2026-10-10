@@ -1,6 +1,6 @@
 using Markdig.Syntax;
 
-namespace Enterprise.Gpt.Service.Rendering;
+namespace Enterprise.Gpt.Service.Conversations.Rendering;
 
 /// <summary>
 /// The fenced block the assistant marks a composed email with.

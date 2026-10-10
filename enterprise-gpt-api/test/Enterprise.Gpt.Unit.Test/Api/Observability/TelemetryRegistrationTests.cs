@@ -1,5 +1,6 @@
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Enterprise.Gpt.Api.Observability;
+using Enterprise.Gpt.Api.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -7,7 +8,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Observability;
+namespace Enterprise.Gpt.Unit.Test.Api.Observability;
 
 /// <summary>
 /// Covers the exporter registration and the options that decide the deployment's sampling posture.

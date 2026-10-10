@@ -1,19 +1,12 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Agents.Exceptions;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Agents;
-
-/// <summary>
-/// The File Agent's catalog row as it stood when it was read.
-/// </summary>
-/// <param name="ModelId">The catalog row's identifier.</param>
-/// <param name="ProviderId">The provider whose chat client serves it.</param>
-/// <param name="DeploymentName">The provider-side identifier sent as <c>ChatOptions.ModelId</c>.</param>
-public sealed record FileAgentModel(Guid ModelId, Guid ProviderId, string DeploymentName);
 
 /// <summary>
 /// Reads the pinned File Agent's catalog row.

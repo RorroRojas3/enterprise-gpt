@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions
+namespace Enterprise.Gpt.Service.Conversations.Exceptions
 {
     /// <summary>
     /// Thrown when a chat turn is requested for a conversation that already has one in flight.

@@ -1,41 +1,57 @@
-﻿using Andes.Extensions.AI;
-using FluentValidation;
-using FluentValidation.Results;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Chat;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Microsoft.Azure.Cosmos;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
-using Conversation = Enterprise.Gpt.Entity.Conversation;
-using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using Andes.Extensions.AI;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Conversations;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Dto.Conversations;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Entity.Conversations;
 using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Agents.Constants;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.ChatModels;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Rendering;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Conversations.Tokenization.Models;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Summarization;
 using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Service.McpServers;
+using Enterprise.Gpt.Service.McpServers.Models;
 using Enterprise.Gpt.Service.Observability;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Rendering;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Security;
 using Enterprise.Gpt.Service.Sorting;
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tokenization;
-using Enterprise.Gpt.Service.Tool;
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Service.Sorting.Models;
+using FluentValidation;
+using FluentValidation.Results;
+using Microsoft.Azure.Cosmos;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using Conversation = Enterprise.Gpt.Entity.Conversations.Conversation;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Conversations
 {
     public interface IConversationService
     {
@@ -58,7 +74,7 @@ namespace Enterprise.Gpt.Service
         /// <summary>
         /// The <c>metadata</c> key the <see cref="AssistantUiEventKind.Finished"/> frame carries the
         /// files this turn produced under, as a JSON array of
-        /// <see cref="Dto.MessageAttachmentDto"/>.
+        /// <see cref="MessageAttachmentDto"/>.
         /// </summary>
         /// <remarks>
         /// An opaque identifier clients match verbatim, like the key above. JSON in a string because
@@ -109,7 +125,7 @@ namespace Enterprise.Gpt.Service
         /// <param name="take">The page size.</param>
         /// <param name="isFavorite">Restricts the results to favourites when <see langword="true"/>, to non-favourites when <see langword="false"/>, and applies no filter when <see langword="null"/>.</param>
         /// <param name="projectId">Restricts the results to one of the caller's projects, or <see langword="null"/> for no project filter.</param>
-        /// <param name="sort">An optional field to order by — one of <see cref="Sorting.ConversationSortKeys.Supported"/>.</param>
+        /// <param name="sort">An optional field to order by — one of <see cref="ConversationSortKeyNames.Supported"/>.</param>
         /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <returns>A page of conversations.</returns>
@@ -168,7 +184,7 @@ namespace Enterprise.Gpt.Service
             Guid id, int? take, DateTimeOffset? before, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Records, replaces or withdraws the caller's rating of an assistant message (US-1102).
+        /// Records, replaces or withdraws the caller's rating of an assistant message.
         /// </summary>
         /// <param name="conversationId">The unique identifier of the conversation.</param>
         /// <param name="messageId">The unique identifier of the assistant message being rated.</param>
@@ -707,9 +723,9 @@ namespace Enterprise.Gpt.Service
         {
             // Resolved before any database work, so a misspelled sort field costs a round trip to
             // nothing rather than a page the caller then has to distrust.
-            SortSelection<ConversationSortKey>? order = SortParameters.IsDefaultOrder(sort, dir)
+            SortSelection<ConversationSortKeys>? order = SortParameters.IsDefaultOrder(sort, dir)
                 ? null
-                : ConversationSortKeys.Resolve(sort, dir);
+                : ConversationSortKeyNames.Resolve(sort, dir);
 
             // Clamped rather than validated: the paging arguments come straight off the query
             // string, and take = 0 would divide by zero when computing CurrentPage below.
@@ -748,7 +764,7 @@ namespace Enterprise.Gpt.Service
             var items = await OrderConversations(query, order)
                 .Skip(skip)
                 .Take(take)
-                .Select(ChatExtensions.MapToChatDtoExpression)
+                .Select(ConversationMapper.MapToChatDtoExpression)
                 .ToListAsync(cancellationToken);
 
             return new PaginatedResponseDto<ConversationDto>
@@ -767,7 +783,7 @@ namespace Enterprise.Gpt.Service
         /// </remarks>
         private static IOrderedQueryable<Conversation> OrderConversations(
             IQueryable<Conversation> query,
-            SortSelection<ConversationSortKey>? order)
+            SortSelection<ConversationSortKeys>? order)
         {
             if (order is not { } requested)
             {
@@ -779,7 +795,7 @@ namespace Enterprise.Gpt.Service
 
             var ordered = requested.Key switch
             {
-                ConversationSortKey.Name => requested.IsAscending
+                ConversationSortKeys.Name => requested.IsAscending
                     ? query.OrderBy(x => x.Name)
                     : query.OrderByDescending(x => x.Name),
                 _ => requested.IsAscending
@@ -847,7 +863,7 @@ namespace Enterprise.Gpt.Service
             return await _ctx.Conversations
                 .AsNoTracking()
                 .Where(x => x.Id == request.Id)
-                .Select(ChatExtensions.MapToChatDtoExpression)
+                .Select(ConversationMapper.MapToChatDtoExpression)
                 .FirstAsync(cancellationToken);
         }
 
@@ -948,7 +964,7 @@ namespace Enterprise.Gpt.Service
 
             var transcript = await ReadMessagesAsync(userId, id, take: null, before: null, cancellationToken);
 
-            var conversations = new List<ChatMessage>(transcript.Select(x => new ChatMessage(MappingService.MapToChatRole(x.Role), x.Content)))
+            var conversations = new List<ChatMessage>(transcript.Select(x => new ChatMessage(ChatRoleMapper.MapToChatRole(x.Role), x.Content)))
             {
                 new(ChatRole.User, request.Prompt)
             };

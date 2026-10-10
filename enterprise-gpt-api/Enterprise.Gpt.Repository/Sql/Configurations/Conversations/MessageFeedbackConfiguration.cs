@@ -1,8 +1,8 @@
+using Enterprise.Gpt.Entity.Conversations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations;
+namespace Enterprise.Gpt.Repository.Sql.Configurations.Conversations;
 
 /// <summary>
 /// Configures the <see cref="MessageFeedback"/> projection table.

@@ -1,10 +1,10 @@
-﻿using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Service.Tool;
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
 /// Covers the invariant a summary table is easiest to get wrong: a summary that outlives the
@@ -44,7 +44,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var summary = await _fixture.FindDocumentSummaryAsync(
-            summaryId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            summaryId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.NotNull(summary);
         Assert.NotNull(summary.DateDeactivated);
@@ -69,7 +69,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         foreach (var summaryId in new[] { first.SummaryId, second.SummaryId })
         {
             var summary = await _fixture.FindDocumentSummaryAsync(
-                summaryId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+                summaryId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
             Assert.NotNull(summary);
             Assert.NotNull(summary.DateDeactivated);
@@ -88,7 +88,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var summary = await _fixture.FindDocumentSummaryAsync(
-            summaryId, DocumentSource.Project, TestContext.Current.CancellationToken);
+            summaryId, DocumentSources.Project, TestContext.Current.CancellationToken);
 
         Assert.NotNull(summary);
         Assert.NotNull(summary.DateDeactivated);
@@ -106,7 +106,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var summary = await _fixture.FindDocumentSummaryAsync(
-            summaryId, DocumentSource.Project, TestContext.Current.CancellationToken);
+            summaryId, DocumentSources.Project, TestContext.Current.CancellationToken);
 
         Assert.NotNull(summary);
         Assert.NotNull(summary.DateDeactivated);
@@ -124,7 +124,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var summary = await _fixture.FindDocumentSummaryAsync(
-            summaryId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            summaryId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.NotNull(summary);
         Assert.NotNull(summary.DateDeactivated);
@@ -140,7 +140,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
             conversationId, $"handbook-{Guid.NewGuid():N}.pdf", Chunks, cancellationToken: token);
 
         var summaryId = await _fixture.AddDocumentSummaryAsync(
-            documentId, DocumentSource.Conversation, modelId, token);
+            documentId, DocumentSources.Conversation, modelId, token);
 
         return (conversationId, documentId, summaryId);
     }
@@ -155,7 +155,7 @@ public sealed class DocumentSummaryCascadeIntegrationTests(IntegrationTestFixtur
             projectId, $"shared-{Guid.NewGuid():N}.pdf", Chunks, cancellationToken: token);
 
         var summaryId = await _fixture.AddDocumentSummaryAsync(
-            documentId, DocumentSource.Project, modelId, token);
+            documentId, DocumentSources.Project, modelId, token);
 
         return (projectId, documentId, summaryId);
     }

@@ -1,11 +1,3 @@
-using System.Net;
-using System.Text.Json.Serialization;
-using Enterprise.Gpt.Repository.Cosmos.Models;
-using Enterprise.Gpt.Repository.Cosmos.Options;
-using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-
 namespace Enterprise.Gpt.Repository.Cosmos.Models;
 
 /// <summary>

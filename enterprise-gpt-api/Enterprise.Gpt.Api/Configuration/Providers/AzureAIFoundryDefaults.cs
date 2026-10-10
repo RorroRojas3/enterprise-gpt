@@ -1,18 +1,18 @@
 using Microsoft.Extensions.AI;
 
-namespace Enterprise.Gpt.Api.Chat;
+namespace Enterprise.Gpt.Api.Configuration.Providers;
 
 /// <summary>
 /// Builds the callback that stamps Chat Completions request settings onto every turn served by the
 /// Azure AI Foundry chat client.
 /// </summary>
 /// <remarks>
-/// The Chat Completions counterpart to <see cref="AzureOpenAIChatDefaults"/>. It touches no OpenAI
+/// The Chat Completions counterpart to <see cref="AzureOpenAIDefaults"/>. It touches no OpenAI
 /// SDK request type at all — everything it needs is on the provider-agnostic
 /// <see cref="ChatOptions"/> — which is why, unlike its sibling, this file carries no
 /// <c>OPENAI001</c> suppression.
 /// </remarks>
-internal static class AzureAIFoundryChatDefaults
+internal static class AzureAIFoundryDefaults
 {
     /// <summary>
     /// Creates the <see cref="ChatOptions"/> callback for the Azure AI Foundry provider.
@@ -39,7 +39,7 @@ internal static class AzureAIFoundryChatDefaults
             options.Reasoning = null;
 
             // ConversationId is deliberately left alone, and the asymmetry with
-            // AzureOpenAIChatDefaults is the point: that one has to clear it because the Responses
+            // AzureOpenAIDefaults is the point: that one has to clear it because the Responses
             // adapter reads any id not beginning with "conv_" as a response id and sends it as
             // previous_response_id. Chat Completions is stateless and the adapter has nowhere to put
             // it, so there is nothing here to defend against and nothing to clear.

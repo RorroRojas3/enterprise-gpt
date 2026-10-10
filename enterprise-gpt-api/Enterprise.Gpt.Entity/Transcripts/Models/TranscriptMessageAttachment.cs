@@ -1,8 +1,6 @@
 using System.Text.Json.Serialization;
-using Enterprise.Gpt.Common.Constants;
-using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Entity.Transcripts;
+namespace Enterprise.Gpt.Entity.Transcripts.Models;
 
 /// <summary>
 /// One file an assistant message introduced.

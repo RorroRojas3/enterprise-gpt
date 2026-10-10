@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Documents;
 
 /// <summary>
 /// A column of a sheet belonging to a project document.

@@ -1,11 +1,13 @@
+using System.Text.Json;
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Dto.Actions.Conversations;
+using Enterprise.Gpt.Dto.Conversations;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Service.Conversations;
+using Enterprise.Gpt.Service.Exports;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Chat;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Export;
-using System.Text.Json;
 
 namespace Enterprise.Gpt.Api.Endpoints;
 

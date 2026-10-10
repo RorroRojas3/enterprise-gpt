@@ -1,4 +1,7 @@
-namespace Enterprise.Gpt.Entity
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Users;
+
+namespace Enterprise.Gpt.Entity.Permissions
 {
     public class UserPermission : BaseModifiedByEntity
     {

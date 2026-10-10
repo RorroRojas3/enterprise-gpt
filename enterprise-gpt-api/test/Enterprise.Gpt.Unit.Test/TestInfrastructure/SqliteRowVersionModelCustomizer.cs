@@ -1,9 +1,9 @@
+using Enterprise.Gpt.Entity.Base;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Enterprise.Gpt.Entity;
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 

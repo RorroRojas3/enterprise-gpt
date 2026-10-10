@@ -1,21 +1,13 @@
 using System.Text;
 using System.Text.Json;
-using Enterprise.Gpt.Integration.Test.FileAgentSpike;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentBenchmark;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Service.Prompts;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentBenchmark;
-
-/// <summary>What one benchmark prompt produced.</summary>
-/// <param name="Shape">What re-opening the artifact measured, or why it would not open.</param>
-internal sealed record BenchmarkResult(
-    string Id, string Verb, string Extension, bool Produced, bool Verified, string Shape, string Answer);
-
-/// <summary>The whole run, written as evidence beside the spike's own.</summary>
-internal sealed record BenchmarkReport(
-    DateTimeOffset RecordedUtc, string Deployment, double PassRate, IReadOnlyList<BenchmarkResult> Results);
+namespace Enterprise.Gpt.Integration.Test.Agents;
 
 /// <summary>
 /// The fixed thirty-prompt benchmark, measured against the same verifier that gates a real run.

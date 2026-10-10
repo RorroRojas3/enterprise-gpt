@@ -1,10 +1,10 @@
-using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Reports;
 using Enterprise.Gpt.Service.Reports;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public class ReportEndpointsTests
 {

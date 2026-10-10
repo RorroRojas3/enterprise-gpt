@@ -1,4 +1,3 @@
-using System.Text;
 using Enterprise.Gpt.Common.Enums;
 
 namespace Enterprise.Gpt.Service.Documents.Retrieval.Models;

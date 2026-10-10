@@ -1,11 +1,11 @@
+using System.Text;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
 using FluentValidation;
 using Microsoft.Extensions.Logging.Abstractions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Service.Converters;
-using System.Text;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Converters;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 /// <summary>
 /// Covers the failure behavior of the legacy <c>.doc</c> converter.

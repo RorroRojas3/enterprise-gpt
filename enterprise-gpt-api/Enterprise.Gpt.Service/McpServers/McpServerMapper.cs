@@ -1,10 +1,10 @@
 using System.Linq.Expressions;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Dto.McpServers;
+using Enterprise.Gpt.Entity.McpServers;
 
-namespace Enterprise.Gpt.Service.Mappers
+namespace Enterprise.Gpt.Service.McpServers
 {
     public static class McpServerMapper
     {

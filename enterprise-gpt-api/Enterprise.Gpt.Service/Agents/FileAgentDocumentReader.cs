@@ -1,41 +1,20 @@
 using System.Text.RegularExpressions;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Retrieval;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>A file the File Agent may read, and its bytes.</summary>
-/// <param name="Name">The file name as the user knows it, which is also the name in the sandbox.</param>
-public sealed record FileAgentSourceFile(Guid Id, string Name, string MimeType, byte[] Content);
-
-/// <summary>One document an instruction named, before its bytes are read.</summary>
-/// <param name="Extension">The lower-cased extension including its dot, which the matrix is keyed on.</param>
-public sealed record FileAgentSourceMatch(Guid Id, string Name, string Extension);
-
-/// <summary>
-/// Which of a conversation's files an instruction named, and which of its names cannot be acted on.
-/// </summary>
-/// <param name="Matched">The documents named, longest name first, each named exactly once.</param>
-/// <param name="Ambiguous">
-/// Names the instruction used that belong to more than one live document. Acting on one of them would
-/// be a guess, so the run asks instead.
-/// </param>
-/// <param name="Unresolved">File names the instruction used that match nothing in the conversation.</param>
-/// <param name="Available">Every file the run could work from, for the sentence a refusal ends on.</param>
-public sealed record FileAgentSourceResolution(
-    IReadOnlyList<FileAgentSourceMatch> Matched,
-    IReadOnlyList<string> Ambiguous,
-    IReadOnlyList<string> Unresolved,
-    IReadOnlyList<string> Available);
-
 /// <summary>
 /// Reads the files a File Agent run is allowed to work from.
 /// </summary>
 /// <remarks>
-/// Separate from <see cref="Tool.IDocumentRetrievalService"/>'s scope, and deliberately wider than it:
+/// Separate from <see cref="IDocumentRetrievalService"/>'s scope, and deliberately wider than it:
 /// retrieval must never see a generated document, while the agent must, or it could not edit or
 /// convert the file it made an hour ago. Both apply the same ownership rule, read off the parent
 /// conversation exactly as the download route does.

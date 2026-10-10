@@ -1,8 +1,8 @@
 using System.Collections.Frozen;
-using Enterprise.Gpt.Service.Agents;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Api.Agents;
+namespace Enterprise.Gpt.Service.Agents;
 
 /// <summary>
 /// Builds the File Agent's skill provider out of the skill directories that shipped with the build.

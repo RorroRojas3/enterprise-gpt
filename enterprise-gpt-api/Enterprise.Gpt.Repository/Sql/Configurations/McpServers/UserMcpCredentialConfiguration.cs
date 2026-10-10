@@ -1,8 +1,8 @@
+using Enterprise.Gpt.Entity.McpServers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations;
+namespace Enterprise.Gpt.Repository.Sql.Configurations.McpServers;
 
 /// <summary>
 /// Maps <see cref="UserMcpCredential"/> to <c>Core.UserMcpCredential</c> and the unique index that

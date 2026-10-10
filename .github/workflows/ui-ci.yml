@@ -46,8 +46,9 @@ jobs:
   # required check in branch protection alongside the two gates.
   #
   # **Two outputs, not one**, because the two gates read different inputs: `npm run lint`
-  # reads only `enterprise-gpt-ui/`; `check:contract` walks every `.csproj` under the API
-  # and compares the vendored copy against the package they reference. Neither is in
+  # reads only `enterprise-gpt-ui/`; `check:contract` walks the API's `.csproj` files and
+  # `Directory.Packages.props` and compares the vendored copy against the package they
+  # declare. Neither is in
   # the other's input set, and one shared boolean would run the whole Angular pipeline
   # for a backend dependency bump, and a .NET restore for a change to a colour.
   changes:
@@ -92,7 +93,8 @@ jobs:
           # Both allowlists are hand-maintained, so a root-level file the gates come to
           # read — an `.nvmrc`, an `.npmrc`, a Prettier config — must be added here when
           # it is introduced. Neither exists today: the gate scripts read nothing outside
-          # `enterprise-gpt-ui/` except the API's csproj files. A missing entry would
+          # `enterprise-gpt-ui/` except the API's csproj files and its central
+          # `Directory.Packages.props`, where the package versions live. A missing entry would
           # under-run these gates rather than over-run them, which is the dangerous
           # direction.
           build=$(git diff --name-only HEAD^1 HEAD -- \
@@ -102,6 +104,7 @@ jobs:
           contract=$(git diff --name-only HEAD^1 HEAD -- \
             enterprise-gpt-ui \
             ':(glob)enterprise-gpt-api/**/*.csproj' \
+            enterprise-gpt-api/Directory.Packages.props \
             .github/workflows/ui-ci.yml)
 
           if [ -n "$build" ]; then

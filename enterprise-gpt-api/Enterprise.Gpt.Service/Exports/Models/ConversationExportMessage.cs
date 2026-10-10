@@ -1,5 +1,4 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity.Transcripts;
 
 namespace Enterprise.Gpt.Service.Exports.Models;
 

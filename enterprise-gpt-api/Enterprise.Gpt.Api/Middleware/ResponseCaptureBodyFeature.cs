@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Http.Features;
 using System.IO.Pipelines;
+using Microsoft.AspNetCore.Http.Features;
 
 namespace Enterprise.Gpt.Api.Middleware;
 

@@ -1,5 +1,3 @@
-using Microsoft.Extensions.AI;
-
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>

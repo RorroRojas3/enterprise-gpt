@@ -1,8 +1,8 @@
+using System.Globalization;
+using System.IO.Compression;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
-using System.Globalization;
-using System.IO.Compression;
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 

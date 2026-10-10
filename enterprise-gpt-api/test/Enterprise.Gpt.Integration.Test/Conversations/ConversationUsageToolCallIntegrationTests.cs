@@ -2,7 +2,7 @@ using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Conversations;
 
 /// <summary>
 /// Covers the <c>Core.ConversationUsageToolCall</c> table against a real SQL Server, which is the

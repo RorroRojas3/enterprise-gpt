@@ -8,7 +8,7 @@ namespace Enterprise.Gpt.Common.Enums;
 /// cell may hold: a column whose sampled cells disagree is <see cref="Text"/>, and every cell is
 /// stored as the text the reader sees either way.
 /// </remarks>
-public enum SheetColumnType
+public enum SheetColumnTypes
 {
     /// <summary>Free text, and the fallback for a mixed or empty column.</summary>
     Text = 1,

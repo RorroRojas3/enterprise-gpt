@@ -2,7 +2,7 @@ using Enterprise.Gpt.Api.Startup;
 using Enterprise.Gpt.Entity.Transcripts;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Startup;
+namespace Enterprise.Gpt.Unit.Test.Api.Startup;
 
 /// <summary>
 /// The indexing policy is asserted here rather than against the Cosmos emulator: the Linux emulator

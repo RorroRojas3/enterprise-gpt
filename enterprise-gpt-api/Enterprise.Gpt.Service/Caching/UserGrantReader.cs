@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 

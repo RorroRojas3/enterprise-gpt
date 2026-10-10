@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 
-namespace Enterprise.Gpt.Dto.Enums
+namespace Enterprise.Gpt.Common.Constants
 {
     /// <summary>
     /// Contains unique identifiers for different AI service providers.

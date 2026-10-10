@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Projects;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Documents;
 
 /// <summary>
 /// A document uploaded into a project, readable by every conversation in that project.

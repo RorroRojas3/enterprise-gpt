@@ -1,4 +1,5 @@
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Constants;
+
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 

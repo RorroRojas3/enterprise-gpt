@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto.Enums;
+namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>
 /// How a <c>Core.ConversationDocument</c> row came into existence.

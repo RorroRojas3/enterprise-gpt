@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Export;
+namespace Enterprise.Gpt.Service.Exports;
 
 /// <summary>
 /// Builds the download file name an export is served under.

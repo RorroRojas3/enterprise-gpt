@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Base;
 
 /// <summary>
 /// Base type for one worksheet of an ingested spreadsheet: its name, its shape, and the anchor its

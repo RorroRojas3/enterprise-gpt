@@ -1,7 +1,9 @@
+using Enterprise.Gpt.Dto.Actions.Projects;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Dto.Projects;
+using Enterprise.Gpt.Service.Projects;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Project;
-using Enterprise.Gpt.Service;
 
 namespace Enterprise.Gpt.Api.Endpoints;
 

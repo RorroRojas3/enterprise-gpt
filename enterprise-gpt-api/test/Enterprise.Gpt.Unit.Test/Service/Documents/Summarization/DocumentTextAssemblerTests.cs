@@ -1,12 +1,14 @@
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Summarization;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 public sealed class DocumentTextAssemblerTests : IDisposable
 {
@@ -34,7 +36,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
             (2, "third."), (0, "first."), (1, "second."));
 
         var text = await _assembler.AssembleAsync(
-            documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal("first.\n\nsecond.\n\nthird.", text);
     }
@@ -49,7 +51,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
         var documentId = await AddProjectDocumentAsync((0, "first."), (1, "second."));
 
         var text = await _assembler.AssembleAsync(
-            documentId, DocumentSource.Project, TestContext.Current.CancellationToken);
+            documentId, DocumentSources.Project, TestContext.Current.CancellationToken);
 
         Assert.Equal("first.\n\nsecond.", text);
     }
@@ -66,7 +68,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
             (0, $"opening line. {Overlap}"), (1, $"{Overlap} closing line."));
 
         var text = await _assembler.AssembleAsync(
-            documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal($"opening line. {Overlap} closing line.", text);
         Assert.Equal(1, CountOccurrences(text, Overlap));
@@ -85,7 +87,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
         await DeactivateChunkAsync(documentId, index: 1);
 
         var text = await _assembler.AssembleAsync(
-            documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal("kept.", text);
     }
@@ -108,7 +110,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
         }
 
         var text = await _assembler.AssembleAsync(
-            documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(string.Empty, text);
     }
@@ -119,7 +121,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
         var documentId = await AddConversationDocumentAsync();
 
         var text = await _assembler.AssembleAsync(
-            documentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(string.Empty, text);
     }
@@ -128,7 +130,7 @@ public sealed class DocumentTextAssemblerTests : IDisposable
     public async Task AssembleAsync_UnknownDocument_ReturnsEmpty()
     {
         var text = await _assembler.AssembleAsync(
-            Guid.NewGuid(), DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            Guid.NewGuid(), DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(string.Empty, text);
     }

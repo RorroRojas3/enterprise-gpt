@@ -1,8 +1,9 @@
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -11,7 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
 /// Covers document retrieval against a real SQL Server 2025, which is the only place it can run: the

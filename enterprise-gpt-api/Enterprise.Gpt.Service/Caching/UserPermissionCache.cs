@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Service.Settings;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
+using Enterprise.Gpt.Service.Options;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Caching
 {

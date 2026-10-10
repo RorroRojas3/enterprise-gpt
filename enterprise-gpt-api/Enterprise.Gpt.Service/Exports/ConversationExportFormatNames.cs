@@ -1,4 +1,6 @@
-namespace Enterprise.Gpt.Service.Export;
+using Enterprise.Gpt.Common.Enums;
+
+namespace Enterprise.Gpt.Service.Exports;
 
 /// <summary>
 /// The <c>?format=</c> values the export route accepts, and the mapping to

@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.McpServers.Exceptions;
 
 /// <summary>
 /// Thrown when an MCP server needs a credential the user supplies themselves and none is

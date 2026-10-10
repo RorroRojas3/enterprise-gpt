@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Dto;
+namespace Enterprise.Gpt.Dto.Documents;
 
 /// <summary>
 /// A conversation document as returned by the caller-scoped cross-conversation listing, carrying

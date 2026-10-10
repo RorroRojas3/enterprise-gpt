@@ -1,10 +1,10 @@
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Model;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Dto.Actions.ChatModels;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Service.ChatModels;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Mappers;
+namespace Enterprise.Gpt.Unit.Test.Service.ChatModels;
 
 public class ModelMapperTests
 {

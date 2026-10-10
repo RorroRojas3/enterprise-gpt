@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.ChatModels.Exceptions;
 
 /// <summary>
 /// Thrown when an administrator tries to retire the catalog row named by

@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Conversations;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Serialization;
+namespace Enterprise.Gpt.Unit.Test.Dto.Conversations;
 
 /// <summary>
 /// The HTTP shape of a transcript message, which is a contract clients match on rather than a

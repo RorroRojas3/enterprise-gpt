@@ -1,16 +1,19 @@
 ﻿using System.Collections.Concurrent;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.BackgroundJobs.Constants;
+using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
+using Enterprise.Gpt.Service.BackgroundJobs.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Service.Exceptions;
 
 namespace Enterprise.Gpt.Service.BackgroundJobs
 {
     /// <summary>
     /// Hosted service that consumes <see cref="JobWorkItem"/> entries from the <see cref="IBackgroundJobQueue"/>,
     /// executes each in its own DI scope, and throttles concurrency with a <see cref="SemaphoreSlim"/>.
-    /// On exception the failing job's snapshot is updated to <see cref="Dto.Enums.JobStatus.Failed"/>; the loop continues.
+    /// On exception the failing job's snapshot is updated to <see cref="JobStatuses.Failed"/>; the loop continues.
     /// </summary>
     public sealed class BackgroundJobProcessor : BackgroundService
     {

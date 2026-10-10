@@ -1,6 +1,3 @@
-using System.Runtime.InteropServices;
-using PdfSharp.Fonts;
-
 namespace Enterprise.Gpt.Service.Exports.Fonts.Constants;
 
 /// <summary>

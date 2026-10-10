@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
 
 /// <summary>
 /// Thrown when a model call succeeds at the transport level but carries no text.

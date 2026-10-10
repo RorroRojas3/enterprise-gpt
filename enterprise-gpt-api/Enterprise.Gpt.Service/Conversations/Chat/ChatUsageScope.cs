@@ -1,6 +1,6 @@
 using Andes.Extensions.AI;
 
-namespace Enterprise.Gpt.Service.Chat;
+namespace Enterprise.Gpt.Service.Conversations.Chat;
 
 /// <summary>
 /// Collects the <see cref="ChatUsageReport"/> produced by one tracked chat request, so the code

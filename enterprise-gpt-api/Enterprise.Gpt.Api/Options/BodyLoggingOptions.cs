@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Enterprise.Gpt.Api.Middleware;
 
 namespace Enterprise.Gpt.Api.Options;
 

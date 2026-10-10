@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>

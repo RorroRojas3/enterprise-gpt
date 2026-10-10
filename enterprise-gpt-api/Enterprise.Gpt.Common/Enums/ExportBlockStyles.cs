@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Export;
+namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>
 /// How a block is set apart from running body text.
@@ -8,7 +8,7 @@ namespace Enterprise.Gpt.Service.Export;
 /// walking the tree knows. Flags rather than an enum because a quote inside a prompt is both.
 /// </remarks>
 [Flags]
-public enum ExportBlockStyle
+public enum ExportBlockStyles
 {
     /// <summary>Body text, enclosed by nothing.</summary>
     None = 0,

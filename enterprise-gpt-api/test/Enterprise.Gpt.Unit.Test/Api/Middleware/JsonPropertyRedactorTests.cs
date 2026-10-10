@@ -1,9 +1,9 @@
-using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Api.Middleware;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Middleware;
+namespace Enterprise.Gpt.Unit.Test.Api.Middleware;
 
 public sealed class JsonPropertyRedactorTests
 {

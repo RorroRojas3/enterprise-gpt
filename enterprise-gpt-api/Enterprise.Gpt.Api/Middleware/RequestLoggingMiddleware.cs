@@ -1,8 +1,9 @@
+using System.Buffers;
+using System.Text;
+using Enterprise.Gpt.Api.Options;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
-using System.Buffers;
-using System.Text;
 
 namespace Enterprise.Gpt.Api.Middleware;
 

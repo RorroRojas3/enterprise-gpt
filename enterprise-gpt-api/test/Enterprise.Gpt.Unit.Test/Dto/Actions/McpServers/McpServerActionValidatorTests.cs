@@ -1,8 +1,8 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto.Actions.Mcp;
+using Enterprise.Gpt.Dto.Actions.McpServers;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Validators;
+namespace Enterprise.Gpt.Unit.Test.Dto.Actions.McpServers;
 
 /// <summary>
 /// The two MCP action validators are line-for-line copies of one another, so every rule is

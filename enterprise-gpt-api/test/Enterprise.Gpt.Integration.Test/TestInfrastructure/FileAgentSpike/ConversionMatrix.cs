@@ -1,37 +1,6 @@
 using System.Text.Json;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
-
-/// <summary>
-/// What one attempt at one conversion pair actually did.
-/// </summary>
-/// <param name="Engine">The libraries that performed it, or <see langword="null"/> if none got that far.</param>
-/// <param name="Verified">Whether the harness could open the result and find the shape it asked for.</param>
-/// <param name="Detail">The verification's own account, or the failure that stopped the attempt.</param>
-internal sealed record ConversionEvidence(
-    DateTimeOffset RecordedUtc,
-    string? Engine,
-    bool Produced,
-    long Bytes,
-    bool Verified,
-    string Detail);
-
-/// <summary>
-/// One cell of the conversion matrix.
-/// </summary>
-/// <param name="ProposedTier">The tier expected before anything ran. Kept alongside
-/// <paramref name="Tier"/> so a demotion reads as a demotion.</param>
-/// <param name="Tier">The confirmed tier, or the proposal until a run confirms it.</param>
-/// <param name="Note">What the answer has to tell the user about this pair.</param>
-internal sealed record ConversionCell(
-    string From,
-    string To,
-    string ProposedTier,
-    string Tier,
-    bool Confirmed,
-    string? Engine,
-    string Note,
-    ConversionEvidence? Evidence);
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// The conversion matrix: which format pairs this platform serves, and at what fidelity.

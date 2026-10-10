@@ -1,7 +1,8 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Entity
+namespace Enterprise.Gpt.Entity.Base
 {
     public class BaseDocument : BaseModifiedEntity
     {

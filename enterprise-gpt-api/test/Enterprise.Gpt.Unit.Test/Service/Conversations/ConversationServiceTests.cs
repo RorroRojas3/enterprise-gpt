@@ -1,38 +1,57 @@
-﻿using Andes.Extensions.AI;
-using Microsoft.Agents.AI;
+﻿using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Andes.Extensions.AI;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Conversations;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Dto.Conversations;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Entity.Transcripts;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Models;
+using Enterprise.Gpt.Service.Agents;
+using Enterprise.Gpt.Service.Agents.Constants;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.ChatModels;
+using Enterprise.Gpt.Service.Conversations;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Rendering;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.McpServers;
+using Enterprise.Gpt.Service.McpServers.Models;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Prompts;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
+using Microsoft.Agents.AI;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Chat;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Rendering;
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tokenization;
-using Enterprise.Gpt.Service.Transcripts;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Service.Tool;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using System.Runtime.CompilerServices;
 using Xunit;
 using ChatMessage = Microsoft.Extensions.AI.ChatMessage;
-using Conversation = Enterprise.Gpt.Entity.Conversation;
+using Conversation = Enterprise.Gpt.Entity.Conversations.Conversation;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations;
 
 /// <summary>
 /// Covers the MCP chat-wiring surface of <see cref="ConversationService.StreamConversationAsync"/>:
@@ -71,7 +90,7 @@ public sealed class ConversationServiceTests : IDisposable
         // A real estimator over the real vocabulary rather than a substitute returning a constant:
         // the counts these tests assert on are the ones production writes, and a stub would only be
         // asserting its own arrangement.
-        var tokenizerOptions = Options.Create(new TokenEstimationOptions());
+        var tokenizerOptions = Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions());
         var estimator = new TiktokenTokenEstimator(
             Guid.Empty,
             new TokenizerProvider(tokenizerOptions, NullLogger<TokenizerProvider>.Instance),
@@ -137,7 +156,7 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenService,
             _transcriptStore,
             _tokenEstimatorResolver,
-            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
@@ -146,12 +165,12 @@ public sealed class ConversationServiceTests : IDisposable
             new SetMessageFeedbackActionDtoValidator(),
             _documentSummaryService,
             _userGrantReader,
-            Options.Create(new SummarizationOptions()),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
             _fileAgentToolProvider,
             _fileAgentQuotaService,
-            Options.Create(new FileAgentOptions()),
+            Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
             _fixture.Context);
     }
 
@@ -170,7 +189,7 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenService,
             _transcriptStore,
             _tokenEstimatorResolver,
-            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
@@ -179,12 +198,12 @@ public sealed class ConversationServiceTests : IDisposable
             new SetMessageFeedbackActionDtoValidator(),
             summaryService ?? _documentSummaryService,
             _userGrantReader,
-            Options.Create(options ?? new SummarizationOptions { Enabled = true }),
+            Microsoft.Extensions.Options.Options.Create(options ?? new SummarizationOptions { Enabled = true }),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
             _fileAgentToolProvider,
             _fileAgentQuotaService,
-            Options.Create(new FileAgentOptions()),
+            Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     /// <summary>
@@ -201,7 +220,7 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenService,
             _transcriptStore,
             _tokenEstimatorResolver,
-            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
@@ -210,12 +229,12 @@ public sealed class ConversationServiceTests : IDisposable
             new SetMessageFeedbackActionDtoValidator(),
             _documentSummaryService,
             _userGrantReader,
-            Options.Create(new SummarizationOptions()),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             options ?? new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
             _fileAgentToolProvider,
             _fileAgentQuotaService,
-            Options.Create(new FileAgentOptions()),
+            Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
             _fixture.Context);
 
     public void Dispose()
@@ -270,10 +289,10 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     // Fully qualified: Microsoft.Azure.Cosmos also exports a User type.
-    private async Task<Enterprise.Gpt.Entity.User> AddUserAsync()
+    private async Task<Enterprise.Gpt.Entity.Users.User> AddUserAsync()
     {
         var date = DateTimeOffset.UtcNow;
-        var user = new Enterprise.Gpt.Entity.User
+        var user = new Enterprise.Gpt.Entity.Users.User
         {
             Id = Guid.NewGuid(),
             FirstName = "Other",
@@ -340,7 +359,8 @@ public sealed class ConversationServiceTests : IDisposable
                 conversationId.ToString(), partition, Arg.Any<CancellationToken>())
             .Returns(TranscriptHeaderDocument.Create(
                 KnownIds.SeedUserId, conversationId, "Paged conversation", DateTimeOffset.UtcNow)
-                with { MessageCount = messages.Count });
+                with
+            { MessageCount = messages.Count });
 
         _transcriptStore.QueryAsync<TranscriptMessageDocument>(
                 Arg.Any<QueryDefinition>(), partition, Arg.Any<int?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
@@ -470,7 +490,7 @@ public sealed class ConversationServiceTests : IDisposable
             ModifiedById = KnownIds.SeedUserId
         };
         // Fully qualified: Microsoft.Azure.Cosmos also exports a Permission type.
-        var permission = new Enterprise.Gpt.Entity.Permission
+        var permission = new Enterprise.Gpt.Entity.Permissions.Permission
         {
             Id = Guid.NewGuid(),
             Name = name,
@@ -1226,7 +1246,7 @@ public sealed class ConversationServiceTests : IDisposable
             _tokenService,
             _transcriptStore,
             _tokenEstimatorResolver,
-            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _markdownRenderer,
             new CreateConversationActionDtoValidator(),
             new CreateConversationStreamActionDtoValidator(),
@@ -1235,12 +1255,12 @@ public sealed class ConversationServiceTests : IDisposable
             new SetMessageFeedbackActionDtoValidator(),
             _documentSummaryService,
             _userGrantReader,
-            Options.Create(new SummarizationOptions()),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
             _fileAgentToolProvider,
             _fileAgentQuotaService,
-            Options.Create(new FileAgentOptions { Enabled = true, ModelId = Guid.NewGuid() }),
+            Microsoft.Extensions.Options.Options.Create(new FileAgentOptions { Enabled = true, ModelId = Guid.NewGuid() }),
             _fixture.Context);
 
     /// <summary>Stands the File Agent up as a lease that reports the given files as produced.</summary>
@@ -1695,7 +1715,7 @@ public sealed class ConversationServiceTests : IDisposable
             .Returns(new DocumentRetrievalScope(
                 conversation.Id,
                 null,
-                [new RetrievableDocument(document.Id, DocumentSource.Conversation, document.Name)]));
+                [new RetrievableDocument(document.Id, DocumentSources.Conversation, document.Name)]));
 
         // Stands in for the summarizer's own call: non-streaming, on the same decorated client,
         // reaching it from inside the tool's invocation, reporting a run-sized prompt.
@@ -1709,7 +1729,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         var summarizer = Substitute.For<IDocumentSummarizer>();
         summarizer
-            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
                 await _trackedChatClient.GetResponseAsync(
@@ -1734,7 +1754,7 @@ public sealed class ConversationServiceTests : IDisposable
             summarizer,
             _fixture.Context,
             _fixture.ScopeFactory,
-            Options.Create(new SummarizationOptions { Enabled = true, ModelId = KnownIds.SeedModelId }),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { Enabled = true, ModelId = KnownIds.SeedModelId }),
             NullLogger<DocumentSummaryService>.Instance);
 
         _chatClient.ToolCallName = DocumentSummaryTool.ToolName;
@@ -2202,7 +2222,7 @@ public sealed class ConversationServiceTests : IDisposable
         var scope = new DocumentRetrievalScope(
             conversationId,
             projectId,
-            [.. documentNames.Select(n => new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, n))]);
+            [.. documentNames.Select(n => new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, n))]);
 
         _documentRetrievalService
             .GetScopeAsync(conversationId, Arg.Any<CancellationToken>())
@@ -2721,7 +2741,8 @@ public sealed class ConversationServiceTests : IDisposable
                 conversation.Id.ToString(), partition, Arg.Any<CancellationToken>())
             .Returns(TranscriptHeaderDocument.Create(
                 KnownIds.SeedUserId, conversation.Id, "Gone", DateTimeOffset.UtcNow)
-                with { DateDeactivated = DateTimeOffset.UtcNow });
+                with
+            { DateDeactivated = DateTimeOffset.UtcNow });
 
         await Assert.ThrowsAsync<NotFoundException>(() => _service.GetConversationMessagesAsync(
             conversation.Id, null, null, TestContext.Current.CancellationToken));
@@ -3941,7 +3962,8 @@ public sealed class ConversationServiceTests : IDisposable
         _transcriptStore.ReadItemAsync<TranscriptHeaderDocument>(
                 conversation.Id.ToString(), partition, Arg.Any<CancellationToken>())
             .Returns(TranscriptHeaderDocument.Create(KnownIds.SeedUserId, conversation.Id, "Test Conversation", date)
-                with { MessageCount = 1 });
+                with
+            { MessageCount = 1 });
         _transcriptStore.QueryAsync<TranscriptMessageDocument>(
                 Arg.Any<QueryDefinition>(), partition, Arg.Any<int?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new TranscriptPage<TranscriptMessageDocument>(

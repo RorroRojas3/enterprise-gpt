@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Walks every content item on a response looking for produced files, on every channel that could

@@ -1,10 +1,10 @@
+using Enterprise.Gpt.Service.Exceptions;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
-using Enterprise.Gpt.Service.Exceptions;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Users
 {
     public interface IGraphService
     {

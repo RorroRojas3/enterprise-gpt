@@ -1,11 +1,11 @@
-﻿using Enterprise.Gpt.Common.Enums;
+﻿using System.Text.Json.Serialization;
+using Enterprise.Gpt.Common.Enums;
 using FluentValidation;
-using System.Text.Json.Serialization;
 
 namespace Enterprise.Gpt.Dto.Actions.Conversations;
 
 /// <summary>
-/// Records, replaces or withdraws the caller's rating of an assistant message (US-1102).
+/// Records, replaces or withdraws the caller's rating of an assistant message.
 /// </summary>
 /// <remarks>
 /// A set, not a toggle: the body carries the state being asked for, so a retried or duplicated

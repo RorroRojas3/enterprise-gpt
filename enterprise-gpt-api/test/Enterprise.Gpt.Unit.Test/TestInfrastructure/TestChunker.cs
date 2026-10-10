@@ -1,5 +1,5 @@
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 

@@ -1,6 +1,3 @@
-using System.Text.Json.Serialization;
-using System.Text.Json;
-
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>

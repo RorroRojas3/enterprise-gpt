@@ -1,6 +1,6 @@
 using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.McpServers
 {
     /// <summary>
     /// Administrative representation of an MCP server, including connection and permission details.

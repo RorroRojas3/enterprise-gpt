@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Enums;
 using FluentValidation;
 using FluentValidation.Results;
 
@@ -35,11 +36,11 @@ public static class SortParameters
     private const string AscendingName = "asc";
     private const string DescendingName = "desc";
 
-    private static readonly Dictionary<string, SortDirection> DirectionsByName =
+    private static readonly Dictionary<string, SortDirections> DirectionsByName =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [AscendingName] = SortDirection.Ascending,
-            [DescendingName] = SortDirection.Descending
+            [AscendingName] = SortDirections.Ascending,
+            [DescendingName] = SortDirections.Descending
         };
 
     /// <summary>
@@ -115,7 +116,7 @@ public static class SortParameters
     /// <paramref name="dir"/> is neither <c>asc</c> nor <c>desc</c>. Surfaces as a 400 keyed
     /// <see cref="DirectionKey"/>.
     /// </exception>
-    public static SortDirection ResolveDirection(string? dir, SortDirection natural)
+    public static SortDirections ResolveDirection(string? dir, SortDirections natural)
     {
         if (string.IsNullOrWhiteSpace(dir))
         {

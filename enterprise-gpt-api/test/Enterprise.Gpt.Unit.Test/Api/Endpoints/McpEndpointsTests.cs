@@ -1,12 +1,12 @@
-using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Dto.McpServers;
+using Enterprise.Gpt.Service.McpServers;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public class McpEndpointsTests
 {

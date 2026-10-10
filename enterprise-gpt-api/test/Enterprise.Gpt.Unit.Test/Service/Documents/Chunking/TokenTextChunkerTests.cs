@@ -1,25 +1,24 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
 using System.Text;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chunking;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Chunking;
 
 public sealed class TokenTextChunkerTests
 {
     private static TokenTextChunker CreateChunker(int maxTokens = 512, int overlapTokens = 128, string embeddingModel = "text-embedding-3-small")
     {
-        var options = Options.Create(new DocumentOptions
+        var options = Microsoft.Extensions.Options.Options.Create(new DocumentOptions
         {
             Chunking = new ChunkingOptions { MaxTokens = maxTokens, OverlapTokens = overlapTokens }
         });
 
         // Non-nullable, matching the bound property: the configuration binder never writes null into
         // it, so an unset AzureOpenAI:EmbeddingModel arrives as the empty string rather than null.
-        var azureOpenAIOptions = Options.Create(new AzureOpenAIOptions
+        var azureOpenAIOptions = Microsoft.Extensions.Options.Options.Create(new AzureOpenAIOptions
         {
             EmbeddingModel = embeddingModel
         });

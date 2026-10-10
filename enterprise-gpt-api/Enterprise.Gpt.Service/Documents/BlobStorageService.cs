@@ -1,10 +1,10 @@
 ﻿using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
+using Enterprise.Gpt.Service.Documents.Exceptions;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Service.Exceptions;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Documents
 {
     public interface IBlobStorageService
     {

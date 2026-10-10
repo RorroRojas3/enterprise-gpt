@@ -1,8 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Enterprise.Gpt.Entity.Users;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations
+namespace Enterprise.Gpt.Repository.Sql.Configurations.Users
 {
     public sealed class UserConfiguration : IEntityTypeConfiguration<User>
     {

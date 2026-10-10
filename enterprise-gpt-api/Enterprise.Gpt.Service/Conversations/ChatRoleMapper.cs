@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.AI;
-using Enterprise.Gpt.Common.Enums;
+﻿using Enterprise.Gpt.Common.Enums;
+using Microsoft.Extensions.AI;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Conversations
 {
-    public static class MappingService
+    public static class ChatRoleMapper
     {
         public static ChatRole MapToChatRole(ChatRoles role)
         {

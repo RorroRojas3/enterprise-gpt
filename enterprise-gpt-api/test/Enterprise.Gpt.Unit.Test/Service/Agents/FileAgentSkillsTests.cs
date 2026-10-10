@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Api.Agents;
+using Enterprise.Gpt.Service.Agents;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 public sealed class FileAgentSkillsTests
 {
@@ -129,7 +129,7 @@ public sealed class FileAgentSkillsTests
         // registered" is unreachable and this is the guard that replaces it: one call site, and the
         // runner it passes cannot execute anything.
         Assert.Equal(
-            [Path.Combine("Enterprise.Gpt.Api", "Agents", "FileAgentSkills.cs")],
+            [Path.Combine("Enterprise.Gpt.Service", "Agents", "FileAgentSkills.cs")],
             SolutionSource.FilesContaining("RefuseScriptAsync)"));
     }
 

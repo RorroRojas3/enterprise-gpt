@@ -1,10 +1,10 @@
 using System.Reflection;
-using Microsoft.EntityFrameworkCore;
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Enums;
+namespace Enterprise.Gpt.Unit.Test.Common.Constants;
 
 /// <summary>
 /// Holds the two invariants the built-in permission ids are only useful under.

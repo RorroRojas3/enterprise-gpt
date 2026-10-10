@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Api.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 

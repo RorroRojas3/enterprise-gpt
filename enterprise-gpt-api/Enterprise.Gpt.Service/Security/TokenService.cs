@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Security
 {
     public interface ITokenService
     {

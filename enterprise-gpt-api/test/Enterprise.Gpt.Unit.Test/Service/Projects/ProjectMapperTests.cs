@@ -1,10 +1,10 @@
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Project;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Dto.Actions.Projects;
+using Enterprise.Gpt.Dto.Projects;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Service.Projects;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Mappers;
+namespace Enterprise.Gpt.Unit.Test.Service.Projects;
 
 public class ProjectMapperTests
 {

@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Service.Documents;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Mappers;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
 public class ProjectDocumentMapperTests
 {

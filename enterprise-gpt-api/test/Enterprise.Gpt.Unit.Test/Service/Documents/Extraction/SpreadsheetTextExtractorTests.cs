@@ -1,15 +1,14 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using SheetSpec = Enterprise.Gpt.Unit.Test.TestInfrastructure.WorkbookBuilder.SheetSpec;
 
-namespace Enterprise.Gpt.Unit.Test.Extraction;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 public sealed class SpreadsheetTextExtractorTests
 {
@@ -22,7 +21,7 @@ public sealed class SpreadsheetTextExtractorTests
         int maxRowsPerUpload = 50_000,
         RowWindowOptions? rowWindow = null)
     {
-        var options = Options.Create(new SheetOptions
+        var options = Microsoft.Extensions.Options.Options.Create(new SheetOptions
         {
             MaxRowsPerSheet = maxRows,
             MaxRowsPerUpload = maxRowsPerUpload,
@@ -172,7 +171,7 @@ public sealed class SpreadsheetTextExtractorTests
         Assert.Equal(2, sheet.RowCount);
         Assert.Equal(2, sheet.ColumnCount);
         Assert.Equal(["SKU", "Revenue"], sheet.Columns.Select(c => c.ColumnName));
-        Assert.Equal([SheetColumnType.Text, SheetColumnType.Number], sheet.Columns.Select(c => c.InferredType));
+        Assert.Equal([SheetColumnTypes.Text, SheetColumnTypes.Number], sheet.Columns.Select(c => c.InferredType));
         Assert.Equal([0, 1], sheet.Rows.Select(r => r.RowIndex));
         Assert.Equal("""{"SKU":"W-1","Revenue":"1200"}""", sheet.Rows[0].Cells);
     }
@@ -185,7 +184,7 @@ public sealed class SpreadsheetTextExtractorTests
         var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
 
         Assert.Equal(["Column1", "Column2"], sheet.Columns.Select(c => c.ColumnName));
-        Assert.All(sheet.Columns, column => Assert.Equal(SheetColumnType.Number, column.InferredType));
+        Assert.All(sheet.Columns, column => Assert.Equal(SheetColumnTypes.Number, column.InferredType));
         Assert.Equal(2, sheet.RowCount);
     }
 

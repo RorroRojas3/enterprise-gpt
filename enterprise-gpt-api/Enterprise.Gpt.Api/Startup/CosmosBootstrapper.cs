@@ -1,5 +1,5 @@
 using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Repository.Cosmos.Options;
 using Microsoft.Azure.Cosmos;
 
 namespace Enterprise.Gpt.Api.Startup;
@@ -85,7 +85,7 @@ public static class CosmosBootstrapper
     /// </exception>
     public static async Task EnsureProvisionedAsync(
         CosmosClient cosmosClient,
-        CosmosOptions options,
+        CosmosDbOptions options,
         ILogger logger,
         CancellationToken cancellationToken)
     {

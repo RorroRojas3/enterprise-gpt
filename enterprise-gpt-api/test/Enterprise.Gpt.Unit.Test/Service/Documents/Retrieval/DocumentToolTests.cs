@@ -1,12 +1,14 @@
-using Enterprise.Gpt.Service.Tool;
+using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using System.Text.Json;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Retrieval;
 
 /// <summary>
 /// Covers the function the model actually sees: its name and schema, that a search reaches the
@@ -122,7 +124,7 @@ public sealed class DocumentToolTests
     {
         _retrievalService
             .SearchAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("Login failed for user 'sa'. Server=prod-sql-01;Password=hunter2"));
+            .ThrowsAsync(new InvalidOperationException("Login failed for user 'sa'. Server=prod-sql-01;Password=hunter2"));
 
         var function = DocumentTool.Create(Scope(), _retrievalService, NullLogger.Instance);
 
@@ -141,7 +143,7 @@ public sealed class DocumentToolTests
     {
         _retrievalService
             .SearchAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Throws(new OperationCanceledException());
+            .ThrowsAsync(new OperationCanceledException());
 
         var function = DocumentTool.Create(Scope(), _retrievalService, NullLogger.Instance);
 
@@ -162,5 +164,5 @@ public sealed class DocumentToolTests
     private static DocumentRetrievalScope Scope() => new(
         Guid.NewGuid(),
         null,
-        [new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "handbook.pdf")]);
+        [new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "handbook.pdf")]);
 }

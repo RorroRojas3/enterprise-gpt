@@ -1,11 +1,11 @@
-using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Model;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Dto.Actions.ChatModels;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Service.ChatModels;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public class ModelEndpointsTests
 {

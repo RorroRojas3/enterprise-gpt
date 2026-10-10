@@ -1,9 +1,10 @@
 using System.Text;
 using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Service.Agents;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// Guards the published conversion matrix and the documentation table rendered from it.

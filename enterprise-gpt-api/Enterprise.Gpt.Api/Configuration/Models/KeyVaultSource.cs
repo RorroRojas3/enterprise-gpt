@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Api.Configuration;
+namespace Enterprise.Gpt.Api.Configuration.Models;
 
 /// <summary>
 /// A vault the host is to read, as resolved from the <c>KeyVault</c> section.

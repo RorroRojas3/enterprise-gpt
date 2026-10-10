@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Filtering;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents;
 using FluentValidation;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Filtering;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
 /// <summary>
 /// The accepted <c>?type=</c> tokens are written down twice — as the advertised <c>Supported</c> set

@@ -1,9 +1,9 @@
 using System.Collections.Frozen;
-using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Documents.Exceptions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service;
+namespace Enterprise.Gpt.Service.Documents;
 
 /// <summary>
 /// The two facts every document write and every download link need: which container a blob lives

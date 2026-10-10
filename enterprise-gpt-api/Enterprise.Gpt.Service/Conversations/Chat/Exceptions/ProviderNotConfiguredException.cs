@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+namespace Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 
 /// <summary>
 /// Thrown when a model names a provider this deployment has no chat client for — either an id

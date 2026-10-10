@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
+using Enterprise.Gpt.Api.Problems.Models;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Enterprise.Gpt.Api.Problems;
 

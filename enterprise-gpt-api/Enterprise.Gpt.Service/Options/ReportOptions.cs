@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Usage-reporting configuration, bound from the <c>Reports</c> section and validated at startup.

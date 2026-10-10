@@ -1,4 +1,6 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+
+namespace Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
 
 /// <summary>
 /// Thrown when the pinned summarizer cannot be used: <c>Summarization:ModelId</c> names no active

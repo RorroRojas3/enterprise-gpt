@@ -1,4 +1,6 @@
-namespace Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+
+namespace Enterprise.Gpt.Service.Agents.Exceptions;
 
 /// <summary>
 /// Thrown when the File Agent cannot be composed: <c>FileAgent:ModelId</c> names no active

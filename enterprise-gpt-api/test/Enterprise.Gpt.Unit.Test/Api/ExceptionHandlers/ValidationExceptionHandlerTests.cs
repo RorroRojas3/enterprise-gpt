@@ -1,13 +1,13 @@
+using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Api.Problems.Constants;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
-using Enterprise.Gpt.Api.ExceptionHandlers;
-using Enterprise.Gpt.Api.Problems;
 using Xunit;
 using static Enterprise.Gpt.Unit.Test.TestInfrastructure.ProblemDetailsTestHelpers;
 
-namespace Enterprise.Gpt.Unit.Test.ExceptionHandlers;
+namespace Enterprise.Gpt.Unit.Test.Api.ExceptionHandlers;
 
 public class ValidationExceptionHandlerTests
 {

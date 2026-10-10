@@ -147,20 +147,33 @@ if (existsSync(API_ROOT)) {
         if (!/^(bin|obj|\.vs|node_modules|TestResults)$/i.test(entry.name)) {
           walkProjects(join(dir, entry.name));
         }
-      } else if (entry.name.endsWith('.csproj')) {
+      } else if (entry.name.endsWith('.csproj') || entry.name === 'Directory.Packages.props') {
         projects.push(join(dir, entry.name));
       }
     }
   };
   walkProjects(API_ROOT);
 
+  // Central package management moves the version from the csproj's PackageReference to a
+  // PackageVersion in Directory.Packages.props; either form declares it.
   const reference = new RegExp(
-    `PackageReference\\s+Include="${escapeRegExp(packageId)}"\\s+Version="([^"]+)"`,
+    `Package(?:Reference|Version)\\s+Include="${escapeRegExp(packageId)}"\\s+Version="([^"]+)"`,
     'i',
   );
-  const mismatched = projects
+  const declared = projects
     .map((file) => [file, readFileSync(file, 'utf8').match(reference)?.[1]])
-    .filter(([, referenced]) => referenced && referenced !== version);
+    .filter(([, referenced]) => referenced);
+
+  if (declared.length === 0) {
+    die(
+      `No csproj or Directory.Packages.props under the API declares a version for ${packageId}.`,
+      `searched: ${API_ROOT}`,
+      '',
+      'The version cross-check would otherwise pass having verified nothing.',
+    );
+  }
+
+  const mismatched = declared.filter(([, referenced]) => referenced !== version);
 
   if (mismatched.length > 0) {
     die(

@@ -1,8 +1,9 @@
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations;
+namespace Enterprise.Gpt.Repository.Sql.Configurations.Conversations;
 
 /// <summary>
 /// Configures the optional <see cref="Conversation"/> to <see cref="Project"/> relationship.

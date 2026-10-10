@@ -1,8 +1,8 @@
+using Enterprise.Gpt.Entity.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations
+namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents
 {
     public sealed class ConversationDocumentChunkConfiguration : IEntityTypeConfiguration<ConversationDocumentChunk>
     {

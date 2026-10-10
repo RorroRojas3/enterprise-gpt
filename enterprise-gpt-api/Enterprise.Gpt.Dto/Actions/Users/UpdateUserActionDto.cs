@@ -1,5 +1,5 @@
-using FluentValidation;
 using System.Text.Json.Serialization;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Users;
 

@@ -1,24 +1,15 @@
-using Enterprise.Gpt.Common.Enums;
 using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
 
-namespace Enterprise.Gpt.Service.Tool;
-
-/// <summary>
-/// The shape of one filter, with the value it compares against deliberately absent.
-/// </summary>
-/// <remarks>
-/// Only a column's already-resolved type and a comparator drawn from a closed set reach statement
-/// construction; the value itself never does, which is what makes every generated command text a
-/// function of shape alone.
-/// </remarks>
-internal readonly record struct SheetFilterSpec(SheetColumnType ColumnType, SheetFilterComparator Comparator);
+namespace Enterprise.Gpt.Service.Documents.Sheets;
 
 /// <summary>
 /// The hand-written T-SQL behind the deterministic spreadsheet lookup.
 /// </summary>
 /// <remarks>
 /// Nothing the model supplies is ever concatenated into a command text: a column reaches a statement
-/// only as its already-resolved <see cref="SheetColumnType"/> choosing between pre-authored fragments,
+/// only as its already-resolved <see cref="SheetColumnTypes"/> choosing between pre-authored fragments,
 /// its name travels as a bound JSON-path parameter, and only the <em>number</em> of filter arms varies
 /// with the request. Soft delete has no query filter in this model, so the row, its sheet and the
 /// document that owns it are each filtered by hand in both arms. See <c>docs/documents/sheet-query.md</c>
@@ -90,7 +81,7 @@ internal static class SheetQuerySql
     /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
     internal static string BuildAggregate(
-        SheetQueryOperation operation, SheetColumnType? valueType, IReadOnlyList<SheetFilterSpec> filters)
+        SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
     {
         ArgumentNullException.ThrowIfNull(filters);
 
@@ -117,7 +108,7 @@ internal static class SheetQuerySql
     /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
     internal static string BuildGroupedAggregate(
-        SheetQueryOperation operation, SheetColumnType? valueType, IReadOnlyList<SheetFilterSpec> filters)
+        SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
     {
         ArgumentNullException.ThrowIfNull(filters);
 
@@ -162,13 +153,13 @@ internal static class SheetQuerySql
     /// <summary>
     /// The typed read of one cell, chosen by the column's own inferred type.
     /// </summary>
-    private static string ValueExpression(SheetColumnType type, string pathParameter) => type switch
+    private static string ValueExpression(SheetColumnTypes type, string pathParameter) => type switch
     {
         // Inference accepts a group separator, so a comma-formatted export infers as a number while
         // CONVERT alone would yield NULL for it. A decimal-comma locale fails that same inference and
         // lands as text, so stripping them here cannot corrupt one.
-        SheetColumnType.Number => $"TRY_CONVERT(float, REPLACE(JSON_VALUE(r.[Cells], {pathParameter}), ',', ''))",
-        SheetColumnType.Date => $"TRY_CONVERT(datetime2, JSON_VALUE(r.[Cells], {pathParameter}))",
+        SheetColumnTypes.Number => $"TRY_CONVERT(float, REPLACE(JSON_VALUE(r.[Cells], {pathParameter}), ',', ''))",
+        SheetColumnTypes.Date => $"TRY_CONVERT(datetime2, JSON_VALUE(r.[Cells], {pathParameter}))",
 
         // Boolean has no RETURNING type and no useful ordering, so it compares as the text it is stored as.
         _ => $"JSON_VALUE(r.[Cells], {pathParameter}) COLLATE Latin1_General_CI_AI"
@@ -184,31 +175,31 @@ internal static class SheetQuerySql
     /// column's type could read — otherwise "how many rows have a status" would silently mean "how many
     /// of them parse as one".
     /// </summary>
-    private static string CountExpression(SheetColumnType? valueType) =>
+    private static string CountExpression(SheetColumnTypes? valueType) =>
         valueType is null ? "COUNT(*)" : $"COUNT({RawExpression(ValuePathParameter)})";
 
     /// <summary>
     /// Counts the rows that actually contributed to the aggregate, so a total computed over fewer rows
     /// than matched is reportable rather than silent.
     /// </summary>
-    private static string ValueRowsExpression(SheetQueryOperation operation, SheetColumnType? valueType) =>
-        operation is SheetQueryOperation.Count || valueType is null
+    private static string ValueRowsExpression(SheetQueryOperations operation, SheetColumnTypes? valueType) =>
+        operation is SheetQueryOperations.Count || valueType is null
             ? CountExpression(valueType)
             : $"COUNT({ValueExpression(valueType.Value, ValuePathParameter)})";
 
-    private static string AggregateExpression(SheetQueryOperation operation, SheetColumnType? valueType)
+    private static string AggregateExpression(SheetQueryOperations operation, SheetColumnTypes? valueType)
     {
-        if (operation is SheetQueryOperation.Count)
+        if (operation is SheetQueryOperations.Count)
         {
             return CountExpression(valueType);
         }
 
         var function = operation switch
         {
-            SheetQueryOperation.Sum => "SUM",
-            SheetQueryOperation.Avg => "AVG",
-            SheetQueryOperation.Min => "MIN",
-            SheetQueryOperation.Max => "MAX",
+            SheetQueryOperations.Sum => "SUM",
+            SheetQueryOperations.Avg => "AVG",
+            SheetQueryOperations.Min => "MIN",
+            SheetQueryOperations.Max => "MAX",
             _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, null)
         };
 
@@ -243,7 +234,7 @@ internal static class SheetQuerySql
         var path = $"{FilterPathPrefix}{index}";
         var value = $"{FilterValuePrefix}{index}";
 
-        if (filter.Comparator is SheetFilterComparator.Contains)
+        if (filter.Comparator is SheetFilterComparators.Contains)
         {
             // Matched against the cell's own text whatever the column's type, so "contains 2026" works on
             // a date column as readily as on a free-text one. The caller escapes the pattern's wildcards.
@@ -254,18 +245,18 @@ internal static class SheetQuerySql
 
         // A row with no value in the column genuinely is not equal to the one named, and a bare <> would
         // drop it on the NULL rather than keep it.
-        if (filter.Comparator is SheetFilterComparator.Neq)
+        if (filter.Comparator is SheetFilterComparators.Neq)
         {
             return $"({expression} IS NULL OR {expression} <> {value})";
         }
 
         var comparison = filter.Comparator switch
         {
-            SheetFilterComparator.Eq => "=",
-            SheetFilterComparator.Gt => ">",
-            SheetFilterComparator.Gte => ">=",
-            SheetFilterComparator.Lt => "<",
-            SheetFilterComparator.Lte => "<=",
+            SheetFilterComparators.Eq => "=",
+            SheetFilterComparators.Gt => ">",
+            SheetFilterComparators.Gte => ">=",
+            SheetFilterComparators.Lt => "<",
+            SheetFilterComparators.Lte => "<=",
             _ => throw new ArgumentOutOfRangeException(nameof(filter), filter.Comparator, null)
         };
 

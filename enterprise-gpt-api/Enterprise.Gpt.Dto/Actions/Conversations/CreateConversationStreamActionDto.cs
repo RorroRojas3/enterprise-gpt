@@ -1,6 +1,4 @@
-﻿using Enterprise.Gpt.Common.Enums;
-using FluentValidation;
-using System.Text.Json.Serialization;
+﻿using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Conversations;
 

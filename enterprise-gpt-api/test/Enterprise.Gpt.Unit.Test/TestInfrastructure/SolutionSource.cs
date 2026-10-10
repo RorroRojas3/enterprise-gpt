@@ -22,9 +22,13 @@ internal static class SolutionSource
     /// itself, and because a string in a test is not a call site in the product.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The source tree this assembly was built from is absent.</exception>
-    public static IEnumerable<string> ProductionFiles() =>
-        Directory.EnumerateFiles(Root(), "*.cs", SearchOption.AllDirectories)
-            .Where(path => !Excluded(path, "obj") && !Excluded(path, "bin") && !Excluded(path, "tests"));
+    public static IEnumerable<string> ProductionFiles()
+    {
+        var root = Root();
+
+        return Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !Excluded(root, path, "obj") && !Excluded(root, path, "bin") && !Excluded(root, path, "test"));
+    }
 
     /// <summary>Finds every shipped C# file mentioning a string.</summary>
     /// <param name="text">The text to search for.</param>
@@ -42,12 +46,13 @@ internal static class SolutionSource
         ];
     }
 
-    private static bool Excluded(string path, string segment) =>
-        path.Contains($"{Path.DirectorySeparatorChar}{segment}{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+    // Relative to the root, so a checkout that itself sits under a "test" or "bin" folder is not excluded whole.
+    private static bool Excluded(string root, string path, string segment) =>
+        Path.GetRelativePath(root, path).Split(Path.DirectorySeparatorChar).Contains(segment, StringComparer.Ordinal);
 
     private static string Root([CallerFilePath] string thisFile = "")
     {
-        // ...\tests\Enterprise.Gpt.Unit.Test\TestInfrastructure -> the solution directory
+        // ...\test\Enterprise.Gpt.Unit.Test\TestInfrastructure -> the solution directory
         var directory = new FileInfo(thisFile).Directory?.Parent?.Parent?.Parent;
 
         return directory is { Exists: true }

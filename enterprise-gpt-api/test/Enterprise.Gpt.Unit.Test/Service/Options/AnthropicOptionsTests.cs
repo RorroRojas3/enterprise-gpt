@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Settings;
+namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
 /// Covers the accepted-value sets and the cross-field rule the startup validators in

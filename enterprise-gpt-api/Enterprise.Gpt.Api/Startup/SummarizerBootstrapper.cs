@@ -1,7 +1,8 @@
-using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Summarization;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Enterprise.Gpt.Api.Startup;
 
@@ -35,10 +36,10 @@ public static class SummarizerBootstrapper
     /// <param name="services">A scoped service provider.</param>
     /// <param name="logger">The logger that reports the resolved deployment.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <exception cref="Service.Exceptions.SummarizerNotConfiguredException">
+    /// <exception cref="SummarizerNotConfiguredException">
     /// The configured id names no active model row.
     /// </exception>
-    /// <exception cref="Service.Exceptions.ProviderNotConfiguredException">
+    /// <exception cref="ProviderNotConfiguredException">
     /// The row's provider has no chat client registered in this deployment.
     /// </exception>
     public static async Task ValidateAsync(

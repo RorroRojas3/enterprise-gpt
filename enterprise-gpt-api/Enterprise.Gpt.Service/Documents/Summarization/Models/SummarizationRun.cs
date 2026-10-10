@@ -1,18 +1,4 @@
-﻿using Andes.Extensions.AI;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tokenization;
-using Enterprise.Gpt.Service.Tool;
-using FluentValidation.Results;
-using FluentValidation;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-
-namespace Enterprise.Gpt.Service.Documents.Summarization.Models;
+﻿namespace Enterprise.Gpt.Service.Documents.Summarization.Models;
 
 /// <summary>
 /// What one summarization run produced, and what it cost.

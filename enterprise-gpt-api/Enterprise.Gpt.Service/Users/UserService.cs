@@ -1,19 +1,23 @@
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Users;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Dto.Users;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Service.Sorting;
+using Enterprise.Gpt.Service.Sorting.Models;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.User;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Mappers;
-using Enterprise.Gpt.Service.Sorting;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Users
 {
     public interface IUserService
     {
@@ -41,7 +45,7 @@ namespace Enterprise.Gpt.Service
         /// Optionally narrows the page to users holding an active grant of that permission. Applied
         /// before the count, so the total describes the filtered directory rather than the whole one.
         /// </param>
-        /// <param name="sort">An optional field to order by — one of <see cref="Sorting.UserSortKeys.Supported"/>.</param>
+        /// <param name="sort">An optional field to order by — one of <see cref="UserSortKeyNames.Supported"/>.</param>
         /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>A page of matching users.</returns>
@@ -214,9 +218,9 @@ namespace Enterprise.Gpt.Service
         {
             // Resolved before any database work, so a misspelled sort field costs a round trip to
             // nothing rather than a page the caller then has to distrust.
-            SortSelection<UserSortKey>? order = SortParameters.IsDefaultOrder(sort, dir)
+            SortSelection<UserSortKeys>? order = SortParameters.IsDefaultOrder(sort, dir)
                 ? null
-                : UserSortKeys.Resolve(sort, dir);
+                : UserSortKeyNames.Resolve(sort, dir);
 
             // Clamped rather than validated: the paging arguments come straight off the query
             // string, and take = 0 would divide by zero when computing CurrentPage below.
@@ -299,7 +303,7 @@ namespace Enterprise.Gpt.Service
         /// </remarks>
         private static IOrderedQueryable<User> OrderUsers(
             IQueryable<User> query,
-            SortSelection<UserSortKey>? order)
+            SortSelection<UserSortKeys>? order)
         {
             if (order is not { } requested)
             {
@@ -313,10 +317,10 @@ namespace Enterprise.Gpt.Service
 
             var ordered = requested.Key switch
             {
-                UserSortKey.Email => requested.IsAscending
+                UserSortKeys.Email => requested.IsAscending
                     ? query.OrderBy(x => x.Email)
                     : query.OrderByDescending(x => x.Email),
-                UserSortKey.Created => requested.IsAscending
+                UserSortKeys.Created => requested.IsAscending
                     ? query.OrderBy(x => x.DateCreated)
                     : query.OrderByDescending(x => x.DateCreated),
                 _ => requested.IsAscending

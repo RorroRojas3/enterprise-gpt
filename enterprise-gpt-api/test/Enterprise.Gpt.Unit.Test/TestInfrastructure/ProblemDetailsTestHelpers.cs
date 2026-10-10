@@ -1,8 +1,8 @@
+using System.Text.Json;
+using Enterprise.Gpt.Api.Problems;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
-using Enterprise.Gpt.Api.Problems;
-using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
@@ -59,7 +59,7 @@ internal static class ProblemDetailsTestHelpers
     /// <returns>The deserialized problem.</returns>
     /// <remarks>
     /// Always deserializes as <see cref="HttpValidationProblemDetails"/>: it derives from
-    /// <see cref="ProblemDetails"/>, so a non-validation problem leaves <c>Errors</c> empty and one
+    /// <see cref="Microsoft.AspNetCore.Mvc.ProblemDetails"/>, so a non-validation problem leaves <c>Errors</c> empty and one
     /// path covers both shapes.
     /// </remarks>
     internal static async Task<HttpValidationProblemDetails> ReadProblemAsync(HttpContext httpContext)

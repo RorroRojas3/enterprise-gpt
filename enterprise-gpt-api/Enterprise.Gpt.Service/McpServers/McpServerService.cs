@@ -1,17 +1,18 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Dto.McpServers;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Mappers;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.McpServers
 {
     public interface IMcpServerService
     {

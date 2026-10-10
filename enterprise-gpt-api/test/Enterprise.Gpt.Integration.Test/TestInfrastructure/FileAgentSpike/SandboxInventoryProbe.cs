@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Runs the library-and-binary inventory in the sandbox and parses what it printed.

@@ -1,9 +1,10 @@
-using Enterprise.Gpt.Dto.Actions.User;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Dto.Actions.Users;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.Users;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Mappers;
+namespace Enterprise.Gpt.Unit.Test.Service.Users;
 
 public class UserMapperTests
 {

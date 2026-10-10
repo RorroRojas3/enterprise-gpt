@@ -1,11 +1,11 @@
 using System.ComponentModel.DataAnnotations;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Settings;
+namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
 /// Covers the sheet-query section against the same options pipeline <c>Program.cs</c> builds, so a

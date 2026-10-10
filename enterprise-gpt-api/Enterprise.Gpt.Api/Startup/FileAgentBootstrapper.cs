@@ -1,10 +1,10 @@
-using Enterprise.Gpt.Api.Agents;
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Agents.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Enterprise.Gpt.Api.Startup;
 
@@ -35,11 +35,11 @@ public static class FileAgentBootstrapper
     /// <param name="skillsRoot">The directory the deployed skills were expected at.</param>
     /// <param name="logger">The logger that reports the resolved deployment.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <exception cref="Service.Exceptions.FileAgentNotConfiguredException">
+    /// <exception cref="FileAgentNotConfiguredException">
     /// The configured id names no active model row, or one on a provider that cannot carry a hosted
     /// code interpreter.
     /// </exception>
-    /// <exception cref="Service.Exceptions.ProviderNotConfiguredException">
+    /// <exception cref="ProviderNotConfiguredException">
     /// The row's provider has no chat client registered in this deployment.
     /// </exception>
     /// <exception cref="DirectoryNotFoundException">The deployed skills are missing.</exception>

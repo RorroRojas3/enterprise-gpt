@@ -1,18 +1,21 @@
-using Andes.Extensions.AI;
-using Enterprise.Gpt.Common.Enums;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.HttpResults;
-using NSubstitute;
-using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Chat;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Export;
 using System.Text.Json;
+using Andes.Extensions.AI;
+using Enterprise.Gpt.Api.Endpoints;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Conversations;
+using Enterprise.Gpt.Dto.Conversations;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Service.Conversations;
+using Enterprise.Gpt.Service.Conversations.Exceptions;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Exceptions;
+using Enterprise.Gpt.Service.Exports.Models;
+using Microsoft.AspNetCore.Http;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public class ConversationEndpointsTests
 {

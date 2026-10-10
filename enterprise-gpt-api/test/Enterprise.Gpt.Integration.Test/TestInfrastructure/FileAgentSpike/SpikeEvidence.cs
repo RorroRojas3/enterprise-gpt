@@ -1,47 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
-
-/// <summary>
-/// One question the spike asked of the live deployment, and what came back.
-/// </summary>
-/// <param name="Outcome">The short answer, so the file can be skimmed.</param>
-/// <param name="Detail">The observation the outcome rests on.</param>
-internal sealed record CapabilityFinding(string Question, string Outcome, string Detail);
-
-/// <summary>
-/// What the Responses route actually does in this tenant.
-/// </summary>
-/// <param name="Deployment">The deployment name, never the endpoint: the resource hostname is the one
-/// tenant-identifying string that could land here, and it says nothing about the sandbox.</param>
-/// <param name="Findings">Every question asked, in the order asked.</param>
-internal sealed record CapabilityReport(
-    DateTimeOffset RecordedUtc,
-    string Deployment,
-    IReadOnlyList<CapabilityFinding> Findings);
-
-/// <summary>
-/// One Python library the sandbox was asked about.
-/// </summary>
-/// <param name="Module">The import name, which is not always the package name.</param>
-/// <param name="Package">The distribution name a skill would cite.</param>
-internal sealed record InventoryLibrary(string Module, string Package, bool Importable, string? Version);
-
-/// <summary>
-/// The sandbox image as it stood on the day of the run.
-/// </summary>
-/// <param name="PythonVersion">The interpreter version, which dates the image as well as anything.</param>
-/// <param name="OfficeConverter">The <c>soffice</c>/<c>libreoffice</c> binary, if any. Its presence
-/// promotes every Office-to-PDF cell from structural to faithful.</param>
-internal sealed record SandboxInventory(
-    DateTimeOffset RecordedUtc,
-    string PythonVersion,
-    IReadOnlyList<InventoryLibrary> Libraries,
-    OfficeConverterProbe OfficeConverter);
-
-/// <summary>The result of looking for a headless office suite on the sandbox PATH.</summary>
-internal sealed record OfficeConverterProbe(bool Present, string? Path, string? Version);
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Reads and writes the spike's evidence files.

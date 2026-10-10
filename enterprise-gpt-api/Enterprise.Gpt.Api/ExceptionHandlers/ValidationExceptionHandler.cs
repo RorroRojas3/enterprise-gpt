@@ -1,6 +1,7 @@
+using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Problems.Constants;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
-using Enterprise.Gpt.Api.Problems;
 
 namespace Enterprise.Gpt.Api.ExceptionHandlers
 {

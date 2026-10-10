@@ -1,7 +1,6 @@
-﻿using Enterprise.Gpt.Dto;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
+using Enterprise.Gpt.Dto.Conversations;
+using Enterprise.Gpt.Entity.Conversations;
 
 namespace Enterprise.Gpt.Service.Conversations;
 

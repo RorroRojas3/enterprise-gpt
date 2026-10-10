@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Settings;
+namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
 /// Covers what the Azure AI Foundry section adds over the shared v1-endpoint behaviour, and pins
@@ -43,7 +43,7 @@ public sealed class AzureAIFoundryOptionsTests
 
     /// <summary>
     /// Reasoning is a Responses-API feature, so this provider carries no reasoning settings at all —
-    /// the absence is the contract, and <c>AzureAIFoundryChatDefaults</c> enforces it at request
+    /// the absence is the contract, and <c>AzureAIFoundryDefaults</c> enforces it at request
     /// time. A property added here later would be a signal that the enforcement moved.
     /// </summary>
     [Fact]

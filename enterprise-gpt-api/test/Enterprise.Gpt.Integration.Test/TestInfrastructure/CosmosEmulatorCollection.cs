@@ -1,12 +1,3 @@
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
-using Enterprise.Gpt.Api.Startup;
-using Enterprise.Gpt.Repository.Cosmos.Options;
-using Enterprise.Gpt.Repository.Cosmos.Serialization;
-using Enterprise.Gpt.Repository.Cosmos;
-using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;

@@ -1,13 +1,16 @@
+using System.Globalization;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Sheets.Models;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Globalization;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
 /// <summary>
 /// Covers everything the sheet query decides before it builds a statement: which sheets a turn can
@@ -43,7 +46,7 @@ public sealed class SheetQueryServiceTests : IDisposable
     {
         var conversationId = Guid.NewGuid();
         var scope = new DocumentRetrievalScope(
-            conversationId, null, [new RetrievableDocument(Guid.NewGuid(), DocumentSource.Conversation, "handbook.pdf")]);
+            conversationId, null, [new RetrievableDocument(Guid.NewGuid(), DocumentSources.Conversation, "handbook.pdf")]);
 
         var result = await QueryAsync(scope, "count");
 
@@ -357,12 +360,12 @@ public sealed class SheetQueryServiceTests : IDisposable
     private static ResolvedSheet Sheet(string name) => new(
         Guid.NewGuid(),
         Guid.NewGuid(),
-        DocumentSource.Conversation,
+        DocumentSources.Conversation,
         "budget.xlsx",
         name,
         $"budget.xlsx — {name}",
         2,
-        [new ResolvedSheetColumn("Revenue", SheetColumnType.Number)]);
+        [new ResolvedSheetColumn("Revenue", SheetColumnTypes.Number)]);
 
     private async Task<DocumentRetrievalScope> SeedBudgetAsync(
         bool secondSheet = false,
@@ -409,12 +412,12 @@ public sealed class SheetQueryServiceTests : IDisposable
                     DateDeactivated = deactivateSheet ? date : null,
                     Columns =
                     [
-                        Column(0, "SKU", SheetColumnType.Text, date),
-                        Column(1, "Region", SheetColumnType.Text, date),
+                        Column(0, "SKU", SheetColumnTypes.Text, date),
+                        Column(1, "Region", SheetColumnTypes.Text, date),
                         Column(
                             2,
                             quotedColumnName ? "Size (\"in\")" : "Revenue",
-                            quotedColumnName ? SheetColumnType.Text : SheetColumnType.Number,
+                            quotedColumnName ? SheetColumnTypes.Text : SheetColumnTypes.Number,
                             date,
                             deactivateRevenueColumn ? date : null)
                     ],
@@ -440,7 +443,7 @@ public sealed class SheetQueryServiceTests : IDisposable
             for (var i = 0; i < columnCount; i++)
             {
                 sheet.Columns.Add(Column(
-                    i, string.Create(CultureInfo.InvariantCulture, $"Column{i}"), SheetColumnType.Text, date));
+                    i, string.Create(CultureInfo.InvariantCulture, $"Column{i}"), SheetColumnTypes.Text, date));
             }
         }
 
@@ -455,7 +458,7 @@ public sealed class SheetQueryServiceTests : IDisposable
                 ColumnCount = 1,
                 DateCreated = date,
                 DateModified = date,
-                Columns = [Column(0, "Revenue", SheetColumnType.Number, date)],
+                Columns = [Column(0, "Revenue", SheetColumnTypes.Number, date)],
                 Rows = [Row(0, """{"Revenue":"99"}""", date)]
             });
         }
@@ -468,11 +471,11 @@ public sealed class SheetQueryServiceTests : IDisposable
         return new DocumentRetrievalScope(
             conversation.Id,
             null,
-            [new RetrievableDocument(document.Id, DocumentSource.Conversation, document.Name)]);
+            [new RetrievableDocument(document.Id, DocumentSources.Conversation, document.Name)]);
     }
 
     private static ConversationDocumentSheetColumn Column(
-        int index, string name, SheetColumnType type, DateTimeOffset date, DateTimeOffset? deactivated = null) => new()
+        int index, string name, SheetColumnTypes type, DateTimeOffset date, DateTimeOffset? deactivated = null) => new()
         {
             ColumnIndex = index,
             ColumnName = name,

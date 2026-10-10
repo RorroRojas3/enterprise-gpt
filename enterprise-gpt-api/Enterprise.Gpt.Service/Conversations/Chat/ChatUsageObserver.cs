@@ -1,6 +1,6 @@
 using Andes.Extensions.AI;
 
-namespace Enterprise.Gpt.Service.Chat;
+namespace Enterprise.Gpt.Service.Conversations.Chat;
 
 /// <summary>
 /// Routes the tracking middleware's per-request usage report to the <see cref="ChatUsageScope"/>

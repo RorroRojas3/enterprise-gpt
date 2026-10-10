@@ -1,4 +1,4 @@
-﻿namespace Enterprise.Gpt.Service.BackgroundJobs
+﻿namespace Enterprise.Gpt.Service.BackgroundJobs.Models
 {
     /// <summary>
     /// Represents a unit of background work submitted to the <see cref="IBackgroundJobQueue"/>.

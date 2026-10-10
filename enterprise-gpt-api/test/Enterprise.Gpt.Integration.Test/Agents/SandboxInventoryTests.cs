@@ -1,6 +1,7 @@
+using Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.Agents;
 
 /// <summary>
 /// Records which Python libraries the sandbox image carries, and whether a headless office suite is on

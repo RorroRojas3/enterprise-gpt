@@ -1,16 +1,15 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using System.Globalization;
 using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Extraction;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 public sealed class CsvTextExtractorTests
 {
@@ -22,7 +21,7 @@ public sealed class CsvTextExtractorTests
         int maxCharacters = 8_000_000,
         RowWindowOptions? rowWindow = null)
     {
-        var options = Options.Create(new SheetOptions
+        var options = Microsoft.Extensions.Options.Options.Create(new SheetOptions
         {
             MaxRowsPerSheet = maxRows,
             MaxColumnsPerSheet = maxColumns,
@@ -142,7 +141,7 @@ public sealed class CsvTextExtractorTests
         Assert.Equal(2, sheet.RowCount);
         Assert.Equal(2, sheet.ColumnCount);
         Assert.Equal(["SKU", "Revenue"], sheet.Columns.Select(c => c.ColumnName));
-        Assert.Equal([SheetColumnType.Text, SheetColumnType.Number], sheet.Columns.Select(c => c.InferredType));
+        Assert.Equal([SheetColumnTypes.Text, SheetColumnTypes.Number], sheet.Columns.Select(c => c.InferredType));
         Assert.Equal("""{"SKU":"W-1","Revenue":"1200"}""", sheet.Rows[0].Cells);
     }
 

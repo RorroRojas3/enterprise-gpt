@@ -1,7 +1,8 @@
 using Enterprise.Gpt.Service.Reports;
+using Enterprise.Gpt.Service.Reports.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Reports;
+namespace Enterprise.Gpt.Unit.Test.Service.Reports;
 
 /// <summary>
 /// The one place null and zero are told apart, pinned without a database.

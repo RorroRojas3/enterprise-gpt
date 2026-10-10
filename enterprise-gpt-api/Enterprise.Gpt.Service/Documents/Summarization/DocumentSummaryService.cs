@@ -1,32 +1,26 @@
-﻿using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Exceptions;
+﻿using System.Diagnostics;
+using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
 using Enterprise.Gpt.Service.Observability;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Diagnostics;
-using System.Text;
 
-namespace Enterprise.Gpt.Service.Summarization;
-
-/// <summary>
-/// One document's summary, and whether producing it cost anything.
-/// </summary>
-/// <param name="Text">The summary text.</param>
-/// <param name="FromCache">
-/// <see langword="true"/> when the stored summary was reused, in which case no model call was made
-/// and no usage was billed.
-/// </param>
-/// <param name="ModelCallCount">Model calls this request made: <c>0</c> on a cache hit.</param>
-public sealed record DocumentSummaryResult(string Text, bool FromCache, int ModelCallCount);
+namespace Enterprise.Gpt.Service.Documents.Summarization;
 
 /// <summary>
 /// Serves a document's canonical summary, generating and billing it on a miss.
@@ -51,7 +45,7 @@ public interface IDocumentSummaryService
     /// The summarizer's catalog row is missing or unusable.
     /// </exception>
     Task<DocumentSummaryResult> GetOrCreateAsync(
-        Guid conversationId, Guid documentId, DocumentSource source, CancellationToken cancellationToken);
+        Guid conversationId, Guid documentId, DocumentSources source, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reduces every document in a conversation's retrieval scope to one digest.
@@ -87,7 +81,7 @@ public sealed class DocumentSummaryService(
 
     /// <inheritdoc />
     public async Task<DocumentSummaryResult> GetOrCreateAsync(
-        Guid conversationId, Guid documentId, DocumentSource source, CancellationToken cancellationToken)
+        Guid conversationId, Guid documentId, DocumentSources source, CancellationToken cancellationToken)
     {
         var cached = await ReadCachedTextAsync(documentId, source, cancellationToken).ConfigureAwait(false);
 
@@ -173,13 +167,13 @@ public sealed class DocumentSummaryService(
     /// and a regenerate flag the model can set is a way for the model to spend money.
     /// </remarks>
     private async Task<string?> ReadCachedTextAsync(
-        Guid documentId, DocumentSource source, CancellationToken cancellationToken)
+        Guid documentId, DocumentSources source, CancellationToken cancellationToken)
     {
         var version = SummarizationPrompts.PromptVersion;
 
         return source switch
         {
-            DocumentSource.Conversation => await _ctx.ConversationDocumentSummaries
+            DocumentSources.Conversation => await _ctx.ConversationDocumentSummaries
                 .AsNoTracking()
                 .Where(x => x.ConversationDocumentId == documentId
                     && !x.DateDeactivated.HasValue
@@ -188,7 +182,7 @@ public sealed class DocumentSummaryService(
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false),
 
-            DocumentSource.Project => await _ctx.ProjectDocumentSummaries
+            DocumentSources.Project => await _ctx.ProjectDocumentSummaries
                 .AsNoTracking()
                 .Where(x => x.ProjectDocumentId == documentId
                     && !x.DateDeactivated.HasValue
@@ -207,7 +201,7 @@ public sealed class DocumentSummaryService(
     /// <remarks>
     /// <para>
     /// The detach is load-bearing, not defensive. <see cref="IDocumentSummarizer"/> resolves its
-    /// client through the same <see cref="Chat.IChatClientResolver"/> the turn does, so its calls
+    /// client through the same <see cref="IChatClientResolver"/> the turn does, so its calls
     /// run on the fully decorated pipeline — tool tracking included — and when this is reached from
     /// inside a tool invocation the tracker attributes them to the enclosing scope. Those tokens
     /// then land in the turn's own <c>ConversationUsage.ToolInputTokens</c>, where
@@ -317,7 +311,7 @@ public sealed class DocumentSummaryService(
     private async Task PersistAsync(
         Guid conversationId,
         Guid documentId,
-        DocumentSource source,
+        DocumentSources source,
         SummarizationRun run,
         CancellationToken cancellationToken)
     {
@@ -339,8 +333,8 @@ public sealed class DocumentSummaryService(
         {
             BaseDocumentSummary created = source switch
             {
-                DocumentSource.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
-                DocumentSource.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
+                DocumentSources.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
+                DocumentSources.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
                 _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
             };
 
@@ -458,15 +452,15 @@ public sealed class DocumentSummaryService(
     private static async Task<BaseDocumentSummary?> ReadLiveRowAsync(
         EnterpriseGptDbContext ctx,
         Guid documentId,
-        DocumentSource source,
+        DocumentSources source,
         CancellationToken cancellationToken) => source switch
         {
-            DocumentSource.Conversation => await ctx.ConversationDocumentSummaries
+            DocumentSources.Conversation => await ctx.ConversationDocumentSummaries
                 .Where(x => x.ConversationDocumentId == documentId && !x.DateDeactivated.HasValue)
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false),
 
-            DocumentSource.Project => await ctx.ProjectDocumentSummaries
+            DocumentSources.Project => await ctx.ProjectDocumentSummaries
                 .Where(x => x.ProjectDocumentId == documentId && !x.DateDeactivated.HasValue)
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false),

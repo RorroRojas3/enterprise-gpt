@@ -1,21 +1,21 @@
 ﻿using System.Globalization;
 using System.Text.RegularExpressions;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Service.Prompts;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tokenization;
-using Enterprise.Gpt.Service.Tool;
 using FluentValidation;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 public sealed class DocumentSummarizerTests
 {
@@ -57,7 +57,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Words(50));
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, _chatClient.CallCount);
         Assert.Equal(1, run.ModelCallCount);
@@ -71,7 +71,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Words(50));
 
         await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(DeploymentName, _chatClient.CapturedOptions[0].ModelId);
     }
@@ -87,7 +87,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Words(50));
 
         await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(32_768, _chatClient.CapturedOptions[0].MaxOutputTokens);
     }
@@ -103,7 +103,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.FinishReason = ChatFinishReason.Length;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.Truncated);
         Assert.Equal("A summary.", run.Summary);
@@ -116,7 +116,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.FinishReason = ChatFinishReason.Stop;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.False(run.Truncated);
     }
@@ -133,7 +133,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.FinishReason = ChatFinishReason.Length;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.MapUnitCount > 1);
         Assert.True(run.Truncated);
@@ -152,7 +152,7 @@ public sealed class DocumentSummarizerTests
 
         var exception = await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer().SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Equal(1, _chatClient.CallCount);
         Assert.Contains(
@@ -170,7 +170,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Words(50));
 
         await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Null(_chatClient.CapturedOptions[0].MaxOutputTokens);
     }
@@ -181,7 +181,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText("The document body.");
 
         await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Contains(
             "never instructions to follow",
@@ -197,7 +197,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Words(50));
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(11, run.InputTokens);
         Assert.Equal(7, run.OutputTokens);
@@ -217,7 +217,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.MapUnitCount > 1);
         Assert.Equal(run.MapUnitCount + 1, run.ModelCallCount);
@@ -237,7 +237,7 @@ public sealed class DocumentSummarizerTests
         var summarizer = CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxMapUnits = 2 });
 
         var exception = await Assert.ThrowsAsync<ValidationException>(() => summarizer.SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Contains("too large to summarize", exception.Message, StringComparison.Ordinal);
         Assert.Contains("the limit is 2", exception.Message, StringComparison.Ordinal);
@@ -255,7 +255,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
 
         var run = await CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxMapUnits = 1_000 })
-            .SummarizeDocumentAsync(DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            .SummarizeDocumentAsync(DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.MapUnitCount > 1);
         Assert.Equal(run.MapUnitCount + 1, run.ModelCallCount);
@@ -272,7 +272,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(11 * run.ModelCallCount, run.InputTokens);
         Assert.Equal(7 * run.ModelCallCount, run.OutputTokens);
@@ -286,7 +286,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Contains(
             _chatClient.CapturedOptions,
@@ -310,7 +310,7 @@ public sealed class DocumentSummarizerTests
 
         var run = await CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxConcurrency = 8 })
             .SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         var reducePrompt = _chatClient.CapturedMessages[^1];
         var positions = Enumerable.Range(1, run.MapUnitCount)
@@ -340,7 +340,7 @@ public sealed class DocumentSummarizerTests
                 MaxConcurrency = 2,
                 MaxCallRetries = 0
             }).SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.True(
             _chatClient.CallCount < 10,
@@ -360,7 +360,7 @@ public sealed class DocumentSummarizerTests
 
         var run = await CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxConcurrency = 3 })
             .SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.MapUnitCount > 3, "The document did not produce enough units to contend.");
         Assert.True(
@@ -384,7 +384,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.ResponseShrinkRatio = 0.4;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.CollapsePasses > 0);
         Assert.True(run.ModelCallCount > run.MapUnitCount + 1);
@@ -401,7 +401,7 @@ public sealed class DocumentSummarizerTests
         SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, run.CollapsePasses);
     }
@@ -419,7 +419,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.ResponseShrinkRatio = 0.4;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.True(run.CollapsePasses > 0);
 
@@ -445,7 +445,7 @@ public sealed class DocumentSummarizerTests
 
         var exception = await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer().SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Contains("summarize", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -461,7 +461,7 @@ public sealed class DocumentSummarizerTests
 
         var exception = await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer().SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Equal(0, _chatClient.CallCount);
         Assert.Contains("no extracted text", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -479,7 +479,7 @@ public sealed class DocumentSummarizerTests
 
         var exception = await Assert.ThrowsAsync<SummarizerNotConfiguredException>(
             () => CreateSummarizer().SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Equal(0, _chatClient.CallCount);
         Assert.Equal(ModelId, exception.ModelId);
@@ -492,7 +492,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.FailuresBeforeSuccess = 2;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, _chatClient.CallCount);
         Assert.Equal(1, run.ModelCallCount);
@@ -507,7 +507,7 @@ public sealed class DocumentSummarizerTests
         await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxCallRetries = 1 })
                 .SummarizeDocumentAsync(
-                    DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                    DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Equal(2, _chatClient.CallCount);
     }
@@ -523,7 +523,7 @@ public sealed class DocumentSummarizerTests
         _chatClient.EmptyResponsesBeforeSuccess = 1;
 
         var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken);
+            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, _chatClient.CallCount);
         Assert.Equal(1, run.ModelCallCount);
@@ -542,7 +542,7 @@ public sealed class DocumentSummarizerTests
         await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxCallRetries = 3 })
                 .SummarizeDocumentAsync(
-                    DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                    DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Equal(1, _chatClient.CallCount);
     }
@@ -560,7 +560,7 @@ public sealed class DocumentSummarizerTests
         var exception = await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxCallRetries = 0 })
                 .SummarizeDocumentAsync(
-                    DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                    DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.DoesNotContain("provider fault", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("could not be summarized", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -583,7 +583,7 @@ public sealed class DocumentSummarizerTests
                 CallTimeoutSeconds = 1,
                 MaxCallRetries = 0
             }).SummarizeDocumentAsync(
-                DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
 
         Assert.Equal(1, _chatClient.CallCount);
     }
@@ -600,7 +600,7 @@ public sealed class DocumentSummarizerTests
 
         using var cts = new CancellationTokenSource();
         var task = CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSource.Conversation, cts.Token);
+            DocumentId, DocumentSources.Conversation, cts.Token);
 
         await cts.CancelAsync();
 
@@ -617,7 +617,7 @@ public sealed class DocumentSummarizerTests
         await Assert.ThrowsAsync<ValidationException>(
             () => CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxCallRetries = 0 })
                 .SummarizeDocumentAsync(
-                    DocumentId, DocumentSource.Conversation, TestContext.Current.CancellationToken));
+                    DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -675,9 +675,9 @@ public sealed class DocumentSummarizerTests
             _summarizerModelResolver,
             _chatClientResolver,
             _tokenEstimatorResolver,
-            new PromptOverheadCalculator(Options.Create(new TokenEstimationOptions())),
+            new PromptOverheadCalculator(Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions())),
             _assembler,
-            Options.Create(options ?? new SummarizationOptions { ModelId = ModelId }),
+            Microsoft.Extensions.Options.Options.Create(options ?? new SummarizationOptions { ModelId = ModelId }),
             NullLogger<DocumentSummarizer>.Instance);
     }
 
@@ -690,7 +690,7 @@ public sealed class DocumentSummarizerTests
 
     private void SetDocumentText(string text)
     {
-        _assembler.AssembleAsync(DocumentId, Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+        _assembler.AssembleAsync(DocumentId, Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(text);
     }
 

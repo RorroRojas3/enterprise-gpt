@@ -1,16 +1,16 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Reports;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Reports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Reports;
-using Enterprise.Gpt.Service.Settings;
-using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;

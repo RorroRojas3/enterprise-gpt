@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// The connection settings shared by every provider reached through Azure's OpenAI-compatible v1

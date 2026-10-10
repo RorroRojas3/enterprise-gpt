@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Agents;
+namespace Enterprise.Gpt.Service.Agents.Constants;
 
 /// <summary>
 /// The names the File Agent is registered under.

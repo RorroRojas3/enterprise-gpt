@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.McpServers;
 
 /// <summary>
 /// One user's own bearer credential for an MCP server registered with

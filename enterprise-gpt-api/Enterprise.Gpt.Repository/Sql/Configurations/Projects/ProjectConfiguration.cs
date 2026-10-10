@@ -1,8 +1,8 @@
+using Enterprise.Gpt.Entity.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations;
+namespace Enterprise.Gpt.Repository.Sql.Configurations.Projects;
 
 /// <summary>
 /// Maps <see cref="Project"/> to <c>Core.Project</c>, its ownership and document relationships, and

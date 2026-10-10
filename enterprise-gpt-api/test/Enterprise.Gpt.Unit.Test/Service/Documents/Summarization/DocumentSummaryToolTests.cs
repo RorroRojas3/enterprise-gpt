@@ -1,15 +1,17 @@
-﻿using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tool;
+﻿using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Models;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using System.Text.Json;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tool;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 /// <summary>
 /// Covers the function the model actually sees: its name and schema, how it resolves a document
@@ -61,7 +63,7 @@ public sealed class DocumentSummaryToolTests
     public async Task InvokeAsync_NameMatchesOneDocument_SummarizesThatDocumentOnly()
     {
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(new DocumentSummaryResult("The handbook covers refunds.", FromCache: false, ModelCallCount: 1));
 
         var function = CreateFunction();
@@ -70,7 +72,7 @@ public sealed class DocumentSummaryToolTests
             new AIFunctionArguments { ["documentName"] = "handbook.pdf" }, TestContext.Current.CancellationToken);
 
         await _summaryService.Received(1).GetOrCreateAsync(
-            ConversationId, HandbookId, DocumentSource.Conversation, Arg.Any<CancellationToken>());
+            ConversationId, HandbookId, DocumentSources.Conversation, Arg.Any<CancellationToken>());
 
         var json = JsonSerializer.Serialize(result);
         Assert.Contains("The handbook covers refunds.", json, StringComparison.Ordinal);
@@ -87,13 +89,13 @@ public sealed class DocumentSummaryToolTests
         var projectDocumentId = Guid.NewGuid();
 
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(new DocumentSummaryResult("A project document.", FromCache: true, ModelCallCount: 0));
 
         var scope = new DocumentRetrievalScope(
             ConversationId,
             Guid.NewGuid(),
-            [new RetrievableDocument(projectDocumentId, DocumentSource.Project, "shared.docx")]);
+            [new RetrievableDocument(projectDocumentId, DocumentSources.Project, "shared.docx")]);
 
         var function = DocumentSummaryTool.Create(
             scope, ConversationId, _summaryService, TimeoutSeconds, NullLogger.Instance);
@@ -102,7 +104,7 @@ public sealed class DocumentSummaryToolTests
             new AIFunctionArguments { ["documentName"] = "shared.docx" }, TestContext.Current.CancellationToken);
 
         await _summaryService.Received(1).GetOrCreateAsync(
-            ConversationId, projectDocumentId, DocumentSource.Project, Arg.Any<CancellationToken>());
+            ConversationId, projectDocumentId, DocumentSources.Project, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -168,11 +170,11 @@ public sealed class DocumentSummaryToolTests
     public async Task InvokeAsync_NameOmittedAndOneDocumentInScope_SummarizesItDirectly()
     {
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(new DocumentSummaryResult("Only one document here.", FromCache: false, ModelCallCount: 1));
 
         var scope = new DocumentRetrievalScope(
-            ConversationId, null, [new RetrievableDocument(HandbookId, DocumentSource.Conversation, "handbook.pdf")]);
+            ConversationId, null, [new RetrievableDocument(HandbookId, DocumentSources.Conversation, "handbook.pdf")]);
 
         var function = DocumentSummaryTool.Create(
             scope, ConversationId, _summaryService, TimeoutSeconds, NullLogger.Instance);
@@ -180,7 +182,7 @@ public sealed class DocumentSummaryToolTests
         var result = await function.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
 
         await _summaryService.Received(1).GetOrCreateAsync(
-            ConversationId, HandbookId, DocumentSource.Conversation, Arg.Any<CancellationToken>());
+            ConversationId, HandbookId, DocumentSources.Conversation, Arg.Any<CancellationToken>());
         await _summaryService.DidNotReceiveWithAnyArgs().CreateDigestAsync(default, default!, Arg.Any<CancellationToken>());
 
         Assert.Contains("\"document\"", JsonSerializer.Serialize(result), StringComparison.Ordinal);
@@ -195,8 +197,8 @@ public sealed class DocumentSummaryToolTests
     public async Task InvokeAsync_RunRefused_RelaysTheSanitizedReasonToTheModel()
     {
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
-            .Throws(new ValidationException([new ValidationFailure("summary", "This document is too large to summarize.")]));
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ValidationException([new ValidationFailure("summary", "This document is too large to summarize.")]));
 
         var function = CreateFunction();
 
@@ -211,8 +213,8 @@ public sealed class DocumentSummaryToolTests
     public async Task InvokeAsync_RunFails_ReplacesTheMessageWithSomethingSafeToShowTheModel()
     {
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("Login failed for user 'sa'. Server=prod-sql-01;Password=hunter2"));
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Login failed for user 'sa'. Server=prod-sql-01;Password=hunter2"));
 
         var function = CreateFunction();
 
@@ -235,7 +237,7 @@ public sealed class DocumentSummaryToolTests
     public async Task InvokeAsync_ExceedsItsOwnDeadline_TellsTheModelRatherThanFailingTheTurn()
     {
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
                 await Task.Delay(Timeout.Infinite, callInfo.ArgAt<CancellationToken>(3));
@@ -258,7 +260,7 @@ public sealed class DocumentSummaryToolTests
         using var cts = new CancellationTokenSource();
 
         _summaryService
-            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSource>(), Arg.Any<CancellationToken>())
+            .GetOrCreateAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
                 await cts.CancelAsync();
@@ -294,7 +296,7 @@ public sealed class DocumentSummaryToolTests
         ConversationId,
         null,
         [
-            new RetrievableDocument(HandbookId, DocumentSource.Conversation, "handbook.pdf"),
-            new RetrievableDocument(PolicyId, DocumentSource.Conversation, "policy.pdf")
+            new RetrievableDocument(HandbookId, DocumentSources.Conversation, "handbook.pdf"),
+            new RetrievableDocument(PolicyId, DocumentSources.Conversation, "policy.pdf")
         ]);
 }

@@ -1,8 +1,8 @@
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Enums;
 using FluentValidation;
 using FluentValidation.Results;
 
-namespace Enterprise.Gpt.Service.Filtering;
+namespace Enterprise.Gpt.Service.Documents;
 
 /// <summary>
 /// The <c>?type=</c> values the caller-scoped document listing accepts, and the mapping to

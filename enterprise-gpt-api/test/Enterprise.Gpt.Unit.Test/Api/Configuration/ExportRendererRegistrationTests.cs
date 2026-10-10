@@ -1,11 +1,14 @@
-using Enterprise.Gpt.Api.Export;
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Fonts;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Configuration;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Fonts;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration;
 
 /// <summary>
 /// Which formats a deployment offers is observable behaviour — an absent renderer is a <c>503</c>

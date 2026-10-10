@@ -1,23 +1,4 @@
-﻿using System.Collections.Frozen;
-using System.Data.Common;
-using System.Data;
-using System.Globalization;
-using System.Text;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Common.Extensions;
-using Enterprise.Gpt.Repository.Sql.DbContexts;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Settings;
-using Microsoft.Data.SqlClient;
-using Microsoft.Data.SqlTypes;
-using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-
-namespace Enterprise.Gpt.Service.Documents.Retrieval.Models;
+﻿namespace Enterprise.Gpt.Service.Documents.Retrieval.Models;
 
 /// <summary>
 /// A chunk with its fused rank-fusion score and the evidence each pass contributed.

@@ -1,9 +1,11 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
+namespace Enterprise.Gpt.Unit.Test.Repository.Sql;
 
 /// <summary>
 /// Pins the SQL Server-specific model adaptations the unit-test fixture depends on, so a new
@@ -86,7 +88,7 @@ public sealed class SqliteRowVersionModelCustomizerTests : IDisposable
                         {
                             ColumnIndex = 0,
                             ColumnName = "SKU",
-                            InferredType = SheetColumnType.Text,
+                            InferredType = SheetColumnTypes.Text,
                             DateCreated = date,
                             DateModified = date
                         }

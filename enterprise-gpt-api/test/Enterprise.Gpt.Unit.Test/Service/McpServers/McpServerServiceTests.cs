@@ -1,17 +1,20 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.McpServers;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.McpServers;
 
 public sealed class McpServerServiceTests : IDisposable
 {

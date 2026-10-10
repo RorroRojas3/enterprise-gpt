@@ -1,7 +1,8 @@
+using System.Diagnostics;
+using Enterprise.Gpt.Api.Options;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
 using OpenTelemetry;
-using System.Diagnostics;
 
 namespace Enterprise.Gpt.Api.Observability;
 

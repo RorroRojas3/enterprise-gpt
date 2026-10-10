@@ -1,5 +1,3 @@
-using Microsoft.Extensions.AI;
-
 namespace Enterprise.Gpt.Service.Caching.Models;
 
 /// <summary>

@@ -1,28 +1,35 @@
+using System.Diagnostics;
 using Azure.Storage.Sas;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.BackgroundJobs.Constants;
+using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
+using Enterprise.Gpt.Service.BackgroundJobs.Models;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Exceptions;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Observability;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlTypes;
-using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.BackgroundJobs;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Filtering;
-using Enterprise.Gpt.Service.Mappers;
-using Enterprise.Gpt.Service.Observability;
-using Enterprise.Gpt.Service.Settings;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.Documents
 {
     public interface IDocumentService
     {
@@ -264,7 +271,7 @@ namespace Enterprise.Gpt.Service
 
             var job = await EnqueueAsync(
                 userId,
-                new JobTarget(JobTargetKind.Conversation, conversationId),
+                new JobTarget(JobTargetKinds.Conversation, conversationId),
                 (documentService, jobId, token) => documentService.CreateConversationDocumentAsync(jobId, file, userId, conversationId, token),
                 cancellationToken);
 
@@ -294,7 +301,7 @@ namespace Enterprise.Gpt.Service
 
             var job = await EnqueueAsync(
                 userId,
-                new JobTarget(JobTargetKind.Project, projectId),
+                new JobTarget(JobTargetKinds.Project, projectId),
                 (documentService, jobId, token) => documentService.CreateProjectDocumentAsync(jobId, file, userId, projectId, token),
                 cancellationToken);
 
@@ -325,7 +332,7 @@ namespace Enterprise.Gpt.Service
                 var ingestion = await IngestAsync(jobId, file, blobPath,
                     BuildBlobMetadata(file, userId, documentId, "conversationId", conversationId), cancellationToken);
 
-                _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
+                _jobStatusStore.Report(jobId, JobStatuses.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
                 var date = DateTimeOffset.UtcNow;
                 var document = new ConversationDocument
@@ -377,7 +384,7 @@ namespace Enterprise.Gpt.Service
             }
             catch
             {
-                await TryCleanUpAsync(JobTargetKind.Conversation, documentId, blobPath);
+                await TryCleanUpAsync(JobTargetKinds.Conversation, documentId, blobPath);
                 throw;
             }
         }
@@ -403,7 +410,7 @@ namespace Enterprise.Gpt.Service
                 var ingestion = await IngestAsync(jobId, file, blobPath,
                     BuildBlobMetadata(file, userId, documentId, "projectId", projectId), cancellationToken);
 
-                _jobStatusStore.Report(jobId, JobStatus.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
+                _jobStatusStore.Report(jobId, JobStatuses.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
                 var date = DateTimeOffset.UtcNow;
                 var document = new ProjectDocument
@@ -449,7 +456,7 @@ namespace Enterprise.Gpt.Service
             }
             catch
             {
-                await TryCleanUpAsync(JobTargetKind.Project, documentId, blobPath);
+                await TryCleanUpAsync(JobTargetKinds.Project, documentId, blobPath);
                 throw;
             }
         }
@@ -785,7 +792,7 @@ namespace Enterprise.Gpt.Service
         /// because that very token was cancelled, so a cleanup honouring it would do nothing. Losing the
         /// cleanup must not replace the error the processor needs in order to classify the job.
         /// </remarks>
-        private async Task TryCleanUpAsync(JobTargetKind kind, Guid documentId, string blobPath)
+        private async Task TryCleanUpAsync(JobTargetKinds kind, Guid documentId, string blobPath)
         {
             try
             {
@@ -819,8 +826,8 @@ namespace Enterprise.Gpt.Service
         /// Authorization belongs to the caller: this is reached from the public delete, from a cancel, and
         /// from the ingestion cleanup, and only the first of those has a caller to authorize.
         /// </remarks>
-        private Task DeactivateDocumentRowsAsync(JobTargetKind kind, Guid documentId, CancellationToken cancellationToken) =>
-            kind == JobTargetKind.Project
+        private Task DeactivateDocumentRowsAsync(JobTargetKinds kind, Guid documentId, CancellationToken cancellationToken) =>
+            kind == JobTargetKinds.Project
                 ? DeactivateProjectDocumentRowsAsync(documentId, cancellationToken)
                 : DeactivateConversationDocumentRowsAsync(documentId, cancellationToken);
 
@@ -924,11 +931,11 @@ namespace Enterprise.Gpt.Service
 
         private async Task StoreAsync(string jobId, FileDto file, string blobPath, Dictionary<string, string> metadata, CancellationToken cancellationToken)
         {
-            _jobStatusStore.Report(jobId, JobStatus.Uploading, UploadStart, "Storing the file");
+            _jobStatusStore.Report(jobId, JobStatuses.Uploading, UploadStart, "Storing the file");
 
             await _blobStorageService.UploadAsync(DocumentsContainer, blobPath, file.Content, metadata, cancellationToken);
 
-            _jobStatusStore.Report(jobId, JobStatus.Uploading, ExtractStart, "Stored the file");
+            _jobStatusStore.Report(jobId, JobStatuses.Uploading, ExtractStart, "Stored the file");
         }
 
         private static Dictionary<string, string> BuildBlobMetadata(FileDto file, Guid userId, Guid documentId, string ownerKey, Guid ownerId)
@@ -1047,7 +1054,7 @@ namespace Enterprise.Gpt.Service
         /// </summary>
         private async Task<SheetExtractionResult> ExtractAsync(string jobId, FileDto file, CancellationToken cancellationToken)
         {
-            _jobStatusStore.Report(jobId, JobStatus.Extracting, ExtractStart, "Reading the document");
+            _jobStatusStore.Report(jobId, JobStatuses.Extracting, ExtractStart, "Reading the document");
 
             var extractor = _extractorFactory.Resolve(file.FileExtension);
 
@@ -1060,7 +1067,7 @@ namespace Enterprise.Gpt.Service
                     ? ExtractStart + (int)((ChunkStart - ExtractStart) * Math.Clamp(fraction, 0d, 1d))
                     : ExtractStart;
 
-                _jobStatusStore.Report(jobId, JobStatus.Extracting, percent, report.Message);
+                _jobStatusStore.Report(jobId, JobStatuses.Extracting, percent, report.Message);
             });
 
             // One call, not two: a spreadsheet's text and its grid come out of the same parse, and
@@ -1132,7 +1139,7 @@ namespace Enterprise.Gpt.Service
 
         private IReadOnlyList<TextChunkDto> ChunkText(string jobId, IReadOnlyList<DocumentSegmentDto> segments, CancellationToken cancellationToken)
         {
-            _jobStatusStore.Report(jobId, JobStatus.Chunking, ChunkStart, "Splitting the text for indexing");
+            _jobStatusStore.Report(jobId, JobStatuses.Chunking, ChunkStart, "Splitting the text for indexing");
 
             var chunks = _textChunker.Chunk(segments, cancellationToken);
 
@@ -1145,7 +1152,7 @@ namespace Enterprise.Gpt.Service
                 ]);
             }
 
-            _jobStatusStore.Report(jobId, JobStatus.Chunking, EmbedStart, $"Split into {chunks.Count} chunk(s)", 0, chunks.Count);
+            _jobStatusStore.Report(jobId, JobStatuses.Chunking, EmbedStart, $"Split into {chunks.Count} chunk(s)", 0, chunks.Count);
 
             return chunks;
         }
@@ -1160,7 +1167,7 @@ namespace Enterprise.Gpt.Service
         /// </remarks>
         private async Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(string jobId, IReadOnlyList<TextChunkDto> chunks, CancellationToken cancellationToken)
         {
-            _jobStatusStore.Report(jobId, JobStatus.Embedding, EmbedStart, $"Generating embeddings for {chunks.Count} chunk(s)", 0, chunks.Count);
+            _jobStatusStore.Report(jobId, JobStatuses.Embedding, EmbedStart, $"Generating embeddings for {chunks.Count} chunk(s)", 0, chunks.Count);
 
             var batchSize = _options.EmbeddingBatchSize;
             var vectors = new List<ReadOnlyMemory<float>>(chunks.Count);
@@ -1184,7 +1191,7 @@ namespace Enterprise.Gpt.Service
 
                 var completed = vectors.Count;
                 var percent = EmbedStart + (int)((long)(PersistStart - EmbedStart) * completed / chunks.Count);
-                _jobStatusStore.Report(jobId, JobStatus.Embedding, percent, $"Embedded {completed} of {chunks.Count} chunk(s)", completed, chunks.Count);
+                _jobStatusStore.Report(jobId, JobStatuses.Embedding, percent, $"Embedded {completed} of {chunks.Count} chunk(s)", completed, chunks.Count);
             }
 
             return vectors;

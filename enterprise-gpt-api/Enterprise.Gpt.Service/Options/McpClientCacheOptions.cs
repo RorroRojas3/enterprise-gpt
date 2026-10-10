@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Settings
+namespace Enterprise.Gpt.Service.Options
 {
     /// <summary>
     /// Tuning knobs for the MCP client/tool cache, bound from the <c>Mcp:Cache</c>

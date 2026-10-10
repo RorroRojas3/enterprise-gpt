@@ -1,5 +1,4 @@
 using Enterprise.Gpt.Dto.Documents;
-using Enterprise.Gpt.Dto;
 
 namespace Enterprise.Gpt.Service.Documents.Extraction.Models;
 

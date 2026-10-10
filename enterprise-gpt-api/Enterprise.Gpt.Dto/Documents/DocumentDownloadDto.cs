@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Dto;
+namespace Enterprise.Gpt.Dto.Documents;
 
 /// <summary>
 /// A short-lived, pre-authorized link to the original file behind a document. The API authorizes the

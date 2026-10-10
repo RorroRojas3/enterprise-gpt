@@ -1,17 +1,22 @@
-﻿using FluentValidation;
+﻿using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Projects;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Dto.Projects;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Service.Sorting;
+using Enterprise.Gpt.Service.Sorting.Models;
+using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Project;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Mappers;
-using Enterprise.Gpt.Service.Sorting;
 
-namespace Enterprise.Gpt.Service;
+namespace Enterprise.Gpt.Service.Projects;
 
 /// <summary>
 /// Reads and writes the caller's projects: the containers that group conversations and own a shared
@@ -38,7 +43,7 @@ public interface IProjectService
     /// it applies no filter at all — it is a <see cref="bool"/>?, not a defaulted <see cref="bool"/>.
     /// </param>
     /// <param name="sort">
-    /// An optional field to order by — one of <see cref="Sorting.ProjectSortKeys.Supported"/>.
+    /// An optional field to order by — one of <see cref="ProjectSortKeyNames.Supported"/>.
     /// </param>
     /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
@@ -159,9 +164,9 @@ public class ProjectService(ILogger<ProjectService> logger,
     {
         // Resolved before any database work, so a misspelled sort field costs a round trip to
         // nothing rather than a page the caller then has to distrust.
-        SortSelection<ProjectSortKey>? order = SortParameters.IsDefaultOrder(sort, dir)
+        SortSelection<ProjectSortKeys>? order = SortParameters.IsDefaultOrder(sort, dir)
             ? null
-            : ProjectSortKeys.Resolve(sort, dir);
+            : ProjectSortKeyNames.Resolve(sort, dir);
 
         // Clamped rather than validated: the paging arguments come straight off the query
         // string, and take = 0 would divide by zero when computing CurrentPage below.
@@ -209,7 +214,7 @@ public class ProjectService(ILogger<ProjectService> logger,
     /// </remarks>
     private static IOrderedQueryable<Project> OrderProjects(
         IQueryable<Project> query,
-        SortSelection<ProjectSortKey>? order)
+        SortSelection<ProjectSortKeys>? order)
     {
         if (order is not { } requested)
         {
@@ -224,16 +229,16 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var ordered = requested.Key switch
         {
-            ProjectSortKey.Updated => requested.IsAscending
+            ProjectSortKeys.Updated => requested.IsAscending
                 ? query.OrderBy(x => x.DateModified)
                 : query.OrderByDescending(x => x.DateModified),
-            ProjectSortKey.Name => requested.IsAscending
+            ProjectSortKeys.Name => requested.IsAscending
                 ? query.OrderBy(x => x.Name)
                 : query.OrderByDescending(x => x.Name),
             // A two-value flag leaves almost every row tied, so the name carries the order inside
             // each group rather than leaving it to whatever the engine returns. It stays ascending in
             // both directions on purpose: a name reads A-Z whichever end of the list its group is at.
-            ProjectSortKey.Favorite => requested.IsAscending
+            ProjectSortKeys.Favorite => requested.IsAscending
                 ? query.OrderBy(x => x.IsFavorite).ThenBy(x => x.Name)
                 : query.OrderByDescending(x => x.IsFavorite).ThenBy(x => x.Name),
             _ => requested.IsAscending
@@ -561,7 +566,7 @@ public class ProjectService(ILogger<ProjectService> logger,
             // request-scoped and this exception ends the request, so nothing does that today — but
             // leaving a failed insert tracked makes that an accident waiting to happen.
             // Fully qualified: Enterprise.Gpt.Dto.Actions.Project is a namespace in scope here.
-            foreach (var entry in _ctx.ChangeTracker.Entries<Enterprise.Gpt.Entity.Project>().ToList())
+            foreach (var entry in _ctx.ChangeTracker.Entries<Enterprise.Gpt.Entity.Projects.Project>().ToList())
             {
                 entry.State = EntityState.Detached;
             }

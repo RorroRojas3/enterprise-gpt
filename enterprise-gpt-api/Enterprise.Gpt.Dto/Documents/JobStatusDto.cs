@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Documents
 {
     /// <summary>
     /// Upload job status returned to polling clients.

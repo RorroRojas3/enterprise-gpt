@@ -1,7 +1,8 @@
-using Enterprise.Gpt.Service.Export.Fonts;
+using Enterprise.Gpt.Service.Exports.Fonts;
+using Enterprise.Gpt.Service.Exports.Fonts.Constants;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports.Fonts;
 
 /// <summary>
 /// The resolver decides whether this deployment can render a PDF at all, so the case that matters

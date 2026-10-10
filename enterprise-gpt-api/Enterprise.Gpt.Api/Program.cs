@@ -1,4 +1,5 @@
-﻿using Amazon;
+﻿using System.ClientModel;
+using Amazon;
 using Amazon.BedrockRuntime;
 using Amazon.Runtime;
 using Andes.Extensions.AI;
@@ -7,6 +8,44 @@ using Azure;
 using Azure.AI.DocumentIntelligence;
 using Azure.Identity;
 using Azure.Storage.Blobs;
+using Enterprise.Gpt.Api.Configuration;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Api.Endpoints;
+using Enterprise.Gpt.Api.ExceptionHandlers;
+using Enterprise.Gpt.Api.Health;
+using Enterprise.Gpt.Api.Middleware;
+using Enterprise.Gpt.Api.Observability;
+using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Startup;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Options;
+using Enterprise.Gpt.Repository.Cosmos.Serialization;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Agents;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.ChatModels;
+using Enterprise.Gpt.Service.Conversations;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Rendering;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Sheets;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.McpServers;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Permissions;
+using Enterprise.Gpt.Service.Projects;
+using Enterprise.Gpt.Service.Reports;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Service.Users;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Azure.Cosmos;
@@ -16,39 +55,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using OpenAI;
-using Enterprise.Gpt.Api.Agents;
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Api.Configuration;
-using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Api.Export;
-using Enterprise.Gpt.Api.ExceptionHandlers;
-using Enterprise.Gpt.Api.Health;
-using Enterprise.Gpt.Api.Middleware;
-using Enterprise.Gpt.Api.Observability;
-using Enterprise.Gpt.Api.Problems;
-using Enterprise.Gpt.Api.Startup;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.BackgroundJobs;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Converters;
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Rendering;
-using Enterprise.Gpt.Service.Reports;
-using Enterprise.Gpt.Service.Serialization;
-using Enterprise.Gpt.Service.Security;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Summarization;
-using Enterprise.Gpt.Service.Tokenization;
-using Enterprise.Gpt.Service.Tool;
-using Enterprise.Gpt.Service.Transcripts;
 using Scalar.AspNetCore;
-using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -199,7 +206,7 @@ builder.Services.AddKeyedChatClient(
 
             // MEAI001: the Responses adapter is still marked experimental in
             // Microsoft.Extensions.AI.OpenAI 10.9.0, as OPENAI001 is in OpenAI 2.12.0 — see the
-            // header of AzureOpenAIChatDefaults.cs for why no upgrade retires either. Suppressed at
+            // header of AzureOpenAIDefaults.cs for why no upgrade retires either. Suppressed at
             // the one call site rather than project-wide, so a second experimental API cannot slip
             // in unnoticed behind it.
 #pragma warning disable OPENAI001, MEAI001
@@ -220,7 +227,7 @@ builder.Services.AddKeyedChatClient(
     // already read it by the time this runs.
     .Use((innerClient, services) => new ConfigureOptionsChatClient(
         innerClient,
-        AzureOpenAIChatDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
+        AzureOpenAIDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
 
 // The File Agent's own client, over the same Responses route and the same OpenAIClient. Two
 // deliberate differences from the registration above.
@@ -268,7 +275,7 @@ builder.Services.AddKeyedChatClient(
     })
     .Use((innerClient, services) => new ConfigureOptionsChatClient(
         innerClient,
-        AzureOpenAIChatDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
+        AzureOpenAIDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
 
 // 2) Azure AI Foundry under key "azure-ai-foundry", off unless AzureAIFoundry:Enabled is set. Same
 // resource and same v1 endpoint as the provider above, reached over Chat Completions instead of
@@ -312,7 +319,7 @@ if (builder.Configuration.GetValue<bool>($"{AzureAIFoundryOptions.SectionName}:E
         // see the Anthropic registration below.
         .Use((innerClient, _) => new ConfigureOptionsChatClient(
             innerClient,
-            AzureAIFoundryChatDefaults.Create()));
+            AzureAIFoundryDefaults.Create()));
 }
 
 // 3) Amazon Bedrock under key "amazonbedrock", off unless AmazonBedrock:Enabled is set. Validation is
@@ -443,7 +450,7 @@ if (builder.Configuration.GetValue<bool>($"{AnthropicOptions.SectionName}:Enable
         // bind of the same section.
         .Use((innerClient, services) => new ConfigureOptionsChatClient(
             innerClient,
-            AnthropicChatDefaults.Create(services.GetRequiredService<IOptions<AnthropicOptions>>().Value)));
+            AnthropicDefaults.Create(services.GetRequiredService<IOptions<AnthropicOptions>>().Value)));
 }
 
 builder.Services.AddSingleton<IChatClientResolver, ChatClientResolver>();
@@ -575,8 +582,8 @@ builder.Services.AddSingleton(sp =>
 // Azure Cosmos DB, holding the conversation transcript. Bound and validated at startup because
 // every value here is read once, when a container handle is built, so a missing id used to surface
 // as a failure on the first conversation rather than at boot.
-builder.Services.AddOptions<CosmosOptions>()
-    .Bind(builder.Configuration.GetSection(CosmosOptions.SectionName))
+builder.Services.AddOptions<CosmosDbOptions>()
+    .Bind(builder.Configuration.GetSection(CosmosDbOptions.SectionName))
     .ValidateDataAnnotations()
     // Messages name the configuration key an operator has to edit rather than the bound property,
     // and never echo the value: the connection string carries an account key.
@@ -589,13 +596,13 @@ builder.Services.AddOptions<CosmosOptions>()
     // The cutover gate. A configuration that still names the pre-cutover container is a deployment
     // that has not been migrated, and starting it would answer every transcript read with an empty
     // result — which reads as data loss rather than as a setting nobody removed.
-    .Validate(_ => builder.Configuration[CosmosOptions.LegacyContainerKey] is null,
-        $"{CosmosOptions.LegacyContainerKey} names the pre-cutover container, whose documents this application can no longer read. Remove the setting and set CosmosDb:TranscriptContainerId instead; see docs/operations/runbooks.md.")
+    .Validate(_ => builder.Configuration[CosmosDbOptions.LegacyContainerKey] is null,
+        $"{CosmosDbOptions.LegacyContainerKey} names the pre-cutover container, whose documents this application can no longer read. Remove the setting and set CosmosDb:TranscriptContainerId instead; see docs/operations/runbooks.md.")
     .ValidateOnStart();
 
 builder.Services.AddSingleton(sp =>
 {
-    var cosmos = sp.GetRequiredService<IOptions<CosmosOptions>>().Value;
+    var cosmos = sp.GetRequiredService<IOptions<CosmosDbOptions>>().Value;
 
     // System.Text.Json rather than the SDK's Newtonsoft default: the document types carry
     // [JsonPropertyName] attributes that the default serializer never reads, so the stored names
@@ -606,7 +613,7 @@ builder.Services.AddSingleton(sp =>
         UseSystemTextJsonSerializerWithOptions = CosmosSerialization.CreateOptions()
     });
 });
-builder.Services.AddSingleton<ITranscriptStore, TranscriptStore>();
+builder.Services.AddSingleton<ITranscriptStore, CosmosTranscriptStore>();
 
 // MCP client/tool cache: singleton cache of live MCP connections, scoped provider that
 // resolves permissions and acquires OBO tokens per request. The named HttpClient gets an
@@ -795,8 +802,10 @@ builder.Services.AddSingleton<IUserSecretProtector, UserSecretProtector>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IUserService, UserService>();
 
-// Fluent Validators
-builder.Services.AddValidatorsFromAssemblies(AppDomain.CurrentDomain.GetAssemblies());
+// Fluent Validators. Named assemblies, not AppDomain.GetAssemblies(): an assembly no earlier line
+// has touched is not loaded yet, and its validators would silently go unregistered.
+builder.Services.AddValidatorsFromAssemblies(
+    [typeof(PaginatedResponseDto<>).Assembly, typeof(UploadedFileValidator).Assembly]);
 
 var app = builder.Build();
 
@@ -832,7 +841,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     // Provision the Cosmos database and containers, and refuse to start against a transcript
     // container whose partition key path this application cannot address.
     var cosmosClient = services.GetRequiredService<CosmosClient>();
-    var cosmosOptions = services.GetRequiredService<IOptions<CosmosOptions>>().Value;
+    var cosmosOptions = services.GetRequiredService<IOptions<CosmosDbOptions>>().Value;
     await CosmosBootstrapper.EnsureProvisionedAsync(cosmosClient, cosmosOptions, app.Logger, CancellationToken.None);
 
     // After Migrate(), so a deployment whose summarizer row this feature's own migration corrects

@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Dto.Actions.Permission;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Mappers;
+using Enterprise.Gpt.Dto.Actions.Permissions;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Service.Permissions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Mappers;
+namespace Enterprise.Gpt.Unit.Test.Service.Permissions;
 
 public class PermissionMapperTests
 {

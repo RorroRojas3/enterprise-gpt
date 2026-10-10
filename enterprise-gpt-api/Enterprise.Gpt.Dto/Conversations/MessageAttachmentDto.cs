@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Enterprise.Gpt.Dto;
+namespace Enterprise.Gpt.Dto.Conversations;
 
 /// <summary>
 /// The identity of a file introduced by an assistant message, as carried on the transcript and

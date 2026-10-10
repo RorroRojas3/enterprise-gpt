@@ -1,11 +1,12 @@
-using Enterprise.Gpt.Api.Observability;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Security.Claims;
+using Enterprise.Gpt.Api.Observability;
+using Enterprise.Gpt.Api.Options;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Observability;
+namespace Enterprise.Gpt.Unit.Test.Api.Observability;
 
 /// <summary>
 /// Covers the caller identity stamped onto server spans, and the three cases that must leave a span

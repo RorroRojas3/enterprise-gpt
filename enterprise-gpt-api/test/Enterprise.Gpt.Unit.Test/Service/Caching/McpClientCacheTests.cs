@@ -1,12 +1,12 @@
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Caching.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Settings;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Caching;
+namespace Enterprise.Gpt.Unit.Test.Service.Caching;
 
 public class McpClientCacheTests
 {
@@ -14,7 +14,7 @@ public class McpClientCacheTests
     {
         // A long sweep interval keeps the background sweep inert during these short tests.
         options ??= new McpClientCacheOptions { SweepInterval = TimeSpan.FromHours(1) };
-        return new McpClientCache(NullLogger<McpClientCache>.Instance, Options.Create(options));
+        return new McpClientCache(NullLogger<McpClientCache>.Instance, Microsoft.Extensions.Options.Options.Create(options));
     }
 
     private static McpCacheEntrySource CreateSource(

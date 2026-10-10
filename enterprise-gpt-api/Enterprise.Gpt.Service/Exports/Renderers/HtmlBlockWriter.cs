@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports.Models;
 
-namespace Enterprise.Gpt.Service.Export.Renderers;
+namespace Enterprise.Gpt.Service.Exports.Renderers;
 
 /// <summary>
 /// Writes the renderer-neutral block model as HTML.

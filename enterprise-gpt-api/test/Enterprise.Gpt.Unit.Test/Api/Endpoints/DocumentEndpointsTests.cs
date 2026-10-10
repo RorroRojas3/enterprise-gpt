@@ -1,17 +1,20 @@
+using System.Text;
+using Enterprise.Gpt.Api.Endpoints;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.BackgroundJobs.Models;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Security;
 using Microsoft.AspNetCore.Http;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.BackgroundJobs;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Extraction;
-using System.Text;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public sealed class DocumentEndpointsTests
 {
@@ -38,7 +41,7 @@ public sealed class DocumentEndpointsTests
     }
 
     private static JobStatusSnapshot Snapshot(
-        JobStatus status = JobStatus.Embedding,
+        JobStatuses status = JobStatuses.Embedding,
         int progress = 60,
         string? message = "Embedded 12 of 40 chunk(s)",
         Guid? documentId = null,
@@ -207,7 +210,7 @@ public sealed class DocumentEndpointsTests
         // The service reports a document owned by someone else the same way it reports one that never
         // existed, and the endpoint adds nothing that would tell the two apart.
         _documentService.GetConversationDocumentDownloadAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Throws(new NotFoundException("Document with id 'x' was not found."));
+            .ThrowsAsync(new NotFoundException("Document with id 'x' was not found."));
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => DocumentEndpoints.GetConversationDocumentDownloadAsync(
@@ -233,7 +236,7 @@ public sealed class DocumentEndpointsTests
     public async Task DeactivateConversationDocumentAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
     {
         _documentService.DeactivateConversationDocumentAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Throws(new NotFoundException("Document with id 'x' was not found."));
+            .ThrowsAsync(new NotFoundException("Document with id 'x' was not found."));
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => DocumentEndpoints.DeactivateConversationDocumentAsync(
@@ -269,7 +272,7 @@ public sealed class DocumentEndpointsTests
     public async Task GetProjectDocumentDownloadAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
     {
         _documentService.GetProjectDocumentDownloadAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Throws(new NotFoundException("Document with id 'x' was not found."));
+            .ThrowsAsync(new NotFoundException("Document with id 'x' was not found."));
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => DocumentEndpoints.GetProjectDocumentDownloadAsync(
@@ -289,7 +292,7 @@ public sealed class DocumentEndpointsTests
         Assert.NotNull(payload);
         Assert.Equal("job-1", payload.Id);
         Assert.Equal("Processing", payload.State);
-        Assert.Equal(nameof(JobStatus.Embedding), payload.Status);
+        Assert.Equal(nameof(JobStatuses.Embedding), payload.Status);
         Assert.Equal(60, payload.Progress);
         Assert.Equal("Embedded 12 of 40 chunk(s)", payload.Message);
         Assert.Equal(12, payload.CompletedUnits);
@@ -339,7 +342,7 @@ public sealed class DocumentEndpointsTests
     {
         // The store captured a failure reason from the start; not returning it left clients showing a bare
         // "Failed" with no explanation.
-        _jobStatusStore.Get("job-1").Returns(Snapshot(JobStatus.Failed, 45, "Files of type '.xlsx' are not supported.",
+        _jobStatusStore.Get("job-1").Returns(Snapshot(JobStatuses.Failed, 45, "Files of type '.xlsx' are not supported.",
             errorMessage: "Files of type '.xlsx' are not supported."));
 
         var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
@@ -351,17 +354,17 @@ public sealed class DocumentEndpointsTests
     }
 
     [Theory]
-    [InlineData(JobStatus.Queued, "Enqueued")]
-    [InlineData(JobStatus.Uploading, "Processing")]
-    [InlineData(JobStatus.Extracting, "Processing")]
-    [InlineData(JobStatus.Chunking, "Processing")]
-    [InlineData(JobStatus.Embedding, "Processing")]
-    [InlineData(JobStatus.Persisting, "Processing")]
-    [InlineData(JobStatus.Processed, "Succeeded")]
-    [InlineData(JobStatus.Failed, "Failed")]
+    [InlineData(JobStatuses.Queued, "Enqueued")]
+    [InlineData(JobStatuses.Uploading, "Processing")]
+    [InlineData(JobStatuses.Extracting, "Processing")]
+    [InlineData(JobStatuses.Chunking, "Processing")]
+    [InlineData(JobStatuses.Embedding, "Processing")]
+    [InlineData(JobStatuses.Persisting, "Processing")]
+    [InlineData(JobStatuses.Processed, "Succeeded")]
+    [InlineData(JobStatuses.Failed, "Failed")]
     // Not Processing: a cancelled job never moves again, and the default would leave a client polling it.
-    [InlineData(JobStatus.Cancelled, "Failed")]
-    public void GetJobStatus_EveryStage_MapsToTheCoarseStateOlderClientsUnderstand(JobStatus status, string expectedState)
+    [InlineData(JobStatuses.Cancelled, "Failed")]
+    public void GetJobStatus_EveryStage_MapsToTheCoarseStateOlderClientsUnderstand(JobStatuses status, string expectedState)
     {
         _jobStatusStore.Get("job-1").Returns(Snapshot(status));
 
@@ -375,7 +378,7 @@ public sealed class DocumentEndpointsTests
     [Fact]
     public void GetJobStatus_CancelledJob_NamesTheStageEvenThoughTheStateReadsFailed()
     {
-        _jobStatusStore.Get("job-1").Returns(Snapshot(JobStatus.Cancelled, 60, "Cancelled"));
+        _jobStatusStore.Get("job-1").Returns(Snapshot(JobStatuses.Cancelled, 60, "Cancelled"));
 
         var result = DocumentEndpoints.GetJobStatus("job-1", _jobStatusStore, _tokenService);
 
@@ -399,7 +402,7 @@ public sealed class DocumentEndpointsTests
     public async Task CancelUploadAsync_JobTheCallerCannotSee_PropagatesNotFound()
     {
         _documentService.CancelUploadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Throws(new NotFoundException("Upload job not found."));
+            .ThrowsAsync(new NotFoundException("Upload job not found."));
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => DocumentEndpoints.CancelUploadAsync("job-1", _documentService, TestContext.Current.CancellationToken));

@@ -1,13 +1,12 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Summarization;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Summarization;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 public sealed class SummarizerModelResolverTests : IDisposable
 {
@@ -21,7 +20,7 @@ public sealed class SummarizerModelResolverTests : IDisposable
     private SummarizerModelResolver CreateResolver(Guid modelId)
     {
         return new SummarizerModelResolver(
-            _fixture.Context, Options.Create(new SummarizationOptions { ModelId = modelId }));
+            _fixture.Context, Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = modelId }));
     }
 
     private async Task<Model> AddModelAsync(

@@ -1,10 +1,13 @@
-using Enterprise.Gpt.Common.Enums;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Conversations;
 
 /// <summary>
-/// A reader's rating of one assistant message, as the relational side records it (US-1102).
+/// A reader's rating of one assistant message, as the relational side records it.
 /// </summary>
 /// <remarks>
 /// <para>

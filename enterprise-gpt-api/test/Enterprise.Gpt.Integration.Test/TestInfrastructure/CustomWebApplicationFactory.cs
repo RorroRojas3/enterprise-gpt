@@ -1,3 +1,7 @@
+using Enterprise.Gpt.Api.Middleware;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -6,9 +10,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Testing;
-using Enterprise.Gpt.Api.Middleware;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Transcripts;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 

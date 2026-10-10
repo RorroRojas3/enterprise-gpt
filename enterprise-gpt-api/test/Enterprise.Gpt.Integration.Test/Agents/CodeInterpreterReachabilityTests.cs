@@ -1,9 +1,10 @@
 using System.Text;
 using System.Text.Json;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.Agents;
 
 /// <summary>
 /// Establishes, against the live deployment, whether Code Interpreter runs over the Responses-route

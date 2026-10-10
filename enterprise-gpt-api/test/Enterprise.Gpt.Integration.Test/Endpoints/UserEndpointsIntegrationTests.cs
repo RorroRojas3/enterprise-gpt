@@ -1,9 +1,10 @@
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.User;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Dto.Actions.Users;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Dto.Users;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;

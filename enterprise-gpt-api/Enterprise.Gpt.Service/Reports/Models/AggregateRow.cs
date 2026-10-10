@@ -1,19 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto.Reports;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Entity.ChatModels;
-using Enterprise.Gpt.Entity.Usage;
-using Enterprise.Gpt.Entity.Users;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository.Sql.DbContexts;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Settings;
-using FluentValidation.Results;
-using FluentValidation;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-
 namespace Enterprise.Gpt.Service.Reports.Models;
 
 /// <summary>

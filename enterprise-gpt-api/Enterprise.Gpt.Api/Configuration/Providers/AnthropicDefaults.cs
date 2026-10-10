@@ -1,8 +1,8 @@
 using Anthropic.Models.Messages;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 
-namespace Enterprise.Gpt.Api.Chat;
+namespace Enterprise.Gpt.Api.Configuration.Providers;
 
 /// <summary>
 /// Builds the callback that stamps Anthropic-native request settings onto every turn served by the
@@ -11,10 +11,10 @@ namespace Enterprise.Gpt.Api.Chat;
 /// <remarks>
 /// Kept out of <c>Program.cs</c> for two reasons: it is the only place that needs
 /// <c>Anthropic.Models.Messages</c>, whose <c>Model</c> type would otherwise collide with
-/// <see cref="Enterprise.Gpt.Entity.Model"/>, and confining the SDK's request types to one file keeps
+/// <see cref="Enterprise.Gpt.Entity.ChatModels.Model"/>, and confining the SDK's request types to one file keeps
 /// them out of the provider-agnostic <c>ChatOptions</c> that <c>ConversationService</c> builds.
 /// </remarks>
-internal static class AnthropicChatDefaults
+internal static class AnthropicDefaults
 {
     /// <summary>
     /// Creates the <see cref="ChatOptions"/> callback for a configured Anthropic provider.
@@ -23,7 +23,7 @@ internal static class AnthropicChatDefaults
     /// <returns>A callback suitable for <c>ChatClientBuilder.ConfigureOptions</c>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="settings"/> carries a thinking mode or effort level the parsers do not know.
-    /// The startup validators reject those first, and <c>AnthropicChatDefaultsTests</c> pins every
+    /// The startup validators reject those first, and <c>AnthropicDefaultsTests</c> pins every
     /// value they accept — the two vocabularies drifting apart is what this guards.
     /// </exception>
     /// <remarks>

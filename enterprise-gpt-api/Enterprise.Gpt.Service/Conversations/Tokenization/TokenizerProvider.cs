@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.ML.Tokenizers;
 
-namespace Enterprise.Gpt.Service.Tokenization;
+namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 
 /// <summary>
 /// Resolves and caches the tiktoken vocabulary used to count a deployment's text.

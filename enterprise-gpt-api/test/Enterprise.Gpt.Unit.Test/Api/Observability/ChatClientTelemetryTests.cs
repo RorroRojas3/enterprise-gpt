@@ -1,9 +1,9 @@
+using System.Diagnostics;
 using Enterprise.Gpt.Api.Observability;
 using Microsoft.Extensions.AI;
-using System.Diagnostics;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Observability;
+namespace Enterprise.Gpt.Unit.Test.Api.Observability;
 
 /// <summary>
 /// Pins that the shared pipeline step emits under the source the exporter subscribes to.

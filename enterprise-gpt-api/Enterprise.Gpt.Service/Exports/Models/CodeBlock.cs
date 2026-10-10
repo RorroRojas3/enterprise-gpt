@@ -1,5 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
-
 namespace Enterprise.Gpt.Service.Exports.Models;
 
 /// <summary>A fenced or indented code block.</summary>

@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Testing;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Middleware;

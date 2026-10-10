@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 
-namespace Enterprise.Gpt.Dto.Enums
+namespace Enterprise.Gpt.Common.Constants
 {
     /// <summary>
     /// Contains the fixed identifiers of built-in permissions seeded by the database model.

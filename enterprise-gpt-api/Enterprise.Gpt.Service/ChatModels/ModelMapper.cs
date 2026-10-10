@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Model;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Actions.ChatModels;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Entity.ChatModels;
 
-namespace Enterprise.Gpt.Service.Mappers
+namespace Enterprise.Gpt.Service.ChatModels
 {
     public static class ModelMapper
     {

@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Entity.Usage;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Entities;
+namespace Enterprise.Gpt.Unit.Test.Entity.Usage;
 
 public sealed class ConversationUsageCostTests
 {

@@ -1,18 +1,22 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.Projects;
+using Enterprise.Gpt.Dto.Projects;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Projects;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Project;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Projects;
 
 public sealed class ProjectServiceTests : IDisposable
 {
@@ -97,7 +101,7 @@ public sealed class ProjectServiceTests : IDisposable
                     ColumnCount = 1,
                     DateCreated = date,
                     DateModified = date,
-                    Columns = [new ProjectDocumentSheetColumn { ColumnIndex = 0, ColumnName = "SKU", InferredType = SheetColumnType.Text, DateCreated = date, DateModified = date }],
+                    Columns = [new ProjectDocumentSheetColumn { ColumnIndex = 0, ColumnName = "SKU", InferredType = SheetColumnTypes.Text, DateCreated = date, DateModified = date }],
                     Rows = [new ProjectDocumentSheetRow { RowIndex = 0, Cells = """{"SKU":"W-1"}""", DateCreated = date, DateModified = date }]
                 }
             ]

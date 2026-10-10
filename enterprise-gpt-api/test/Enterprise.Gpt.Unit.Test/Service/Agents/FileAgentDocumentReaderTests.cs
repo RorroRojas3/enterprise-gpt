@@ -1,15 +1,17 @@
 using System.Text;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
 using Enterprise.Gpt.Service.Agents;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Documents;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// Covers which of a conversation's files a run may work from, and which of the names in its

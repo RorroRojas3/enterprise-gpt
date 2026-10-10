@@ -1,11 +1,11 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Options;
 using FluentValidation;
 using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
 
-namespace Enterprise.Gpt.Service.Validators
+namespace Enterprise.Gpt.Service.Documents
 {
     /// <summary>
     /// Validates an uploaded file before it is queued for ingestion.

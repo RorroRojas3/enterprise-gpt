@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto.Enums;
+namespace Enterprise.Gpt.Common.Constants;
 
 /// <summary>
 /// Keys the service layer puts on <c>ChatOptions.AdditionalProperties</c> to carry catalog facts a

@@ -1,0 +1,23 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj" />
+    <Project Path="test/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj" />
+  </Folder>
+  <Project Path="Enterprise.Gpt.Api/Enterprise.Gpt.Api.csproj" />
+  <Project Path="Enterprise.Gpt.Common/Enterprise.Gpt.Common.csproj" />
+  <Project Path="Enterprise.Gpt.Dto/Enterprise.Gpt.Dto.csproj" />
+  <Project Path="Enterprise.Gpt.Entity/Enterprise.Gpt.Entity.csproj" />
+  <Project Path="Enterprise.Gpt.Repository/Enterprise.Gpt.Repository.csproj" />
+  <Project Path="Enterprise.Gpt.Service/Enterprise.Gpt.Service.csproj" />
+</Solution>

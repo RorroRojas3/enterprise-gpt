@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Api.Problems;
+namespace Enterprise.Gpt.Api.Problems.Models;
 
 /// <summary>
 /// A stable, application-specific RFC 9457 problem type: the <c>type</c> URI clients branch on and

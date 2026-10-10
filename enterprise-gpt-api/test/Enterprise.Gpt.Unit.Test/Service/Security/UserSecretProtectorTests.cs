@@ -1,9 +1,9 @@
+using Enterprise.Gpt.Service.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Enterprise.Gpt.Service.Security;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Security;
+namespace Enterprise.Gpt.Unit.Test.Service.Security;
 
 public sealed class UserSecretProtectorTests
 {

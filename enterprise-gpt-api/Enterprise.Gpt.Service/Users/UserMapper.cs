@@ -1,9 +1,10 @@
 ﻿using System.Linq.Expressions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.User;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Actions.Users;
+using Enterprise.Gpt.Dto.Permissions;
+using Enterprise.Gpt.Dto.Users;
+using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Service.Mappers
+namespace Enterprise.Gpt.Service.Users
 {
     public static class UserMapper
     {

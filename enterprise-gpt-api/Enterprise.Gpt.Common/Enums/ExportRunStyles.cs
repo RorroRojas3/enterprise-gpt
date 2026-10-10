@@ -1,7 +1,7 @@
 namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>
-/// The inline styling an <see cref="ExportRun"/> carries.
+/// The inline styling an <c>ExportRun</c> carries.
 /// </summary>
 /// <remarks>
 /// Flags rather than an enum because markdown nests emphasis freely — <c>**bold _and italic_**</c> is

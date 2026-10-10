@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Opens a converted artifact on the API host and decides whether it is the format it claims to be.

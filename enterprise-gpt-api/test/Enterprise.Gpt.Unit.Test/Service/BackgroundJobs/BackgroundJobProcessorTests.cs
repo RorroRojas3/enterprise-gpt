@@ -1,14 +1,14 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
+using Enterprise.Gpt.Service.BackgroundJobs.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.BackgroundJobs;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Settings;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.BackgroundJobs;
+namespace Enterprise.Gpt.Unit.Test.Service.BackgroundJobs;
 
 /// <summary>
 /// Drives the real processor over the real queue, store and registry — nothing here is substituted,
@@ -17,14 +17,14 @@ namespace Enterprise.Gpt.Unit.Test.BackgroundJobs;
 public sealed class BackgroundJobProcessorTests : IDisposable
 {
     private static readonly Guid OwnerId = Guid.NewGuid();
-    private static readonly JobTarget Target = new(JobTargetKind.Conversation, Guid.NewGuid());
+    private static readonly JobTarget Target = new(JobTargetKinds.Conversation, Guid.NewGuid());
 
     private readonly IConfiguration _configuration = new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?> { ["BackgroundJobs:MaxConcurrent"] = "1" })
         .Build();
 
     private readonly BackgroundJobQueue _queue = new(
-        Options.Create(new DocumentOptions { MaxFileSizeBytes = 1024, MaxQueuedBytes = 8192 }),
+        Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = 1024, MaxQueuedBytes = 8192 }),
         NullLogger<BackgroundJobQueue>.Instance);
 
     private readonly JobStatusStore _store;
@@ -70,7 +70,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
         while (DateTimeOffset.UtcNow < deadline)
         {
             var snapshot = _store.Get(jobId);
-            if (snapshot is not null && snapshot.Status is JobStatus.Processed or JobStatus.Failed or JobStatus.Cancelled)
+            if (snapshot is not null && snapshot.Status is JobStatuses.Processed or JobStatuses.Failed or JobStatuses.Cancelled)
             {
                 return snapshot;
             }
@@ -100,7 +100,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
         // The regression this pins: the token the work observed is linked to the host token too, so a
         // filter testing "was I cancelled" is true for both causes and would report a shutdown.
         var snapshot = await WaitForTerminalAsync(jobId);
-        Assert.Equal(JobStatus.Cancelled, snapshot.Status);
+        Assert.Equal(JobStatuses.Cancelled, snapshot.Status);
 
         await _processor.StopAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, _registry.ActiveRegistrationCount);
@@ -134,7 +134,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
 
         var snapshot = await WaitForTerminalAsync(queued);
 
-        Assert.Equal(JobStatus.Cancelled, snapshot.Status);
+        Assert.Equal(JobStatuses.Cancelled, snapshot.Status);
         // The channel cannot be asked for the item back, so the absence of a registration is what
         // stops it — no DI scope, no work.
         Assert.False(ran);
@@ -153,7 +153,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
         await _processor.StartAsync(TestContext.Current.CancellationToken);
 
         var snapshot = await WaitForTerminalAsync(jobId);
-        Assert.Equal(JobStatus.Cancelled, snapshot.Status);
+        Assert.Equal(JobStatuses.Cancelled, snapshot.Status);
         Assert.Null(snapshot.ErrorMessage);
 
         await _processor.StopAsync(TestContext.Current.CancellationToken);
@@ -167,7 +167,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
         await _processor.StartAsync(TestContext.Current.CancellationToken);
 
         var snapshot = await WaitForTerminalAsync(jobId);
-        Assert.Equal(JobStatus.Failed, snapshot.Status);
+        Assert.Equal(JobStatuses.Failed, snapshot.Status);
         // Sanitized: the raw message could carry a connection string.
         Assert.DoesNotContain("boom", snapshot.ErrorMessage);
 

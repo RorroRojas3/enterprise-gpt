@@ -1,42 +1,7 @@
-namespace Enterprise.Gpt.Service.Export;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports.Models;
 
-/// <summary>
-/// The formats a conversation can be exported as.
-/// </summary>
-/// <remarks>
-/// <see cref="Json"/> is a shipped route contract that no client surface offers; it exists for
-/// scripted callers. The other four are the ones the download menu draws.
-/// </remarks>
-public enum ConversationExportFormats
-{
-    /// <summary>A self-contained HTML document.</summary>
-    Html = 1,
-
-    /// <summary>The stored documents' own shape, as JSON.</summary>
-    Json = 2,
-
-    /// <summary>CommonMark, carrying each message's text exactly as it was authored.</summary>
-    Markdown = 3,
-
-    /// <summary>An Office Open XML word-processing document.</summary>
-    Docx = 4,
-
-    /// <summary>A PDF document.</summary>
-    Pdf = 5
-}
-
-/// <summary>
-/// A rendered export, ready to be written to a response.
-/// </summary>
-/// <param name="Content">The document body.</param>
-/// <param name="ContentType">The media type to serve it as.</param>
-/// <param name="FileName">A suggested download file name.</param>
-/// <remarks>
-/// Bytes rather than a string, because two of the five formats are binary. A text renderer encodes
-/// its own output, which is what keeps the encoding decision beside the format that made it rather
-/// than in the endpoint.
-/// </remarks>
-public sealed record ConversationExport(byte[] Content, string ContentType, string FileName);
+namespace Enterprise.Gpt.Service.Exports.Interfaces;
 
 /// <summary>
 /// Renders a conversation into one export format.

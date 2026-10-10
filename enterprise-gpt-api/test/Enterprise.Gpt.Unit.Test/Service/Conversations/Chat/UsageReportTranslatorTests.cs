@@ -1,14 +1,16 @@
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Service.Agents.Constants;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Models;
+using Enterprise.Gpt.Service.McpServers.Models;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 
 /// <summary>
 /// Covers the translation of a <see cref="ChatUsageReport"/> into audit rows: the assistant/tool

@@ -1,20 +1,22 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Exceptions;
+using Enterprise.Gpt.Service.Documents.Models;
 using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
 public sealed class GeneratedDocumentServiceTests : IDisposable
 {
@@ -182,7 +184,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
         var conversation = await AddConversationAsync(userId: other.Id);
         _blobStorageService
             .DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("storage is unreachable"));
+            .ThrowsAsync(new InvalidOperationException("storage is unreachable"));
 
         await Assert.ThrowsAsync<NotFoundException>(() => _service.StoreAsync(
             new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "report.pdf", [1]),
@@ -259,7 +261,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
         new(NullLogger<GeneratedDocumentService>.Instance,
             _blobStorageService,
             configuration,
-            Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes }),
+            Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes }),
             _fixture.ScopeFactory);
 
     private static IConfiguration Configuration() =>

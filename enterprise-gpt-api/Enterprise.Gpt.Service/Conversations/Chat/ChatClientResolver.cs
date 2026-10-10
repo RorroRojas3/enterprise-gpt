@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Enterprise.Gpt.Service.Chat;
+namespace Enterprise.Gpt.Service.Conversations.Chat;
 
 /// <summary>
 /// Selects the chat client that serves a model, based on the model's provider.

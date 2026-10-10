@@ -1,8 +1,9 @@
+using System.Reflection;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
-using Enterprise.Gpt.Common.Observability;
+using Enterprise.Gpt.Api.Options;
+using Enterprise.Gpt.Common.Constants;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using System.Reflection;
 
 namespace Enterprise.Gpt.Api.Observability;
 

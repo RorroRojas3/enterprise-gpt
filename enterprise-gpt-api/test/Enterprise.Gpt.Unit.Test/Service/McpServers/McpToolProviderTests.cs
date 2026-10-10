@@ -1,23 +1,26 @@
+using System.Net;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Caching.Models;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.McpServers;
+using Enterprise.Gpt.Service.McpServers.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 using ModelContextProtocol;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Security;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
-using System.Net;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.McpServers;
 
 public sealed class McpToolProviderTests : IDisposable
 {
@@ -39,7 +42,7 @@ public sealed class McpToolProviderTests : IDisposable
             _tokenAcquisition,
             _httpClientFactory,
             NullLoggerFactory.Instance,
-            Options.Create(new McpClientCacheOptions()),
+            Microsoft.Extensions.Options.Options.Create(new McpClientCacheOptions()),
             _mcpClientCache,
             _secretProtector,
             _credentialService,

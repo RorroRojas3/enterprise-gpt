@@ -4,7 +4,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Health;
+namespace Enterprise.Gpt.Unit.Test.Api.Health;
 
 /// <summary>
 /// Covers the registration wiring, which is where a readiness probe silently loses its ceiling.

@@ -1,4 +1,6 @@
-namespace Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Problems.Models;
+
+namespace Enterprise.Gpt.Api.Problems.Constants;
 
 /// <summary>
 /// The application-specific RFC 9457 problem types this API emits. A problem with no entry here

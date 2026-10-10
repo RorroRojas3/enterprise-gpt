@@ -1,8 +1,8 @@
-using Enterprise.Gpt.Service.Rendering;
+using Enterprise.Gpt.Service.Conversations.Rendering;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Rendering;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Rendering;
 
 /// <summary>
 /// The rendered HTML is stored and re-served, and its input is attacker-influenceable: model output

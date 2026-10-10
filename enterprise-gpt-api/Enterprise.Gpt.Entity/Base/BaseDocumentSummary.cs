@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.Usage;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Base;
 
 /// <summary>
 /// Base type for the one canonical summary of an ingested document: the text a summarization run

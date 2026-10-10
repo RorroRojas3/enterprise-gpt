@@ -1,6 +1,7 @@
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Enums;
 
-namespace Enterprise.Gpt.Service.BackgroundJobs
+
+namespace Enterprise.Gpt.Service.BackgroundJobs.Models
 {
     /// <summary>
     /// Immutable snapshot of a background job's current pipeline state, returned by <see cref="IJobStatusStore.Get"/>.
@@ -21,7 +22,7 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
     /// <param name="CompletedUnits">Units of work finished in the current stage, when countable.</param>
     /// <param name="TotalUnits">Total units of work in the current stage, when countable.</param>
     /// <param name="DocumentId">The created document, available once the job has persisted it.</param>
-    /// <param name="ErrorMessage">Populated only when <paramref name="Status"/> is <see cref="JobStatus.Failed"/>.</param>
+    /// <param name="ErrorMessage">Populated only when <paramref name="Status"/> is <see cref="JobStatuses.Failed"/>.</param>
     /// <param name="Target">
     /// What the job is ingesting into, so a cancel can remove whatever it produced without probing both
     /// document tables for the id.
@@ -29,7 +30,7 @@ namespace Enterprise.Gpt.Service.BackgroundJobs
     public sealed record JobStatusSnapshot(
         string JobId,
         Guid UserId,
-        JobStatus Status,
+        JobStatuses Status,
         int Progress,
         DateTimeOffset LastUpdated,
         string? Message = null,

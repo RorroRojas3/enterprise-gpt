@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 
 /// <summary>
 /// Reads a probe program's result out of the file it wrote in the sandbox.

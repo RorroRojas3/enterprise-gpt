@@ -1,7 +1,9 @@
-using Enterprise.Gpt.Service.Export;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
 public sealed class MarkdownBlockMapperTests
 {

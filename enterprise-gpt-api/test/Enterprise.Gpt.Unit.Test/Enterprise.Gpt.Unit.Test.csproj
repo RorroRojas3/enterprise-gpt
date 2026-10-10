@@ -1,9 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Enterprise.Gpt.Unit.Test</RootNamespace>
     <!-- xUnit v3 test projects build as executables. -->
     <OutputType>Exe</OutputType>
@@ -11,29 +8,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.0.1">
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
+    <!-- SQLite in-memory backs the service tests: unlike the EF InMemory provider it
+         supports the relational ExecuteUpdateAsync the services use. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- Security pin over the transitive native bundle; see Directory.Packages.props. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NSubstitute.Analyzers.CSharp">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <!-- SQLite in-memory backs ModelService tests: unlike the EF InMemory provider it
-         supports the relational ExecuteUpdateAsync used by DeactivateModelAsync. -->
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
-    <!-- Overrides the transitive 2.1.11 native bundle, which has a known vulnerability
-         (GHSA-2m69-gcr7-jv3q). -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-    <PackageReference Include="NSubstitute" Version="6.2.0" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="xunit.v3" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Enterprise.Gpt.Api\Enterprise.Gpt.Api.csproj" />
+    <ProjectReference Include="..\..\Enterprise.Gpt.Common\Enterprise.Gpt.Common.csproj" />
     <ProjectReference Include="..\..\Enterprise.Gpt.Service\Enterprise.Gpt.Service.csproj" />
     <ProjectReference Include="..\..\Enterprise.Gpt.Repository\Enterprise.Gpt.Repository.csproj" />
     <ProjectReference Include="..\..\Enterprise.Gpt.Dto\Enterprise.Gpt.Dto.csproj" />

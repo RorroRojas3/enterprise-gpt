@@ -1,17 +1,18 @@
-using Enterprise.Gpt.Dto;
+using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tool;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Retrieval;
+using Enterprise.Gpt.Service.Documents.Retrieval.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.Persistence;
+namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
 /// Measures how the shipped retrieval defaults behave over a corpus mixing prose with the

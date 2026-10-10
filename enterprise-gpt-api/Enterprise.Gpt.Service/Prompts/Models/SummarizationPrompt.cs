@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Text;
-
 namespace Enterprise.Gpt.Service.Prompts.Models;
 
 /// <summary>

@@ -1,9 +1,6 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Enterprise.Gpt.Api</RootNamespace>
     <UserSecretsId>27ef94e5-8a02-48e5-b431-caa1880f8198</UserSecretsId>
   </PropertyGroup>
@@ -15,76 +12,71 @@
          other than an anonymous function, and .UI supplies the serializable event contract the
          streaming endpoint writes. All four are referenced directly because Program.cs and
          ConversationEndpoints.cs use types from each. -->
-    <PackageReference Include="Andes.Extensions.AI" Version="0.8.0" />
-    <PackageReference Include="Andes.Extensions.AI.Agent" Version="0.8.0" />
-    <PackageReference Include="Andes.Extensions.AI.Mcp" Version="0.8.0" />
-    <PackageReference Include="Andes.Extensions.AI.UI" Version="0.8.0" />
+    <PackageReference Include="Andes.Extensions.AI" />
+    <PackageReference Include="Andes.Extensions.AI.Agent" />
+    <PackageReference Include="Andes.Extensions.AI.Mcp" />
+    <PackageReference Include="Andes.Extensions.AI.UI" />
     <!-- Anthropic first-party. Unlike Bedrock this needs a single package: the SDK carries the
          Microsoft.Extensions.AI bridge itself (IAnthropicClient.AsIChatClient), so there is no
          separate adapter to reference. -->
-    <PackageReference Include="Anthropic" Version="12.40.0" />
+    <PackageReference Include="Anthropic" />
     <!-- Amazon Bedrock. The MEAI package supplies IAmazonBedrockRuntime.AsIChatClient(), which wraps
          Converse/ConverseStream; BedrockRuntime itself is a direct dependency because Program.cs
          constructs AmazonBedrockRuntimeClient and its config to wire bearer-token auth. -->
-    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.101.1" />
-    <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" Version="4.0.101.8" />
-    <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
+    <PackageReference Include="AWSSDK.BedrockRuntime" />
+    <PackageReference Include="AWSSDK.Extensions.Bedrock.MEAI" />
+    <PackageReference Include="Azure.AI.DocumentIntelligence" />
     <!-- Wraps the Data Protection key ring with a vault key, so the database that stores the
          key ring is not on its own sufficient to decrypt the credentials it protects. -->
-    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.4" />
-    <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.5.2" />
-    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" />
+    <PackageReference Include="Azure.Identity" />
     <!-- Application Insights. The OpenTelemetry distro rather than Microsoft.ApplicationInsights.AspNetCore:
          it is the current guidance for new ASP.NET Core apps, the two must not coexist, and only the
          distro exports the UseOpenTelemetry() spans the chat clients already emit. -->
-    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.6.0" />
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
     <!-- Direct rather than transitive through the configuration-secrets package above: the Key
          Vault registration builds SecretClient and SecretClientOptions by hand, to set the retry
          policy a startup-blocking read needs. -->
-    <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.11.0" />
-    <PackageReference Include="FluentValidation" Version="12.1.1" />
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+    <PackageReference Include="Azure.Security.KeyVault.Secrets" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.11">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.17.0" />
+    <PackageReference Include="Microsoft.Agents.AI" />
     <!-- Health checks. The EF Core package rather than a community SQL check: readiness has to prove the
          application's own connection works, which is the DbContext's, not a second one built from the
          same string. -->
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.9.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
-    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
-    <PackageReference Include="Microsoft.Identity.Web" Version="4.14.2" />
-    <!-- Direct pin: Microsoft.AspNetCore.OpenApi 10.0.11 transitively brings 2.0.0, which has a known
-         vulnerability (GHSA-v5pm-xwqc-g5wc / CVE-2026-49451, stack overflow on a circular schema
-         reference). 2.7.5 is the first patched release on this line. Held on 2.x deliberately, and
-         now doubly so: AspNetCore.OpenApi 10.0.11 constrains it to [2.7.5, 3.0.0), and 3.x made
-         IOpenApiMediaType.Example read-only while that package's XML-comment source generator still
-         assigns it. Move both together when a matching AspNetCore.OpenApi is available. -->
-    <PackageReference Include="Microsoft.OpenApi" Version="2.12.0" />
-    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="Microsoft.Graph" />
+    <PackageReference Include="Microsoft.Identity.Web" />
+    <!-- Security pin over the transitive version; see Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Newtonsoft.Json" />
     <!-- Direct rather than transitive through Microsoft.Extensions.AI.OpenAI: Program.cs and
-         Chat/AzureOpenAIChatDefaults.cs construct OpenAIClient and the OpenAI.Responses request
-         types by hand. Ceiling, not a floor — Microsoft.Extensions.AI.OpenAI 10.9.0 declares
-         OpenAI [2.12.0, 2.13.0), so 2.13.0 is excluded and pinning it produces NU1608. Raise this
-         only when that adapter widens its range. -->
-    <PackageReference Include="OpenAI" Version="2.12.0" />
-    <PackageReference Include="Scalar.AspNetCore" Version="2.16.20" />
+         Configuration/Providers/AzureOpenAIDefaults.cs construct OpenAIClient and the OpenAI.Responses request
+         types by hand. Its version is a ceiling; see Directory.Packages.props. -->
+    <PackageReference Include="OpenAI" />
+    <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Enterprise.Gpt.Common\Enterprise.Gpt.Common.csproj" />
     <ProjectReference Include="..\Enterprise.Gpt.Dto\Enterprise.Gpt.Dto.csproj" />
+    <ProjectReference Include="..\Enterprise.Gpt.Entity\Enterprise.Gpt.Entity.csproj" />
     <ProjectReference Include="..\Enterprise.Gpt.Repository\Enterprise.Gpt.Repository.csproj" />
     <ProjectReference Include="..\Enterprise.Gpt.Service\Enterprise.Gpt.Service.csproj" />
   </ItemGroup>

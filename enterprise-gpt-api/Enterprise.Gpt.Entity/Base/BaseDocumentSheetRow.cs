@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Base;
 
 /// <summary>
 /// Base type for one data row of an ingested sheet, holding its cells as a JSON object keyed by

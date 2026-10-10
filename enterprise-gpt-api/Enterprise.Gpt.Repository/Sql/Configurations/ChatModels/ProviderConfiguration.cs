@@ -1,9 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Entity.ChatModels;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
 
-namespace Enterprise.Gpt.Repository.Configurations
+namespace Enterprise.Gpt.Repository.Sql.Configurations.ChatModels
 {
     public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
     {

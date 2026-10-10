@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Connection settings for the Anthropic chat provider, bound from the <c>Anthropic</c> configuration

@@ -1,12 +1,16 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Service.Agents.Constants;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Agents;
+namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
 /// Covers the per-user ceiling on file generation: that it counts the agent's own audit rows, that it
@@ -115,7 +119,7 @@ public sealed class FileAgentQuotaServiceTests : IDisposable
     }
 
     private Task<FileAgentQuotaDecision> CheckAsync(FileAgentOptions options, Guid? caller = null) =>
-        new FileAgentQuotaService(_fixture.Context, Options.Create(options))
+        new FileAgentQuotaService(_fixture.Context, Microsoft.Extensions.Options.Options.Create(options))
             .CheckAsync(caller ?? KnownIds.SeedUserId, _modelId, TestContext.Current.CancellationToken);
 
     private async Task AddAgentRunsAsync(
@@ -191,7 +195,7 @@ public sealed class FileAgentQuotaServiceTests : IDisposable
     }
 
     private static async Task<Guid> AddConversationAsync(
-        Repository.EnterpriseGptDbContext ctx, Guid userId, DateTimeOffset date)
+        EnterpriseGptDbContext ctx, Guid userId, DateTimeOffset date)
     {
         var conversation = new Conversation
         {

@@ -3,8 +3,10 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Exports.Models;
 
-namespace Enterprise.Gpt.Service.Export.Renderers;
+namespace Enterprise.Gpt.Service.Exports.Renderers;
 
 /// <summary>
 /// Writes a conversation as a self-contained HTML document.

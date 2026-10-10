@@ -1,8 +1,7 @@
 using System.Text.Json.Serialization;
-using Enterprise.Gpt.Common.Constants;
-using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Usage;
 
-namespace Enterprise.Gpt.Entity.Transcripts;
+namespace Enterprise.Gpt.Entity.Transcripts.Models;
 
 /// <summary>
 /// What a transcript message's turn consumed in total — the assistant's own model turns plus every

@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using System.Net;
 using System.Net.Http.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Dto.McpServers;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;

@@ -1,5 +1,7 @@
+using Enterprise.Gpt.Api.Configuration.Models;
+using Enterprise.Gpt.Api.Options;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Microsoft.AspNetCore.DataProtection;
-using Enterprise.Gpt.Repository;
 
 namespace Enterprise.Gpt.Api.Configuration;
 

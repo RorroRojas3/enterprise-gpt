@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using Enterprise.Gpt.Service.BackgroundJobs;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.BackgroundJobs;
+namespace Enterprise.Gpt.Unit.Test.Service.BackgroundJobs;
 
 public sealed class JobCancellationRegistryTests : IDisposable
 {

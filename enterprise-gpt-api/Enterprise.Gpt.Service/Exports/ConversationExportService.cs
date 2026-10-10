@@ -1,15 +1,21 @@
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Service.Exports.Exceptions;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Exports.Models;
+using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Azure.Cosmos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Enterprise.Gpt.Service.Export;
+namespace Enterprise.Gpt.Service.Exports;
 
 /// <summary>
 /// Renders a conversation out of the platform.

@@ -1,8 +1,10 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Permissions;
 
-namespace Enterprise.Gpt.Entity
+namespace Enterprise.Gpt.Entity.McpServers
 {
     /// <summary>
     /// An MCP (Model Context Protocol) server administrators make available to users.

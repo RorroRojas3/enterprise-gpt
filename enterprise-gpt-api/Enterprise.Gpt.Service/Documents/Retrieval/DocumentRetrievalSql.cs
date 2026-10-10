@@ -1,46 +1,6 @@
 using System.Text;
 
-namespace Enterprise.Gpt.Service.Tool;
-
-/// <summary>
-/// A chunk that matched one retrieval pass, before fusion.
-/// </summary>
-/// <param name="DocumentId">The document the chunk belongs to.</param>
-/// <param name="Source">Which table the chunk lives in.</param>
-/// <param name="Index">The chunk's zero-based ordinal within its document.</param>
-/// <param name="Distance">The cosine distance from the query vector, or <see langword="null"/> for a keyword match.</param>
-/// <param name="MatchCount">The number of query terms present in the chunk, or zero for a vector match.</param>
-internal readonly record struct ChunkCandidate(
-    Guid DocumentId,
-    DocumentSource Source,
-    int Index,
-    double? Distance,
-    int MatchCount);
-
-/// <summary>
-/// Identifies one chunk within the searchable corpus.
-/// </summary>
-/// <param name="DocumentId">The document the chunk belongs to.</param>
-/// <param name="Source">Which table the chunk lives in.</param>
-/// <param name="Index">The chunk's zero-based ordinal within its document.</param>
-internal readonly record struct ChunkKey(Guid DocumentId, DocumentSource Source, int Index);
-
-/// <summary>
-/// A chunk's text and provenance, read back once retrieval has decided it is worth showing.
-/// </summary>
-/// <param name="Key">Which chunk this is.</param>
-/// <param name="SourceNumber">The page or slide the chunk starts on, when the format has one.</param>
-/// <param name="Text">The chunk text.</param>
-/// <param name="Distance">
-/// The chunk's own cosine distance from the query vector. Recomputed on read-back rather than carried
-/// from the pass that selected it, so a chunk found only by keyword — and a neighbour pulled in for
-/// context — still has a comparable score.
-/// </param>
-/// <remarks>
-/// The stored <c>TokenCount</c> is deliberately not read: merging strips the overlap between chunks, so
-/// a passage is shorter than the sum of its parts and the budget has to measure the merged text.
-/// </remarks>
-internal sealed record ChunkText(ChunkKey Key, int? SourceNumber, string Text, double Distance);
+namespace Enterprise.Gpt.Service.Documents.Retrieval;
 
 /// <summary>
 /// The hand-written T-SQL behind document retrieval.

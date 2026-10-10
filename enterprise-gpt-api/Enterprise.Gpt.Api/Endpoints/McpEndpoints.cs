@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Http.HttpResults;
 using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Mcp;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Dto.McpServers;
+using Enterprise.Gpt.Service.McpServers;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Enterprise.Gpt.Api.Endpoints
 {

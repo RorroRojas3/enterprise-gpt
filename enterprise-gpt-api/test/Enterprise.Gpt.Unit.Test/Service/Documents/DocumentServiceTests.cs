@@ -1,29 +1,36 @@
+using System.Text;
 using Azure.Storage.Sas;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.BackgroundJobs.Exceptions;
+using Enterprise.Gpt.Service.BackgroundJobs.Models;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Chunking;
+using Enterprise.Gpt.Service.Documents.Exceptions;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Common.Observability;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.BackgroundJobs;
-using Enterprise.Gpt.Service.Chunking;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using System.Text;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
 public sealed class DocumentServiceTests : IDisposable
 {
@@ -71,7 +78,7 @@ public sealed class DocumentServiceTests : IDisposable
             _embeddingGenerator,
             _blobStorageService,
             configuration,
-            Options.Create(new DocumentOptions { EmbeddingBatchSize = 2 }),
+            Microsoft.Extensions.Options.Options.Create(new DocumentOptions { EmbeddingBatchSize = 2 }),
             _extractorFactory,
             _textChunker,
             _fileValidator,
@@ -342,11 +349,11 @@ public sealed class DocumentServiceTests : IDisposable
         var result = await _service.CreateConversationDocumentAsync(
             "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
-        _jobStatusStore.Received().Report("job-1", JobStatus.Uploading, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Extracting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Chunking, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Embedding, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Persisting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Uploading, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Extracting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Chunking, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Embedding, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Persisting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
         _jobStatusStore.Received(1).Complete("job-1", result.Id, Arg.Any<string>());
     }
 
@@ -360,9 +367,9 @@ public sealed class DocumentServiceTests : IDisposable
             "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
         // Batch size 2 over 5 chunks: 1-2, 3-4, 5.
-        _jobStatusStore.Received(1).Report("job-1", JobStatus.Embedding, Arg.Any<int>(), Arg.Any<string>(), 2, 5);
-        _jobStatusStore.Received(1).Report("job-1", JobStatus.Embedding, Arg.Any<int>(), Arg.Any<string>(), 4, 5);
-        _jobStatusStore.Received(1).Report("job-1", JobStatus.Embedding, Arg.Any<int>(), Arg.Any<string>(), 5, 5);
+        _jobStatusStore.Received(1).Report("job-1", JobStatuses.Embedding, Arg.Any<int>(), Arg.Any<string>(), 2, 5);
+        _jobStatusStore.Received(1).Report("job-1", JobStatuses.Embedding, Arg.Any<int>(), Arg.Any<string>(), 4, 5);
+        _jobStatusStore.Received(1).Report("job-1", JobStatuses.Embedding, Arg.Any<int>(), Arg.Any<string>(), 5, 5);
     }
 
     [Fact]
@@ -422,7 +429,7 @@ public sealed class DocumentServiceTests : IDisposable
         var conversation = await AddConversationAsync();
         SetUpPipeline(chunkCount: 1);
         _extractor.ExtractAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
-            .Throws(new ValidationException("unreadable"));
+            .ThrowsAsync(new ValidationException("unreadable"));
 
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
@@ -440,7 +447,7 @@ public sealed class DocumentServiceTests : IDisposable
         var conversation = await AddConversationAsync();
         SetUpPipeline(chunkCount: 1);
         _extractor.ExtractAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
-            .Throws(new ValidationException("unreadable"));
+            .ThrowsAsync(new ValidationException("unreadable"));
 
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
@@ -455,7 +462,7 @@ public sealed class DocumentServiceTests : IDisposable
         SetUpPipeline(chunkCount: 2);
         _embeddingGenerator
             .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("rate limited"));
+            .ThrowsAsync(new InvalidOperationException("rate limited"));
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
@@ -470,9 +477,9 @@ public sealed class DocumentServiceTests : IDisposable
         var conversation = await AddConversationAsync();
         SetUpPipeline(chunkCount: 1);
         _extractor.ExtractAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
-            .Throws(new ValidationException("unreadable"));
+            .ThrowsAsync(new ValidationException("unreadable"));
         _blobStorageService.DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("storage unreachable"));
+            .ThrowsAsync(new InvalidOperationException("storage unreachable"));
 
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
@@ -682,11 +689,11 @@ public sealed class DocumentServiceTests : IDisposable
         var result = await _service.CreateProjectDocumentAsync(
             "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
 
-        _jobStatusStore.Received().Report("job-1", JobStatus.Uploading, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Extracting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Chunking, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Embedding, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
-        _jobStatusStore.Received().Report("job-1", JobStatus.Persisting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Uploading, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Extracting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Chunking, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Embedding, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
+        _jobStatusStore.Received().Report("job-1", JobStatuses.Persisting, Arg.Any<int>(), Arg.Any<string>(), Arg.Any<int?>(), Arg.Any<int?>());
         _jobStatusStore.Received(1).Complete("job-1", result.Id, Arg.Any<string>());
     }
 
@@ -708,7 +715,7 @@ public sealed class DocumentServiceTests : IDisposable
         var project = await AddProjectAsync();
         SetUpPipeline(chunkCount: 1);
         _extractor.ExtractAsync(Arg.Any<FileDto>(), Arg.Any<IProgress<DocumentExtractionProgress>?>(), Arg.Any<CancellationToken>())
-            .Throws(new ValidationException("unreadable"));
+            .ThrowsAsync(new ValidationException("unreadable"));
 
         await Assert.ThrowsAsync<ValidationException>(
             () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
@@ -783,7 +790,7 @@ public sealed class DocumentServiceTests : IDisposable
 
     #region CancelUploadAsync
     private JobStatusSnapshot JobSnapshot(
-        JobStatus status = JobStatus.Embedding,
+        JobStatuses status = JobStatuses.Embedding,
         Guid? documentId = null,
         JobTarget? target = null,
         Guid? userId = null)
@@ -819,7 +826,7 @@ public sealed class DocumentServiceTests : IDisposable
     {
         var snapshot = JobSnapshot();
         _jobStatusStore.Get("job-1").Returns(snapshot);
-        _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot with { Status = JobStatus.Cancelled });
+        _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot with { Status = JobStatuses.Cancelled });
 
         await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
 
@@ -836,7 +843,7 @@ public sealed class DocumentServiceTests : IDisposable
     {
         var conversation = await AddConversationAsync();
         var document = await AddConversationDocumentAsync(conversation);
-        var snapshot = JobSnapshot(JobStatus.Processed, document.Id, new JobTarget(JobTargetKind.Conversation, conversation.Id));
+        var snapshot = JobSnapshot(JobStatuses.Processed, document.Id, new JobTarget(JobTargetKinds.Conversation, conversation.Id));
         _jobStatusStore.Get("job-1").Returns(snapshot);
         _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot);
 
@@ -852,7 +859,7 @@ public sealed class DocumentServiceTests : IDisposable
     {
         var project = await AddProjectAsync();
         var document = await AddProjectDocumentAsync(project);
-        var snapshot = JobSnapshot(JobStatus.Processed, document.Id, new JobTarget(JobTargetKind.Project, project.Id));
+        var snapshot = JobSnapshot(JobStatuses.Processed, document.Id, new JobTarget(JobTargetKinds.Project, project.Id));
         _jobStatusStore.Get("job-1").Returns(snapshot);
         _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot);
 
@@ -868,7 +875,7 @@ public sealed class DocumentServiceTests : IDisposable
     {
         var conversation = await AddConversationAsync();
         var document = await AddConversationDocumentAsync(conversation);
-        var snapshot = JobSnapshot(JobStatus.Failed);
+        var snapshot = JobSnapshot(JobStatuses.Failed);
         _jobStatusStore.Get("job-1").Returns(snapshot);
         _jobStatusStore.Cancel("job-1", Arg.Any<string>()).Returns(snapshot);
 
@@ -1847,7 +1854,7 @@ public sealed class DocumentServiceTests : IDisposable
         Assert.Equal(2, sheet.RowCount);
         Assert.Equal(2, sheet.ColumnCount);
         Assert.Equal(["SKU", "Revenue"], sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.ColumnName));
-        Assert.Equal([SheetColumnType.Text, SheetColumnType.Number], sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.InferredType));
+        Assert.Equal([SheetColumnTypes.Text, SheetColumnTypes.Number], sheet.Columns.OrderBy(c => c.ColumnIndex).Select(c => c.InferredType));
         Assert.Equal(
             ["""{"SKU":"W-1","Revenue":"1200"}""", """{"SKU":"W-2","Revenue":"800"}"""],
             sheet.Rows.OrderBy(r => r.RowIndex).Select(r => r.Cells));
@@ -2037,8 +2044,8 @@ public sealed class DocumentServiceTests : IDisposable
         [
             new SheetStructureDto(1, "Regional Revenue", 2, 2,
             [
-                new SheetColumnDto(0, "SKU", SheetColumnType.Text),
-                new SheetColumnDto(1, "Revenue", SheetColumnType.Number)
+                new SheetColumnDto(0, "SKU", SheetColumnTypes.Text),
+                new SheetColumnDto(1, "Revenue", SheetColumnTypes.Number)
             ],
             [
                 new SheetRowDto(0, """{"SKU":"W-1","Revenue":"1200"}"""),

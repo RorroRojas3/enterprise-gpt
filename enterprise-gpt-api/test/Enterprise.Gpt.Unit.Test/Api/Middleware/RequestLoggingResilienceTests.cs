@@ -1,15 +1,16 @@
+using System.Text;
+using Enterprise.Gpt.Api.Middleware;
+using Enterprise.Gpt.Api.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Api.Middleware;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using System.Text;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Middleware;
+namespace Enterprise.Gpt.Unit.Test.Api.Middleware;
 
 /// <summary>
 /// The middleware's core promise: it never fails a request and never alters one — plus the registration

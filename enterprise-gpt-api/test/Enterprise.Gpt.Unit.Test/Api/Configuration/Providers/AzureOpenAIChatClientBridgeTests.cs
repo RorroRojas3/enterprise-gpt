@@ -3,14 +3,14 @@ using System.ClientModel.Primitives;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
 /// Pins the request the OpenAI Responses bridge actually puts on the wire for the Azure OpenAI
@@ -126,7 +126,7 @@ public sealed class AzureOpenAIChatClientBridgeTests
             .AsIChatClient(settings.DefaultModel);
 #pragma warning restore OPENAI001, MEAI001
 
-        AzureOpenAIChatDefaults.Create(settings)(options);
+        AzureOpenAIDefaults.Create(settings)(options);
 
         await chatClient.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "Hello")],
@@ -246,7 +246,7 @@ public sealed class AzureOpenAIChatClientBridgeTests
             .AsIChatClient(settings.DefaultModel)
             .AsBuilder()
             .UseFunctionInvocation()
-            .Use((inner, _) => new ConfigureOptionsChatClient(inner, AzureOpenAIChatDefaults.Create(settings)))
+            .Use((inner, _) => new ConfigureOptionsChatClient(inner, AzureOpenAIDefaults.Create(settings)))
             .Build();
 #pragma warning restore OPENAI001, MEAI001
 

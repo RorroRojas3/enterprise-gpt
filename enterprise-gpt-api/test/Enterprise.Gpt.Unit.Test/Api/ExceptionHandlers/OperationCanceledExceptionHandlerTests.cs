@@ -1,10 +1,10 @@
+using Enterprise.Gpt.Api.ExceptionHandlers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
-using Enterprise.Gpt.Api.ExceptionHandlers;
 using Xunit;
 using static Enterprise.Gpt.Unit.Test.TestInfrastructure.ProblemDetailsTestHelpers;
 
-namespace Enterprise.Gpt.Unit.Test.ExceptionHandlers;
+namespace Enterprise.Gpt.Unit.Test.Api.ExceptionHandlers;
 
 public class OperationCanceledExceptionHandlerTests
 {

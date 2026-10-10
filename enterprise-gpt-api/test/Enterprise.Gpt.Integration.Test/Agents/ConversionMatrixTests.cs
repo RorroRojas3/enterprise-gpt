@@ -1,8 +1,9 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 using Xunit;
 
-namespace Enterprise.Gpt.Integration.Test.FileAgentSpike;
+namespace Enterprise.Gpt.Integration.Test.Agents;
 
 /// <summary>
 /// Attempts every conversion pair the matrix offers against a real sandbox, assigns each a confirmed

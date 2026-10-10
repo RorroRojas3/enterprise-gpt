@@ -1,13 +1,16 @@
+using Enterprise.Gpt.Api.Filters;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Dto.Pagination;
+using Enterprise.Gpt.Service.BackgroundJobs;
+using Enterprise.Gpt.Service.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.BackgroundJobs;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
 
 namespace Enterprise.Gpt.Api.Endpoints
 {
@@ -250,14 +253,14 @@ namespace Enterprise.Gpt.Api.Endpoints
 
         // Mirrors the Hangfire job-state vocabulary the frontend already understands. Stages added after
         // that contract was set map onto Processing so an older client still sees a sensible progression.
-        private static string MapState(JobStatus status) => status switch
+        private static string MapState(JobStatuses status) => status switch
         {
-            JobStatus.Queued => "Enqueued",
-            JobStatus.Processed => "Succeeded",
-            JobStatus.Failed => "Failed",
+            JobStatuses.Queued => "Enqueued",
+            JobStatuses.Processed => "Succeeded",
+            JobStatuses.Failed => "Failed",
             // Explicit rather than left to the default below: falling through to Processing would leave a
             // client polling a job that will never move again.
-            JobStatus.Cancelled => "Failed",
+            JobStatuses.Cancelled => "Failed",
             _ => "Processing",
         };
     }

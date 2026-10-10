@@ -1,5 +1,3 @@
-using Microsoft.Extensions.AI;
-
 namespace Enterprise.Gpt.Service.Agents.Models;
 
 /// <summary>One file a sandbox run produced, as the response described it.</summary>

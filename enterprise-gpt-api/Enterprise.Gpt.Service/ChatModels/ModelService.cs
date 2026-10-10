@@ -1,18 +1,20 @@
-﻿using FluentValidation;
+﻿using Enterprise.Gpt.Dto.Actions.ChatModels;
+using Enterprise.Gpt.Dto.ChatModels;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.ChatModels.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
+using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Model;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Chat;
-using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Mappers;
-using Enterprise.Gpt.Service.Settings;
 
-namespace Enterprise.Gpt.Service
+namespace Enterprise.Gpt.Service.ChatModels
 {
     public interface IModelService
     {

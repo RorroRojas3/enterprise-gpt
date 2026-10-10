@@ -1,12 +1,12 @@
 using System.Globalization;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Service.Export.Fonts;
+using Enterprise.Gpt.Service.Exports.Fonts.Constants;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Exports.Models;
 using MigraDoc.DocumentObjectModel;
-using MigraDoc.DocumentObjectModel.Shapes;
-using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 
-namespace Enterprise.Gpt.Service.Export.Renderers;
+namespace Enterprise.Gpt.Service.Exports.Renderers;
 
 /// <summary>
 /// Writes a conversation as a PDF.
@@ -75,7 +75,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         {
             // A prompt is banded rather than bubbled — the same tint and left rule the HTML and Word
             // exports draw, because a right-aligned bubble does not survive page flow.
-            var style = message.Role is ChatRoles.User ? ExportBlockStyle.Prompt : ExportBlockStyle.None;
+            var style = message.Role is ChatRoles.User ? ExportBlockStyles.Prompt : ExportBlockStyles.None;
 
             Enclose(AddText(section.AddParagraph(), message.Label, LabelStyle), style);
 
@@ -97,7 +97,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             $"{ExportFileNames.Stem(document.Name)}.pdf");
     }
 
-    private void AppendBlock(Section section, ExportBlock block, int indentLevel, ExportBlockStyle style)
+    private void AppendBlock(Section section, ExportBlock block, int indentLevel, ExportBlockStyles style)
     {
         switch (block)
         {
@@ -136,7 +136,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     }
 
     private static void AppendParagraph(
-        Section section, IReadOnlyList<ExportRun> runs, string styleName, int indentLevel, ExportBlockStyle style)
+        Section section, IReadOnlyList<ExportRun> runs, string styleName, int indentLevel, ExportBlockStyles style)
     {
         var paragraph = section.AddParagraph();
         paragraph.Style = styleName;
@@ -148,7 +148,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     // One MigraDoc paragraph per line: a code block's line breaks are content, and MigraDoc's own
     // wrapping would reflow them. The shading is per paragraph, so a short line still reads as part
     // of the block.
-    private static void AppendCode(Section section, CodeBlock code, int indentLevel, ExportBlockStyle style)
+    private static void AppendCode(Section section, CodeBlock code, int indentLevel, ExportBlockStyles style)
     {
         // The fence's language, the way the app labels a code block and the HTML export repeats.
         if (!string.IsNullOrWhiteSpace(code.Language))
@@ -176,15 +176,15 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         }
     }
 
-    private void AppendQuote(Section section, QuoteBlock quote, int indentLevel, ExportBlockStyle style)
+    private void AppendQuote(Section section, QuoteBlock quote, int indentLevel, ExportBlockStyles style)
     {
         foreach (var child in quote.Children)
         {
-            AppendBlock(section, child, indentLevel + 1, style | ExportBlockStyle.Quote);
+            AppendBlock(section, child, indentLevel + 1, style | ExportBlockStyles.Quote);
         }
     }
 
-    private void AppendList(Section section, ListBlock list, int indentLevel, ExportBlockStyle style)
+    private void AppendList(Section section, ListBlock list, int indentLevel, ExportBlockStyles style)
     {
         var level = Math.Min(indentLevel, MaxListDepth);
         var listType = list.Ordered
@@ -218,7 +218,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         ListType listType,
         int level,
         bool continues,
-        ExportBlockStyle style)
+        ExportBlockStyles style)
     {
         var paragraph = section.AddParagraph();
         paragraph.Style = BodyStyle;
@@ -236,7 +236,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         AppendRuns(paragraph, runs);
     }
 
-    private static void AppendTable(Section section, TableBlock table, int indentLevel, ExportBlockStyle style)
+    private static void AppendTable(Section section, TableBlock table, int indentLevel, ExportBlockStyles style)
     {
         var rows = table.HeaderRow is null ? table.Rows : [table.HeaderRow, .. table.Rows];
 
@@ -285,7 +285,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             {
                 row.Shading.Color = Rgb(ExportTheme.Colors.SurfaceAlt);
             }
-            else if (style.HasFlag(ExportBlockStyle.Prompt))
+            else if (style.HasFlag(ExportBlockStyles.Prompt))
             {
                 row.Shading.Color = Rgb(ExportTheme.Colors.UserBand);
             }
@@ -326,13 +326,13 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     /// band marks with its rule alone rather than erasing the distinction between prose and code.
     /// </param>
     private static Paragraph Enclose(
-        Paragraph paragraph, ExportBlockStyle style, bool keepsOwnShading = false)
+        Paragraph paragraph, ExportBlockStyles style, bool keepsOwnShading = false)
     {
-        var prompt = style.HasFlag(ExportBlockStyle.Prompt);
+        var prompt = style.HasFlag(ExportBlockStyles.Prompt);
 
         // One rule per paragraph is all MigraDoc's left border offers, so a quote inside a prompt
         // keeps the prompt's: the outer container is the one a reader loses more by not seeing.
-        if (prompt || style.HasFlag(ExportBlockStyle.Quote))
+        if (prompt || style.HasFlag(ExportBlockStyles.Quote))
         {
             paragraph.Format.Borders.Left.Width = prompt ? PromptRuleWidth : QuoteRuleWidth;
             paragraph.Format.Borders.Left.Color =

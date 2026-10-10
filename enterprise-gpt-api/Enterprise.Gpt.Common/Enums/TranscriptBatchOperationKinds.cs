@@ -1,10 +1,7 @@
-using System.Net;
-using Microsoft.Azure.Cosmos;
-
 namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>
-/// What a single operation in a <see cref="TranscriptBatch"/> does.
+/// What a single operation in a <c>TranscriptBatch</c> does.
 /// </summary>
 public enum TranscriptBatchOperationKinds
 {

@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Repository;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 

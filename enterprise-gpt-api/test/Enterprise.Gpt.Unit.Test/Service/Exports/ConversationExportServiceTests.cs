@@ -1,12 +1,17 @@
 using System.Text;
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Entity.Conversations;
 using Enterprise.Gpt.Entity.Transcripts;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Entity.Transcripts.Models;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Models;
 using Enterprise.Gpt.Service.Exceptions;
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Renderers;
-using Enterprise.Gpt.Service.Transcripts;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Exceptions;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Exports.Models;
+using Enterprise.Gpt.Service.Exports.Renderers;
+using Enterprise.Gpt.Service.Security;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using FluentValidation;
 using Microsoft.Azure.Cosmos;
@@ -14,7 +19,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Services;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
 public sealed class ConversationExportServiceTests : IDisposable
 {
@@ -385,7 +390,7 @@ public sealed class ConversationExportServiceTests : IDisposable
         using var stream = new MemoryStream(export.Content);
         using var word = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(stream, isEditable: false);
 
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word).ToList();
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word, TestContext.Current.CancellationToken).ToList();
 
         Assert.True(
             errors.Count == 0,

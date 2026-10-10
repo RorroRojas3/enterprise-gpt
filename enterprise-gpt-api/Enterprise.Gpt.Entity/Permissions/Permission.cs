@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.McpServers;
 
-namespace Enterprise.Gpt.Entity
+namespace Enterprise.Gpt.Entity.Permissions
 {
     /// <summary>
     /// A grantable permission. Built-in permissions (e.g. Administrator) and custom permissions

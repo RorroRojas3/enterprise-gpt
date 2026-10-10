@@ -1,9 +1,8 @@
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Service.Tokenization;
-using Microsoft.Extensions.Options;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Options;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tokenization;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Tokenization;
 
 public sealed class PromptOverheadCalculatorTests
 {
@@ -11,7 +10,7 @@ public sealed class PromptOverheadCalculatorTests
     private const int PerTool = 120;
 
     private static readonly PromptOverheadCalculator Calculator = new(
-        Options.Create(new TokenEstimationOptions
+        Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions
         {
             PerMessageFramingTokens = Framing,
             PerToolSchemaTokens = PerTool

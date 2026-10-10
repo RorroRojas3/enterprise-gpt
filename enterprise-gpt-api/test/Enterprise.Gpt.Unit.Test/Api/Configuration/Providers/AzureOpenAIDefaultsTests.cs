@@ -1,6 +1,6 @@
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using OpenAI.Responses;
 using Xunit;
@@ -9,14 +9,14 @@ using Xunit;
 // so at 2.13.0 — no package bump retires this.
 #pragma warning disable OPENAI001
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
 /// Covers the callback that stamps Responses settings onto an Azure OpenAI turn, in isolation
 /// from the SDK bridge. <see cref="AzureOpenAIChatClientBridgeTests"/> covers what actually reaches
 /// the wire; this covers the decisions the callback makes before it gets there.
 /// </summary>
-public sealed class AzureOpenAIChatDefaultsTests
+public sealed class AzureOpenAIDefaultsTests
 {
     private static AzureOpenAIOptions Settings() => new()
     {
@@ -28,7 +28,7 @@ public sealed class AzureOpenAIChatDefaultsTests
 
     private static ChatOptions Apply(AzureOpenAIOptions settings, ChatOptions options)
     {
-        AzureOpenAIChatDefaults.Create(settings)(options);
+        AzureOpenAIDefaults.Create(settings)(options);
 
         return options;
     }
@@ -127,7 +127,7 @@ public sealed class AzureOpenAIChatDefaultsTests
         // Parsing happens once inside Create, so an unknown value throws here rather than on the
         // first conversation. This theory is what keeps the option vocabulary and the parser from
         // drifting apart.
-        Assert.NotNull(AzureOpenAIChatDefaults.Create(settings));
+        Assert.NotNull(AzureOpenAIDefaults.Create(settings));
     }
 
     [Theory]
@@ -137,7 +137,7 @@ public sealed class AzureOpenAIChatDefaultsTests
         var settings = Settings();
         settings.ReasoningEffort = effort;
 
-        Assert.NotNull(AzureOpenAIChatDefaults.Create(settings));
+        Assert.NotNull(AzureOpenAIDefaults.Create(settings));
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class AzureOpenAIChatDefaultsTests
         var settings = Settings();
         settings.ReasoningEffort = "extreme";
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => AzureOpenAIChatDefaults.Create(settings));
+        Assert.Throws<ArgumentOutOfRangeException>(() => AzureOpenAIDefaults.Create(settings));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public sealed class AzureOpenAIChatDefaultsTests
         var settings = Settings();
         settings.ReasoningSummary = "verbose";
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => AzureOpenAIChatDefaults.Create(settings));
+        Assert.Throws<ArgumentOutOfRangeException>(() => AzureOpenAIDefaults.Create(settings));
     }
 
     public static TheoryData<string> ReasoningSummaries() =>

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Configuration;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration;
 
 /// <summary>
 /// Covers the decision to add a key vault to the configuration chain, and the section shapes that

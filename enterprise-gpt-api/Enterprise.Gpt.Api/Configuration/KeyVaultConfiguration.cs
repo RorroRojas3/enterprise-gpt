@@ -2,6 +2,8 @@ using Azure.Core;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
+using Enterprise.Gpt.Api.Configuration.Models;
+using Enterprise.Gpt.Api.Options;
 
 namespace Enterprise.Gpt.Api.Configuration;
 

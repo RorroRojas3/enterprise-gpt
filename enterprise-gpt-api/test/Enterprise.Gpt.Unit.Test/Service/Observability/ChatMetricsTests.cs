@@ -1,9 +1,9 @@
-using Enterprise.Gpt.Common.Observability;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Service.Observability;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Observability;
+namespace Enterprise.Gpt.Unit.Test.Service.Observability;
 
 /// <summary>
 /// Covers the spreadsheet instruments, including the dimensions they must never carry.

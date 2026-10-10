@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Service.Settings
+namespace Enterprise.Gpt.Service.Options
 {
     /// <summary>
     /// Tuning knobs for the per-user permission cache, bound from the <c>Permissions:Cache</c>

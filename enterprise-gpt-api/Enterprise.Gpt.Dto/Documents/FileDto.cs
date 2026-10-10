@@ -1,7 +1,7 @@
-﻿using Enterprise.Gpt.Common.Extensions;
-using Enterprise.Gpt.Dto.Enums;
+﻿using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Common.Extensions;
 
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Documents
 {
     public class FileDto
     {

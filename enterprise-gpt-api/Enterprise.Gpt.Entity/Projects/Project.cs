@@ -1,7 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
+using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Entity;
+namespace Enterprise.Gpt.Entity.Projects;
 
 /// <summary>
 /// A user-owned container that groups conversations and holds a document set and standing

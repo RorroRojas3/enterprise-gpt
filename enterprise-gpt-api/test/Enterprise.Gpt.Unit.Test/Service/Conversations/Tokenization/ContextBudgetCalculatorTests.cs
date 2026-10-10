@@ -1,8 +1,9 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Service.Tokenization;
+using Enterprise.Gpt.Service.Conversations.Tokenization;
+using Enterprise.Gpt.Service.Conversations.Tokenization.Models;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Tokenization;
+namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Tokenization;
 
 /// <summary>
 /// The calculator runs with no <c>DbContext</c>, no chat client and no Cosmos dependency, which is

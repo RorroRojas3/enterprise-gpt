@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.Permissions
 {
     /// <summary>
     /// A grantable permission. MCP-linked permissions carry the owning server's id and are

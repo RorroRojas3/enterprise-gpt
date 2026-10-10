@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Renderers;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Renderers;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Export;
+namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
 /// <summary>
 /// The theme is the export feature's single source of appearance, and it is only that for as long as

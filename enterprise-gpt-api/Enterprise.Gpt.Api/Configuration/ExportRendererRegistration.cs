@@ -1,10 +1,13 @@
-using Enterprise.Gpt.Service.Export;
-using Enterprise.Gpt.Service.Export.Fonts;
-using Enterprise.Gpt.Service.Export.Renderers;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Startup;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Exports;
+using Enterprise.Gpt.Service.Exports.Fonts;
+using Enterprise.Gpt.Service.Exports.Interfaces;
+using Enterprise.Gpt.Service.Exports.Renderers;
+using Enterprise.Gpt.Service.Options;
 using PdfSharp.Fonts;
 
-namespace Enterprise.Gpt.Api.Export;
+namespace Enterprise.Gpt.Api.Configuration;
 
 /// <summary>
 /// Registers the conversation export renderers this deployment can actually use.

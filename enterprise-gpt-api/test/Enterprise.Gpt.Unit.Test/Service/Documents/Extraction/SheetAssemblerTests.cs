@@ -1,12 +1,13 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using System.Globalization;
 using System.Text.Json;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Extraction;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 /// <summary>
 /// Covers the shaping both spreadsheet formats share, at the boundaries their own fixtures cannot
@@ -152,15 +153,15 @@ public sealed class SheetAssemblerTests
     }
 
     [Theory]
-    [InlineData("TRUE", SheetColumnType.Boolean)]
-    [InlineData("false", SheetColumnType.Boolean)]
-    [InlineData("1234.56", SheetColumnType.Number)]
-    [InlineData("2026-03-14", SheetColumnType.Date)]
-    [InlineData("2026-03-14 09:30:00", SheetColumnType.Date)]
-    [InlineData("12:00:00", SheetColumnType.Date)]
-    [InlineData("W-1", SheetColumnType.Text)]
-    [InlineData("14/03/2026", SheetColumnType.Text)]
-    public void Assemble_ColumnOfOneKind_InfersThatKind(string value, SheetColumnType expected)
+    [InlineData("TRUE", SheetColumnTypes.Boolean)]
+    [InlineData("false", SheetColumnTypes.Boolean)]
+    [InlineData("1234.56", SheetColumnTypes.Number)]
+    [InlineData("2026-03-14", SheetColumnTypes.Date)]
+    [InlineData("2026-03-14 09:30:00", SheetColumnTypes.Date)]
+    [InlineData("12:00:00", SheetColumnTypes.Date)]
+    [InlineData("W-1", SheetColumnTypes.Text)]
+    [InlineData("14/03/2026", SheetColumnTypes.Text)]
+    public void Assemble_ColumnOfOneKind_InfersThatKind(string value, SheetColumnTypes expected)
     {
         var sheet = SheetAssembler.Assemble("Types", 1, [["Value"], [value], [value]], new RowWindowOptions(), TestChunker.Default, int.MaxValue, TestContext.Current.CancellationToken)
             .Structure;
@@ -174,7 +175,7 @@ public sealed class SheetAssemblerTests
         var sheet = SheetAssembler.Assemble("Mixed", 1, [["Value"], ["1200"], ["n/a"]], new RowWindowOptions(), TestChunker.Default, int.MaxValue, TestContext.Current.CancellationToken)
             .Structure;
 
-        Assert.Equal(SheetColumnType.Text, Assert.Single(sheet.Columns).InferredType);
+        Assert.Equal(SheetColumnTypes.Text, Assert.Single(sheet.Columns).InferredType);
     }
 
     [Fact]
@@ -183,7 +184,7 @@ public sealed class SheetAssemblerTests
         var sheet = SheetAssembler.Assemble("Sparse", 1, [["A", "B"], ["one", ""], ["two", ""]], new RowWindowOptions(), TestChunker.Default, int.MaxValue, TestContext.Current.CancellationToken)
             .Structure;
 
-        Assert.Equal(SheetColumnType.Text, sheet.Columns[1].InferredType);
+        Assert.Equal(SheetColumnTypes.Text, sheet.Columns[1].InferredType);
     }
 
     [Fact]

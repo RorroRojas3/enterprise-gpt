@@ -1,6 +1,4 @@
-using Enterprise.Gpt.Common.Enums;
-
-namespace Enterprise.Gpt.Dto;
+namespace Enterprise.Gpt.Dto.Documents;
 
 /// <summary>
 /// One worksheet's structured cell data, produced alongside the text segments it was read into.
@@ -18,15 +16,3 @@ public sealed record SheetStructureDto(
     int ColumnCount,
     IReadOnlyList<SheetColumnDto> Columns,
     IReadOnlyList<SheetRowDto> Rows);
-
-/// <summary>
-/// One column of a sheet, named as a later query may address it.
-/// </summary>
-/// <param name="ColumnName">Unique within its sheet: a duplicate header is suffixed at extraction.</param>
-public sealed record SheetColumnDto(int ColumnIndex, string ColumnName, SheetColumnType InferredType);
-
-/// <summary>
-/// One data row of a sheet.
-/// </summary>
-/// <param name="Cells">A JSON object of column name to cell text, carrying only populated cells.</param>
-public sealed record SheetRowDto(int RowIndex, string Cells);

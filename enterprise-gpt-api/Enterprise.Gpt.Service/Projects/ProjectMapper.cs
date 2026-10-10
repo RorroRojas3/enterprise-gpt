@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Project;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Actions.Projects;
+using Enterprise.Gpt.Dto.Projects;
+using Enterprise.Gpt.Entity.Projects;
 
-namespace Enterprise.Gpt.Service.Mappers;
+namespace Enterprise.Gpt.Service.Projects;
 
 /// <summary>
 /// Maps between <see cref="Project"/> and its DTOs, in both the materialized and the

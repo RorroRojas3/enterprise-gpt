@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto
+namespace Enterprise.Gpt.Dto.ChatModels
 {
     public record ModelDto
     {

@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Azure.Storage.Sas;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Service.Documents;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 

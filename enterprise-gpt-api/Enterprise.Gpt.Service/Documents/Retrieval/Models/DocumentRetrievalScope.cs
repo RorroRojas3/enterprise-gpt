@@ -1,6 +1,3 @@
-using System.Text.Json.Serialization;
-using Enterprise.Gpt.Common.Enums;
-
 namespace Enterprise.Gpt.Service.Documents.Retrieval.Models;
 
 /// <summary>

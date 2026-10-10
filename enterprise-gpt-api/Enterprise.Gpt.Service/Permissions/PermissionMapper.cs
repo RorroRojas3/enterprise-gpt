@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Permission;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Actions.Permissions;
+using Enterprise.Gpt.Dto.Permissions;
+using Enterprise.Gpt.Entity.Permissions;
 
-namespace Enterprise.Gpt.Service.Mappers
+namespace Enterprise.Gpt.Service.Permissions
 {
     public static class PermissionMapper
     {

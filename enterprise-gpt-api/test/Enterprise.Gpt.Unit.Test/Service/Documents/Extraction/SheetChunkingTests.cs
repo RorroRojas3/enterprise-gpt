@@ -1,15 +1,14 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Service.Extraction;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using System.Globalization;
 using System.Text;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using SheetSpec = Enterprise.Gpt.Unit.Test.TestInfrastructure.WorkbookBuilder.SheetSpec;
 
-namespace Enterprise.Gpt.Unit.Test.Extraction;
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
 /// <summary>
 /// Covers what row windows are for: surviving the unmodified chunker with their header attached, and
@@ -62,7 +61,7 @@ public sealed class SheetChunkingTests
     public async Task Chunk_CsvSpanningManyWindows_KeepsTheHeaderInAlmostEveryChunk()
     {
         var extractor = new CsvTextExtractor(
-            NullLogger<CsvTextExtractor>.Instance, Options.Create(new SheetOptions()), TestChunker.Default);
+            NullLogger<CsvTextExtractor>.Instance, Microsoft.Extensions.Options.Options.Create(new SheetOptions()), TestChunker.Default);
 
         var content = Encoding.UTF8.GetBytes(BuildCsv(2_000));
         var file = new FileDto
@@ -91,7 +90,7 @@ public sealed class SheetChunkingTests
     public async Task Chunk_MultiSheetWorkbook_KeepsEachSheetsOwnHeaderInItsOwnChunks()
     {
         var extractor = new SpreadsheetTextExtractor(
-            NullLogger<SpreadsheetTextExtractor>.Instance, Options.Create(new SheetOptions()), TestChunker.Default);
+            NullLogger<SpreadsheetTextExtractor>.Instance, Microsoft.Extensions.Options.Options.Create(new SheetOptions()), TestChunker.Default);
 
         var content = WorkbookBuilder.Create(
         [
@@ -163,7 +162,7 @@ public sealed class SheetChunkingTests
 
     private static Task<IReadOnlyList<DocumentSegmentDto>> ExtractAsync(int dataRows)
     {
-        var options = Options.Create(new SheetOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new SheetOptions());
         var extractor = new SpreadsheetTextExtractor(
             NullLogger<SpreadsheetTextExtractor>.Instance, options, TestChunker.Default);
 

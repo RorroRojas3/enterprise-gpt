@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 
-namespace Enterprise.Gpt.Service.Settings;
+namespace Enterprise.Gpt.Service.Options;
 
 /// <summary>
 /// Connection settings for the Azure OpenAI chat and embedding clients, bound from the

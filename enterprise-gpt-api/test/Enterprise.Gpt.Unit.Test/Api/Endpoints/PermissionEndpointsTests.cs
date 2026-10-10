@@ -1,11 +1,11 @@
-using NSubstitute;
 using Enterprise.Gpt.Api.Endpoints;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Actions.Permission;
-using Enterprise.Gpt.Service;
+using Enterprise.Gpt.Dto.Actions.Permissions;
+using Enterprise.Gpt.Dto.Permissions;
+using Enterprise.Gpt.Service.Permissions;
+using NSubstitute;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Endpoints;
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
 
 public class PermissionEndpointsTests
 {

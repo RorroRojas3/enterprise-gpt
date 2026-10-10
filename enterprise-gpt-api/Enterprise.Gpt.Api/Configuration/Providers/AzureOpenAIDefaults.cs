@@ -1,5 +1,5 @@
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using OpenAI.Responses;
 
@@ -12,20 +12,20 @@ using OpenAI.Responses;
 // A second file reaching for them has to make the same declaration deliberately.
 #pragma warning disable OPENAI001
 
-namespace Enterprise.Gpt.Api.Chat;
+namespace Enterprise.Gpt.Api.Configuration.Providers;
 
 /// <summary>
 /// Builds the callback that stamps Responses-API request settings onto every turn served by the
 /// Azure OpenAI chat client.
 /// </summary>
 /// <remarks>
-/// Kept out of <c>Program.cs</c> for the same reason as <see cref="AnthropicChatDefaults"/>:
+/// Kept out of <c>Program.cs</c> for the same reason as <see cref="AnthropicDefaults"/>:
 /// confining the SDK's request types to one file keeps them out of the provider-agnostic
 /// <c>ChatOptions</c> that <c>ConversationService</c> builds. Contrast
-/// <see cref="AzureAIFoundryChatDefaults"/>, which reaches the same resource over Chat Completions
+/// <see cref="AzureAIFoundryDefaults"/>, which reaches the same resource over Chat Completions
 /// and so touches no experimental type.
 /// </remarks>
-internal static class AzureOpenAIChatDefaults
+internal static class AzureOpenAIDefaults
 {
     /// <summary>
     /// Creates the <see cref="ChatOptions"/> callback for the Azure OpenAI provider.
@@ -34,7 +34,7 @@ internal static class AzureOpenAIChatDefaults
     /// <returns>A callback suitable for <c>ConfigureOptionsChatClient</c>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="settings"/> carries a reasoning summary or effort level the parsers do not
-    /// know. The startup validators reject those first, and <c>AzureOpenAIChatDefaultsTests</c>
+    /// know. The startup validators reject those first, and <c>AzureOpenAIDefaultsTests</c>
     /// pins every value they accept — the two vocabularies drifting apart is what this guards.
     /// </exception>
     /// <remarks>

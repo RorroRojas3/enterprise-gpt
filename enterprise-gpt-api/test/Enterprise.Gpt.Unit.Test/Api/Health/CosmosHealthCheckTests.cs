@@ -5,7 +5,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Health;
+namespace Enterprise.Gpt.Unit.Test.Api.Health;
 
 /// <summary>
 /// Covers the readiness probe for the transcript account, including what its result may not carry.

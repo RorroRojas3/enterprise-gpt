@@ -1,7 +1,8 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Enterprise.Gpt.Entity.Base;
 
-namespace Enterprise.Gpt.Entity
+namespace Enterprise.Gpt.Entity.ChatModels
 {
     [Table(nameof(Model), Schema = "Core.Ref")]
     public class Model : BaseModifiedByEntity

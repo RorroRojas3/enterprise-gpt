@@ -1,8 +1,8 @@
-using Microsoft.AspNetCore.Http;
 using Enterprise.Gpt.Api.Middleware;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Middleware;
+namespace Enterprise.Gpt.Unit.Test.Api.Middleware;
 
 public sealed class BodyCapturePolicyTests
 {

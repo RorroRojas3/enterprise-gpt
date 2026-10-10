@@ -1,22 +1,23 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Enterprise.Gpt.Api.Filters;
+using Enterprise.Gpt.Api.Problems.Constants;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Service.Security;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using Enterprise.Gpt.Api.Filters;
-using Enterprise.Gpt.Api.Problems;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Entity;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Settings;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Filters;
+namespace Enterprise.Gpt.Unit.Test.Api.Filters;
 
 public sealed class PermissionEndpointFilterTests : IDisposable
 {

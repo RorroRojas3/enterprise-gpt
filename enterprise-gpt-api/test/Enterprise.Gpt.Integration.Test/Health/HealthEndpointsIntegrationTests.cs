@@ -1,7 +1,7 @@
-using Enterprise.Gpt.Integration.Test.TestInfrastructure;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Net;
 using System.Text.Json;
+using Enterprise.Gpt.Integration.Test.TestInfrastructure;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Health;

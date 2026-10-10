@@ -1,8 +1,8 @@
 using System.Linq.Expressions;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Entity;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Entity.Documents;
 
-namespace Enterprise.Gpt.Service.Mappers;
+namespace Enterprise.Gpt.Service.Documents;
 
 /// <summary>
 /// Maps <see cref="ProjectDocument"/> to its DTO, in both the materialized and the

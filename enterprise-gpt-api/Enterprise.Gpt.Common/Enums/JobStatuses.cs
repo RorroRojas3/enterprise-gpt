@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Enterprise.Gpt.Dto.Enums
+namespace Enterprise.Gpt.Common.Enums
 {
     /// <summary>
     /// Stages of the document ingestion pipeline, reported to clients polling for upload progress.
@@ -11,7 +11,7 @@ namespace Enterprise.Gpt.Dto.Enums
     /// Enqueued/Processing/Succeeded/Failed progression — <see cref="Cancelled"/> projects onto Failed
     /// rather than widening that vocabulary.
     /// </remarks>
-    public enum JobStatus
+    public enum JobStatuses
     {
         [Description(nameof(Queued))]
         Queued = 1,

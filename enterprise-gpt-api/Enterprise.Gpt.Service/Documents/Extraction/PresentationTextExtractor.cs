@@ -1,16 +1,18 @@
+using System.Text;
+using System.Xml;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction.Interfaces;
+using Enterprise.Gpt.Service.Documents.Extraction.Models;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Dto;
-using Enterprise.Gpt.Dto.Enums;
-using System.Text;
-using System.Xml;
 using A = DocumentFormat.OpenXml.Drawing;
 
-namespace Enterprise.Gpt.Service.Extraction
+namespace Enterprise.Gpt.Service.Documents.Extraction
 {
     /// <summary>
     /// Reads PowerPoint (<c>.pptx</c>) presentations locally with the Open XML SDK, one segment per slide.

@@ -1,11 +1,10 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Enterprise.Gpt.Service.Caching;
-using Enterprise.Gpt.Service.Settings;
+﻿using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Caching;
+namespace Enterprise.Gpt.Unit.Test.Service.Caching;
 
 public sealed class UserPermissionCacheTests
 {
@@ -16,7 +15,7 @@ public sealed class UserPermissionCacheTests
     {
         return new UserPermissionCache(
             NullLogger<UserPermissionCache>.Instance,
-            Options.Create(new UserPermissionCacheOptions { EntryLifetime = entryLifetime ?? _lifetime }),
+            Microsoft.Extensions.Options.Options.Create(new UserPermissionCacheOptions { EntryLifetime = entryLifetime ?? _lifetime }),
             clock ?? new MutableTimeProvider());
     }
 

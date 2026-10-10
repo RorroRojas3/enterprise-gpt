@@ -1,6 +1,3 @@
-using FluentValidation;
-using FluentValidation.Results;
-
 namespace Enterprise.Gpt.Common.Enums;
 
 /// <summary>

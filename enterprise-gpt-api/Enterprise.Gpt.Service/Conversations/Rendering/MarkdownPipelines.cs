@@ -4,7 +4,7 @@ using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 
-namespace Enterprise.Gpt.Service.Rendering;
+namespace Enterprise.Gpt.Service.Conversations.Rendering;
 
 /// <summary>
 /// The one Markdig configuration this solution parses message text with.

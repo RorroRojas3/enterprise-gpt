@@ -3,14 +3,14 @@ using System.ClientModel.Primitives;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Enterprise.Gpt.Api.Chat;
-using Enterprise.Gpt.Dto.Enums;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Api.Configuration.Providers;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Chat;
+namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
 /// Pins the request the OpenAI Chat Completions bridge actually puts on the wire for the Azure AI
@@ -21,7 +21,7 @@ namespace Enterprise.Gpt.Unit.Test.Chat;
 /// The load-bearing assertion is the absence of <c>reasoning_effort</c> even when the catalog row
 /// asks for reasoning. <c>ConversationService</c> populates <c>ChatOptions.Reasoning</c> from that
 /// flag for every provider, and this adapter translates it — so without
-/// <see cref="AzureAIFoundryChatDefaults"/> clearing it, a reasoning-flagged model pointed at this
+/// <see cref="AzureAIFoundryDefaults"/> clearing it, a reasoning-flagged model pointed at this
 /// provider would send an option the deployment rejects, on every turn.
 /// </para>
 /// <para>
@@ -131,7 +131,7 @@ public sealed class AzureAIFoundryChatClientBridgeTests
 
         var chatClient = CreateClient(settings, httpClient);
 
-        AzureAIFoundryChatDefaults.Create()(options);
+        AzureAIFoundryDefaults.Create()(options);
 
         await chatClient.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "Hello")],
@@ -233,7 +233,7 @@ public sealed class AzureAIFoundryChatClientBridgeTests
         var chatClient = CreateClient(settings, httpClient)
             .AsBuilder()
             .UseFunctionInvocation()
-            .Use((inner, _) => new ConfigureOptionsChatClient(inner, AzureAIFoundryChatDefaults.Create()))
+            .Use((inner, _) => new ConfigureOptionsChatClient(inner, AzureAIFoundryDefaults.Create()))
             .Build();
 
         using (chatClient)

@@ -1,4 +1,4 @@
-namespace Enterprise.Gpt.Dto.Enums;
+namespace Enterprise.Gpt.Common.Constants;
 
 /// <summary>
 /// The dependency-injection keys the provider-specific <c>IChatClient</c> registrations use.

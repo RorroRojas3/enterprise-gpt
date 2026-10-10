@@ -1,7 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Dto.Documents;
-using Enterprise.Gpt.Dto;
-
 namespace Enterprise.Gpt.Service.Documents.Extraction.Models;
 
 /// <summary>

@@ -1,12 +1,12 @@
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.Logging;
-using Enterprise.Gpt.Unit.Test.TestInfrastructure;
 using Xunit;
 
-namespace Enterprise.Gpt.Unit.Test.Middleware;
+namespace Enterprise.Gpt.Unit.Test.Api.Middleware;
 
 public sealed class RequestLoggingMiddlewareTests
 {
