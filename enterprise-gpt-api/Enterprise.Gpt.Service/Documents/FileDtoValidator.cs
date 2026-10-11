@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Constants.Documents;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Service.Documents.Extraction;
@@ -53,7 +54,7 @@ namespace Enterprise.Gpt.Service.Documents
             RuleFor(x => x.FileName)
                 .NotEmpty()
                 .WithMessage("A file name is required.")
-                .MaximumLength(256)
+                .MaximumLength(DocumentLimits.NameMaxLength)
                 .WithMessage("The file name must be 256 characters or fewer.");
 
             RuleFor(x => x.Content)

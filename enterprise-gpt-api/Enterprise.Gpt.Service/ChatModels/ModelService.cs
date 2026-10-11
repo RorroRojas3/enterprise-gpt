@@ -6,6 +6,7 @@ using Enterprise.Gpt.Service.ChatModels.Exceptions;
 using Enterprise.Gpt.Service.Conversations.Chat;
 using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Extensions;
 using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Service.Security;
 using FluentValidation;
@@ -89,13 +90,15 @@ namespace Enterprise.Gpt.Service.ChatModels
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
         IOptions<SummarizationOptions> summarizationOptions,
-        IChatClientResolver chatClientResolver) : IModelService
+        IChatClientResolver chatClientResolver,
+        TimeProvider timeProvider) : IModelService
     {
         private readonly ILogger<ModelService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
         private readonly IOptions<SummarizationOptions> _summarizationOptions = summarizationOptions;
         private readonly IChatClientResolver _chatClientResolver = chatClientResolver;
+        private readonly TimeProvider _timeProvider = timeProvider;
 
         /// <inheritdoc />
         public async Task<List<ModelDto>> GetModelsAsync(CancellationToken cancellationToken = default)
@@ -134,22 +137,19 @@ namespace Enterprise.Gpt.Service.ChatModels
             await EnsureProviderExistsAsync(request.ProviderId, cancellationToken);
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
 
             var newModel = request.FromCreateModelActionDtoToModel();
             newModel.Id = Guid.NewGuid();
-            newModel.DateCreated = date;
             newModel.CreatedById = oid;
-            newModel.DateModified = date;
             newModel.ModifiedById = oid;
 
             if (request.IsDefault)
             {
-                await DemoteOtherDefaultsAsync(newModel.Id, oid, date, cancellationToken);
+                await DemoteOtherDefaultsAsync(newModel.Id, oid, cancellationToken);
             }
 
             _ctx.Add(newModel);
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync("The default model was changed by another request. Reload the catalog and try again.", cancellationToken);
 
             _logger.LogInformation("Model {ModelId} created by {UserId}", newModel.Id, oid);
 
@@ -170,18 +170,16 @@ namespace Enterprise.Gpt.Service.ChatModels
             }
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
 
             request.FromUpdateModelActionDtoToModel(model);
-            model.DateModified = date;
             model.ModifiedById = oid;
 
             if (request.IsDefault)
             {
-                await DemoteOtherDefaultsAsync(model.Id, oid, date, cancellationToken);
+                await DemoteOtherDefaultsAsync(model.Id, oid, cancellationToken);
             }
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"Model '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             _logger.LogInformation("Model {ModelId} updated by {UserId}", model.Id, oid);
 
@@ -194,7 +192,7 @@ namespace Enterprise.Gpt.Service.ChatModels
             EnsureNotTheSummarizer(id);
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             // Also clear IsDefault so a tombstoned row can't remain the catalog default.
             var rows = await _ctx.Models
@@ -288,7 +286,7 @@ namespace Enterprise.Gpt.Service.ChatModels
         /// atomically with the caller's <c>SaveChangesAsync</c>; the rowversion column
         /// guards against concurrent administrators.
         /// </summary>
-        private async Task DemoteOtherDefaultsAsync(Guid keepId, Guid oid, DateTimeOffset date, CancellationToken cancellationToken)
+        private async Task DemoteOtherDefaultsAsync(Guid keepId, Guid oid, CancellationToken cancellationToken)
         {
             var currentDefaults = await _ctx.Models
                 .Where(x => x.IsDefault && x.Id != keepId)
@@ -297,7 +295,6 @@ namespace Enterprise.Gpt.Service.ChatModels
             foreach (var other in currentDefaults)
             {
                 other.IsDefault = false;
-                other.DateModified = date;
                 other.ModifiedById = oid;
             }
         }

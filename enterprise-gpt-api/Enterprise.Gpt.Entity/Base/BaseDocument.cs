@@ -1,28 +1,31 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Users;
 
-namespace Enterprise.Gpt.Entity.Base
+namespace Enterprise.Gpt.Entity.Base;
+
+/// <summary>
+/// Base type for an uploaded or generated document file, shared by the conversation and project families.
+/// </summary>
+/// <typeparam name="TKey">The key type, <see cref="Guid"/> or <see cref="int"/>.</typeparam>
+public abstract class BaseDocument<TKey> : BaseModifiedEntity<TKey>
+    where TKey : struct, IEquatable<TKey>
 {
-    public class BaseDocument : BaseModifiedEntity
-    {
-        [ForeignKey(nameof(User))]
-        public Guid UserId { get; set; }
+    /// <summary>The user the document belongs to.</summary>
+    public Guid UserId { get; set; }
 
-        [StringLength(256)]
-        public string Name { get; set; } = null!;
+    /// <summary>The file name as uploaded.</summary>
+    public string Name { get; set; } = null!;
 
-        [StringLength(8)]
-        public string Extension { get; set; } = null!;
+    /// <summary>The file extension, without the leading dot.</summary>
+    public string Extension { get; set; } = null!;
 
-        [StringLength(256)]
-        public string MimeType { get; set; } = null!;
+    /// <summary>The file's media type.</summary>
+    public string MimeType { get; set; } = null!;
 
-        public long Size { get; set; }
+    /// <summary>The file size in bytes.</summary>
+    public long Size { get; set; }
 
-        [Column(TypeName = "nvarchar(max)")]
-        public string Path { get; set; } = null!;
+    /// <summary>The blob path within its storage container.</summary>
+    public string Path { get; set; } = null!;
 
-        public User User { get; set; } = null!;
-    }
+    public User User { get; set; } = null!;
 }

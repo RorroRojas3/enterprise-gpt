@@ -61,7 +61,8 @@ public interface IReportService
 public class ReportService(
     EnterpriseGptDbContext ctx,
     IOptions<ReportOptions> options,
-    ILogger<ReportService> logger) : IReportService
+    ILogger<ReportService> logger,
+    TimeProvider timeProvider) : IReportService
 {
     /// <summary>
     /// The <c>errors</c> key a rejected window is reported under. Both bounds are reported against
@@ -77,6 +78,7 @@ public class ReportService(
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly ReportOptions _options = options.Value;
     private readonly ILogger<ReportService> _logger = logger;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <inheritdoc />
     public async Task<UsageReportDto> GetUsageReportAsync(
@@ -103,7 +105,7 @@ public class ReportService(
         // **These are UTC days only because every row is written UTC.** The three members below
         // translate to DATEPART over a `datetimeoffset`, which reads the offset stored on the
         // value rather than normalising it — so a row written with a non-UTC offset buckets to its
-        // own local day. Every writer is `DateTimeOffset.UtcNow` today (`ConversationService`), and
+        // own local day. Every writer is the audit interceptor on `TimeProvider.GetUtcNow()` today, and
         // `BuildSeries` reports anything that lands outside the window rather than dropping it, so
         // a future writer that breaks the assumption is loud instead of silently short.
         // Normalising in SQL instead needs `DateTimeOffset.UtcDateTime` or `EF.Functions.DateTrunc`,
@@ -161,7 +163,7 @@ public class ReportService(
     /// </remarks>
     private (DateTimeOffset Start, DateTimeOffset End) ResolveWindow(DateTimeOffset? from, DateTimeOffset? to)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
 
         // Clamped rather than honoured. A window reaching into the future is inside the maximum and
         // produces a long tail of dense zero days, which draws as a collapse in spending rather

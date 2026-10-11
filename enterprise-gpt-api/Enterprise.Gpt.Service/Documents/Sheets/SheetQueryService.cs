@@ -149,7 +149,7 @@ public sealed class SheetQueryService(
         if (conversationDocumentIds.Length > 0
             && await _ctx.ConversationDocumentSheets
                 .AnyAsync(
-                    s => conversationDocumentIds.Contains(s.ConversationDocumentId) && !s.DateDeactivated.HasValue,
+                    s => conversationDocumentIds.Contains(s.ConversationDocumentId),
                     cancellationToken)
                 .ConfigureAwait(false))
         {
@@ -159,7 +159,7 @@ public sealed class SheetQueryService(
         return projectDocumentIds.Length > 0
             && await _ctx.ProjectDocumentSheets
                 .AnyAsync(
-                    s => projectDocumentIds.Contains(s.ProjectDocumentId) && !s.DateDeactivated.HasValue,
+                    s => projectDocumentIds.Contains(s.ProjectDocumentId),
                     cancellationToken)
                 .ConfigureAwait(false);
     }
@@ -270,7 +270,7 @@ public sealed class SheetQueryService(
         {
             var sheets = await _ctx.ConversationDocumentSheets
                 .AsNoTracking()
-                .Where(s => conversationDocumentIds.Contains(s.ConversationDocumentId) && !s.DateDeactivated.HasValue)
+                .Where(s => conversationDocumentIds.Contains(s.ConversationDocumentId))
                 .Select(s => new
                 {
                     s.Id,
@@ -279,7 +279,6 @@ public sealed class SheetQueryService(
                     s.SheetName,
                     s.RowCount,
                     Columns = s.Columns
-                        .Where(c => !c.DateDeactivated.HasValue)
                         .OrderBy(c => c.ColumnIndex)
                         .Select(c => new { c.ColumnName, c.InferredType })
                         .ToList()
@@ -301,7 +300,7 @@ public sealed class SheetQueryService(
         {
             var sheets = await _ctx.ProjectDocumentSheets
                 .AsNoTracking()
-                .Where(s => projectDocumentIds.Contains(s.ProjectDocumentId) && !s.DateDeactivated.HasValue)
+                .Where(s => projectDocumentIds.Contains(s.ProjectDocumentId))
                 .Select(s => new
                 {
                     s.Id,
@@ -310,7 +309,6 @@ public sealed class SheetQueryService(
                     s.SheetName,
                     s.RowCount,
                     Columns = s.Columns
-                        .Where(c => !c.DateDeactivated.HasValue)
                         .OrderBy(c => c.ColumnIndex)
                         .Select(c => new { c.ColumnName, c.InferredType })
                         .ToList()

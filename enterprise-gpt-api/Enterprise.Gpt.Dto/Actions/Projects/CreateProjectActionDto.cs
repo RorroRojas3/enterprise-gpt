@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Dto.Actions.Projects.Constants;
+using Enterprise.Gpt.Common.Constants.Projects;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Projects;
@@ -19,7 +19,7 @@ public record CreateProjectActionDto
     /// </summary>
     /// <remarks>
     /// This text reaches the model as a system message on every turn, which is why it is length-capped
-    /// — see <see cref="ProjectFieldLengths.Instructions"/>.
+    /// — see <see cref="ProjectLimits.InstructionsMaxLength"/>.
     /// </remarks>
     public string? Instructions { get; init; }
 }
@@ -36,10 +36,10 @@ public class CreateProjectActionDtoValidator : AbstractValidator<CreateProjectAc
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .MaximumLength(ProjectFieldLengths.Name);
+            .MaximumLength(ProjectLimits.NameMaxLength);
         RuleFor(x => x.Description)
-            .MaximumLength(ProjectFieldLengths.Description);
+            .MaximumLength(ProjectLimits.DescriptionMaxLength);
         RuleFor(x => x.Instructions)
-            .MaximumLength(ProjectFieldLengths.Instructions);
+            .MaximumLength(ProjectLimits.InstructionsMaxLength);
     }
 }

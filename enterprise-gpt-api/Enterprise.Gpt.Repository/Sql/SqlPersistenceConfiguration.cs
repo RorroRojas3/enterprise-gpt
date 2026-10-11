@@ -1,11 +1,14 @@
 using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Repository.Sql.Interceptors;
 using Enterprise.Gpt.Repository.Sql.Options;
 using Enterprise.Gpt.Repository.Sql.Provisioning;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Repository.Sql;
@@ -16,7 +19,8 @@ namespace Enterprise.Gpt.Repository.Sql;
 public static class SqlPersistenceConfiguration
 {
     /// <summary>
-    /// Registers the validated connection options, the <see cref="EnterpriseGptDbContext"/> and the schema migrator.
+    /// Registers the validated connection options, the <see cref="EnterpriseGptDbContext"/> with its interceptors,
+    /// and the schema migrator.
     /// </summary>
     public static IServiceCollection AddEnterpriseGptSqlPersistence(this IServiceCollection services, IConfiguration configuration)
     {
@@ -28,11 +32,23 @@ public static class SqlPersistenceConfiguration
             .ValidateWithFluentValidation()
             .ValidateOnStart();
 
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<SoftDeleteInterceptor>();
+        services.AddSingleton<AuditTimestampInterceptor>();
+
         // The connection string is read when a context is built, so a test host's override still wins.
-        services.AddDbContext<EnterpriseGptDbContext>((services, options) => options.UseSqlServer(
-            services.GetRequiredService<IOptions<SqlDbOptions>>().Value.DefaultConnection,
-            // SQL Server 2025: pre-2025 engines and LocalDB reject this compatibility level.
-            sql => sql.UseCompatibilityLevel(170)));
+        services.AddDbContext<EnterpriseGptDbContext>((services, options) => options
+            .UseSqlServer(
+                services.GetRequiredService<IOptions<SqlDbOptions>>().Value.DefaultConnection,
+                // SQL Server 2025: pre-2025 engines and LocalDB reject this compatibility level.
+                sql => sql.UseCompatibilityLevel(170))
+            // Soft delete first, so an entry it flips to Modified is also stamped by the audit interceptor.
+            .AddInterceptors(
+                services.GetRequiredService<SoftDeleteInterceptor>(),
+                services.GetRequiredService<AuditTimestampInterceptor>())
+            // A required navigation to a soft-deleted principal would silently drop the dependent row.
+            .ConfigureWarnings(warnings => warnings.Throw(
+                CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
         services.AddScoped<SqlSchemaMigrator>();
 
         return services;

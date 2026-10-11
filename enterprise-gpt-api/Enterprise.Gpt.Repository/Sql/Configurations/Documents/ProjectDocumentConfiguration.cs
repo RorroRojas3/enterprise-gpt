@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,17 +9,11 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 /// Maps <see cref="ProjectDocument"/> to <c>Core.ProjectDocument</c>, its owner and chunk
 /// relationships, and the index that backs the per-project listing.
 /// </summary>
-public sealed class ProjectDocumentConfiguration : IEntityTypeConfiguration<ProjectDocument>
+public sealed class ProjectDocumentConfiguration : BaseDocumentConfiguration<ProjectDocument, Guid>
 {
-    public void Configure(EntityTypeBuilder<ProjectDocument> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ProjectDocument> builder)
     {
         builder.ToTable(nameof(ProjectDocument), "Core");
-
-        builder.HasKey(x => x.Id);
-
-        builder.HasOne(x => x.User)
-            .WithMany()
-            .HasForeignKey(x => x.UserId);
 
         builder.HasMany(x => x.Chunks)
             .WithOne(x => x.ProjectDocument)

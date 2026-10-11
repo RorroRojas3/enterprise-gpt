@@ -1,20 +1,11 @@
 namespace Enterprise.Gpt.Dto.Actions.McpServers;
 
 /// <summary>
-/// The shape a user-supplied MCP credential must have, and the limit the ciphertext column is
-/// sized from.
+/// The character rule a user-supplied MCP credential must satisfy; its lengths live in
+/// <c>UserMcpCredentialLimits</c>.
 /// </summary>
 public static class McpCredentialRules
 {
-    /// <summary>Shortest credential accepted. Below this it is a typo, not a token.</summary>
-    public const int MinLength = 8;
-
-    /// <summary>
-    /// Longest credential accepted. Comfortably above a GitHub fine-grained token, and low
-    /// enough that the protected payload fits the column it is stored in.
-    /// </summary>
-    public const int MaxLength = 512;
-
     /// <summary>
     /// Whether a credential is printable ASCII with no whitespace.
     /// </summary>

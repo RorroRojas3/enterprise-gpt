@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Constants.McpServers;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.McpServers;
@@ -24,8 +25,8 @@ public class SaveMcpCredentialActionDtoValidator : AbstractValidator<SaveMcpCred
     {
         RuleFor(x => x.ApiKey)
             .NotEmpty()
-            .MinimumLength(McpCredentialRules.MinLength)
-            .MaximumLength(McpCredentialRules.MaxLength)
+            .MinimumLength(UserMcpCredentialLimits.ApiKeyMinLength)
+            .MaximumLength(UserMcpCredentialLimits.ApiKeyMaxLength)
             .Must(McpCredentialRules.IsWellFormed)
             .WithMessage("Enter the token exactly as it was issued, with no spaces or line breaks.");
     }

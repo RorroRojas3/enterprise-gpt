@@ -226,7 +226,8 @@ namespace Enterprise.Gpt.Service.Conversations
         IFileAgentToolProvider fileAgentToolProvider,
         IFileAgentQuotaService fileAgentQuotaService,
         IOptions<FileAgentOptions> fileAgentOptions,
-        EnterpriseGptDbContext ctx) : IConversationService
+        EnterpriseGptDbContext ctx,
+        TimeProvider timeProvider) : IConversationService
     {
         private readonly ILogger _logger = logger;
         private readonly IChatClientResolver _chatClientResolver = chatClientResolver;
@@ -252,6 +253,7 @@ namespace Enterprise.Gpt.Service.Conversations
         private readonly IFileAgentQuotaService _fileAgentQuotaService = fileAgentQuotaService;
         private readonly FileAgentOptions _fileAgentOptions = fileAgentOptions.Value;
         private readonly EnterpriseGptDbContext _ctx = ctx;
+        private readonly TimeProvider _timeProvider = timeProvider;
 
         // The synthetic pair every turn's stream opens with, ahead of the first model event.
         // The reasoning text ends with a blank line because the package reducer accumulates
@@ -269,7 +271,7 @@ namespace Enterprise.Gpt.Service.Conversations
             // top-level projection, so the whole entity would be materialized to build the DTO.
             var conversation = await _ctx.Conversations
                 .AsNoTracking()
-                .Where(s => s.Id == id && s.UserId == userId && !s.DateDeactivated.HasValue)
+                .Where(s => s.Id == id && s.UserId == userId)
                 .Select(s => new ConversationDetailDto
                 {
                     Id = s.Id,
@@ -306,8 +308,7 @@ namespace Enterprise.Gpt.Service.Conversations
                 .Take(1)
                 .SelectMany(u => u.McpServers
                     .Where(m => !m.McpServer.DateDeactivated.HasValue
-                        && m.McpServer.Permissions.Any(p => !p.DateDeactivated.HasValue
-                            && p.UserPermissions.Any(up => up.UserId == userId && !up.DateDeactivated.HasValue)))
+                        && m.McpServer.Permissions.Any(p => p.UserPermissions.Any(up => up.UserId == userId)))
                     .Select(m => m.McpServerId))
                 .ToListAsync(cancellationToken);
 
@@ -326,7 +327,6 @@ namespace Enterprise.Gpt.Service.Conversations
             return await _ctx.ConversationDocuments
                 .AsNoTracking()
                 .Where(x => x.ConversationId == id
-                    && !x.DateDeactivated.HasValue
                     && x.Type == ConversationDocumentTypes.Uploaded)
                 .OrderByDescending(x => x.DateCreated)
                 .Select(ConversationDocumentMapper.MapToConversationDocumentDtoExpression)
@@ -347,31 +347,31 @@ namespace Enterprise.Gpt.Service.Conversations
             // The Cosmos write is inside the transaction so a failure there rolls the relational row
             // back rather than leaving a conversation the user can open but never stream.
             await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
-            var date = DateTimeOffset.UtcNow;
             var newChat = new Conversation()
             {
                 Name = "New Conversation",
                 UserId = userId,
-                ProjectId = request.ProjectId,
-                DateCreated = date,
-                DateModified = date
+                ProjectId = request.ProjectId
             };
+
+            // Add assigns the client-generated key, which the seeded message needs before the save.
             _ctx.Add(newChat);
-            await _ctx.SaveChangesAsync(cancellationToken);
 
             // No model has been chosen yet, so there is no provider to calibrate for: the
             // uncalibrated default is the honest estimator here, and it is what the budget will
             // re-estimate against on the first turn anyway.
             var systemMessage = BuildSeededSystemMessage(
-                userId, newChat.Id, date, _tokenEstimatorResolver.Default, deploymentName: null);
+                userId, newChat.Id, default, _tokenEstimatorResolver.Default, deploymentName: null);
 
             // Both counters start from the same message. Seeding only the header would leave the
             // relational roll-up understated by the system prompt for the life of the conversation:
-            // every later turn moves the two by the same delta, so the gap never closes. A second
-            // save because the message needs the identifier the first one assigned; both are inside
-            // the transaction already open.
+            // every later turn moves the two by the same delta, so the gap never closes.
             newChat.ContextTokens = systemMessage.Tokens;
             await _ctx.SaveChangesAsync(cancellationToken);
+
+            // The transcript takes the relational row's stamp, so both stores agree on when it began.
+            var date = newChat.DateCreated;
+            systemMessage = systemMessage with { DateCreated = date };
 
             var header = TranscriptHeaderDocument.Create(userId, newChat.Id, newChat.Name, date) with
             {
@@ -417,10 +417,10 @@ namespace Enterprise.Gpt.Service.Conversations
         public async Task DeactivateConversationAsync(Guid id, CancellationToken cancellationToken = default)
         {
             var userId = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             var conversationExists = await _ctx.Conversations
-                .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == id && x.UserId == userId)
                 .AnyAsync(cancellationToken);
 
             if (!conversationExists)
@@ -441,7 +441,7 @@ namespace Enterprise.Gpt.Service.Conversations
             // summarizes: a live summary row under a deleted document is a fully readable account of
             // everything that document said.
             await _ctx.ConversationDocumentSummaries
-                .Where(s => s.ConversationDocument.ConversationId == id && !s.DateDeactivated.HasValue)
+                .Where(s => s.ConversationDocument.ConversationId == id)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
@@ -450,31 +450,31 @@ namespace Enterprise.Gpt.Service.Conversations
             // Leaf first for the reason the summary goes first: a live cell row under a dead sheet is
             // the document's own data, still readable.
             await _ctx.ConversationDocumentSheetRows
-                .Where(r => r.ConversationDocumentSheet.ConversationDocument.ConversationId == id && !r.DateDeactivated.HasValue)
+                .Where(r => r.ConversationDocumentSheet.ConversationDocument.ConversationId == id)
                 .ExecuteUpdateAsync(r => r
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheetColumns
-                .Where(c => c.ConversationDocumentSheet.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
+                .Where(c => c.ConversationDocumentSheet.ConversationDocument.ConversationId == id)
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheets
-                .Where(s => s.ConversationDocument.ConversationId == id && !s.DateDeactivated.HasValue)
+                .Where(s => s.ConversationDocument.ConversationId == id)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentChunks
-                .Where(c => c.ConversationDocument.ConversationId == id && !c.DateDeactivated.HasValue)
+                .Where(c => c.ConversationDocument.ConversationId == id)
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocuments
-                .Where(d => d.ConversationId == id && !d.DateDeactivated.HasValue)
+                .Where(d => d.ConversationId == id)
                 .ExecuteUpdateAsync(d => d
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
@@ -492,10 +492,10 @@ namespace Enterprise.Gpt.Service.Conversations
             ArgumentNullException.ThrowIfNull(request);
 
             var userId = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             var conversationIds = await _ctx.Conversations
-                .Where(x => request.ConversationIds.Contains(x.Id) && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => request.ConversationIds.Contains(x.Id) && x.UserId == userId)
                 .Select(x => x.Id)
                 .ToListAsync(cancellationToken);
 
@@ -519,38 +519,38 @@ namespace Enterprise.Gpt.Service.Conversations
             }
 
             await _ctx.ConversationDocumentSummaries
-                .Where(s => conversationIds.Contains(s.ConversationDocument.ConversationId) && !s.DateDeactivated.HasValue)
+                .Where(s => conversationIds.Contains(s.ConversationDocument.ConversationId))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheetRows
-                .Where(r => conversationIds.Contains(r.ConversationDocumentSheet.ConversationDocument.ConversationId) && !r.DateDeactivated.HasValue)
+                .Where(r => conversationIds.Contains(r.ConversationDocumentSheet.ConversationDocument.ConversationId))
                 .ExecuteUpdateAsync(r => r
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheetColumns
-                .Where(c => conversationIds.Contains(c.ConversationDocumentSheet.ConversationDocument.ConversationId) && !c.DateDeactivated.HasValue)
+                .Where(c => conversationIds.Contains(c.ConversationDocumentSheet.ConversationDocument.ConversationId))
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheets
-                .Where(s => conversationIds.Contains(s.ConversationDocument.ConversationId) && !s.DateDeactivated.HasValue)
+                .Where(s => conversationIds.Contains(s.ConversationDocument.ConversationId))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentChunks
-                .Where(c => conversationIds.Contains(c.ConversationDocument.ConversationId) && !c.DateDeactivated.HasValue)
+                .Where(c => conversationIds.Contains(c.ConversationDocument.ConversationId))
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocuments
-                .Where(d => conversationIds.Contains(d.ConversationId) && !d.DateDeactivated.HasValue)
+                .Where(d => conversationIds.Contains(d.ConversationId))
                 .ExecuteUpdateAsync(d => d
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
@@ -576,7 +576,7 @@ namespace Enterprise.Gpt.Service.Conversations
             var callerId = _tokenService.GetOid();
             var conversation = await _ctx.Conversations
                 .AsNoTracking()
-                .Where(x => x.Id == id && x.UserId == callerId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == id && x.UserId == callerId)
                 .Select(x => new { x.Id, x.UserId })
                 .FirstOrDefaultAsync(cancellationToken);
             if (conversation == null)
@@ -633,7 +633,7 @@ namespace Enterprise.Gpt.Service.Conversations
             }
 
             var name = response.Messages.Last().Text?.Trim() ?? string.Empty;
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             // A non-streaming tracked request carries its report on the response rather than
             // in-band. Preferred over ChatResponse.Usage because it separates the assistant's own
@@ -689,8 +689,7 @@ namespace Enterprise.Gpt.Service.Conversations
                 // deployment, so leaving it unpriced would understate a conversation's cost by
                 // exactly the call that a report is least likely to look for.
                 InputPricePerMillionTokens = model.InputPricePerMillionTokens,
-                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
-                DateCreated = date
+                OutputPricePerMillionTokens = model.OutputPricePerMillionTokens
             });
 
             await _ctx.SaveChangesAsync(cancellationToken);
@@ -725,7 +724,7 @@ namespace Enterprise.Gpt.Service.Conversations
 
             var query = _ctx.Conversations
                 .AsNoTracking()
-                .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+                .Where(x => x.UserId == userId);
 
             // Throws before the page is read, so a project that is missing, deactivated or another
             // user's answers 404 rather than an empty page — the route cannot be used to probe for
@@ -811,7 +810,7 @@ namespace Enterprise.Gpt.Service.Conversations
             var userId = _tokenService.GetOid();
 
             var anyConversation = await _ctx.Conversations
-                .Where(x => x.Id == request.Id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == request.Id && x.UserId == userId)
                 .AnyAsync(cancellationToken);
             if (!anyConversation)
             {
@@ -824,13 +823,13 @@ namespace Enterprise.Gpt.Service.Conversations
                 await EnsureProjectExistsAsync(request.ProjectId.Value, userId, cancellationToken);
             }
 
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
             // A full-representation PUT: an absent ProjectId removes the conversation from its
             // project rather than leaving the current value in place. The DTO documents this, since
             // a rename that forgets to echo the project id would otherwise silently orphan the
             // conversation.
             var rows = await _ctx.Conversations
-                .Where(x => x.Id == request.Id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == request.Id && x.UserId == userId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.Name, request.Name)
                     .SetProperty(x => x.ProjectId, request.ProjectId)
@@ -860,7 +859,7 @@ namespace Enterprise.Gpt.Service.Conversations
             ArgumentNullException.ThrowIfNull(request);
 
             var userId = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             // No Cosmos patch: favouriting only affects how conversations are listed, and the
             // transcript has no use for the flag. Keeping it out also keeps a star click off the
@@ -869,7 +868,7 @@ namespace Enterprise.Gpt.Service.Conversations
             // and moving the SQL timestamp would put it out of step with the Cosmos document's own,
             // which the transcript endpoint returns.
             var rows = await _ctx.Conversations
-                .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == id && x.UserId == userId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.IsFavorite, request.IsFavorite),
                     cancellationToken);
@@ -918,8 +917,7 @@ namespace Enterprise.Gpt.Service.Conversations
             var conversation = await _ctx.Conversations
                             .AsNoTracking()
                             .SingleOrDefaultAsync(x => x.Id == id &&
-                                x.UserId == userId &&
-                                !x.DateDeactivated.HasValue, cancellationToken);
+                                x.UserId == userId, cancellationToken);
             if (conversation == null)
             {
                 _logger.LogError("Conversation with id {Id} not found.", id);
@@ -929,7 +927,7 @@ namespace Enterprise.Gpt.Service.Conversations
             // The moment the prompt was received, carried to the write so the user message is
             // stamped when it was asked rather than when the answer finished. Those are genuinely
             // different moments, and the difference is what makes dateCreated a total order.
-            var promptReceivedAt = DateTimeOffset.UtcNow;
+            var promptReceivedAt = _timeProvider.GetUtcNow();
 
             // A one-RU point read rather than a count query. It answers two questions the turn needs
             // before it can run: whether this is the conversation's first turn, and whether the
@@ -1032,7 +1030,7 @@ namespace Enterprise.Gpt.Service.Conversations
                     {
                         Kind = AssistantUiEventKind.Status,
                         Message = StartingStatusMessage,
-                        Timestamp = DateTimeOffset.UtcNow
+                        Timestamp = _timeProvider.GetUtcNow()
                     };
 
                     // A deliberate contract deviation, requested by the product: the package
@@ -1286,7 +1284,7 @@ namespace Enterprise.Gpt.Service.Conversations
         /// </remarks>
         private async Task<Guid?> PersistTurnAsync(TurnOutcome turn, CancellationToken cancellationToken)
         {
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
             var completed = turn.Status == ConversationUsageStatuses.Completed;
             var assistantMessageId = Guid.NewGuid();
             var conversationId = turn.ConversationId;
@@ -1303,7 +1301,7 @@ namespace Enterprise.Gpt.Service.Conversations
                     turn.Status, conversationId);
             }
 
-            var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, date, turn.FileAgent);
+            var turnUsage = UsageReportTranslator.Translate(turn.Report, turn.McpServers, turn.FileAgent);
 
             if (turn.FileAgent is null
                 && turnUsage.ToolCalls.Exists(call => call.Kind == ConversationToolKinds.Agent))
@@ -1409,14 +1407,12 @@ namespace Enterprise.Gpt.Service.Conversations
                 OutputPricePerMillionTokens = turn.Model.OutputPricePerMillionTokens,
                 ContextTokens = contextTokens,
                 AssistantMessageId = completed ? assistantMessageId : null,
-                DateCreated = date,
                 McpServers =
                 [
                     .. turn.McpServers.Select(server => new ConversationUsageMcpServer
                     {
                         McpServerId = server.Id,
-                        McpServerName = server.Name,
-                        DateCreated = date
+                        McpServerName = server.Name
                     })
                 ],
                 // Saved as one graph rather than row by row: EF assigns the sequential keys and
@@ -1549,7 +1545,7 @@ namespace Enterprise.Gpt.Service.Conversations
         {
             var exists = await _ctx.Conversations
                 .AsNoTracking()
-                .AnyAsync(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
 
             if (!exists)
             {
@@ -1571,7 +1567,7 @@ namespace Enterprise.Gpt.Service.Conversations
         {
             var exists = await _ctx.Projects
                 .AsNoTracking()
-                .AnyAsync(x => x.Id == projectId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(x => x.Id == projectId && x.UserId == userId, cancellationToken);
 
             if (!exists)
             {
@@ -1604,7 +1600,7 @@ namespace Enterprise.Gpt.Service.Conversations
 
             return await _ctx.Projects
                 .AsNoTracking()
-                .Where(x => x.Id == projectId.Value && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == projectId.Value)
                 .Select(x => x.Instructions)
                 .FirstOrDefaultAsync(cancellationToken);
         }
@@ -1738,7 +1734,7 @@ namespace Enterprise.Gpt.Service.Conversations
         {
             var conversation = await _ctx.Conversations
                 .AsNoTracking()
-                .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == id && x.UserId == userId)
                 .Select(x => new { x.Name, x.DateCreated, x.DateModified })
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -2082,7 +2078,7 @@ namespace Enterprise.Gpt.Service.Conversations
                 ]);
             }
 
-            var ratedAt = DateTimeOffset.UtcNow;
+            var ratedAt = _timeProvider.GetUtcNow();
 
             var written = await PatchTranscriptFeedbackAsync(
                 message, userId, conversationId, messageId, request.Rating, ratedAt, cancellationToken);
@@ -2096,7 +2092,7 @@ namespace Enterprise.Gpt.Service.Conversations
             }
 
             await ProjectFeedbackAsync(
-                userId, conversationId, messageId, request.Rating, ratedAt, cancellationToken);
+                userId, conversationId, messageId, request.Rating, cancellationToken);
         }
 
         /// <summary>
@@ -2164,7 +2160,6 @@ namespace Enterprise.Gpt.Service.Conversations
         /// <param name="conversationId">The conversation's unique identifier.</param>
         /// <param name="messageId">The message's unique identifier.</param>
         /// <param name="rating">The verdict, or <see langword="null"/> to withdraw one.</param>
-        /// <param name="ratedAt">The moment to stamp on the row.</param>
         /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
         /// <remarks>
         /// Never throws, and the breadth of the catch is the point rather than an oversight. Every
@@ -2184,7 +2179,7 @@ namespace Enterprise.Gpt.Service.Conversations
         /// </remarks>
         private async Task ProjectFeedbackAsync(
             Guid userId, Guid conversationId, Guid messageId, MessageFeedbackRatings? rating,
-            DateTimeOffset ratedAt, CancellationToken cancellationToken)
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -2200,15 +2195,12 @@ namespace Enterprise.Gpt.Service.Conversations
                         ConversationId = conversationId,
                         UserId = userId,
                         MessageId = messageId,
-                        Rating = rating,
-                        DateCreated = ratedAt,
-                        DateModified = ratedAt
+                        Rating = rating
                     });
                 }
                 else
                 {
                     existing.Rating = rating;
-                    existing.DateModified = ratedAt;
                 }
 
                 await _ctx.SaveChangesAsync(cancellationToken);

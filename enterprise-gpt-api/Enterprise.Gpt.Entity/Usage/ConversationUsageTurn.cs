@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 
 namespace Enterprise.Gpt.Entity.Usage;
@@ -10,7 +8,7 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Append-only, and derives from <see cref="BaseEntity"/>, for the same reason as its parent and
+/// Append-only, and derives from <see cref="BaseCreatedEntity{TKey}"/>, for the same reason as its parent and
 /// siblings: a usage record that can be edited or hidden is not an audit trail.
 /// </para>
 /// <para>
@@ -35,27 +33,8 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// turns at all — which is not the same as a turn that reported nothing.
 /// </para>
 /// </remarks>
-[Table(nameof(ConversationUsageTurn), Schema = "Core")]
-public class ConversationUsageTurn : BaseEntity
+public class ConversationUsageTurn : BaseCreatedEntity<Guid>
 {
-    /// <summary>
-    /// The maximum length of <see cref="ResponseId"/>.
-    /// </summary>
-    /// <remarks>
-    /// Public, and clipped to by the code that writes these rows, for the same reason the widths on
-    /// <see cref="ConversationUsageToolCall"/> are: the write runs after the answer has already been
-    /// streamed, so a provider returning an unusually long identifier must not be able to fail the
-    /// whole turn's accounting.
-    /// </remarks>
-    public const int ResponseIdMaxLength = 128;
-
-    /// <summary>
-    /// The maximum length of <see cref="ReportedModelId"/>. Clipped to for the same reason as
-    /// <see cref="ResponseIdMaxLength"/>.
-    /// </summary>
-    public const int ReportedModelIdMaxLength = 512;
-
-    [ForeignKey(nameof(ConversationUsage))]
     public Guid ConversationUsageId { get; set; }
 
     /// <summary>
@@ -71,7 +50,6 @@ public class ConversationUsageTurn : BaseEntity
     /// The provider's response identifier for this turn, when it reported one. Carried for support
     /// correlation only; nothing joins on it.
     /// </summary>
-    [StringLength(ResponseIdMaxLength)]
     public string? ResponseId { get; set; }
 
     /// <summary>
@@ -83,7 +61,6 @@ public class ConversationUsageTurn : BaseEntity
     /// place in the trail where a model actually names itself — <see cref="ConversationUsage"/>
     /// records the catalog row this application chose, which is not the same claim.
     /// </remarks>
-    [StringLength(ReportedModelIdMaxLength)]
     public string? ReportedModelId { get; set; }
 
     /// <summary>

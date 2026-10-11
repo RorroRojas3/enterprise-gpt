@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Constants.Usage;
 using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,13 +9,13 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Usage;
 /// <summary>
 /// Configures the MCP servers attached to a <see cref="ConversationUsage"/> call.
 /// </summary>
-public sealed class ConversationUsageMcpServerConfiguration : IEntityTypeConfiguration<ConversationUsageMcpServer>
+public sealed class ConversationUsageMcpServerConfiguration : BaseCreatedEntityConfiguration<ConversationUsageMcpServer, Guid>
 {
-    public void Configure(EntityTypeBuilder<ConversationUsageMcpServer> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ConversationUsageMcpServer> builder)
     {
         builder.ToTable(nameof(ConversationUsageMcpServer), "Core");
 
-        builder.HasKey(x => x.Id);
+        builder.Property(x => x.McpServerName).HasMaxLength(ConversationUsageMcpServerLimits.McpServerNameMaxLength);
 
         builder.HasOne(x => x.ConversationUsage)
             .WithMany(x => x.McpServers)

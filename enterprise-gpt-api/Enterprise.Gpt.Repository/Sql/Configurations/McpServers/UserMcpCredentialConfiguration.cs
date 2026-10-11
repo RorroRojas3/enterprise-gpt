@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Constants.McpServers;
 using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,18 +10,18 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.McpServers;
 /// Maps <see cref="UserMcpCredential"/> to <c>Core.UserMcpCredential</c> and the unique index that
 /// keeps a user to one live credential per server.
 /// </summary>
-public sealed class UserMcpCredentialConfiguration : IEntityTypeConfiguration<UserMcpCredential>
+public sealed class UserMcpCredentialConfiguration : BaseModifiedByEntityConfiguration<UserMcpCredential, Guid>
 {
-    public void Configure(EntityTypeBuilder<UserMcpCredential> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<UserMcpCredential> builder)
     {
         builder.ToTable(nameof(UserMcpCredential), "Core");
 
-        builder.HasKey(x => x.Id);
-
         builder.Property(x => x.Ciphertext)
+            .HasMaxLength(UserMcpCredentialLimits.CiphertextMaxLength)
             .IsRequired();
 
         builder.Property(x => x.ApiKeyHint)
+            .HasMaxLength(UserMcpCredentialLimits.ApiKeyHintMaxLength)
             .IsRequired();
 
         builder.HasOne(x => x.User)
@@ -29,14 +31,6 @@ public sealed class UserMcpCredentialConfiguration : IEntityTypeConfiguration<Us
         builder.HasOne(x => x.McpServer)
             .WithMany(x => x.UserCredentials)
             .HasForeignKey(x => x.McpServerId);
-
-        builder.HasOne(x => x.CreatedBy)
-            .WithMany()
-            .HasForeignKey(x => x.CreatedById);
-
-        builder.HasOne(x => x.ModifiedBy)
-            .WithMany()
-            .HasForeignKey(x => x.ModifiedById);
 
         // Also the covering index for the lookup on the tool-acquisition path, which reads by
         // both columns. Filtered like every other unique index here: a credential deactivated

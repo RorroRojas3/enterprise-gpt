@@ -29,10 +29,12 @@ public interface IFileAgentQuotaService
 /// <inheritdoc />
 public sealed class FileAgentQuotaService(
     EnterpriseGptDbContext ctx,
-    IOptions<FileAgentOptions> options) : IFileAgentQuotaService
+    IOptions<FileAgentOptions> options,
+    TimeProvider timeProvider) : IFileAgentQuotaService
 {
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly IOptions<FileAgentOptions> _options = options;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <inheritdoc />
     public async Task<FileAgentQuotaDecision> CheckAsync(
@@ -49,7 +51,7 @@ public sealed class FileAgentQuotaService(
 
         // A rolling window rather than a calendar day: a UTC midnight reset lands in the middle of the
         // working afternoon somewhere, and every user should get the same length of day.
-        var since = DateTimeOffset.UtcNow.AddDays(-1);
+        var since = _timeProvider.GetUtcNow().AddDays(-1);
 
         var spent = await _ctx.ConversationUsageToolCalls
             .AsNoTracking()

@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Usage;
@@ -29,28 +28,23 @@ namespace Enterprise.Gpt.Entity.Conversations;
 /// that was never recorded files no row at all, for the same reason.
 /// </para>
 /// <para>
-/// <see cref="BaseEntity.DateDeactivated"/> comes with the base type and stays null on every row:
-/// nothing here is ever soft-deleted, and the upsert deliberately does not filter on it. Were a row
-/// ever deactivated, the unique index would refuse the replacement and the upsert would revive the
-/// deactivated one instead — so if soft deletion is ever wanted here, the index has to be filtered
-/// in the same change.
+/// <see cref="BaseEntity{TKey}.DateDeactivated"/> comes with the base type and stays null on every row: nothing here
+/// is ever soft-deleted. Were a row ever deactivated, the soft-delete filter would hide it from the upsert and the
+/// unfiltered unique index would refuse its replacement — so soft deletion here needs a filtered index first.
 /// </para>
 /// </remarks>
-[Table(nameof(MessageFeedback), Schema = "Core")]
-public class MessageFeedback : BaseModifiedEntity
+public class MessageFeedback : BaseModifiedEntity<Guid>
 {
     /// <summary>
     /// The conversation the rated message belongs to. Half of the natural key, and the reason a
     /// message id alone never has to be globally unique.
     /// </summary>
-    [ForeignKey(nameof(Conversation))]
     public Guid ConversationId { get; set; }
 
     /// <summary>
     /// The reader who rated. Denormalized from <see cref="Conversation"/>, exactly as
     /// <see cref="ConversationUsage.UserId"/> is, so per-user reporting need not join through it.
     /// </summary>
-    [ForeignKey(nameof(User))]
     public Guid UserId { get; set; }
 
     /// <summary>

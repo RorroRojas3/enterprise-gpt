@@ -2,9 +2,11 @@ using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Dto.Actions.Permissions;
 using Enterprise.Gpt.Dto.Permissions;
 using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Repository.Sql.Constants;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Extensions;
 using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
@@ -27,7 +29,7 @@ namespace Enterprise.Gpt.Service.Permissions
         /// </summary>
         /// <param name="cancellationToken">A token that propagates cancellation.</param>
         /// <returns>The list of all permissions.</returns>
-        Task<List<PermissionDto>> GetAllPermissionsAsync(CancellationToken cancellationToken = default);
+        Task<List<PermissionDto>> GetAllPermissionsIncludingDeactivatedAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Gets a single active permission by id.
@@ -92,28 +94,30 @@ namespace Enterprise.Gpt.Service.Permissions
     public class PermissionService(ILogger<PermissionService> logger,
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
-        IUserPermissionCache permissionCache) : IPermissionService
+        IUserPermissionCache permissionCache,
+        TimeProvider timeProvider) : IPermissionService
     {
         private readonly ILogger<PermissionService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
         private readonly IUserPermissionCache _permissionCache = permissionCache;
+        private readonly TimeProvider _timeProvider = timeProvider;
 
         /// <inheritdoc />
         public async Task<List<PermissionDto>> GetPermissionsAsync(CancellationToken cancellationToken = default)
         {
             return await _ctx.Permissions
                 .AsNoTracking()
-                .Where(p => !p.DateDeactivated.HasValue)
                 .OrderBy(p => p.Name)
                 .Select(PermissionMapper.MapToPermissionDtoExpression)
                 .ToListAsync(cancellationToken);
         }
 
         /// <inheritdoc />
-        public async Task<List<PermissionDto>> GetAllPermissionsAsync(CancellationToken cancellationToken = default)
+        public async Task<List<PermissionDto>> GetAllPermissionsIncludingDeactivatedAsync(CancellationToken cancellationToken = default)
         {
             return await _ctx.Permissions
+                .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
                 .AsNoTracking()
                 .OrderBy(p => p.Name)
                 .Select(PermissionMapper.MapToPermissionDtoExpression)
@@ -125,7 +129,7 @@ namespace Enterprise.Gpt.Service.Permissions
         {
             return await _ctx.Permissions
                 .AsNoTracking()
-                .Where(p => p.Id == id && !p.DateDeactivated.HasValue)
+                .Where(p => p.Id == id)
                 .Select(PermissionMapper.MapToPermissionDtoExpression)
                 .FirstOrDefaultAsync(cancellationToken) ?? throw new NotFoundException("Permission not found.");
         }
@@ -136,13 +140,10 @@ namespace Enterprise.Gpt.Service.Permissions
             await EnsureNameIsAvailableAsync(request.Name, excludePermissionId: null, cancellationToken);
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
 
             var newPermission = request.FromCreatePermissionActionDtoToPermission();
             newPermission.Id = Guid.NewGuid();
-            newPermission.DateCreated = date;
             newPermission.CreatedById = oid;
-            newPermission.DateModified = date;
             newPermission.ModifiedById = oid;
 
             _ctx.Add(newPermission);
@@ -157,7 +158,7 @@ namespace Enterprise.Gpt.Service.Permissions
         public async Task<PermissionDto> UpdatePermissionAsync(Guid id, UpdatePermissionActionDto request, CancellationToken cancellationToken = default)
         {
             var permission = await _ctx.Permissions
-                .FirstOrDefaultAsync(p => p.Id == id && !p.DateDeactivated.HasValue, cancellationToken)
+                .FirstOrDefaultAsync(p => p.Id == id, cancellationToken)
                 ?? throw new NotFoundException("Permission not found.");
 
             EnsurePermissionIsCustom(permission);
@@ -170,10 +171,9 @@ namespace Enterprise.Gpt.Service.Permissions
             var oid = _tokenService.GetOid();
 
             request.FromUpdatePermissionActionDtoToPermission(permission);
-            permission.DateModified = DateTimeOffset.UtcNow;
             permission.ModifiedById = oid;
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"Permission '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             _logger.LogInformation("Permission {PermissionId} updated by {UserId}", id, oid);
 
@@ -184,32 +184,30 @@ namespace Enterprise.Gpt.Service.Permissions
         public async Task DeactivatePermissionAsync(Guid id, CancellationToken cancellationToken = default)
         {
             var permission = await _ctx.Permissions
-                .Include(p => p.UserPermissions.Where(up => !up.DateDeactivated.HasValue))
-                .FirstOrDefaultAsync(p => p.Id == id && !p.DateDeactivated.HasValue, cancellationToken)
+                .Include(p => p.UserPermissions)
+                .FirstOrDefaultAsync(p => p.Id == id, cancellationToken)
                 ?? throw new NotFoundException("Permission not found.");
 
             EnsurePermissionIsCustom(permission);
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             // Tracked entities so the permission and its grants deactivate in one atomic save,
             // preserving the invariant that an active grant implies an active permission.
             permission.DateDeactivated = date;
-            permission.DateModified = date;
             permission.ModifiedById = oid;
 
             foreach (var grant in permission.UserPermissions)
             {
                 grant.DateDeactivated = date;
-                grant.DateModified = date;
                 grant.ModifiedById = oid;
             }
 
             // Collected from the already-included graph, so the cascade costs no extra query.
             Guid[] affectedUserIds = [.. permission.UserPermissions.Select(g => g.UserId).Distinct()];
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"Permission '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             _permissionCache.Invalidate(affectedUserIds);
 
@@ -227,22 +225,20 @@ namespace Enterprise.Gpt.Service.Permissions
             }
 
             var permissionExists = await _ctx.Permissions
-                .AnyAsync(p => p.Id == permissionId && !p.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(p => p.Id == permissionId, cancellationToken);
             if (!permissionExists)
             {
                 throw new NotFoundException("Permission not found.");
             }
 
             var alreadyGranted = await _ctx.UserPermissions
-                .AnyAsync(up => up.UserId == userId && up.PermissionId == permissionId
-                    && !up.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(up => up.UserId == userId && up.PermissionId == permissionId, cancellationToken);
             if (alreadyGranted)
             {
                 return;
             }
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
 
             // A previously revoked pair inserts a fresh row; the filtered unique index only
             // covers active rows, so revoked history is preserved.
@@ -251,9 +247,7 @@ namespace Enterprise.Gpt.Service.Permissions
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 PermissionId = permissionId,
-                DateCreated = date,
                 CreatedById = oid,
-                DateModified = date,
                 ModifiedById = oid
             });
             await _ctx.SaveChangesAsync(cancellationToken);
@@ -281,11 +275,10 @@ namespace Enterprise.Gpt.Service.Permissions
                 ]);
             }
 
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             var rows = await _ctx.UserPermissions
-                .Where(up => up.UserId == userId && up.PermissionId == permissionId
-                    && !up.DateDeactivated.HasValue)
+                .Where(up => up.UserId == userId && up.PermissionId == permissionId)
                 .ExecuteUpdateAsync(x => x
                     .SetProperty(p => p.DateDeactivated, date)
                     .SetProperty(p => p.DateModified, date)
@@ -340,7 +333,7 @@ namespace Enterprise.Gpt.Service.Permissions
         private async Task EnsureNameIsAvailableAsync(string name, Guid? excludePermissionId, CancellationToken cancellationToken)
         {
             var permissionNameTaken = await _ctx.Permissions
-                .AnyAsync(p => p.Name == name && !p.DateDeactivated.HasValue
+                .AnyAsync(p => p.Name == name
                     && (excludePermissionId == null || p.Id != excludePermissionId), cancellationToken);
 
             var serverNameTaken = await _ctx.McpServers

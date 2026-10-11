@@ -46,11 +46,13 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .AddEndpointFilter<ValidationEndpointFilter<UpdateMcpServerActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict);
             group.MapDelete("{id:guid}", DeactivateMcpServerAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict);
 
             // No permission filter, unlike every route above: these act on the caller's own
             // credential, and the gate is the server's own grant, enforced in the service the way
@@ -60,10 +62,12 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .AddEndpointFilter<ValidationEndpointFilter<SaveMcpCredentialActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict);
             group.MapDelete("{id:guid}/credential", DeleteMcpCredentialAsync)
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict);
 
             return app;
         }

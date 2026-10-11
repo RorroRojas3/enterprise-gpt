@@ -36,7 +36,7 @@ public sealed class ReportServiceTests : IDisposable
     public ReportServiceTests()
     {
         _service = new ReportService(
-            _fixture.Context, Microsoft.Extensions.Options.Options.Create(_options), NullLogger<ReportService>.Instance);
+            _fixture.Context, Microsoft.Extensions.Options.Options.Create(_options), NullLogger<ReportService>.Instance, TimeProvider.System);
     }
 
     public void Dispose()

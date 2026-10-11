@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Permissions;
@@ -10,16 +8,12 @@ namespace Enterprise.Gpt.Entity.McpServers
     /// An MCP (Model Context Protocol) server administrators make available to users.
     /// Access is gated by the linked <see cref="Permission"/> row auto-created with the server.
     /// </summary>
-    [Table(nameof(McpServer), Schema = "Core.Ref")]
-    public class McpServer : BaseModifiedByEntity
+    public class McpServer : BaseModifiedByEntity<Guid>
     {
-        [StringLength(256)]
         public string Name { get; set; } = null!;
 
-        [StringLength(1024)]
         public string Description { get; set; } = null!;
 
-        [StringLength(2048)]
         public string Url { get; set; } = null!;
 
         public McpAuthTypes AuthType { get; set; }
@@ -29,7 +23,6 @@ namespace Enterprise.Gpt.Entity.McpServers
         /// (e.g. <c>api://{clientId}/access_as_user</c>); <see langword="null"/>
         /// for every other <see cref="AuthType"/>.
         /// </summary>
-        [StringLength(512)]
         public string? Scope { get; set; }
 
         /// <summary>
@@ -39,7 +32,6 @@ namespace Enterprise.Gpt.Entity.McpServers
         /// icon must not require a server deploy, and a key this client does not recognise
         /// degrades to the generic glyph rather than failing.
         /// </summary>
-        [StringLength(64)]
         public string? IconKey { get; set; }
 
         /// <summary>

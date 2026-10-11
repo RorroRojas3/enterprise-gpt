@@ -30,7 +30,8 @@ public sealed class PermissionServiceTests : IDisposable
             NullLogger<PermissionService>.Instance,
             _tokenService,
             _fixture.Context,
-            _permissionCache);
+            _permissionCache,
+            TimeProvider.System);
     }
 
     public void Dispose()
@@ -133,7 +134,7 @@ public sealed class PermissionServiceTests : IDisposable
     private async Task<List<UserPermission>> FindGrantsAsync(Guid userId, Guid permissionId)
     {
         using var ctx = _fixture.CreateContext();
-        return await ctx.UserPermissions
+        return await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.UserId == userId && x.PermissionId == permissionId)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -154,11 +155,11 @@ public sealed class PermissionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetAllPermissionsAsync_DeactivatedPermissionExists_IncludesDeactivatedOrderedByName()
+    public async Task GetAllPermissionsIncludingDeactivatedAsync_DeactivatedPermissionExists_IncludesDeactivatedOrderedByName()
     {
         var deactivated = await AddPermissionAsync("bbb-deactivated", dateDeactivated: DateTimeOffset.UtcNow);
 
-        var result = await _service.GetAllPermissionsAsync(TestContext.Current.CancellationToken);
+        var result = await _service.GetAllPermissionsIncludingDeactivatedAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains(result, x => x.Id == deactivated.Id);
         Assert.Contains(result, x => x.Id == KnownIds.AdministratorPermissionId);
@@ -214,7 +215,7 @@ public sealed class PermissionServiceTests : IDisposable
         Assert.Null(result.McpServerId);
 
         using var ctx = _fixture.CreateContext();
-        var persisted = await ctx.Permissions
+        var persisted = await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == result.Id, TestContext.Current.CancellationToken);
         Assert.Equal(request.Name, persisted.Name);
@@ -264,7 +265,7 @@ public sealed class PermissionServiceTests : IDisposable
         Assert.Equal(request.Description, result.Description);
 
         using var ctx = _fixture.CreateContext();
-        var persisted = await ctx.Permissions
+        var persisted = await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == permission.Id, TestContext.Current.CancellationToken);
         Assert.Equal(request.Name, persisted.Name);
@@ -341,13 +342,13 @@ public sealed class PermissionServiceTests : IDisposable
         await _service.DeactivatePermissionAsync(permission.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var persistedPermission = await ctx.Permissions
+        var persistedPermission = await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == permission.Id, TestContext.Current.CancellationToken);
-        var persistedGrant = await ctx.UserPermissions
+        var persistedGrant = await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == grant.Id, TestContext.Current.CancellationToken);
-        var untouchedGrant = await ctx.UserPermissions
+        var untouchedGrant = await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == revokedGrant.Id, TestContext.Current.CancellationToken);
 

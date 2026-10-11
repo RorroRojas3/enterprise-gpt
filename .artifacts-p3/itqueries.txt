@@ -1,0 +1,69 @@
+NONE    Conversations\ConversationUsageTurnIntegrationTests.cs:43 [ConversationUsage] ctx.ConversationUsage .AsNoTracking() .Include(x => x.Turns) .SingleAsync(x => x.Id == usageId, TestContext.Current.CancellationToken);
+NONE    Conversations\ConversationUsageTurnIntegrationTests.cs:67 [ConversationUsageTurns] ctx.ConversationUsageTurns.Add(new ConversationUsageTurn { ConversationUsageId = usageId, Iteration = 0, InputTokens = 1, OutputTokens = 1, TotalTokens = 2, DateCreated = DateTimeOffset.UtcNow });
+NONE    Conversations\ConversationUsageTurnIntegrationTests.cs:95 [ConversationUsageTurns] ctx.ConversationUsageTurns .AsNoTracking() .Where(x => x.ConversationUsageId == usageId) .ToListAsync(TestContext.Current.CancellationToken)
+NONE    Documents\GeneratedDocumentIntegrationTests.cs:63 [ConversationDocuments] ctx.ConversationDocuments .AsNoTracking() .SingleAsync(x => x.Id == stored.Id, TestContext.Current.CancellationToken);
+NONE    Documents\GeneratedDocumentIntegrationTests.cs:71 [ConversationDocumentChunks] ctx.ConversationDocumentChunks .CountAsync(x => x.ConversationDocumentId == stored.Id, TestContext.Current.CancellationToken)
+NONE    Documents\GeneratedDocumentIntegrationTests.cs:150 [ConversationDocuments] ctx.ConversationDocuments .CountAsync(x => x.ConversationId == conversationId, TestContext.Current.CancellationToken)
+NONE    Documents\GeneratedDocumentIntegrationTests.cs:168 [ConversationDocuments] ctx.ConversationDocuments .AsNoTracking() .SingleAsync(x => x.Id == stored.Id, TestContext.Current.CancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:113 [Conversations] ctx.Conversations .Where(x => x.ModelId != null && x.ModelId != KnownIds.SeedModelId) .ExecuteUpdateAsync(x => x.SetProperty(p => p.ModelId, (Guid?)null), cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:199 [UserPermissions] ctx.UserPermissions .Where(x => x.UserId != TestUsers.AdminUserId || x.PermissionId != PermissionIds.Administrator) .ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:202 [Permissions] ctx.Permissions .Where(x => !_builtInPermissionIds.Contains(x.Id)) .ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:205 [Permissions] ctx.Permissions .Where(x => _builtInPermissionIds.Contains(x.Id)) .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:211 [UserMcpCredentials] ctx.UserMcpCredentials .ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:270 [Permissions] ctx.Permissions.Add(permission);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:306 [UserPermissions] ctx.UserPermissions.Add(grant);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:345 [UserMcpCredentials] ctx.UserMcpCredentials .AsNoTracking() .FirstOrDefaultAsync(x => x.UserId == userId && x.McpServerId == mcpServerId, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:362 [Permissions] ctx.Permissions .AsNoTracking() .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:379 [Permissions] ctx.Permissions .AsNoTracking() .FirstOrDefaultAsync(x => x.McpServerId == mcpServerId, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:398 [UserPermissions] ctx.UserPermissions .AsNoTracking() .Where(x => x.UserId == userId && x.PermissionId == permissionId) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:416 [UserPermissions] ctx.UserPermissions.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:417 [Permissions] ctx.Permissions .Where(x => !_builtInPermissionIds.Contains(x.Id)) .ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:420 [Permissions] ctx.Permissions .Where(x => _builtInPermissionIds.Contains(x.Id)) .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:447 [UserPermissions] ctx.UserPermissions.Add(new UserPermission { Id = Guid.NewGuid(), UserId = TestUsers.AdminUserId, PermissionId = PermissionIds.Administrator, DateCreated = date, DateModified = date, CreatedById = TestUsers.AdminUserId, ModifiedById = TestUsers.AdminUserId });
+NONE    TestInfrastructure\IntegrationTestFixture.cs:493 [Permissions] ctx.Permissions.Add(permission);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:570 [ProjectDocumentChunks] ctx.ProjectDocumentChunks.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:571 [ProjectDocuments] ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:572 [ConversationDocumentChunks] ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:573 [ConversationDocuments] ctx.ConversationDocuments.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:576 [MessageFeedback] ctx.MessageFeedback.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:578 [Conversations] ctx.Conversations.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:579 [Projects] ctx.Projects.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:602 [ProjectDocumentSummaries] ctx.ProjectDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:603 [ConversationDocumentSummaries] ctx.ConversationDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:615 [ProjectDocumentSheetRows] ctx.ProjectDocumentSheetRows.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:616 [ProjectDocumentSheetColumns] ctx.ProjectDocumentSheetColumns.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:617 [ProjectDocumentSheets] ctx.ProjectDocumentSheets.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:618 [ConversationDocumentSheetRows] ctx.ConversationDocumentSheetRows.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:619 [ConversationDocumentSheetColumns] ctx.ConversationDocumentSheetColumns.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:620 [ConversationDocumentSheets] ctx.ConversationDocumentSheets.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:632 [ConversationUsageMcpServers] ctx.ConversationUsageMcpServers.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:636 [ConversationUsageToolCalls] ctx.ConversationUsageToolCalls .Where(x => x.ParentId != null) .ExecuteUpdateAsync(x => x.SetProperty(p => p.ParentId, (Guid?)null), cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:639 [ConversationUsageToolCalls] ctx.ConversationUsageToolCalls.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:641 [ConversationUsageTurns] ctx.ConversationUsageTurns.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:643 [ConversationUsage] ctx.ConversationUsage.ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:715 [ConversationUsage] ctx.ConversationUsage.Add(usage);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:818 [ConversationUsage] ctx.ConversationUsage.Add(usage);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:836 [ConversationUsageToolCalls] ctx.ConversationUsageToolCalls .AsNoTracking() .Where(x => x.ConversationUsageId == usageId) .OrderBy(x => x.Depth) .ThenBy(x => x.Sequence) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:848 [UserPermissions] ctx.UserPermissions .AsNoTracking() .Where(x => x.PermissionId == PermissionIds.UploadFile && userIds.Contains(x.UserId)) .Select(x => x.UserId) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:857 [UserPermissions] ctx.UserPermissions.Add(new UserPermission { Id = Guid.NewGuid(), UserId = userId, PermissionId = PermissionIds.UploadFile, DateCreated = date, DateModified = date, CreatedById = TestUsers.AdminUserId, ModifiedById = TestUsers.AdminUserId });
+NONE    TestInfrastructure\IntegrationTestFixture.cs:903 [Conversations] ctx.Conversations.Add(conversation);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:962 [MessageFeedback] ctx.MessageFeedback .AsNoTracking() .SingleOrDefaultAsync( x => x.ConversationId == conversationId && x.MessageId == messageId, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1000 [Projects] ctx.Projects.Add(project);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1048 [ConversationDocuments] ctx.ConversationDocuments.AddRange(documents);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1112 [ConversationDocuments] ctx.ConversationDocuments.Add(document);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1134 [ConversationDocumentSheets] ctx.ConversationDocumentSheets.Add(new ConversationDocumentSheet { Id = Guid.NewGuid(), ConversationDocumentId = documentId, SheetIndex = sheetIndex, SheetName = sheetName, RowCount = 1, ColumnCount = 1, DateCreated = date, DateModified = date, Columns = [ new
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1231 [ConversationDocumentSheets] ctx.ConversationDocumentSheets.Add(row);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1287 [ProjectDocumentSheets] ctx.ProjectDocumentSheets.Add(row);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1346 [ProjectDocuments] ctx.ProjectDocuments.Add(document);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1364 [Projects] ctx.Projects .AsNoTracking() .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1381 [Conversations] ctx.Conversations .AsNoTracking() .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1398 [ProjectDocuments] ctx.ProjectDocuments .AsNoTracking() .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1415 [ProjectDocumentChunks] ctx.ProjectDocumentChunks .AsNoTracking() .Where(x => x.ProjectDocumentId == documentId) .OrderBy(x => x.Index) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1434 [ConversationDocumentChunks] ctx.ConversationDocumentChunks .AsNoTracking() .Where(x => x.ConversationDocumentId == documentId) .OrderBy(x => x.Index) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1453 [ConversationDocumentSheets] ctx.ConversationDocumentSheets .AsNoTracking() .Include(x => x.Columns) .Include(x => x.Rows) .Where(x => x.ConversationDocumentId == documentId) .OrderBy(x => x.SheetIndex) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1474 [ConversationDocuments] ctx.ConversationDocuments .AsNoTracking() .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1492 [ConversationDocuments] ctx.ConversationDocuments .AsNoTracking() .Where(x => x.ConversationId == conversationId) .ToListAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1510 [UserPermissions] ctx.UserPermissions .Where(x => x.UserId == userId && x.PermissionId == permissionId) .ExecuteDeleteAsync(cancellationToken);
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1549 [UserPermissions] ctx.UserPermissions.Add(new UserPermission { Id = Guid.NewGuid(), UserId = TestUsers.AdminUserId, PermissionId = PermissionIds.Administrator, DateCreated = date, DateModified = date, CreatedById = TestUsers.AdminUserId, ModifiedById = TestUsers.AdminUserId });
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1620 [ConversationDocumentSummaries] ctx.ConversationDocumentSummaries .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken), DocumentSources.Project => await ctx.ProjectDocumentSummaries .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken), _ => throw new Arg
+NONE    TestInfrastructure\IntegrationTestFixture.cs:1622 [ProjectDocumentSummaries] ctx.ProjectDocumentSummaries .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken), _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.") 

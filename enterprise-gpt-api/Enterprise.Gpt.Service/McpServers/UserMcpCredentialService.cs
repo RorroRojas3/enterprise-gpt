@@ -5,6 +5,7 @@ using Enterprise.Gpt.Entity.McpServers;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Extensions;
 using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
@@ -55,13 +56,15 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     ITokenService tokenService,
     EnterpriseGptDbContext ctx,
     IUserSecretProtector protector,
-    IMcpClientCache mcpClientCache) : IUserMcpCredentialService
+    IMcpClientCache mcpClientCache,
+    TimeProvider timeProvider) : IUserMcpCredentialService
 {
     private readonly ILogger<UserMcpCredentialService> _logger = logger;
     private readonly ITokenService _tokenService = tokenService;
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly IUserSecretProtector _protector = protector;
     private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <inheritdoc />
     public async Task<McpCredentialStatusDto> SaveAsync(
@@ -103,10 +106,8 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     {
         for (var attempt = 1; ; attempt++)
         {
-            var date = DateTimeOffset.UtcNow;
             var credential = await _ctx.UserMcpCredentials
-                .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId
-                    && !c.DateDeactivated.HasValue, cancellationToken);
+                .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId, cancellationToken);
 
             if (credential is null)
             {
@@ -115,7 +116,6 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
                     Id = Guid.NewGuid(),
                     UserId = oid,
                     McpServerId = mcpServerId,
-                    DateCreated = date,
                     CreatedById = oid
                 };
 
@@ -127,7 +127,6 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
             // A save is the user asserting the key is good again, so a stale rejection must
             // not keep the server hidden from them.
             credential.DateRejected = null;
-            credential.DateModified = date;
             credential.ModifiedById = oid;
 
             try
@@ -135,6 +134,11 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
                 await _ctx.SaveChangesAsync(cancellationToken);
 
                 return credential;
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw new ConflictException(
+                    "Your API key for this MCP server was changed by another request. Reload and try again.", ex);
             }
             catch (DbUpdateException) when (attempt == 1)
             {
@@ -152,16 +156,13 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
         _ = await LoadPermittedServerAsync(mcpServerId, oid, cancellationToken);
 
         var credential = await _ctx.UserMcpCredentials
-            .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId
-                && !c.DateDeactivated.HasValue, cancellationToken)
+            .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId, cancellationToken)
             ?? throw new NotFoundException("No API key is stored for this MCP server.");
 
-        var date = DateTimeOffset.UtcNow;
-        credential.DateDeactivated = date;
-        credential.DateModified = date;
+        credential.DateDeactivated = _timeProvider.GetUtcNow();
         credential.ModifiedById = oid;
 
-        await _ctx.SaveChangesAsync(cancellationToken);
+        await _ctx.SaveChangesOrConflictAsync("Your API key for this MCP server was changed by another request. Reload and try again.", cancellationToken);
 
         _mcpClientCache.InvalidateServerForUser(mcpServerId, oid);
 
@@ -172,14 +173,13 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     /// <inheritdoc />
     public async Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default)
     {
-        var date = DateTimeOffset.UtcNow;
+        var date = _timeProvider.GetUtcNow();
 
         // ExecuteUpdate rather than load-and-save: this is called mid-turn on the streaming
         // request's own scoped context, and SaveChangesAsync there would flush whatever else
         // that request happens to be tracking.
         var updated = await _ctx.UserMcpCredentials
-            .Where(c => c.UserId == userOid && c.McpServerId == mcpServerId
-                && !c.DateDeactivated.HasValue && !c.DateRejected.HasValue)
+            .Where(c => c.UserId == userOid && c.McpServerId == mcpServerId && !c.DateRejected.HasValue)
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(c => c.DateRejected, date)
@@ -224,8 +224,7 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
             .Select(s => new
             {
                 Server = s,
-                IsPermitted = s.Permissions.Any(p => !p.DateDeactivated.HasValue
-                    && p.UserPermissions.Any(up => up.UserId == oid && !up.DateDeactivated.HasValue))
+                IsPermitted = s.Permissions.Any(p => p.UserPermissions.Any(up => up.UserId == oid))
             })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException("MCP server not found.");

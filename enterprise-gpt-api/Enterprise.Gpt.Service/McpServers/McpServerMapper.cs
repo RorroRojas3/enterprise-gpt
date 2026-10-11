@@ -110,8 +110,7 @@ namespace Enterprise.Gpt.Service.McpServers
 
         /// <summary>
         /// Creates a new <see cref="McpServer"/> entity from a <see cref="CreateMcpServerActionDto"/>.
-        /// Callers are responsible for setting <c>Id</c> and the audit columns
-        /// (e.g. <c>DateCreated</c>, <c>CreatedById</c>) before saving.
+        /// Callers set <c>Id</c>, <c>CreatedById</c> and <c>ModifiedById</c>; the audit interceptor stamps the dates.
         /// </summary>
         /// <param name="dto">The action DTO carrying the new values.</param>
         /// <returns>The new, untracked entity.</returns>
@@ -131,8 +130,7 @@ namespace Enterprise.Gpt.Service.McpServers
 
         /// <summary>
         /// Applies an <see cref="UpdateMcpServerActionDto"/> to an existing <see cref="McpServer"/>
-        /// entity in place. Callers are responsible for setting audit columns
-        /// (e.g. <c>DateModified</c>) and saving changes.
+        /// entity in place. Callers set <c>ModifiedById</c> and save; the audit interceptor stamps <c>DateModified</c>.
         /// </summary>
         /// <param name="dto">The action DTO carrying the new values.</param>
         /// <param name="server">The tracked entity to mutate.</param>

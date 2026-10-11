@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Enterprise.Gpt.Entity.Base;
+﻿using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.ChatModels;
 using Enterprise.Gpt.Entity.Documents;
 using Enterprise.Gpt.Entity.Projects;
@@ -9,10 +7,8 @@ using Enterprise.Gpt.Entity.Users;
 
 namespace Enterprise.Gpt.Entity.Conversations
 {
-    [Table(nameof(Conversation), Schema = "Core")]
-    public class Conversation : BaseModifiedEntity
+    public class Conversation : BaseModifiedEntity<Guid>
     {
-        [ForeignKey(nameof(User))]
         public Guid UserId { get; set; }
 
         /// <summary>
@@ -30,7 +26,6 @@ namespace Enterprise.Gpt.Entity.Conversations
         /// </summary>
         public Guid? ModelId { get; set; }
 
-        [StringLength(256)]
         public string Name { get; set; } = "New Conversation";
 
         public bool IsFavorite { get; set; }

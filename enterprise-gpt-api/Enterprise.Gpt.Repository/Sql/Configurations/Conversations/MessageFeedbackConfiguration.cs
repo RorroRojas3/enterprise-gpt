@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Entity.Conversations;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,13 +8,11 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Conversations;
 /// <summary>
 /// Configures the <see cref="MessageFeedback"/> projection table.
 /// </summary>
-public sealed class MessageFeedbackConfiguration : IEntityTypeConfiguration<MessageFeedback>
+public sealed class MessageFeedbackConfiguration : BaseModifiedEntityConfiguration<MessageFeedback, Guid>
 {
-    public void Configure(EntityTypeBuilder<MessageFeedback> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<MessageFeedback> builder)
     {
         builder.ToTable(nameof(MessageFeedback), "Core");
-
-        builder.HasKey(x => x.Id);
 
         builder.HasOne(x => x.Conversation)
             .WithMany()
@@ -30,9 +29,7 @@ public sealed class MessageFeedbackConfiguration : IEntityTypeConfiguration<Mess
         // message would otherwise both insert. It is also the lookup that upsert seeks on.
         builder.HasIndex(x => new { x.ConversationId, x.MessageId }).IsUnique();
 
-        // No reporting index yet, deliberately. The usage table carries three because the queries
-        // that read it exist; the reporting stories over this one (US-1301/US-1302) have not been
-        // written, and an index shaped for a query nobody has issued is a guess charged on every
-        // write. Add it with the query.
+        // No reporting index yet, deliberately: no query reads this table for reporting, and an index
+        // shaped for a query nobody has issued is a guess charged on every write. Add it with the query.
     }
 }

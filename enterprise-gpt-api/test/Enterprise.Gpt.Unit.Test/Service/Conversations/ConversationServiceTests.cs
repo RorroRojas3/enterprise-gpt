@@ -166,7 +166,8 @@ public sealed class ConversationServiceTests : IDisposable
             _fileAgentToolProvider,
             _fileAgentQuotaService,
             Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
-            _fixture.Context);
+            _fixture.Context,
+            TimeProvider.System);
     }
 
     /// <summary>
@@ -194,7 +195,8 @@ public sealed class ConversationServiceTests : IDisposable
             _fileAgentToolProvider,
             _fileAgentQuotaService,
             Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
-            _fixture.Context);
+            _fixture.Context,
+            TimeProvider.System);
 
     /// <summary>
     /// Builds a service with the sheet query switched on. Options are captured at construction, so a
@@ -220,7 +222,8 @@ public sealed class ConversationServiceTests : IDisposable
             _fileAgentToolProvider,
             _fileAgentQuotaService,
             Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
-            _fixture.Context);
+            _fixture.Context,
+            TimeProvider.System);
 
     public void Dispose()
     {
@@ -628,6 +631,26 @@ public sealed class ConversationServiceTests : IDisposable
         using var ctx = _fixture.CreateContext();
         var stored = await ctx.Conversations.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(header.ContextTokens, stored.ContextTokens);
+    }
+
+    /// <summary>
+    /// The audit interceptor stamps the row, and the transcript takes that stamp, so both stores agree on when
+    /// the conversation began and the seeded message sorts first.
+    /// </summary>
+    [Fact]
+    public async Task CreateConversationAsync_WhenCalled_StampsTheTranscriptWithTheRowsCreationDate()
+    {
+        await _service.CreateConversationAsync(new CreateConversationActionDto(), TestContext.Current.CancellationToken);
+
+        var operations = CapturedBatchOperations();
+        var header = Assert.IsType<TranscriptHeaderDocument>(operations[0].Item);
+        var message = Assert.IsType<TranscriptMessageDocument>(operations[1].Item);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.NotEqual(default, stored.DateCreated);
+        Assert.Equal(stored.DateCreated, header.DateCreated);
+        Assert.Equal(stored.DateCreated, message.DateCreated);
     }
 
     /// <summary>
@@ -1241,7 +1264,8 @@ public sealed class ConversationServiceTests : IDisposable
             _fileAgentToolProvider,
             _fileAgentQuotaService,
             Microsoft.Extensions.Options.Options.Create(new FileAgentOptions { Enabled = true, ModelId = Guid.NewGuid() }),
-            _fixture.Context);
+            _fixture.Context,
+            TimeProvider.System);
 
     /// <summary>Stands the File Agent up as a lease that reports the given files as produced.</summary>
     private MessageAttachmentDto SetUpFileAgentProducing(params MessageAttachmentDto[] produced)

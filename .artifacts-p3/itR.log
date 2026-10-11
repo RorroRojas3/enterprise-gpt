@@ -1,0 +1,12 @@
+Running tests from C:\Users\Rorro\source\repos\enterprise-gpt\.artifacts-p3\bin\Enterprise.Gpt.Integration.Test\debug\Enterprise.Gpt.Integration.Test.dll (net10.0|x64)
+skipped Enterprise.Gpt.Integration.Test.Agents.FileAgentBenchmarkTests.Benchmark_EveryPrompt_ProducesAnArtifactThatVerifies
+  The File Agent benchmark is opt-in because it bills thirty Code Interpreter sessions. Enable it with: dotnet user-secrets --id 27ef94e5-8a02-48e5-b431-caa1880f8198 set "FileAgentBenchmark:Enabled" "true" — and make sure AzureOpenAI:Url, AzureOpenAI:ApiKey and AzureOpenAI:DefaultModel are set in the same store. See docs/tools/file-agent.md.
+  from C:\Users\Rorro\source\repos\enterprise-gpt\.artifacts-p3\bin\Enterprise.Gpt.Integration.Test\debug\Enterprise.Gpt.Integration.Test.dll (net10.0|x64)
+C:\Users\Rorro\source\repos\enterprise-gpt\.artifacts-p3\bin\Enterprise.Gpt.Integration.Test\debug\Enterprise.Gpt.Integration.Test.dll (net10.0|x64) passed (3m 25s 459ms)
+
+Test run summary: Passed!
+  total: 494
+  failed: 0
+  succeeded: 493
+  skipped: 1
+  duration: 3m 25s 831ms

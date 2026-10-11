@@ -1,6 +1,8 @@
-﻿using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Repository.Sql.Interceptors;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,13 +14,20 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// <c>EnsureCreated()</c>. The connection stays open for the fixture's lifetime because an
 /// in-memory SQLite database only lives as long as its connection.
 /// </summary>
+/// <remarks>
+/// <see cref="Context"/> and the scoped contexts carry the production interceptors, because they are the ones
+/// handed to services; <see cref="CreateContext"/> is bare, so arrange and assert code writes and reads
+/// exactly the values it states.
+/// </remarks>
 public sealed class SqliteDbContextFixture : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<EnterpriseGptDbContext> _options;
+    private readonly DbContextOptions<EnterpriseGptDbContext> _serviceOptions;
     private readonly ServiceProvider _provider;
+    private readonly List<IDisposable> _extra = [];
 
-    public SqliteDbContextFixture()
+    public SqliteDbContextFixture(TimeProvider? timeProvider = null)
     {
         _connection = new SqliteConnection("DataSource=:memory:");
         _connection.Open();
@@ -28,42 +37,64 @@ public sealed class SqliteDbContextFixture : IDisposable
             .ReplaceService<IModelCustomizer, SqliteRowVersionModelCustomizer>()
             .Options;
 
-        Context = new EnterpriseGptDbContext(_options);
+        var time = timeProvider ?? TimeProvider.System;
+        _serviceOptions = new DbContextOptionsBuilder<EnterpriseGptDbContext>(_options)
+            .AddInterceptors(new SoftDeleteInterceptor(time), new AuditTimestampInterceptor(time))
+            .ConfigureWarnings(warnings => warnings.Throw(
+                CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))
+            .Options;
+
+        Context = new EnterpriseGptDbContext(_serviceOptions);
         Context.Database.EnsureCreated();
 
         // A container whose scopes hand out fresh contexts on the same database, for a service that
         // deliberately writes on a unit of work of its own rather than the caller's.
         var services = new ServiceCollection();
-        services.AddScoped(_ => CreateContext());
+        services.AddScoped(_ => new EnterpriseGptDbContext(_serviceOptions));
         _provider = services.BuildServiceProvider();
     }
 
-    /// <summary>
-    /// Gets the context handed to the service under test.
-    /// </summary>
+    /// <summary>The context handed to the service under test, with the production interceptors.</summary>
     public EnterpriseGptDbContext Context { get; }
 
-    /// <summary>
-    /// Gets a scope factory whose scopes resolve fresh contexts on the same database, for services
-    /// that take <see cref="IServiceScopeFactory"/> to keep their writes off the caller's context.
-    /// </summary>
     public IServiceScopeFactory ScopeFactory => _provider.GetRequiredService<IServiceScopeFactory>();
 
-    /// <summary>
-    /// Creates a fresh context on the same database so arrangement and assertions read
-    /// persisted state rather than entities tracked by <see cref="Context"/>.
-    /// </summary>
-    /// <returns>A new context sharing the fixture's connection.</returns>
+    /// <summary>A bare context on the same database, for arranging and asserting.</summary>
     public EnterpriseGptDbContext CreateContext()
     {
         return new EnterpriseGptDbContext(_options);
     }
 
-    /// <inheritdoc />
+    /// <summary>A service context with one more interceptor after the production ones, to simulate a fault.</summary>
+    public EnterpriseGptDbContext CreateServiceContext(IInterceptor extra)
+    {
+        var ctx = new EnterpriseGptDbContext(new DbContextOptionsBuilder<EnterpriseGptDbContext>(_serviceOptions)
+            .AddInterceptors(extra)
+            .Options);
+        _extra.Add(ctx);
+        return ctx;
+    }
+
+    /// <summary>A scope factory whose contexts carry one more interceptor after the production ones.</summary>
+    public IServiceScopeFactory CreateScopeFactory(IInterceptor extra)
+    {
+        var options = new DbContextOptionsBuilder<EnterpriseGptDbContext>(_serviceOptions).AddInterceptors(extra).Options;
+        var provider = new ServiceCollection()
+            .AddScoped(_ => new EnterpriseGptDbContext(options))
+            .BuildServiceProvider();
+        _extra.Add(provider);
+        return provider.GetRequiredService<IServiceScopeFactory>();
+    }
+
     public void Dispose()
     {
         // Ahead of the connection: the scoped contexts it created share it, and EF does not close a
         // connection it was handed rather than opened.
+        foreach (var disposable in _extra)
+        {
+            disposable.Dispose();
+        }
+
         _provider.Dispose();
         Context.Dispose();
         _connection.Dispose();

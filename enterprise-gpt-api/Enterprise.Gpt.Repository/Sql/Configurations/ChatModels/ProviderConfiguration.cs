@@ -1,14 +1,24 @@
 ﻿using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Constants.ChatModels;
 using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.ChatModels
 {
-    public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
+    public class ProviderConfiguration : BaseCreatedEntityConfiguration<Provider, Guid>
     {
-        public void Configure(EntityTypeBuilder<Provider> builder)
+        /// <inheritdoc />
+        /// <remarks>Usage, history and audit columns reach this through required navigations, so a retired row must stay visible.</remarks>
+        protected override bool IsSoftDeleteFiltered => false;
+
+        protected override void ConfigureEntity(EntityTypeBuilder<Provider> builder)
         {
+            builder.ToTable(nameof(Provider), "Core.Ref");
+
+            builder.Property(x => x.Name).HasMaxLength(ProviderLimits.NameMaxLength);
+
             var date = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             builder.HasData(
                 new Provider

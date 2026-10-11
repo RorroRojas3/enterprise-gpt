@@ -186,9 +186,7 @@ public sealed partial class FileAgentDocumentReader(
         await _ctx.ConversationDocuments
             .AsNoTracking()
             .Where(x => x.ConversationId == conversationId
-                && !x.DateDeactivated.HasValue
-                && x.Conversation.UserId == userId
-                && !x.Conversation.DateDeactivated.HasValue)
+                && x.Conversation.UserId == userId)
             .OrderBy(x => x.DateCreated)
             .Select(x => new SourceRef(
                 x.Id, x.Name, x.Extension, x.MimeType, x.Path, x.Type == ConversationDocumentTypes.Generated))

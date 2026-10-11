@@ -40,7 +40,7 @@ public sealed class ConversationUsageTurnIntegrationTests(IntegrationTestFixture
         using var scope = _fixture.Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
-        var usage = await ctx.ConversationUsage
+        var usage = await ctx.ConversationUsage.IncludingDeactivated()
             .AsNoTracking()
             .Include(x => x.Turns)
             .SingleAsync(x => x.Id == usageId, TestContext.Current.CancellationToken);
@@ -92,7 +92,7 @@ public sealed class ConversationUsageTurnIntegrationTests(IntegrationTestFixture
         using var scope = _fixture.Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
-        Assert.Empty(await ctx.ConversationUsageTurns
+        Assert.Empty(await ctx.ConversationUsageTurns.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.ConversationUsageId == usageId)
             .ToListAsync(TestContext.Current.CancellationToken));

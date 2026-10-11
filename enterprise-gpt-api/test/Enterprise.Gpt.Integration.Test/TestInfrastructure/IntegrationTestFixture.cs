@@ -52,6 +52,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// </summary>
     public CustomWebApplicationFactory Factory { get; private set; } = null!;
 
+    private DbContextOptions<EnterpriseGptDbContext> _bareOptions = null!;
+
+    /// <summary>The connection string of the shared test database.</summary>
+    public string ConnectionString { get; private set; } = null!;
+
     /// <inheritdoc />
     public async ValueTask InitializeAsync()
     {
@@ -62,13 +67,22 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             InitialCatalog = "EnterpriseGptTests"
         }.ConnectionString;
 
+        ConnectionString = connectionString;
         Factory = new CustomWebApplicationFactory(connectionString);
+        _bareOptions = new DbContextOptionsBuilder<EnterpriseGptDbContext>()
+            .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(170))
+            .Options;
 
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
         await ctx.Database.EnsureCreatedAsync();
         await SeedTestUsersAsync(ctx);
     }
+
+    /// <summary>
+    /// A context on the test database without the production interceptors, so arranged stamps are stored as
+    /// stated rather than overwritten by the audit interceptor.
+    /// </summary>
+    public EnterpriseGptDbContext CreateContext() => new(_bareOptions);
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
@@ -91,8 +105,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetModelsAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         await ClearConversationUsageAsync(ctx, cancellationToken);
 
@@ -110,7 +123,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         // The rows it releases belong to whichever class ran before this one — every class using
         // this reset clears models but not conversations, so the leak is shared and the failure it
         // caused depended on class ordering, which is why it surfaced in CI and not locally.
-        await ctx.Conversations
+        await ctx.Conversations.IncludingDeactivated()
             .Where(x => x.ModelId != null && x.ModelId != KnownIds.SeedModelId)
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.ModelId, (Guid?)null), cancellationToken);
 
@@ -139,8 +152,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<Guid> AddModelAsync(
         string name, bool isDefault = false, bool deactivated = false, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var model = new Model
@@ -176,8 +188,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Model?> FindModelAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         return await ctx.Models
             .AsNoTracking()
@@ -193,22 +204,21 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetMcpServersAndPermissionsAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        await ctx.UserPermissions
+        await ctx.UserPermissions.IncludingDeactivated()
             .Where(x => x.UserId != TestUsers.AdminUserId || x.PermissionId != PermissionIds.Administrator)
             .ExecuteDeleteAsync(cancellationToken);
-        await ctx.Permissions
+        await ctx.Permissions.IncludingDeactivated()
             .Where(x => !_builtInPermissionIds.Contains(x.Id))
             .ExecuteDeleteAsync(cancellationToken);
-        await ctx.Permissions
+        await ctx.Permissions.IncludingDeactivated()
             .Where(x => _builtInPermissionIds.Contains(x.Id))
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         await ClearConversationUsageAsync(ctx, cancellationToken);
         // Before the servers they reference: the foreign key is NoAction, so a leftover credential
         // turns the reset into a constraint violation rather than a clean slate.
-        await ctx.UserMcpCredentials
+        await ctx.UserMcpCredentials.IncludingDeactivated()
             .ExecuteDeleteAsync(cancellationToken);
         await ctx.McpServers
             .ExecuteDeleteAsync(cancellationToken);
@@ -232,8 +242,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         string name, int authType = 1, string? scope = null, bool deactivated = false,
         bool withPermission = true, CancellationToken cancellationToken = default)
     {
-        using var serviceScope = Factory.Services.CreateScope();
-        var ctx = serviceScope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var server = new McpServer
@@ -288,8 +297,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<Guid> AddUserPermissionAsync(
         Guid userId, Guid permissionId, bool deactivated = false, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var grant = new UserPermission
@@ -320,8 +328,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<McpServer?> FindMcpServerAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         return await ctx.McpServers
             .AsNoTracking()
@@ -339,10 +346,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<UserMcpCredential?> FindUserMcpCredentialAsync(
         Guid userId, Guid mcpServerId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.UserMcpCredentials
+        return await ctx.UserMcpCredentials.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.UserId == userId && x.McpServerId == mcpServerId, cancellationToken);
     }
@@ -356,10 +362,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Permission?> FindPermissionAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.Permissions
+        return await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
@@ -373,10 +378,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when no linked permission exists.</returns>
     public async Task<Permission?> FindPermissionByMcpServerAsync(Guid mcpServerId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.Permissions
+        return await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.McpServerId == mcpServerId, cancellationToken);
     }
@@ -392,10 +396,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<List<UserPermission>> FindUserPermissionsAsync(
         Guid userId, Guid permissionId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.UserPermissions
+        return await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.UserId == userId && x.PermissionId == permissionId)
             .ToListAsync(cancellationToken);
@@ -410,14 +413,13 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetUsersAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        await ctx.UserPermissions.ExecuteDeleteAsync(cancellationToken);
-        await ctx.Permissions
+        await ctx.UserPermissions.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.Permissions.IncludingDeactivated()
             .Where(x => !_builtInPermissionIds.Contains(x.Id))
             .ExecuteDeleteAsync(cancellationToken);
-        await ctx.Permissions
+        await ctx.Permissions.IncludingDeactivated()
             .Where(x => _builtInPermissionIds.Contains(x.Id))
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         // The seeded system user owns the Administrator permission's audit columns, so it can
@@ -473,8 +475,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<Guid> AddPermissionAsync(
         string name, bool isDefault = false, bool deactivated = false, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var permission = new Permission
@@ -510,8 +511,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         string firstName, string lastName, string email, bool deactivated = false,
         CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var user = new User
@@ -540,10 +540,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<User?> FindUserAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         return await ctx.Users
+            .IncludingDeactivated()
             .AsNoTracking()
             .Include(u => u.UserPermissions)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -559,24 +559,23 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetConversationsAndDocumentsAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         // Ahead of the documents they hang off, on the same terms as the chunks: the summary tables
         // carry a foreign key to their document with no cascade behind it.
         await ClearDocumentSummariesAsync(ctx, cancellationToken);
         await ClearDocumentSheetsAsync(ctx, cancellationToken);
 
-        await ctx.ProjectDocumentChunks.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ProjectDocuments.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ConversationDocumentChunks.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ConversationDocuments.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentChunks.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocuments.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentChunks.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocuments.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
         // Ahead of the conversations it points at: the feedback projection carries a foreign key to
         // Conversation with no cascade behind it, exactly as the usage rows below do.
-        await ctx.MessageFeedback.ExecuteDeleteAsync(cancellationToken);
+        await ctx.MessageFeedback.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
         await ClearConversationUsageAsync(ctx, cancellationToken);
-        await ctx.Conversations.ExecuteDeleteAsync(cancellationToken);
-        await ctx.Projects.ExecuteDeleteAsync(cancellationToken);
+        await ctx.Conversations.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.Projects.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
 
         // Other test classes' resets clear grants wholesale, and the collection runs serially, so the
         // upload grants are restored here rather than assumed to have survived.
@@ -599,8 +598,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     private static async Task ClearDocumentSummariesAsync(
         EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
-        await ctx.ProjectDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ConversationDocumentSummaries.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentSummaries.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSummaries.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>
@@ -612,12 +611,12 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     private static async Task ClearDocumentSheetsAsync(
         EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
-        await ctx.ProjectDocumentSheetRows.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ProjectDocumentSheetColumns.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ProjectDocumentSheets.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ConversationDocumentSheetRows.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ConversationDocumentSheetColumns.ExecuteDeleteAsync(cancellationToken);
-        await ctx.ConversationDocumentSheets.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentSheetRows.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentSheetColumns.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ProjectDocumentSheets.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSheetRows.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSheetColumns.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationDocumentSheets.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>
@@ -629,18 +628,18 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     private static async Task ClearConversationUsageAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
-        await ctx.ConversationUsageMcpServers.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationUsageMcpServers.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
 
         // Tool calls nest through a self-referencing key, and a set-based delete gives no ordering
         // guarantee over one, so the parent links are broken before the rows go.
-        await ctx.ConversationUsageToolCalls
+        await ctx.ConversationUsageToolCalls.IncludingDeactivated()
             .Where(x => x.ParentId != null)
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.ParentId, (Guid?)null), cancellationToken);
-        await ctx.ConversationUsageToolCalls.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationUsageToolCalls.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
 
-        await ctx.ConversationUsageTurns.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationUsageTurns.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
 
-        await ctx.ConversationUsage.ExecuteDeleteAsync(cancellationToken);
+        await ctx.ConversationUsage.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>
@@ -681,8 +680,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         decimal? inputPricePerMillionTokens = null, decimal? outputPricePerMillionTokens = null,
         CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var usage = new ConversationUsage
         {
@@ -731,8 +729,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<Guid> AddConversationUsageWithToolCallsAsync(
         Guid conversationId, Guid modelId, Guid? mcpServerId = null, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var child = new ConversationUsageToolCall
@@ -830,10 +827,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<List<ConversationUsageToolCall>> GetConversationUsageToolCallsAsync(
         Guid usageId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ConversationUsageToolCalls
+        return await ctx.ConversationUsageToolCalls.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.ConversationUsageId == usageId)
             .OrderBy(x => x.Depth)
@@ -845,7 +841,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     {
         Guid[] userIds = [TestUsers.AdminUserId, TestUsers.RegularUserId];
 
-        var granted = await ctx.UserPermissions
+        var granted = await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.PermissionId == PermissionIds.UploadFile && userIds.Contains(x.UserId))
             .Select(x => x.UserId)
@@ -884,8 +880,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         Guid? userId = null, bool deactivated = false, Guid? projectId = null, Guid? modelId = null,
         string name = "Integration Conversation", CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
@@ -956,10 +951,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<MessageFeedback?> ReadMessageFeedbackAsync(
         Guid conversationId, Guid messageId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.MessageFeedback
+        return await ctx.MessageFeedback.IncludingDeactivated()
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 x => x.ConversationId == conversationId && x.MessageId == messageId, cancellationToken);
@@ -980,8 +974,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         string name = "Integration Project", Guid? userId = null, string? instructions = null,
         bool deactivated = false, bool isFavorite = false, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var project = new Project
@@ -1020,8 +1013,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         Guid conversationId, IReadOnlyList<string> names, Guid? userId = null,
         CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var now = DateTimeOffset.UtcNow;
         var documents = names
@@ -1074,8 +1066,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         ConversationDocumentTypes type = ConversationDocumentTypes.Uploaded,
         CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var document = new ConversationDocument
@@ -1126,8 +1117,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task AddConversationDocumentSheetAsync(
         Guid documentId, int sheetIndex, string sheetName, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
 
@@ -1185,8 +1175,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         bool rowsDeactivated = false,
         CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
 
@@ -1244,8 +1233,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<Guid> AddProjectDocumentSheetAsync(
         Guid documentId, SeedSheet sheet, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
 
@@ -1311,8 +1299,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         Guid projectId, string name, IReadOnlyList<SeedChunk> chunks, Guid? userId = null,
         CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
         var document = new ProjectDocument
@@ -1358,10 +1345,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Project?> FindProjectAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.Projects
+        return await ctx.Projects.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
@@ -1375,10 +1361,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Conversation?> FindConversationAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.Conversations
+        return await ctx.Conversations.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
@@ -1392,10 +1377,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<ProjectDocument?> FindProjectDocumentAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ProjectDocuments
+        return await ctx.ProjectDocuments.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
     }
@@ -1409,10 +1393,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<List<ProjectDocumentChunk>> FindProjectDocumentChunksAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ProjectDocumentChunks
+        return await ctx.ProjectDocumentChunks.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.ProjectDocumentId == documentId)
             .OrderBy(x => x.Index)
@@ -1428,10 +1411,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<List<ConversationDocumentChunk>> FindDocumentChunksAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ConversationDocumentChunks
+        return await ctx.ConversationDocumentChunks.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.ConversationDocumentId == documentId)
             .OrderBy(x => x.Index)
@@ -1447,10 +1429,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<List<ConversationDocumentSheet>> FindDocumentSheetsAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ConversationDocumentSheets
+        return await ctx.ConversationDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Include(x => x.Columns)
             .Include(x => x.Rows)
@@ -1468,10 +1449,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<ConversationDocument?> FindDocumentAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ConversationDocuments
+        return await ctx.ConversationDocuments.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
     }
@@ -1486,10 +1466,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<List<ConversationDocument>> FindConversationDocumentsAsync(
         Guid conversationId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        return await ctx.ConversationDocuments
+        return await ctx.ConversationDocuments.IncludingDeactivated()
             .AsNoTracking()
             .Where(x => x.ConversationId == conversationId)
             .ToListAsync(cancellationToken);
@@ -1504,10 +1483,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task RevokePermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
-        await ctx.UserPermissions
+        await ctx.UserPermissions.IncludingDeactivated()
             .Where(x => x.UserId == userId && x.PermissionId == permissionId)
             .ExecuteDeleteAsync(cancellationToken);
 
@@ -1572,12 +1550,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public async Task<Guid> AddDocumentSummaryAsync(
         Guid documentId, DocumentSources source, Guid modelId, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         var date = DateTimeOffset.UtcNow;
 
-        BaseDocumentSummary summary = source switch
+        BaseDocumentSummary<Guid> summary = source switch
         {
             DocumentSources.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
             DocumentSources.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
@@ -1609,17 +1586,16 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="source">Which table to read from.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
-    public async Task<BaseDocumentSummary?> FindDocumentSummaryAsync(
+    public async Task<BaseDocumentSummary<Guid>?> FindDocumentSummaryAsync(
         Guid id, DocumentSources source, CancellationToken cancellationToken = default)
     {
-        using var scope = Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
+        using var ctx = CreateContext();
 
         return source switch
         {
-            DocumentSources.Conversation => await ctx.ConversationDocumentSummaries
+            DocumentSources.Conversation => await ctx.ConversationDocumentSummaries.IncludingDeactivated()
                 .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken),
-            DocumentSources.Project => await ctx.ProjectDocumentSummaries
+            DocumentSources.Project => await ctx.ProjectDocumentSummaries.IncludingDeactivated()
                 .AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
         };

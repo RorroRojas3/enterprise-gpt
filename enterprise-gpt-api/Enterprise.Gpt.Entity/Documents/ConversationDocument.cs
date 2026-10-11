@@ -1,12 +1,10 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using Enterprise.Gpt.Common.Enums;
+﻿using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Conversations;
 
 namespace Enterprise.Gpt.Entity.Documents
 {
-    [Table(nameof(ConversationDocument), Schema = "Core")]
-    public class ConversationDocument : BaseDocument
+    public class ConversationDocument : BaseDocument<Guid>
     {
         public Guid ConversationId { get; set; }
 

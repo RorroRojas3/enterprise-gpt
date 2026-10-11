@@ -739,7 +739,7 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
     {
         using var scope = _fixture.Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
-        var service = new ReportService(ctx, Options.Create(options), NullLogger<ReportService>.Instance);
+        var service = new ReportService(ctx, Options.Create(options), NullLogger<ReportService>.Instance, TimeProvider.System);
 
         return await service.GetUsageReportAsync(
             _anchor.AddDays(-5), _anchor, groupBy, TestContext.Current.CancellationToken);

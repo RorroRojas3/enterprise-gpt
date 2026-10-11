@@ -3,7 +3,7 @@ using Enterprise.Gpt.Entity.Users;
 
 namespace Enterprise.Gpt.Entity.Permissions
 {
-    public class UserPermission : BaseModifiedByEntity
+    public class UserPermission : BaseModifiedByEntity<Guid>
     {
         public Guid UserId { get; set; }
 

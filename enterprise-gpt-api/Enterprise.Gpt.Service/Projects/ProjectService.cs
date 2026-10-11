@@ -4,6 +4,7 @@ using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Dto.Pagination;
 using Enterprise.Gpt.Dto.Projects;
 using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Repository.Sql.Constants;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Documents;
 using Enterprise.Gpt.Service.Exceptions;
@@ -143,7 +144,8 @@ public interface IProjectService
 /// </remarks>
 public class ProjectService(ILogger<ProjectService> logger,
     ITokenService tokenService,
-    EnterpriseGptDbContext ctx) : IProjectService
+    EnterpriseGptDbContext ctx,
+    TimeProvider timeProvider) : IProjectService
 {
     /// <summary>
     /// The wire-visible key for a name failure in the problem details <c>errors</c> dictionary.
@@ -154,6 +156,7 @@ public class ProjectService(ILogger<ProjectService> logger,
     private readonly ILogger<ProjectService> _logger = logger;
     private readonly ITokenService _tokenService = tokenService;
     private readonly EnterpriseGptDbContext _ctx = ctx;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <inheritdoc />
     public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
@@ -173,7 +176,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var query = _ctx.Projects
             .AsNoTracking()
-            .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+            .Where(x => x.UserId == userId);
 
         if (!string.IsNullOrWhiteSpace(name))
         {
@@ -258,7 +261,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         return await _ctx.Projects
             .AsNoTracking()
-            .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+            .Where(x => x.Id == id && x.UserId == userId)
             .Select(ProjectMapper.MapToProjectDtoExpression)
             .FirstOrDefaultAsync(cancellationToken) ?? throw LogAndCreateNotFound(id, userId);
     }
@@ -271,12 +274,9 @@ public class ProjectService(ILogger<ProjectService> logger,
         var userId = _tokenService.GetOid();
         await EnsureNameIsAvailableAsync(userId, request.Name, excludingProjectId: null, cancellationToken);
 
-        var date = DateTimeOffset.UtcNow;
         var project = request.FromCreateProjectActionDtoToProject();
         project.Id = Guid.NewGuid();
         project.UserId = userId;
-        project.DateCreated = date;
-        project.DateModified = date;
 
         _ctx.Add(project);
         await SaveTranslatingDuplicateNameAsync(request.Name, cancellationToken);
@@ -294,13 +294,12 @@ public class ProjectService(ILogger<ProjectService> logger,
         var userId = _tokenService.GetOid();
 
         var project = await _ctx.Projects
-            .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+            .Where(x => x.Id == id && x.UserId == userId)
             .FirstOrDefaultAsync(cancellationToken) ?? throw LogAndCreateNotFound(id, userId);
 
         await EnsureNameIsAvailableAsync(userId, request.Name, excludingProjectId: id, cancellationToken);
 
         request.FromUpdateProjectActionDtoToProject(project);
-        project.DateModified = DateTimeOffset.UtcNow;
 
         await SaveTranslatingDuplicateNameAsync(request.Name, cancellationToken);
 
@@ -321,7 +320,7 @@ public class ProjectService(ILogger<ProjectService> logger,
         // timestamp would put every client's copy out of step at the next fetch over a write that
         // changes nothing a listing renders.
         var rows = await _ctx.Projects
-            .Where(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue)
+            .Where(x => x.Id == id && x.UserId == userId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.IsFavorite, request.IsFavorite),
                 cancellationToken);
@@ -339,14 +338,14 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var exists = await _ctx.Projects
             .AsNoTracking()
-            .AnyAsync(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+            .AnyAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
 
         if (!exists)
         {
             throw LogAndCreateNotFound(id, userId);
         }
 
-        var date = DateTimeOffset.UtcNow;
+        var date = _timeProvider.GetUtcNow();
 
         // Eight separate ExecuteUpdate statements, so they need a transaction to be all-or-nothing:
         // a partial failure would otherwise leave conversations pointing at a deleted project, or
@@ -356,7 +355,7 @@ public class ProjectService(ILogger<ProjectService> logger,
         // Ahead of the chunks and the document itself, so a summary never outlives what it
         // summarizes.
         await _ctx.ProjectDocumentSummaries
-            .Where(s => s.ProjectDocument.ProjectId == id && !s.DateDeactivated.HasValue)
+            .Where(s => s.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.DateDeactivated, date)
                 .SetProperty(x => x.DateModified, date),
@@ -365,44 +364,38 @@ public class ProjectService(ILogger<ProjectService> logger,
         // Leaf first for the same reason: a live cell row under a dead sheet is the document's own
         // data, still readable.
         await _ctx.ProjectDocumentSheetRows
-            .Where(r => r.ProjectDocumentSheet.ProjectDocument.ProjectId == id && !r.DateDeactivated.HasValue)
+            .Where(r => r.ProjectDocumentSheet.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(r => r
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentSheetColumns
-            .Where(c => c.ProjectDocumentSheet.ProjectDocument.ProjectId == id && !c.DateDeactivated.HasValue)
+            .Where(c => c.ProjectDocumentSheet.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(c => c
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentSheets
-            .Where(s => s.ProjectDocument.ProjectId == id && !s.DateDeactivated.HasValue)
+            .Where(s => s.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentChunks
-            .Where(c => c.ProjectDocument.ProjectId == id && !c.DateDeactivated.HasValue)
+            .Where(c => c.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(c => c
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocuments
-            .Where(d => d.ProjectId == id && !d.DateDeactivated.HasValue)
+            .Where(d => d.ProjectId == id)
             .ExecuteUpdateAsync(d => d
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         // Released, not deleted: the conversations keep their own documents and transcripts and
-        // simply become standalone. Deactivated ones are cleared too, so a later restore cannot
-        // resurrect a link to a deleted project.
-        await _ctx.Conversations
-            .Where(s => s.ProjectId == id)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(x => x.ProjectId, (Guid?)null)
-                .SetProperty(x => x.DateModified, date),
-                cancellationToken);
+        // simply become standalone.
+        await ReleaseConversationsIncludingDeletedAsync(id, date, cancellationToken);
 
         await _ctx.Projects
             .Where(p => p.Id == id)
@@ -424,7 +417,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         return await _ctx.ProjectDocuments
             .AsNoTracking()
-            .Where(x => x.ProjectId == projectId && !x.DateDeactivated.HasValue)
+            .Where(x => x.ProjectId == projectId)
             .OrderByDescending(x => x.DateCreated)
             .Select(ProjectDocumentMapper.MapToProjectDocumentDtoExpression)
             .ToListAsync(cancellationToken);
@@ -438,7 +431,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         var exists = await _ctx.ProjectDocuments
             .AsNoTracking()
-            .AnyAsync(x => x.Id == documentId && x.ProjectId == projectId && !x.DateDeactivated.HasValue, cancellationToken);
+            .AnyAsync(x => x.Id == documentId && x.ProjectId == projectId, cancellationToken);
 
         if (!exists)
         {
@@ -446,37 +439,37 @@ public class ProjectService(ILogger<ProjectService> logger,
             throw new NotFoundException($"Document with id '{documentId}' was not found.");
         }
 
-        var date = DateTimeOffset.UtcNow;
+        var date = _timeProvider.GetUtcNow();
 
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
         await _ctx.ProjectDocumentSummaries
-            .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+            .Where(s => s.ProjectDocumentId == documentId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.DateDeactivated, date)
                 .SetProperty(x => x.DateModified, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentSheetRows
-            .Where(r => r.ProjectDocumentSheet.ProjectDocumentId == documentId && !r.DateDeactivated.HasValue)
+            .Where(r => r.ProjectDocumentSheet.ProjectDocumentId == documentId)
             .ExecuteUpdateAsync(r => r
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentSheetColumns
-            .Where(c => c.ProjectDocumentSheet.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+            .Where(c => c.ProjectDocumentSheet.ProjectDocumentId == documentId)
             .ExecuteUpdateAsync(c => c
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentSheets
-            .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+            .Where(s => s.ProjectDocumentId == documentId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
         await _ctx.ProjectDocumentChunks
-            .Where(c => c.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+            .Where(c => c.ProjectDocumentId == documentId)
             .ExecuteUpdateAsync(c => c
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
@@ -503,7 +496,7 @@ public class ProjectService(ILogger<ProjectService> logger,
     {
         var exists = await _ctx.Projects
             .AsNoTracking()
-            .AnyAsync(x => x.Id == projectId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+            .AnyAsync(x => x.Id == projectId && x.UserId == userId, cancellationToken);
 
         if (!exists)
         {
@@ -526,7 +519,6 @@ public class ProjectService(ILogger<ProjectService> logger,
             .AsNoTracking()
             .AnyAsync(x => x.UserId == userId
                 && x.Name == name
-                && !x.DateDeactivated.HasValue
                 && (!excludingProjectId.HasValue || x.Id != excludingProjectId.Value), cancellationToken);
 
         if (taken)
@@ -551,6 +543,10 @@ public class ProjectService(ILogger<ProjectService> logger,
         try
         {
             await _ctx.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConflictException("This project was changed by another request. Reload it and try again.", ex);
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
@@ -584,6 +580,19 @@ public class ProjectService(ILogger<ProjectService> logger,
             new ValidationFailure(NameProperty, $"A project named '{name}' already exists.")
         ]);
     }
+
+    /// <summary>
+    /// Detaches every conversation from a project, deactivated ones included, so a later restore cannot
+    /// resurrect a link to a deleted project.
+    /// </summary>
+    private Task<int> ReleaseConversationsIncludingDeletedAsync(Guid projectId, DateTimeOffset date, CancellationToken cancellationToken) =>
+        _ctx.Conversations
+            .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
+            .Where(s => s.ProjectId == projectId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.ProjectId, (Guid?)null)
+                .SetProperty(x => x.DateModified, date),
+                cancellationToken);
 
     private NotFoundException LogAndCreateNotFound(Guid projectId, Guid userId)
     {

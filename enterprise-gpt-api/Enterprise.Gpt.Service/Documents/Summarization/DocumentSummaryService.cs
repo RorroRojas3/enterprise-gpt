@@ -4,6 +4,7 @@ using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Documents;
 using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.Constants;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Conversations.Chat;
 using Enterprise.Gpt.Service.Documents.Retrieval;
@@ -15,6 +16,7 @@ using Enterprise.Gpt.Service.Options;
 using Enterprise.Gpt.Service.Prompts;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -176,7 +178,6 @@ public sealed class DocumentSummaryService(
             DocumentSources.Conversation => await _ctx.ConversationDocumentSummaries
                 .AsNoTracking()
                 .Where(x => x.ConversationDocumentId == documentId
-                    && !x.DateDeactivated.HasValue
                     && x.PromptVersion == version)
                 .Select(x => x.Text)
                 .FirstOrDefaultAsync(cancellationToken)
@@ -185,7 +186,6 @@ public sealed class DocumentSummaryService(
             DocumentSources.Project => await _ctx.ProjectDocumentSummaries
                 .AsNoTracking()
                 .Where(x => x.ProjectDocumentId == documentId
-                    && !x.DateDeactivated.HasValue
                     && x.PromptVersion == version)
                 .Select(x => x.Text)
                 .FirstOrDefaultAsync(cancellationToken)
@@ -315,8 +315,6 @@ public sealed class DocumentSummaryService(
         SummarizationRun run,
         CancellationToken cancellationToken)
     {
-        var date = DateTimeOffset.UtcNow;
-
         await using var scope = _scopeFactory.CreateAsyncScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
@@ -331,7 +329,7 @@ public sealed class DocumentSummaryService(
 
         if (existing is null)
         {
-            BaseDocumentSummary created = source switch
+            BaseDocumentSummary<Guid> created = source switch
             {
                 DocumentSources.Conversation => new ConversationDocumentSummary { ConversationDocumentId = documentId },
                 DocumentSources.Project => new ProjectDocumentSummary { ProjectDocumentId = documentId },
@@ -339,20 +337,33 @@ public sealed class DocumentSummaryService(
             };
 
             created.Id = Guid.NewGuid();
-            created.DateCreated = date;
-            Apply(created, run, date);
+            Apply(created, run);
 
             ctx.Add(created);
         }
         else
         {
-            Apply(existing, run, date);
+            Apply(existing, run);
         }
 
-        await BillCoreAsync(ctx, conversationId, run, date, cancellationToken).ConfigureAwait(false);
+        await BillCoreAsync(ctx, conversationId, run, cancellationToken).ConfigureAwait(false);
 
-        await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException ex) when (ex is DbUpdateConcurrencyException || IsUniqueViolation(ex))
+        {
+            // Another run wrote the summary first, as an update or as the first insert; its text stands,
+            // and this run is still billed.
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation(
+                "A concurrent run already rewrote the summary of document {DocumentId}; this run's text was discarded",
+                documentId);
+            await BillAsync(conversationId, run, cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         _logger.LogInformation(
             "Summarized document {DocumentId} ({Source}) for conversation {ConversationId} in {CallCount} call(s), "
@@ -366,15 +377,13 @@ public sealed class DocumentSummaryService(
     /// </summary>
     private async Task BillAsync(Guid conversationId, SummarizationRun run, CancellationToken cancellationToken)
     {
-        var date = DateTimeOffset.UtcNow;
-
         await using var scope = _scopeFactory.CreateAsyncScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
         await using var transaction = await ctx.Database
             .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        await BillCoreAsync(ctx, conversationId, run, date, cancellationToken).ConfigureAwait(false);
+        await BillCoreAsync(ctx, conversationId, run, cancellationToken).ConfigureAwait(false);
 
         await ctx.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -394,7 +403,6 @@ public sealed class DocumentSummaryService(
         EnterpriseGptDbContext ctx,
         Guid conversationId,
         SummarizationRun run,
-        DateTimeOffset date,
         CancellationToken cancellationToken)
     {
         // Read against run.ModelId rather than resolved from configuration a second time, so the
@@ -412,12 +420,7 @@ public sealed class DocumentSummaryService(
             .ConfigureAwait(false)
             ?? throw new SummarizerNotConfiguredException(run.ModelId);
 
-        var owner = await ctx.Conversations
-            .AsNoTracking()
-            .Where(x => x.Id == conversationId)
-            .Select(x => (Guid?)x.UserId)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false)
+        var owner = await ReadConversationOwnerIncludingDeletedAsync(ctx, conversationId, cancellationToken).ConfigureAwait(false)
             ?? throw Invalid("summary", "The conversation this summary was requested from no longer exists.");
 
         await ctx.Conversations
@@ -444,31 +447,43 @@ public sealed class DocumentSummaryService(
             // where zero would say "transcribed nothing".
             ContextTokens = null,
             InputPricePerMillionTokens = model.InputPricePerMillionTokens,
-            OutputPricePerMillionTokens = model.OutputPricePerMillionTokens,
-            DateCreated = date
+            OutputPricePerMillionTokens = model.OutputPricePerMillionTokens
         });
     }
 
-    private static async Task<BaseDocumentSummary?> ReadLiveRowAsync(
+    /// <summary>
+    /// The conversation's owner, deactivated or not: the run is already paid for, so a conversation deleted
+    /// mid-turn must still carry its usage row.
+    /// </summary>
+    private static Task<Guid?> ReadConversationOwnerIncludingDeletedAsync(
+        EnterpriseGptDbContext ctx, Guid conversationId, CancellationToken cancellationToken) =>
+        ctx.Conversations
+            .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
+            .AsNoTracking()
+            .Where(x => x.Id == conversationId)
+            .Select(x => (Guid?)x.UserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static async Task<BaseDocumentSummary<Guid>?> ReadLiveRowAsync(
         EnterpriseGptDbContext ctx,
         Guid documentId,
         DocumentSources source,
         CancellationToken cancellationToken) => source switch
         {
             DocumentSources.Conversation => await ctx.ConversationDocumentSummaries
-                .Where(x => x.ConversationDocumentId == documentId && !x.DateDeactivated.HasValue)
+                .Where(x => x.ConversationDocumentId == documentId)
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false),
 
             DocumentSources.Project => await ctx.ProjectDocumentSummaries
-                .Where(x => x.ProjectDocumentId == documentId && !x.DateDeactivated.HasValue)
+                .Where(x => x.ProjectDocumentId == documentId)
                 .FirstOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false),
 
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
         };
 
-    private static void Apply(BaseDocumentSummary summary, SummarizationRun run, DateTimeOffset date)
+    private static void Apply(BaseDocumentSummary<Guid> summary, SummarizationRun run)
     {
         summary.Text = run.Summary;
         summary.ModelId = run.ModelId;
@@ -479,7 +494,6 @@ public sealed class DocumentSummaryService(
         summary.ModelCallCount = run.ModelCallCount;
         summary.MapUnitCount = run.MapUnitCount;
         summary.CollapsePasses = run.CollapsePasses;
-        summary.DateModified = date;
     }
 
     /// <summary>
@@ -488,4 +502,8 @@ public sealed class DocumentSummaryService(
     /// </summary>
     private static ValidationException Invalid(string property, string message) =>
         new([new ValidationFailure(property, message)]);
+
+    /// <summary>Whether the filtered one-live-summary-per-document index rejected an insert.</summary>
+    private static bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is SqlException { Number: 2601 or 2627 };
 }

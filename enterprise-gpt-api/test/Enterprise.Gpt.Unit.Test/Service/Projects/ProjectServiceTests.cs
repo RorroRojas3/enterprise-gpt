@@ -30,7 +30,8 @@ public sealed class ProjectServiceTests : IDisposable
         _service = new ProjectService(
             NullLogger<ProjectService>.Instance,
             _tokenService,
-            _fixture.Context);
+            _fixture.Context,
+            TimeProvider.System);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -119,7 +120,7 @@ public sealed class ProjectServiceTests : IDisposable
     {
         using var ctx = _fixture.CreateContext();
 
-        var sheets = await ctx.ProjectDocumentSheets
+        var sheets = await ctx.ProjectDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Include(x => x.Columns)
             .Include(x => x.Rows)
@@ -566,7 +567,7 @@ public sealed class ProjectServiceTests : IDisposable
             CreateRequest(instructions: "Cite sources."), TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var project = await ctx.Projects.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        var project = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(result.Id, project.Id);
         Assert.Equal(KnownIds.SeedUserId, project.UserId);
@@ -629,7 +630,7 @@ public sealed class ProjectServiceTests : IDisposable
         Assert.Equal("Renamed Project", result.Name);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
         Assert.Equal("Renamed Project", stored.Name);
         Assert.Equal("An updated description.", stored.Description);
         Assert.Equal("New instructions.", stored.Instructions);
@@ -685,7 +686,7 @@ public sealed class ProjectServiceTests : IDisposable
         await _service.UpdateProjectAsync(project.Id, UpdateRequest(), TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
         Assert.True(stored.IsFavorite);
     }
     #endregion
@@ -700,7 +701,7 @@ public sealed class ProjectServiceTests : IDisposable
             project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
         Assert.True(stored.IsFavorite);
     }
 
@@ -714,7 +715,7 @@ public sealed class ProjectServiceTests : IDisposable
             project.Id, new SetProjectFavoriteActionDto { IsFavorite = false }, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
         Assert.False(stored.IsFavorite);
     }
 
@@ -730,7 +731,7 @@ public sealed class ProjectServiceTests : IDisposable
             project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
         Assert.Equal(before, stored.DateModified);
     }
 
@@ -745,7 +746,7 @@ public sealed class ProjectServiceTests : IDisposable
                 project.Id, new SetProjectFavoriteActionDto { IsFavorite = true }, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken);
         Assert.False(stored.IsFavorite);
     }
 
@@ -785,10 +786,10 @@ public sealed class ProjectServiceTests : IDisposable
         await _service.DeactivateProjectAsync(project.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        Assert.NotNull((await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
-        Assert.NotNull((await ctx.ProjectDocuments.AsNoTracking().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.NotNull((await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.NotNull((await ctx.ProjectDocuments.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken)).DateDeactivated);
         Assert.All(
-            await ctx.ProjectDocumentChunks.AsNoTracking().Where(x => x.ProjectDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
+            await ctx.ProjectDocumentChunks.IncludingDeactivated().AsNoTracking().Where(x => x.ProjectDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
             chunk => Assert.NotNull(chunk.DateDeactivated));
         Assert.True(await SheetsAreDeactivatedAsync(document.Id));
     }
@@ -804,8 +805,31 @@ public sealed class ProjectServiceTests : IDisposable
         await _service.DeactivateProjectAsync(project.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.Conversations.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
         Assert.Null(stored.DateDeactivated);
+        Assert.Null(stored.ProjectId);
+    }
+
+    /// <summary>
+    /// A deleted conversation is released too, so restoring it later cannot resurrect a link to a deleted project.
+    /// </summary>
+    [Fact]
+    public async Task DeactivateProjectAsync_DeactivatedConversationInTheProject_IsReleasedToo()
+    {
+        var project = await AddProjectAsync();
+        var conversation = await AddConversationAsync(projectId: project.Id);
+        using (var arrange = _fixture.CreateContext())
+        {
+            await arrange.Conversations.IncludingDeactivated()
+                .Where(x => x.Id == conversation.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+        }
+
+        await _service.DeactivateProjectAsync(project.Id, TestContext.Current.CancellationToken);
+
+        using var ctx = _fixture.CreateContext();
+        var stored = await ctx.Conversations.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
+        Assert.NotNull(stored.DateDeactivated);
         Assert.Null(stored.ProjectId);
     }
 
@@ -820,9 +844,9 @@ public sealed class ProjectServiceTests : IDisposable
         await _service.DeactivateProjectAsync(project.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        Assert.Null((await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == untouched.Id, TestContext.Current.CancellationToken)).DateDeactivated);
-        Assert.Null((await ctx.ProjectDocuments.AsNoTracking().SingleAsync(x => x.Id == untouchedDocument.Id, TestContext.Current.CancellationToken)).DateDeactivated);
-        Assert.Equal(untouched.Id, (await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == untouchedConversation.Id, TestContext.Current.CancellationToken)).ProjectId);
+        Assert.Null((await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == untouched.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.Null((await ctx.ProjectDocuments.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == untouchedDocument.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.Equal(untouched.Id, (await ctx.Conversations.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == untouchedConversation.Id, TestContext.Current.CancellationToken)).ProjectId);
     }
 
     [Fact]
@@ -836,8 +860,8 @@ public sealed class ProjectServiceTests : IDisposable
             () => _service.DeactivateProjectAsync(project.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        Assert.Null((await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
-        Assert.False(await ctx.ProjectDocuments.AsNoTracking().AnyAsync(x => x.DateDeactivated.HasValue, TestContext.Current.CancellationToken));
+        Assert.Null((await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.False(await ctx.ProjectDocuments.IncludingDeactivated().AsNoTracking().AnyAsync(x => x.DateDeactivated.HasValue, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -899,13 +923,13 @@ public sealed class ProjectServiceTests : IDisposable
         await _service.DeactivateProjectDocumentAsync(project.Id, document.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        Assert.NotNull((await ctx.ProjectDocuments.AsNoTracking().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.NotNull((await ctx.ProjectDocuments.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken)).DateDeactivated);
         Assert.All(
-            await ctx.ProjectDocumentChunks.AsNoTracking().ToListAsync(TestContext.Current.CancellationToken),
+            await ctx.ProjectDocumentChunks.IncludingDeactivated().AsNoTracking().ToListAsync(TestContext.Current.CancellationToken),
             chunk => Assert.NotNull(chunk.DateDeactivated));
         Assert.True(await SheetsAreDeactivatedAsync(document.Id));
         // The project itself is untouched.
-        Assert.Null((await ctx.Projects.AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
+        Assert.Null((await ctx.Projects.IncludingDeactivated().AsNoTracking().SingleAsync(x => x.Id == project.Id, TestContext.Current.CancellationToken)).DateDeactivated);
     }
 
     [Fact]

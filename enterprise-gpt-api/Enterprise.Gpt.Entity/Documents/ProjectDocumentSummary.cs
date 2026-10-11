@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 
 namespace Enterprise.Gpt.Entity.Documents;
@@ -11,8 +10,7 @@ namespace Enterprise.Gpt.Entity.Documents;
 /// project, so the first conversation to summarize it pays and every later one reads the same row
 /// for free.
 /// </remarks>
-[Table(nameof(ProjectDocumentSummary), Schema = "Core")]
-public class ProjectDocumentSummary : BaseDocumentSummary
+public class ProjectDocumentSummary : BaseDocumentSummary<Guid>
 {
     /// <summary>The document this summarizes.</summary>
     public Guid ProjectDocumentId { get; set; }

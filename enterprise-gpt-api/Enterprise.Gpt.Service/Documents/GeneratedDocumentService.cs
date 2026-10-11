@@ -1,9 +1,11 @@
 using System.Collections.Frozen;
+using Enterprise.Gpt.Common.Constants.Documents;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Conversations;
 using Enterprise.Gpt.Entity.Documents;
 using Enterprise.Gpt.Repository.Blob;
 using Enterprise.Gpt.Repository.Blob.Options;
+using Enterprise.Gpt.Repository.Sql.Constants;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Documents.Exceptions;
 using Enterprise.Gpt.Service.Documents.Models;
@@ -55,13 +57,15 @@ public sealed class GeneratedDocumentService(
     IDocumentStore documentStore,
     IOptionsMonitor<BlobStorageOptions> storageOptions,
     IOptions<DocumentOptions> options,
-    IServiceScopeFactory scopeFactory) : IGeneratedDocumentService
+    IServiceScopeFactory scopeFactory,
+    TimeProvider timeProvider) : IGeneratedDocumentService
 {
     private readonly ILogger<GeneratedDocumentService> _logger = logger;
     private readonly IDocumentStore _documentStore = documentStore;
     private readonly IOptionsMonitor<BlobStorageOptions> _storageOptions = storageOptions;
     private readonly DocumentOptions _options = options.Value;
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <summary>
     /// The formats this platform produces. A runaway script writing anything else never becomes a
@@ -137,12 +141,7 @@ public sealed class GeneratedDocumentService(
             await using var scope = _scopeFactory.CreateAsyncScope();
             var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
-            var path = await ctx.ConversationDocuments
-                .AsNoTracking()
-                .Where(x => x.Id == documentId && x.Type == ConversationDocumentTypes.Generated)
-                .Select(x => x.Path)
-                .FirstOrDefaultAsync(CancellationToken.None)
-                .ConfigureAwait(false);
+            var path = await FindGeneratedPathIncludingDeactivatedAsync(ctx, documentId).ConfigureAwait(false);
 
             if (path is null)
             {
@@ -152,9 +151,9 @@ public sealed class GeneratedDocumentService(
             // The row first: a row pointing at a blob that is gone reads to every listing as a file
             // that will not download, where a blob with no row is merely unreferenced.
             await ctx.ConversationDocuments
-                .Where(x => x.Id == documentId && !x.DateDeactivated.HasValue)
+                .Where(x => x.Id == documentId)
                 .ExecuteUpdateAsync(
-                    x => x.SetProperty(d => d.DateDeactivated, DateTimeOffset.UtcNow), CancellationToken.None)
+                    x => x.SetProperty(d => d.DateDeactivated, _timeProvider.GetUtcNow()), CancellationToken.None)
                 .ConfigureAwait(false);
 
             await TryDeleteBlobAsync(path, documentId).ConfigureAwait(false);
@@ -193,16 +192,13 @@ public sealed class GeneratedDocumentService(
         var owned = await ctx.Conversations
             .AsNoTracking()
             .AnyAsync(x => x.Id == request.ConversationId
-                && x.UserId == request.UserId
-                && !x.DateDeactivated.HasValue, CancellationToken.None)
+                && x.UserId == request.UserId, CancellationToken.None)
             .ConfigureAwait(false);
 
         if (!owned)
         {
             throw new NotFoundException($"Conversation with id '{request.ConversationId}' was not found.");
         }
-
-        var date = DateTimeOffset.UtcNow;
 
         ctx.Add(new ConversationDocument
         {
@@ -214,9 +210,7 @@ public sealed class GeneratedDocumentService(
             Extension = extension,
             MimeType = mimeType,
             Size = request.Content.Length,
-            Path = blobPath,
-            DateCreated = date,
-            DateModified = date
+            Path = blobPath
         });
 
         await ctx.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
@@ -227,7 +221,7 @@ public sealed class GeneratedDocumentService(
         // row's rowversion between the insert and the re-check.
         var stillActive = await ctx.Conversations
             .AsNoTracking()
-            .AnyAsync(x => x.Id == request.ConversationId && !x.DateDeactivated.HasValue, CancellationToken.None)
+            .AnyAsync(x => x.Id == request.ConversationId, CancellationToken.None)
             .ConfigureAwait(false);
 
         if (stillActive)
@@ -236,8 +230,8 @@ public sealed class GeneratedDocumentService(
         }
 
         await ctx.ConversationDocuments
-            .Where(d => d.Id == documentId && !d.DateDeactivated.HasValue)
-            .ExecuteUpdateAsync(d => d.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), CancellationToken.None)
+            .Where(d => d.Id == documentId)
+            .ExecuteUpdateAsync(d => d.SetProperty(x => x.DateDeactivated, _timeProvider.GetUtcNow()), CancellationToken.None)
             .ConfigureAwait(false);
 
         throw new NotFoundException($"Conversation with id '{request.ConversationId}' was not found.");
@@ -267,8 +261,20 @@ public sealed class GeneratedDocumentService(
     {
         var name = Path.GetFileName(fileName.Trim());
 
-        return name.Length > 256 ? name[^256..] : name;
+        return name.Length > DocumentLimits.NameMaxLength ? name[^DocumentLimits.NameMaxLength..] : name;
     }
+
+    /// <summary>
+    /// The blob path of a generated document, deactivated or not: a cascade may already have deactivated
+    /// the row, and its blob still has to go.
+    /// </summary>
+    private static Task<string?> FindGeneratedPathIncludingDeactivatedAsync(EnterpriseGptDbContext ctx, Guid documentId) =>
+        ctx.ConversationDocuments
+            .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
+            .AsNoTracking()
+            .Where(x => x.Id == documentId && x.Type == ConversationDocumentTypes.Generated)
+            .Select(x => x.Path)
+            .FirstOrDefaultAsync(CancellationToken.None);
 
     /// <summary>Removes a blob whose row never landed. Never throws — the caller is already failing.</summary>
     private async Task TryDeleteBlobAsync(string blobPath, Guid documentId)

@@ -5,9 +5,11 @@ using Enterprise.Gpt.Dto.Pagination;
 using Enterprise.Gpt.Dto.Users;
 using Enterprise.Gpt.Entity.Permissions;
 using Enterprise.Gpt.Entity.Users;
+using Enterprise.Gpt.Repository.Sql.Constants;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Extensions;
 using Enterprise.Gpt.Service.Security;
 using Enterprise.Gpt.Service.Sorting;
 using Enterprise.Gpt.Service.Sorting.Models;
@@ -110,7 +112,8 @@ namespace Enterprise.Gpt.Service.Users
         ITokenService tokenService,
         IGraphService graphService,
         EnterpriseGptDbContext ctx,
-        IUserPermissionCache permissionCache) : IUserService
+        IUserPermissionCache permissionCache,
+        TimeProvider timeProvider) : IUserService
     {
         /// <summary>
         /// The wire-visible key a rejected <c>?permissionId=</c> is reported under: the query-parameter
@@ -123,6 +126,7 @@ namespace Enterprise.Gpt.Service.Users
         private readonly IGraphService _graphService = graphService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
         private readonly IUserPermissionCache _permissionCache = permissionCache;
+        private readonly TimeProvider _timeProvider = timeProvider;
 
         /// <inheritdoc />
         public async Task<(UserDto User, bool Created)> GetOrCreateCurrentUserAsync(CancellationToken cancellationToken = default)
@@ -150,22 +154,19 @@ namespace Enterprise.Gpt.Service.Users
             }
 
             var graphUser = await _graphService.GetUserAsync(oid, cancellationToken);
-            var date = DateTimeOffset.UtcNow;
 
             var newUser = new User
             {
                 Id = oid,
                 FirstName = graphUser.GivenName ?? string.Empty,
                 LastName = graphUser.Surname ?? string.Empty,
-                Email = ResolveEmail(graphUser, oid),
-                DateCreated = date,
-                DateModified = date
+                Email = ResolveEmail(graphUser, oid)
             };
 
             // Loaded tracked (not AsNoTracking) so each grant can carry the Permission navigation,
             // letting MapToUserDto resolve names without a second round-trip.
             var defaultPermissions = await _ctx.Permissions
-                .Where(p => p.IsDefault && !p.DateDeactivated.HasValue)
+                .Where(p => p.IsDefault)
                 .ToListAsync(cancellationToken);
 
             foreach (var permission in defaultPermissions)
@@ -173,7 +174,7 @@ namespace Enterprise.Gpt.Service.Users
                 // The audit columns point at the user being created. EF orders the User insert
                 // ahead of its grants in the same SaveChangesAsync, so the self-referencing
                 // CreatedById/ModifiedById foreign keys resolve.
-                AddGrant(newUser, permission, grantedBy: oid, date);
+                AddGrant(newUser, permission, grantedBy: oid);
             }
 
             _ctx.Add(newUser);
@@ -245,7 +246,7 @@ namespace Enterprise.Gpt.Service.Users
             if (permissionId.HasValue)
             {
                 query = query.Where(x => x.UserPermissions
-                    .Any(grant => grant.PermissionId == permissionId.Value && !grant.DateDeactivated.HasValue));
+                    .Any(grant => grant.PermissionId == permissionId.Value));
             }
 
             var totalCount = await query.CountAsync(cancellationToken);
@@ -278,7 +279,7 @@ namespace Enterprise.Gpt.Service.Users
         private async Task EnsurePermissionIsFilterableAsync(Guid permissionId, CancellationToken cancellationToken)
         {
             var exists = await _ctx.Permissions
-                .AnyAsync(x => x.Id == permissionId && !x.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(x => x.Id == permissionId, cancellationToken);
 
             if (!exists)
             {
@@ -361,7 +362,7 @@ namespace Enterprise.Gpt.Service.Users
             // carry live grants, and re-granting one would violate the filtered unique index on
             // (UserId, PermissionId) WHERE DateDeactivated IS NULL.
             var existing = await _ctx.Users
-                .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                .Include(u => u.UserPermissions)
                     .ThenInclude(p => p.Permission)
                 .FirstOrDefaultAsync(u => u.Id == oid, cancellationToken);
 
@@ -379,16 +380,14 @@ namespace Enterprise.Gpt.Service.Users
             var permissions = await ResolveGrantablePermissionsAsync(permissionIds, includeDefaults: true, cancellationToken);
 
             var adminOid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
 
             // The primary key is the object id, so a previously deactivated row must be revived
             // rather than re-inserted.
-            var user = existing ?? new User { Id = oid, DateCreated = date };
+            var user = existing ?? new User { Id = oid };
             user.FirstName = graphUser.GivenName ?? string.Empty;
             user.LastName = graphUser.Surname ?? string.Empty;
             user.Email = ResolveEmail(graphUser, oid);
             user.DateDeactivated = null;
-            user.DateModified = date;
 
             if (existing is null)
             {
@@ -399,11 +398,11 @@ namespace Enterprise.Gpt.Service.Users
             var granted = 0;
             foreach (var permission in permissions.Where(p => !alreadyGranted.Contains(p.Id)))
             {
-                AddGrant(user, permission, grantedBy: adminOid, date);
+                AddGrant(user, permission, grantedBy: adminOid);
                 granted++;
             }
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"User '{oid}' was changed by another request. Reload it and try again.", cancellationToken);
 
             // Invalidated rather than Set: the revive path assembles this set by diffing, and a cold
             // entry that reloads on the target user's next request is strictly safer. It also clears
@@ -420,7 +419,7 @@ namespace Enterprise.Gpt.Service.Users
         public async Task<UserDto> UpdateUserAsync(Guid id, UpdateUserActionDto request, CancellationToken cancellationToken = default)
         {
             var user = await _ctx.Users
-                .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                .Include(u => u.UserPermissions)
                     .ThenInclude(p => p.Permission)
                 .FirstOrDefaultAsync(x => x.Id == id && !x.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException("User not found.");
@@ -430,10 +429,9 @@ namespace Enterprise.Gpt.Service.Users
 
             EnsureAdministratorNotSelfRevoked(id, oid, user, requestedIds);
 
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             request.FromUpdateUserActionDtoToUser(user);
-            user.DateModified = date;
 
             // Diff rather than revoke-and-regrant so unchanged grants keep their original
             // DateCreated/CreatedById, preserving who first granted each permission.
@@ -442,7 +440,6 @@ namespace Enterprise.Gpt.Service.Users
             foreach (var grant in user.UserPermissions.Where(p => !requestedIds.Contains(p.PermissionId)))
             {
                 grant.DateDeactivated = date;
-                grant.DateModified = date;
                 grant.ModifiedById = oid;
             }
 
@@ -451,12 +448,12 @@ namespace Enterprise.Gpt.Service.Users
 
             foreach (var permission in permissionsToGrant)
             {
-                AddGrant(user, permission, grantedBy: oid, date);
+                AddGrant(user, permission, grantedBy: oid);
             }
 
             // Tracked entities throughout, so the profile edit and the whole permission diff land
             // in one atomic save.
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"User '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             _permissionCache.Invalidate(id);
 
@@ -479,14 +476,13 @@ namespace Enterprise.Gpt.Service.Users
             }
 
             var user = await _ctx.Users
-                .Include(u => u.UserPermissions.Where(p => !p.DateDeactivated.HasValue))
+                .Include(u => u.UserPermissions)
                 .FirstOrDefaultAsync(x => x.Id == id && !x.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException("User not found.");
 
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             user.DateDeactivated = date;
-            user.DateModified = date;
 
             // Grants must deactivate with the user: authorization runs purely on Core.UserPermission
             // and never checks whether the user is still active, so leaving a deactivated
@@ -494,11 +490,10 @@ namespace Enterprise.Gpt.Service.Users
             foreach (var grant in user.UserPermissions)
             {
                 grant.DateDeactivated = date;
-                grant.DateModified = date;
                 grant.ModifiedById = oid;
             }
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"User '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             // The cache stores grants, not user state, so this eviction is half of what actually
             // removes a deactivated administrator's access — the grant cascade above is the other.
@@ -563,19 +558,13 @@ namespace Enterprise.Gpt.Service.Users
         /// </remarks>
         private async Task<bool> ReconcileDefaultPermissionsAsync(Guid oid, CancellationToken cancellationToken)
         {
-            var missing = await _ctx.Permissions
-                .Where(p => p.IsDefault
-                    && !p.DateDeactivated.HasValue
-                    && !p.UserPermissions.Any(up => up.UserId == oid))
-                .Select(p => p.Id)
-                .ToListAsync(cancellationToken);
+            var missing = await FindDefaultPermissionsNeverGrantedIncludingRevokedAsync(oid, cancellationToken);
 
             if (missing.Count == 0)
             {
                 return false;
             }
 
-            var date = DateTimeOffset.UtcNow;
             foreach (var permissionId in missing)
             {
                 // Built without the Permission navigation because there is no tracked User to hang it off
@@ -585,9 +574,7 @@ namespace Enterprise.Gpt.Service.Users
                     Id = Guid.NewGuid(),
                     UserId = oid,
                     PermissionId = permissionId,
-                    DateCreated = date,
                     CreatedById = oid,
-                    DateModified = date,
                     ModifiedById = oid
                 });
             }
@@ -632,6 +619,19 @@ namespace Enterprise.Gpt.Service.Users
         }
 
         /// <summary>
+        /// The active default permissions the user has never held, counting a revoked grant as held.
+        /// </summary>
+        /// <remarks>The filter is lifted so a revoked grant's soft-deleted row still blocks a re-grant.</remarks>
+        private Task<List<Guid>> FindDefaultPermissionsNeverGrantedIncludingRevokedAsync(Guid oid, CancellationToken cancellationToken) =>
+            _ctx.Permissions
+                .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
+                .Where(p => p.IsDefault
+                    && !p.DateDeactivated.HasValue
+                    && !p.UserPermissions.Any(up => up.UserId == oid))
+                .Select(p => p.Id)
+                .ToListAsync(cancellationToken);
+
+        /// <summary>
         /// Creates an active grant of <paramref name="permission"/> for <paramref name="user"/> and
         /// tracks it as an insert. The explicit <c>Add</c> is required, not redundant: when the
         /// user already exists, EF discovers the grant through the collection navigation and infers
@@ -639,7 +639,7 @@ namespace Enterprise.Gpt.Service.Users
         /// a row that does not exist and fail the save with a concurrency exception. The grant is
         /// also attached to the navigation so the caller can map the result without re-querying.
         /// </summary>
-        private void AddGrant(User user, Permission permission, Guid grantedBy, DateTimeOffset date)
+        private void AddGrant(User user, Permission permission, Guid grantedBy)
         {
             var grant = new UserPermission
             {
@@ -647,9 +647,7 @@ namespace Enterprise.Gpt.Service.Users
                 UserId = user.Id,
                 PermissionId = permission.Id,
                 Permission = permission,
-                DateCreated = date,
                 CreatedById = grantedBy,
-                DateModified = date,
                 ModifiedById = grantedBy
             };
 
@@ -672,8 +670,7 @@ namespace Enterprise.Gpt.Service.Users
             }
 
             var permissions = await _ctx.Permissions
-                .Where(p => !p.DateDeactivated.HasValue
-                    && (permissionIds.Contains(p.Id) || (includeDefaults && p.IsDefault)))
+                .Where(p => (permissionIds.Contains(p.Id) || (includeDefaults && p.IsDefault)))
                 .ToListAsync(cancellationToken);
 
             // Cast to Guid? so the "nothing missing" case is null rather than Guid.Empty, which is

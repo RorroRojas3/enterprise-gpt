@@ -33,7 +33,8 @@ public sealed class UserServiceTests : IDisposable
             _tokenService,
             _graphService,
             _fixture.Context,
-            _permissionCache);
+            _permissionCache,
+            TimeProvider.System);
     }
 
     public void Dispose()
@@ -137,6 +138,7 @@ public sealed class UserServiceTests : IDisposable
     {
         using var ctx = _fixture.CreateContext();
         return await ctx.Users
+            .IncludingDeactivated()
             .AsNoTracking()
             .Include(u => u.UserPermissions)
             .FirstOrDefaultAsync(x => x.Id == id, TestContext.Current.CancellationToken);
@@ -149,7 +151,7 @@ public sealed class UserServiceTests : IDisposable
     private async Task DeactivateSeededDefaultsAsync()
     {
         using var ctx = _fixture.CreateContext();
-        await ctx.Permissions
+        await ctx.Permissions.IncludingDeactivated()
             .Where(p => p.IsDefault)
             .ExecuteUpdateAsync(p => p.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow),
                 TestContext.Current.CancellationToken);
@@ -213,7 +215,7 @@ public sealed class UserServiceTests : IDisposable
 
         using (var ctx = _fixture.CreateContext())
         {
-            await ctx.UserPermissions
+            await ctx.UserPermissions.IncludingDeactivated()
                 .Where(x => x.UserId == oid && x.PermissionId == KnownIds.UploadFilePermissionId)
                 .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, DateTimeOffset.UtcNow),
                     TestContext.Current.CancellationToken);
@@ -844,7 +846,8 @@ public sealed class UserServiceTests : IDisposable
             _tokenService,
             _graphService,
             _fixture.Context,
-            cache);
+            cache,
+            TimeProvider.System);
 
         _graphService.GetUserAsync(oid, Arg.Any<CancellationToken>()).Returns(_ =>
         {
@@ -872,7 +875,7 @@ public sealed class UserServiceTests : IDisposable
         await _service.DeactivateUserAsync(targetOid, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stillAdmin = await ctx.UserPermissions
+        var stillAdmin = await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .AnyAsync(p => p.UserId == targetOid
                 && p.PermissionId == KnownIds.AdministratorPermissionId

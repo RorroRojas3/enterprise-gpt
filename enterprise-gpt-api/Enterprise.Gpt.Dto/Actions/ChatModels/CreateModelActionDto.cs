@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Constants.ChatModels;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.ChatModels;
@@ -60,13 +61,13 @@ public class CreateModelActionDtoValidator : AbstractValidator<CreateModelAction
             .NotEmpty();
         RuleFor(x => x.Name)
             .NotEmpty()
-            .MaximumLength(256);
+            .MaximumLength(ModelLimits.NameMaxLength);
         RuleFor(x => x.DeploymentName)
             .NotEmpty()
-            .MaximumLength(512);
+            .MaximumLength(ModelLimits.DeploymentNameMaxLength);
         RuleFor(x => x.Description)
             .NotEmpty()
-            .MaximumLength(1024);
+            .MaximumLength(ModelLimits.DescriptionMaxLength);
         RuleFor(x => x.ContextWindowSize)
             .GreaterThan(0);
         RuleFor(x => x.MaxOutputTokens)

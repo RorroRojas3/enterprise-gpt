@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using Enterprise.Gpt.Common.Constants.Conversations;
+using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Conversations;
 
@@ -24,7 +25,7 @@ public class UpdateConversationActionDtoValidator : AbstractValidator<UpdateConv
     public UpdateConversationActionDtoValidator()
     {
         RuleFor(x => x.Id).NotEmpty();
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(256);
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(ConversationLimits.NameMaxLength);
         RuleFor(x => x.ProjectId)
             .NotEmpty()
             .When(x => x.ProjectId.HasValue);

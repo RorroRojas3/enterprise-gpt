@@ -114,13 +114,12 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
             .Select(s => new
             {
                 Server = s,
-                IsPermitted = s.Permissions.Any(p => !p.DateDeactivated.HasValue
-                    && p.UserPermissions.Any(up => up.UserId == oid && !up.DateDeactivated.HasValue)),
+                IsPermitted = s.Permissions.Any(p => p.UserPermissions.Any(up => up.UserId == oid)),
                 // Joined onto the query that had to run anyway rather than read per server as
                 // each lease is acquired. A rejected row is excluded, so a key the server has
                 // already refused reads as absent and the user is asked for a new one.
                 Ciphertext = s.UserCredentials
-                    .Where(c => c.UserId == oid && !c.DateDeactivated.HasValue && !c.DateRejected.HasValue)
+                    .Where(c => c.UserId == oid && !c.DateRejected.HasValue)
                     .Select(c => c.Ciphertext)
                     .FirstOrDefault()
             })

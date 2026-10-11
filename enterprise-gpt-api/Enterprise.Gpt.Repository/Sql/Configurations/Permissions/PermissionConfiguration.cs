@@ -1,29 +1,24 @@
 using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Constants.Permissions;
 using Enterprise.Gpt.Entity.Permissions;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Permissions
 {
-    public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permission>
+    public sealed class PermissionConfiguration : BaseModifiedByEntityConfiguration<Permission, Guid>
     {
-        public void Configure(EntityTypeBuilder<Permission> builder)
+        protected override void ConfigureEntity(EntityTypeBuilder<Permission> builder)
         {
-            builder.ToTable("Permission", "Core");
+            builder.ToTable(nameof(Permission), "Core");
 
-            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Name).HasMaxLength(PermissionLimits.NameMaxLength);
+            builder.Property(x => x.Description).HasMaxLength(PermissionLimits.DescriptionMaxLength);
 
             builder.HasOne(x => x.McpServer)
                 .WithMany(s => s.Permissions)
                 .HasForeignKey(x => x.McpServerId);
-
-            builder.HasOne(x => x.CreatedBy)
-                .WithMany()
-                .HasForeignKey(x => x.CreatedById);
-
-            builder.HasOne(x => x.ModifiedBy)
-                .WithMany()
-                .HasForeignKey(x => x.ModifiedById);
 
             builder.HasIndex(x => x.Name)
                 .HasFilter("[DateDeactivated] IS NULL")

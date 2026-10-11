@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.ChatModels;
@@ -14,25 +12,21 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// </summary>
 /// <remarks>
 /// Append-only. Rows are never updated and never soft-deleted, which is why this derives from
-/// <see cref="BaseEntity"/> rather than <see cref="BaseModifiedEntity"/> and why
-/// <see cref="BaseEntity.DateDeactivated"/> stays <see langword="null"/> — a usage record that can
-/// be edited or hidden is not an audit trail. <see cref="BaseEntity.DateCreated"/> is the moment
-/// the call finished and is the timestamp reports group by.
+/// <see cref="BaseCreatedEntity{TKey}"/> rather than <see cref="BaseModifiedEntity{TKey}"/> and why
+/// <see cref="BaseEntity{TKey}.DateDeactivated"/> stays <see langword="null"/> — a usage record that can
+/// be edited or hidden is not an audit trail. <see cref="BaseCreatedEntity{TKey}.DateCreated"/> is the moment
+/// the row was saved and is the timestamp reports group by.
 /// </remarks>
-[Table(nameof(ConversationUsage), Schema = "Core")]
-public class ConversationUsage : BaseEntity
+public class ConversationUsage : BaseCreatedEntity<Guid>
 {
-    [ForeignKey(nameof(Conversation))]
     public Guid ConversationId { get; set; }
 
     /// <summary>
     /// The user the call is charged to. Denormalized from <see cref="Conversation"/> so per-user
     /// reporting does not have to join through it.
     /// </summary>
-    [ForeignKey(nameof(User))]
     public Guid UserId { get; set; }
 
-    [ForeignKey(nameof(Model))]
     public Guid ModelId { get; set; }
 
     /// <summary>
@@ -43,14 +37,12 @@ public class ConversationUsage : BaseEntity
     /// can repoint a catalog row at a different provider, which would silently rewrite the history
     /// of every call it ever served.
     /// </remarks>
-    [ForeignKey(nameof(Provider))]
     public Guid ProviderId { get; set; }
 
     /// <summary>
     /// The deployment that actually billed the call, captured as it stood at the time. Catalog
     /// rows are renamed and repointed; this value must keep meaning what it meant.
     /// </summary>
-    [StringLength(512)]
     public string DeploymentName { get; set; } = null!;
 
     public ConversationUsageKinds Kind { get; set; }
@@ -160,14 +152,12 @@ public class ConversationUsage : BaseEntity
     /// joining <c>[Core.Ref].[Model]</c> at report time would price a call at today's rate and
     /// silently rewrite the history of every call the model ever served.
     /// </remarks>
-    [Column(TypeName = "decimal(18, 6)")]
     public decimal? InputPricePerMillionTokens { get; set; }
 
     /// <summary>
     /// What the serving deployment charged per 1,000,000 output tokens when this call ran, on the
     /// same terms as <see cref="InputPricePerMillionTokens"/>.
     /// </summary>
-    [Column(TypeName = "decimal(18, 6)")]
     public decimal? OutputPricePerMillionTokens { get; set; }
 
     /// <summary>

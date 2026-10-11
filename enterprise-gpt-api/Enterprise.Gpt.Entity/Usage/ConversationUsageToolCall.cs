@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.ChatModels;
@@ -13,8 +11,8 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Append-only for the same reason as its parent, and derives from <see cref="BaseEntity"/> rather
-/// than <see cref="BaseModifiedEntity"/> for the same reason: a usage record that can be edited or
+/// Append-only for the same reason as its parent, and derives from <see cref="BaseCreatedEntity{TKey}"/> rather
+/// than <see cref="BaseModifiedEntity{TKey}"/> for the same reason: a usage record that can be edited or
 /// hidden is not an audit trail.
 /// </para>
 /// <para>
@@ -28,37 +26,14 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// <c>SubtreeTotalTokens = TotalTokens + sum(Children.SubtreeTotalTokens)</c>.
 /// </para>
 /// </remarks>
-[Table(nameof(ConversationUsageToolCall), Schema = "Core")]
-public class ConversationUsageToolCall : BaseEntity
+public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
 {
-    /// <summary>
-    /// The maximum length of <see cref="ToolName"/>.
-    /// </summary>
-    /// <remarks>
-    /// Public, and used by the annotation below rather than restated in it, because the code that
-    /// writes these rows clips to it: that write runs after the answer has already been streamed,
-    /// so a tool with an unusually long name must not be able to fail it. A width declared in one
-    /// place and clipped to in another drifts, and the drift re-arms exactly that failure.
-    /// </remarks>
-    public const int ToolNameMaxLength = 256;
-
-    /// <inheritdoc cref="ToolNameMaxLength" />
-    public const int SourceMaxLength = 256;
-
-    /// <inheritdoc cref="ToolNameMaxLength" />
-    public const int CallIdMaxLength = 128;
-
-    /// <inheritdoc cref="ToolNameMaxLength" />
-    public const int DeploymentNameMaxLength = 512;
-
-    [ForeignKey(nameof(ConversationUsage))]
     public Guid ConversationUsageId { get; set; }
 
     /// <summary>
     /// The invocation this one ran inside, or <see langword="null"/> when the model called it
     /// directly.
     /// </summary>
-    [ForeignKey(nameof(Parent))]
     public Guid? ParentId { get; set; }
 
     /// <summary>
@@ -66,7 +41,7 @@ public class ConversationUsageToolCall : BaseEntity
     /// </summary>
     /// <remarks>
     /// Carried explicitly because nothing else orders siblings reliably: identifiers are assigned
-    /// by the database and <see cref="BaseEntity.DateCreated"/> is the whole turn's timestamp, not
+    /// by the database and <see cref="BaseCreatedEntity{TKey}.DateCreated"/> is the whole turn's timestamp, not
     /// the invocation's.
     /// </remarks>
     public int Sequence { get; set; }
@@ -113,21 +88,18 @@ public class ConversationUsageToolCall : BaseEntity
     /// <summary>
     /// The tool's name as the model called it.
     /// </summary>
-    [StringLength(ToolNameMaxLength)]
     public string ToolName { get; set; } = null!;
 
     /// <summary>
     /// Where the tool came from — an MCP server's name, or an agent's — as it stood when the call
     /// ran. <see langword="null"/> for a plain function, which has no origin beyond itself.
     /// </summary>
-    [StringLength(SourceMaxLength)]
     public string? Source { get; set; }
 
     /// <summary>
     /// The identifier the model assigned to the function call, or <see langword="null"/> when the
     /// invocation did not come from a model's tool loop.
     /// </summary>
-    [StringLength(CallIdMaxLength)]
     public string? CallId { get; set; }
 
     /// <summary>
@@ -138,7 +110,6 @@ public class ConversationUsageToolCall : BaseEntity
     /// falling back to the reported source name. Left <see langword="null"/> rather than guessed
     /// when neither matches, so a report can distinguish "not an MCP tool" from "we do not know".
     /// </remarks>
-    [ForeignKey(nameof(McpServer))]
     public Guid? McpServerId { get; set; }
 
     /// <summary>
@@ -150,14 +121,12 @@ public class ConversationUsageToolCall : BaseEntity
     /// say what produced it. It is populated only where this application knows the answer itself —
     /// an agent whose catalog model it configured.
     /// </remarks>
-    [ForeignKey(nameof(Model))]
     public Guid? ModelId { get; set; }
 
     /// <summary>
     /// The deployment that billed the invocation, captured as it stood at the time, on the same
     /// terms as <see cref="ConversationUsage.DeploymentName"/>.
     /// </summary>
-    [StringLength(DeploymentNameMaxLength)]
     public string? DeploymentName { get; set; }
 
     /// <summary>

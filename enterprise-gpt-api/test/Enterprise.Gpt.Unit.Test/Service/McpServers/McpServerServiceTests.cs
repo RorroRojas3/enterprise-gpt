@@ -32,7 +32,8 @@ public sealed class McpServerServiceTests : IDisposable
             _tokenService,
             _fixture.Context,
             _mcpClientCache,
-            _permissionCache);
+            _permissionCache,
+            TimeProvider.System);
     }
 
     public void Dispose()
@@ -336,7 +337,7 @@ public sealed class McpServerServiceTests : IDisposable
         Assert.Equal(persistedServer.DateCreated, persistedServer.DateModified);
         Assert.Null(persistedServer.DateDeactivated);
 
-        var persistedPermission = await ctx.Permissions
+        var persistedPermission = await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.McpServerId == result.Id, TestContext.Current.CancellationToken);
         Assert.Equal(result.PermissionId, persistedPermission.Id);
@@ -401,7 +402,7 @@ public sealed class McpServerServiceTests : IDisposable
         Assert.Equal(KnownIds.SeedUserId, persistedServer.ModifiedById);
         Assert.True(persistedServer.DateModified > server.DateModified);
 
-        var persistedPermission = await ctx.Permissions
+        var persistedPermission = await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == permission.Id, TestContext.Current.CancellationToken);
         Assert.Equal(request.Name, persistedPermission.Name);
@@ -467,10 +468,10 @@ public sealed class McpServerServiceTests : IDisposable
         var persistedServer = await ctx.McpServers
             .AsNoTracking()
             .SingleAsync(x => x.Id == server.Id, TestContext.Current.CancellationToken);
-        var persistedPermission = await ctx.Permissions
+        var persistedPermission = await ctx.Permissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == permission.Id, TestContext.Current.CancellationToken);
-        var persistedGrant = await ctx.UserPermissions
+        var persistedGrant = await ctx.UserPermissions.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == grant.Id, TestContext.Current.CancellationToken);
 
@@ -495,7 +496,7 @@ public sealed class McpServerServiceTests : IDisposable
         await _service.DeactivateMcpServerAsync(server.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var persisted = await ctx.UserMcpCredentials
+        var persisted = await ctx.UserMcpCredentials.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
 
@@ -518,7 +519,7 @@ public sealed class McpServerServiceTests : IDisposable
         }, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var persisted = await ctx.UserMcpCredentials
+        var persisted = await ctx.UserMcpCredentials.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
 
@@ -544,7 +545,7 @@ public sealed class McpServerServiceTests : IDisposable
         }, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var persisted = await ctx.UserMcpCredentials
+        var persisted = await ctx.UserMcpCredentials.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
 
@@ -566,7 +567,7 @@ public sealed class McpServerServiceTests : IDisposable
         }, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var persisted = await ctx.UserMcpCredentials
+        var persisted = await ctx.UserMcpCredentials.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == credential.Id, TestContext.Current.CancellationToken);
 

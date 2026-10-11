@@ -1,4 +1,5 @@
 using Andes.Extensions.AI;
+using Enterprise.Gpt.Common.Constants.Usage;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Usage;
 using Enterprise.Gpt.Service.Agents.Constants;
@@ -27,7 +28,6 @@ internal static class UsageReportTranslator
     /// The MCP servers leased for the request, used to attribute MCP tool calls back to a catalog
     /// row.
     /// </param>
-    /// <param name="dateCreated">The timestamp stamped on every row, shared with the parent call.</param>
     /// <param name="fileAgent">
     /// The File Agent's catalog row when the turn attached it, or <see langword="null"/> when it did
     /// not — which is every turn that never offered the agent.
@@ -36,7 +36,6 @@ internal static class UsageReportTranslator
     public static TurnUsage Translate(
         ChatUsageReport? report,
         IReadOnlyList<McpServerReference> mcpServers,
-        DateTimeOffset dateCreated,
         FileAgentModel? fileAgent = null)
     {
         ArgumentNullException.ThrowIfNull(mcpServers);
@@ -54,7 +53,7 @@ internal static class UsageReportTranslator
             .ToList();
 
         List<ConversationUsageToolCall> flattened = [];
-        BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, dateCreated, fileAgent, flattened);
+        BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, fileAgent, flattened);
 
         // The top-level entries already roll their descendants up, so summing them is summing
         // everything every tool consumed.
@@ -65,7 +64,7 @@ internal static class UsageReportTranslator
             toolOutput += call.Usage?.OutputTokenCount ?? 0;
         }
 
-        var turns = BuildTurns(report.Turns, dateCreated);
+        var turns = BuildTurns(report.Turns);
 
         return new TurnUsage(
             InputTokens: report.AssistantUsage.InputTokenCount ?? 0,
@@ -96,8 +95,7 @@ internal static class UsageReportTranslator
     /// provider reports a single aggregate instead.
     /// </returns>
     private static List<ConversationUsageTurn> BuildTurns(
-        IReadOnlyList<AssistantTurnUsage> turns,
-        DateTimeOffset dateCreated)
+        IReadOnlyList<AssistantTurnUsage> turns)
     {
         List<ConversationUsageTurn> rows = new(turns.Count);
 
@@ -106,14 +104,13 @@ internal static class UsageReportTranslator
             rows.Add(new ConversationUsageTurn
             {
                 Iteration = turn.Iteration,
-                ResponseId = Truncate(turn.ResponseId, ConversationUsageTurn.ResponseIdMaxLength),
-                ReportedModelId = Truncate(turn.ModelId, ConversationUsageTurn.ReportedModelIdMaxLength),
+                ResponseId = Truncate(turn.ResponseId, ConversationUsageTurnLimits.ResponseIdMaxLength),
+                ReportedModelId = Truncate(turn.ModelId, ConversationUsageTurnLimits.ReportedModelIdMaxLength),
                 InputTokens = turn.Usage?.InputTokenCount,
                 OutputTokens = turn.Usage?.OutputTokenCount,
                 TotalTokens = turn.Usage?.TotalTokenCount,
                 CachedInputTokens = turn.Usage?.CachedInputTokenCount,
-                ReasoningTokens = turn.Usage?.ReasoningTokenCount,
-                DateCreated = dateCreated
+                ReasoningTokens = turn.Usage?.ReasoningTokenCount
             });
         }
 
@@ -160,7 +157,6 @@ internal static class UsageReportTranslator
         IReadOnlyList<ToolCallUsage> calls,
         int parentDepth,
         List<(Guid Id, string Prefix, string Name)> prefixes,
-        DateTimeOffset dateCreated,
         FileAgentModel? fileAgent,
         List<ConversationUsageToolCall> flattened)
     {
@@ -182,9 +178,9 @@ internal static class UsageReportTranslator
                 // restrict to depth zero or a subtree counts once per level.
                 Iteration = call.Iteration,
                 Kind = kind,
-                ToolName = Truncate(call.ToolName, ConversationUsageToolCall.ToolNameMaxLength) ?? string.Empty,
-                Source = Truncate(call.Source, ConversationUsageToolCall.SourceMaxLength),
-                CallId = Truncate(call.CallId, ConversationUsageToolCall.CallIdMaxLength),
+                ToolName = Truncate(call.ToolName, ConversationUsageToolCallLimits.ToolNameMaxLength) ?? string.Empty,
+                Source = Truncate(call.Source, ConversationUsageToolCallLimits.SourceMaxLength),
+                CallId = Truncate(call.CallId, ConversationUsageToolCallLimits.CallIdMaxLength),
                 McpServerId = kind == ConversationToolKinds.McpTool
                     ? ResolveMcpServerId(call, prefixes)
                     : null,
@@ -194,14 +190,13 @@ internal static class UsageReportTranslator
                 // than further model turns. Every other row still writes null, and that is not a gap
                 // to be filled later — it is the honest answer.
                 ModelId = agentModel?.ModelId,
-                DeploymentName = Truncate(agentModel?.DeploymentName, ConversationUsageToolCall.DeploymentNameMaxLength),
+                DeploymentName = Truncate(agentModel?.DeploymentName, ConversationUsageToolCallLimits.DeploymentNameMaxLength),
                 InputTokens = OwnTokens(call.Usage?.InputTokenCount, call.Children, child => child.Usage?.InputTokenCount),
                 OutputTokens = OwnTokens(call.Usage?.OutputTokenCount, call.Children, child => child.Usage?.OutputTokenCount),
                 TotalTokens = OwnTokens(call.Usage?.TotalTokenCount, call.Children, child => child.Usage?.TotalTokenCount),
                 SubtreeTotalTokens = call.Usage?.TotalTokenCount,
                 DurationMs = (long)Math.Round(call.Duration.TotalMilliseconds),
-                Succeeded = call.Succeeded,
-                DateCreated = dateCreated
+                Succeeded = call.Succeeded
             };
 
             // Appended before its own children so the flat list stays in pre-order, which is the
@@ -209,7 +204,7 @@ internal static class UsageReportTranslator
             rows.Add(row);
             flattened.Add(row);
 
-            row.Children = BuildToolCalls(call.Children, depth, prefixes, dateCreated, fileAgent, flattened);
+            row.Children = BuildToolCalls(call.Children, depth, prefixes, fileAgent, flattened);
         }
 
         return rows;

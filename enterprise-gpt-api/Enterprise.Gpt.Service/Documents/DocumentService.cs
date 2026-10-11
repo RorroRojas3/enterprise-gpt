@@ -205,7 +205,8 @@ namespace Enterprise.Gpt.Service.Documents
         IJobStatusStore jobStatusStore,
         IJobCancellationRegistry jobCancellationRegistry,
         ITokenService tokenService,
-        EnterpriseGptDbContext ctx) : IDocumentService
+        EnterpriseGptDbContext ctx,
+        TimeProvider timeProvider) : IDocumentService
     {
         #region Progress bands
         // Each stage owns a slice of the 0..100 range, sized roughly by how long it takes. Embedding gets
@@ -232,6 +233,7 @@ namespace Enterprise.Gpt.Service.Documents
         private readonly IJobCancellationRegistry _jobCancellationRegistry = jobCancellationRegistry;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
+        private readonly TimeProvider _timeProvider = timeProvider;
 
         /// <summary>The container every uploaded document blob lives in.</summary>
         /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
@@ -259,7 +261,7 @@ namespace Enterprise.Gpt.Service.Documents
 
             var conversationExists = await _ctx.Conversations
                 .AsNoTracking()
-                .AnyAsync(x => x.Id == conversationId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(x => x.Id == conversationId && x.UserId == userId, cancellationToken);
 
             if (!conversationExists)
             {
@@ -291,7 +293,7 @@ namespace Enterprise.Gpt.Service.Documents
 
             var projectExists = await _ctx.Projects
                 .AsNoTracking()
-                .AnyAsync(x => x.Id == projectId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(x => x.Id == projectId && x.UserId == userId, cancellationToken);
 
             if (!projectExists)
             {
@@ -334,7 +336,6 @@ namespace Enterprise.Gpt.Service.Documents
 
                 _jobStatusStore.Report(jobId, JobStatuses.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
-                var date = DateTimeOffset.UtcNow;
                 var document = new ConversationDocument
                 {
                     Id = documentId,
@@ -345,11 +346,9 @@ namespace Enterprise.Gpt.Service.Documents
                     MimeType = file.ContentType,
                     Size = file.Length,
                     Path = blobPath,
-                    DateCreated = date,
-                    DateModified = date,
-                    Chunks = BuildChunks<ConversationDocumentChunk>(ingestion, date),
+                    Chunks = BuildChunks<ConversationDocumentChunk>(ingestion),
                     Sheets = BuildSheets<ConversationDocumentSheet, ConversationDocumentSheetColumn, ConversationDocumentSheetRow>(
-                        ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
+                        ingestion, sheet => sheet.Columns, sheet => sheet.Rows)
                 };
 
                 _ctx.Add(document);
@@ -361,7 +360,7 @@ namespace Enterprise.Gpt.Service.Documents
                 // Re-checking after the save shrinks that window to the cascade's own statement gap.
                 var conversationStillActive = await _ctx.Conversations
                     .AsNoTracking()
-                    .AnyAsync(x => x.Id == conversationId && !x.DateDeactivated.HasValue, cancellationToken);
+                    .AnyAsync(x => x.Id == conversationId, cancellationToken);
 
                 if (!conversationStillActive)
                 {
@@ -412,7 +411,6 @@ namespace Enterprise.Gpt.Service.Documents
 
                 _jobStatusStore.Report(jobId, JobStatuses.Persisting, PersistStart, $"Saving {ingestion.Chunks.Count} chunk(s)");
 
-                var date = DateTimeOffset.UtcNow;
                 var document = new ProjectDocument
                 {
                     Id = documentId,
@@ -423,11 +421,9 @@ namespace Enterprise.Gpt.Service.Documents
                     MimeType = file.ContentType,
                     Size = file.Length,
                     Path = blobPath,
-                    DateCreated = date,
-                    DateModified = date,
-                    Chunks = BuildChunks<ProjectDocumentChunk>(ingestion, date),
+                    Chunks = BuildChunks<ProjectDocumentChunk>(ingestion),
                     Sheets = BuildSheets<ProjectDocumentSheet, ProjectDocumentSheetColumn, ProjectDocumentSheetRow>(
-                        ingestion, date, sheet => sheet.Columns, sheet => sheet.Rows)
+                        ingestion, sheet => sheet.Columns, sheet => sheet.Rows)
                 };
 
                 _ctx.Add(document);
@@ -437,7 +433,7 @@ namespace Enterprise.Gpt.Service.Documents
                 // cascade never re-runs, so a row persisted after it must deactivate itself to match.
                 var projectStillActive = await _ctx.Projects
                     .AsNoTracking()
-                    .AnyAsync(x => x.Id == projectId && !x.DateDeactivated.HasValue, cancellationToken);
+                    .AnyAsync(x => x.Id == projectId, cancellationToken);
 
                 if (!projectStillActive)
                 {
@@ -474,9 +470,7 @@ namespace Enterprise.Gpt.Service.Documents
                 .AsNoTracking()
                 .Where(x => x.Id == documentId
                     && x.ConversationId == conversationId
-                    && !x.DateDeactivated.HasValue
-                    && x.Conversation.UserId == userId
-                    && !x.Conversation.DateDeactivated.HasValue)
+                    && x.Conversation.UserId == userId)
                 .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path, x.Type == ConversationDocumentTypes.Generated))
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -492,7 +486,6 @@ namespace Enterprise.Gpt.Service.Documents
                 .AsNoTracking()
                 .Where(x => x.Id == documentId
                     && x.ProjectId == projectId
-                    && !x.DateDeactivated.HasValue
                     && x.Project.UserId == userId
                     && !x.Project.DateDeactivated.HasValue)
                 .Select(x => new DocumentBlobRef(x.Name, x.Extension, x.Path, false))
@@ -524,7 +517,7 @@ namespace Enterprise.Gpt.Service.Documents
             // persisting, so the invariant above holds for it too.
             var query = _ctx.ConversationDocuments
                 .AsNoTracking()
-                .Where(x => x.UserId == userId && !x.DateDeactivated.HasValue);
+                .Where(x => x.UserId == userId);
 
             if (origin.HasValue)
             {
@@ -567,7 +560,7 @@ namespace Enterprise.Gpt.Service.Documents
 
             var conversationExists = await _ctx.Conversations
                 .AsNoTracking()
-                .AnyAsync(x => x.Id == conversationId && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+                .AnyAsync(x => x.Id == conversationId && x.UserId == userId, cancellationToken);
 
             if (!conversationExists)
             {
@@ -582,8 +575,7 @@ namespace Enterprise.Gpt.Service.Documents
                 .AsNoTracking()
                 .AnyAsync(x => x.Id == documentId
                     && x.ConversationId == conversationId
-                    && x.Type == ConversationDocumentTypes.Uploaded
-                    && !x.DateDeactivated.HasValue, cancellationToken);
+                    && x.Type == ConversationDocumentTypes.Uploaded, cancellationToken);
 
             if (!exists)
             {
@@ -654,7 +646,7 @@ namespace Enterprise.Gpt.Service.Documents
 
             // Recomputed rather than read back off the URI: the token's expiry is not exposed, and the
             // two are set from the same clock microseconds apart.
-            var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
+            var expiresAt = _timeProvider.GetUtcNow().Add(lifetime);
 
             var sasUri = _documentStore.GenerateReadUri(
                 document.IsGenerated ? GeneratedContainer : DocumentsContainer,
@@ -831,7 +823,7 @@ namespace Enterprise.Gpt.Service.Documents
 
         private async Task DeactivateConversationDocumentRowsAsync(Guid documentId, CancellationToken cancellationToken)
         {
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             // One transaction across all five child sets and the document: a partial failure would leave
             // chunks alive under a deleted document, which retrieval would still match. Set-based rather
@@ -840,38 +832,38 @@ namespace Enterprise.Gpt.Service.Documents
             await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
             await _ctx.ConversationDocumentSummaries
-                .Where(s => s.ConversationDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .Where(s => s.ConversationDocumentId == documentId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheetRows
-                .Where(r => r.ConversationDocumentSheet.ConversationDocumentId == documentId && !r.DateDeactivated.HasValue)
+                .Where(r => r.ConversationDocumentSheet.ConversationDocumentId == documentId)
                 .ExecuteUpdateAsync(r => r
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheetColumns
-                .Where(c => c.ConversationDocumentSheet.ConversationDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .Where(c => c.ConversationDocumentSheet.ConversationDocumentId == documentId)
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentSheets
-                .Where(s => s.ConversationDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .Where(s => s.ConversationDocumentId == documentId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocumentChunks
-                .Where(c => c.ConversationDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .Where(c => c.ConversationDocumentId == documentId)
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ConversationDocuments
-                .Where(d => d.Id == documentId && !d.DateDeactivated.HasValue)
+                .Where(d => d.Id == documentId)
                 .ExecuteUpdateAsync(d => d
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
@@ -882,43 +874,43 @@ namespace Enterprise.Gpt.Service.Documents
 
         private async Task DeactivateProjectDocumentRowsAsync(Guid documentId, CancellationToken cancellationToken)
         {
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
             await _ctx.ProjectDocumentSummaries
-                .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .Where(s => s.ProjectDocumentId == documentId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
                     cancellationToken);
 
             await _ctx.ProjectDocumentSheetRows
-                .Where(r => r.ProjectDocumentSheet.ProjectDocumentId == documentId && !r.DateDeactivated.HasValue)
+                .Where(r => r.ProjectDocumentSheet.ProjectDocumentId == documentId)
                 .ExecuteUpdateAsync(r => r
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ProjectDocumentSheetColumns
-                .Where(c => c.ProjectDocumentSheet.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .Where(c => c.ProjectDocumentSheet.ProjectDocumentId == documentId)
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ProjectDocumentSheets
-                .Where(s => s.ProjectDocumentId == documentId && !s.DateDeactivated.HasValue)
+                .Where(s => s.ProjectDocumentId == documentId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ProjectDocumentChunks
-                .Where(c => c.ProjectDocumentId == documentId && !c.DateDeactivated.HasValue)
+                .Where(c => c.ProjectDocumentId == documentId)
                 .ExecuteUpdateAsync(c => c
                     .SetProperty(x => x.DateDeactivated, date),
                     cancellationToken);
 
             await _ctx.ProjectDocuments
-                .Where(d => d.Id == documentId && !d.DateDeactivated.HasValue)
+                .Where(d => d.Id == documentId)
                 .ExecuteUpdateAsync(d => d
                     .SetProperty(x => x.DateDeactivated, date)
                     .SetProperty(x => x.DateModified, date),
@@ -955,8 +947,8 @@ namespace Enterprise.Gpt.Service.Documents
         /// Vectors are matched to chunks by position, which <see cref="EmbedAsync"/> guarantees by
         /// rejecting a short or padded response from the generator.
         /// </remarks>
-        private static List<TChunk> BuildChunks<TChunk>(IngestionResult ingestion, DateTimeOffset date)
-            where TChunk : BaseDocumentChunk, new()
+        private static List<TChunk> BuildChunks<TChunk>(IngestionResult ingestion)
+            where TChunk : BaseDocumentChunk<Guid>, new()
         {
             return [.. ingestion.Chunks.Select((chunk, i) => new TChunk
             {
@@ -964,9 +956,7 @@ namespace Enterprise.Gpt.Service.Documents
                 SourceNumber = chunk.SourceNumber,
                 TokenCount = chunk.TokenCount,
                 Text = chunk.Text,
-                Embedding = new SqlVector<float>(ingestion.Embeddings[i]),
-                DateCreated = date,
-                DateModified = date
+                Embedding = new SqlVector<float>(ingestion.Embeddings[i])
             })];
         }
 
@@ -981,12 +971,11 @@ namespace Enterprise.Gpt.Service.Documents
         /// </remarks>
         private static List<TSheet> BuildSheets<TSheet, TColumn, TRow>(
             IngestionResult ingestion,
-            DateTimeOffset date,
             Func<TSheet, List<TColumn>> selectColumns,
             Func<TSheet, List<TRow>> selectRows)
-            where TSheet : BaseDocumentSheet, new()
-            where TColumn : BaseDocumentSheetColumn, new()
-            where TRow : BaseDocumentSheetRow, new()
+            where TSheet : BaseDocumentSheet<Guid>, new()
+            where TColumn : BaseDocumentSheetColumn<Guid>, new()
+            where TRow : BaseDocumentSheetRow<Guid>, new()
         {
             var sheets = new List<TSheet>(ingestion.Sheets.Count);
 
@@ -997,26 +986,20 @@ namespace Enterprise.Gpt.Service.Documents
                     SheetIndex = structure.SheetIndex,
                     SheetName = structure.SheetName,
                     RowCount = structure.RowCount,
-                    ColumnCount = structure.ColumnCount,
-                    DateCreated = date,
-                    DateModified = date
+                    ColumnCount = structure.ColumnCount
                 };
 
                 selectColumns(sheet).AddRange(structure.Columns.Select(column => new TColumn
                 {
                     ColumnIndex = column.ColumnIndex,
                     ColumnName = column.ColumnName,
-                    InferredType = column.InferredType,
-                    DateCreated = date,
-                    DateModified = date
+                    InferredType = column.InferredType
                 }));
 
                 selectRows(sheet).AddRange(structure.Rows.Select(row => new TRow
                 {
                     RowIndex = row.RowIndex,
-                    Cells = row.Cells,
-                    DateCreated = date,
-                    DateModified = date
+                    Cells = row.Cells
                 }));
 
                 sheets.Add(sheet);

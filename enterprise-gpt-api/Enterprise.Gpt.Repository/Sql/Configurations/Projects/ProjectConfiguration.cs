@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Constants.Projects;
 using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,13 +10,15 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Projects;
 /// Maps <see cref="Project"/> to <c>Core.Project</c>, its ownership and document relationships, and
 /// the indexes that back the per-user listing and the one-active-project-per-name rule.
 /// </summary>
-public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
+public sealed class ProjectConfiguration : BaseModifiedEntityConfiguration<Project, Guid>
 {
-    public void Configure(EntityTypeBuilder<Project> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<Project> builder)
     {
         builder.ToTable(nameof(Project), "Core");
 
-        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).HasMaxLength(ProjectLimits.NameMaxLength);
+        builder.Property(x => x.Description).HasMaxLength(ProjectLimits.DescriptionMaxLength);
+        builder.Property(x => x.Instructions).HasColumnType("nvarchar(max)");
 
         builder.HasOne(x => x.User)
             .WithMany()

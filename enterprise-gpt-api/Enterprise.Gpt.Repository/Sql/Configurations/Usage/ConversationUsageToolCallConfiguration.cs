@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Constants.Usage;
 using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,13 +10,16 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Usage;
 /// Configures the append-only <see cref="ConversationUsageToolCall"/> table and the
 /// self-relationship that carries tool nesting.
 /// </summary>
-public sealed class ConversationUsageToolCallConfiguration : IEntityTypeConfiguration<ConversationUsageToolCall>
+public sealed class ConversationUsageToolCallConfiguration : BaseCreatedEntityConfiguration<ConversationUsageToolCall, Guid>
 {
-    public void Configure(EntityTypeBuilder<ConversationUsageToolCall> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ConversationUsageToolCall> builder)
     {
         builder.ToTable(nameof(ConversationUsageToolCall), "Core");
 
-        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ToolName).HasMaxLength(ConversationUsageToolCallLimits.ToolNameMaxLength);
+        builder.Property(x => x.Source).HasMaxLength(ConversationUsageToolCallLimits.SourceMaxLength);
+        builder.Property(x => x.CallId).HasMaxLength(ConversationUsageToolCallLimits.CallIdMaxLength);
+        builder.Property(x => x.DeploymentName).HasMaxLength(ConversationUsageToolCallLimits.DeploymentNameMaxLength);
 
         builder.HasOne(x => x.ConversationUsage)
             .WithMany(x => x.ToolCalls)

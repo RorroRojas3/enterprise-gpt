@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Enterprise.Gpt.Common.Constants.Users;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Users;
@@ -30,20 +31,20 @@ public class UpdateUserActionDtoValidator : AbstractValidator<UpdateUserActionDt
         RuleFor(x => x.FirstName)
             .NotEmpty()
             .WithMessage("First name is required.")
-            .MaximumLength(256)
-            .WithMessage("First name cannot exceed 256 characters.");
+            .MaximumLength(UserLimits.FirstNameMaxLength)
+            .WithMessage($"First name cannot exceed {UserLimits.FirstNameMaxLength} characters.");
         RuleFor(x => x.LastName)
             .NotEmpty()
             .WithMessage("Last name is required.")
-            .MaximumLength(256)
-            .WithMessage("Last name cannot exceed 256 characters.");
+            .MaximumLength(UserLimits.LastNameMaxLength)
+            .WithMessage($"Last name cannot exceed {UserLimits.LastNameMaxLength} characters.");
         RuleFor(x => x.Email)
             .NotEmpty()
             .WithMessage("Email is required.")
             .EmailAddress()
             .WithMessage("Invalid email format.")
-            .MaximumLength(512)
-            .WithMessage("Email cannot exceed 512 characters.");
+            .MaximumLength(UserLimits.EmailMaxLength)
+            .WithMessage($"Email cannot exceed {UserLimits.EmailMaxLength} characters.");
         RuleFor(x => x.PermissionIds)
             .NotNull()
             .WithMessage("Permission ids are required.");

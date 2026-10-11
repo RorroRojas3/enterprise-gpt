@@ -49,12 +49,14 @@ namespace Enterprise.Gpt.Api.Endpoints
                 .AddEndpointFilter<ValidationEndpointFilter<UpdatePermissionActionDto>>()
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict);
             group.MapDelete("{id:guid}", DeactivatePermissionAsync)
                 .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.Administrator))
                 .ProducesValidationProblem()
                 .ProducesProblem(StatusCodes.Status403Forbidden)
-                .ProducesProblem(StatusCodes.Status404NotFound);
+                .ProducesProblem(StatusCodes.Status404NotFound)
+                .ProducesProblem(StatusCodes.Status409Conflict);
 
             var grants = app.MapGroup("api/users/{userId:guid}/permissions")
                 .RequireAuthorization()
@@ -85,7 +87,7 @@ namespace Enterprise.Gpt.Api.Endpoints
         internal static async Task<Ok<List<PermissionDto>>> GetAllPermissionsAsync(
             IPermissionService permissionService, CancellationToken cancellationToken)
         {
-            var response = await permissionService.GetAllPermissionsAsync(cancellationToken);
+            var response = await permissionService.GetAllPermissionsIncludingDeactivatedAsync(cancellationToken);
             return TypedResults.Ok(response);
         }
 

@@ -119,7 +119,7 @@ public sealed class FileAgentQuotaServiceTests : IDisposable
     }
 
     private Task<FileAgentQuotaDecision> CheckAsync(FileAgentOptions options, Guid? caller = null) =>
-        new FileAgentQuotaService(_fixture.Context, Microsoft.Extensions.Options.Options.Create(options))
+        new FileAgentQuotaService(_fixture.Context, Microsoft.Extensions.Options.Options.Create(options), TimeProvider.System)
             .CheckAsync(caller ?? KnownIds.SeedUserId, _modelId, TestContext.Current.CancellationToken);
 
     private async Task AddAgentRunsAsync(

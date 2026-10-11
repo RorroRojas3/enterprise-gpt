@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,17 +9,11 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 /// Maps <see cref="ProjectDocumentSheetRow"/> to <c>Core.ProjectDocumentSheetRow</c>, its native
 /// <c>json</c> cells column, and the unique ordinal index that keeps a sheet's rows dense.
 /// </summary>
-public sealed class ProjectDocumentSheetRowConfiguration : IEntityTypeConfiguration<ProjectDocumentSheetRow>
+public sealed class ProjectDocumentSheetRowConfiguration : BaseDocumentSheetRowConfiguration<ProjectDocumentSheetRow, Guid>
 {
-    public void Configure(EntityTypeBuilder<ProjectDocumentSheetRow> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ProjectDocumentSheetRow> builder)
     {
         builder.ToTable(nameof(ProjectDocumentSheetRow), "Core");
-
-        builder.HasKey(x => x.Id);
-
-        builder.Property(x => x.Cells)
-            .HasColumnType("json")
-            .IsRequired();
 
         builder.HasIndex(x => new { x.ProjectDocumentSheetId, x.RowIndex })
             .HasFilter("[DateDeactivated] IS NULL")

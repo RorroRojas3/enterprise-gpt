@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Projects;
 
@@ -12,8 +11,7 @@ namespace Enterprise.Gpt.Entity.Documents;
 /// nullable owner: the two have different visibility rules, and a single table would make every
 /// retrieval query filter on "which owner column is set" instead of on an indexed foreign key.
 /// </remarks>
-[Table(nameof(ProjectDocument), Schema = "Core")]
-public class ProjectDocument : BaseDocument
+public class ProjectDocument : BaseDocument<Guid>
 {
     /// <summary>The project that owns the document.</summary>
     public Guid ProjectId { get; set; }

@@ -91,8 +91,8 @@ public sealed class DocumentTextAssembler(
         {
             DocumentSources.Conversation => await _ctx.ConversationDocumentChunks
                 .AsNoTracking()
+                // The navigation is what applies the document's own soft-delete filter.
                 .Where(c => c.ConversationDocumentId == documentId
-                    && !c.DateDeactivated.HasValue
                     && !c.ConversationDocument.DateDeactivated.HasValue)
                 .OrderBy(c => c.Index)
                 .Select(c => c.Text)
@@ -102,7 +102,6 @@ public sealed class DocumentTextAssembler(
             DocumentSources.Project => await _ctx.ProjectDocumentChunks
                 .AsNoTracking()
                 .Where(c => c.ProjectDocumentId == documentId
-                    && !c.DateDeactivated.HasValue
                     && !c.ProjectDocument.DateDeactivated.HasValue)
                 .OrderBy(c => c.Index)
                 .Select(c => c.Text)

@@ -55,7 +55,7 @@ public sealed class UserGrantReader(
         // User.Id is the Entra object id, so the grant table is queried directly with no join.
         return await ctx.UserPermissions
             .AsNoTracking()
-            .Where(up => up.UserId == userId && !up.DateDeactivated.HasValue)
+            .Where(up => up.UserId == userId)
             .Select(up => up.PermissionId)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

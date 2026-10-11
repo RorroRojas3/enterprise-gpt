@@ -62,7 +62,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         Assert.Equal(3, result.ModelCallCount);
 
         using var ctx = _fixture.CreateContext();
-        var row = await ctx.ConversationDocumentSummaries.SingleAsync(TestContext.Current.CancellationToken);
+        var row = await ctx.ConversationDocumentSummaries.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(documentId, row.ConversationDocumentId);
         Assert.Equal(Summary, row.Text);
@@ -89,7 +89,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
             conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var usage = await ctx.ConversationUsage.SingleAsync(TestContext.Current.CancellationToken);
+        var usage = await ctx.ConversationUsage.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
         var model = await ctx.Models.SingleAsync(m => m.Id == KnownIds.SeedModelId, TestContext.Current.CancellationToken);
 
         Assert.Equal(ConversationUsageKinds.Summarization, usage.Kind);
@@ -117,7 +117,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
             conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var conversation = await ctx.Conversations.SingleAsync(
+        var conversation = await ctx.Conversations.IncludingDeactivated().SingleAsync(
             c => c.Id == conversationId, TestContext.Current.CancellationToken);
 
         Assert.Equal(900, conversation.InputTokens);
@@ -170,8 +170,8 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         Assert.Equal(Summary, result.Text);
 
         using var ctx = _fixture.CreateContext();
-        Assert.Equal(1, await ctx.ConversationDocumentSummaries.CountAsync(TestContext.Current.CancellationToken));
-        Assert.Equal(1, await ctx.ConversationUsage.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await ctx.ConversationDocumentSummaries.IncludingDeactivated().CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await ctx.ConversationUsage.IncludingDeactivated().CountAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -197,9 +197,9 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         await _summarizer.DidNotReceiveWithAnyArgs().SummarizeDocumentAsync(default, default, Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        Assert.Equal(1, await ctx.ConversationUsage.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await ctx.ConversationUsage.IncludingDeactivated().CountAsync(TestContext.Current.CancellationToken));
 
-        var conversation = await ctx.Conversations.SingleAsync(
+        var conversation = await ctx.Conversations.IncludingDeactivated().SingleAsync(
             c => c.Id == conversationId, TestContext.Current.CancellationToken);
         Assert.Equal(900, conversation.InputTokens);
         Assert.Equal(120, conversation.OutputTokens);
@@ -224,8 +224,8 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         Assert.True(result.FromCache);
 
         using var ctx = _fixture.CreateContext();
-        Assert.Equal(1, await ctx.ProjectDocumentSummaries.CountAsync(TestContext.Current.CancellationToken));
-        Assert.Equal(0, await ctx.ConversationUsage.CountAsync(
+        Assert.Equal(1, await ctx.ProjectDocumentSummaries.IncludingDeactivated().CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(0, await ctx.ConversationUsage.IncludingDeactivated().CountAsync(
             u => u.ConversationId == secondConversationId, TestContext.Current.CancellationToken));
     }
 
@@ -249,9 +249,64 @@ public sealed class DocumentSummaryServiceTests : IDisposable
 
         // Overwritten, not appended to: the unique index is filtered on DateDeactivated, so a
         // second live row for the same document is a constraint violation rather than a version.
-        var row = await ctx.ConversationDocumentSummaries.SingleAsync(TestContext.Current.CancellationToken);
+        var row = await ctx.ConversationDocumentSummaries.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(Summary, row.Text);
         Assert.Equal(SummarizationPrompts.PromptVersion, row.PromptVersion);
+    }
+
+    /// <summary>
+    /// The run is paid for by the time it is persisted, so a conversation deleted meanwhile still carries its
+    /// usage row.
+    /// </summary>
+    [Fact]
+    public async Task GetOrCreateAsync_ConversationDeletedWhileTheRunWasPaidFor_StillBillsTheRun()
+    {
+        var (conversationId, documentId) = await AddConversationDocumentAsync();
+        _summarizer
+            .SummarizeDocumentAsync(Arg.Any<Guid>(), Arg.Any<DocumentSources>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                using var ctx = _fixture.CreateContext();
+                await ctx.Conversations
+                    .Where(c => c.Id == conversationId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(c => c.DateDeactivated, DateTimeOffset.UtcNow));
+
+                return Run(Summary);
+            });
+
+        await _service.GetOrCreateAsync(
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
+
+        using var verify = _fixture.CreateContext();
+        var usage = await verify.ConversationUsage.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(conversationId, usage.ConversationId);
+        Assert.Equal(KnownIds.SeedUserId, usage.UserId);
+    }
+
+    /// <summary>
+    /// Another run rewrote the summary first: its text stands, and this run is still billed exactly once.
+    /// </summary>
+    [Fact]
+    public async Task GetOrCreateAsync_RewriteLosesTheRowVersionRace_KeepsTheStoredTextAndBillsOnce()
+    {
+        var (conversationId, documentId) = await AddConversationDocumentAsync();
+        await AddStoredSummaryAsync(documentId, "Written by the run that won.", promptVersion: "0");
+        var race = new LostRaceInterceptor<ConversationDocumentSummary>();
+        var service = new DocumentSummaryService(
+            _summarizer,
+            _fixture.Context,
+            _fixture.CreateScopeFactory(race),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
+            NullLogger<DocumentSummaryService>.Instance);
+
+        await service.GetOrCreateAsync(
+            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, race.Fired);
+        using var ctx = _fixture.CreateContext();
+        var row = await ctx.ConversationDocumentSummaries.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("Written by the run that won.", row.Text);
+        Assert.Equal(1, await ctx.ConversationUsage.IncludingDeactivated().CountAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -267,7 +322,7 @@ public sealed class DocumentSummaryServiceTests : IDisposable
             conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var row = await ctx.ConversationDocumentSummaries.SingleAsync(TestContext.Current.CancellationToken);
+        var row = await ctx.ConversationDocumentSummaries.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(900, row.InputTokens);
         Assert.Equal(120, row.OutputTokens);
@@ -289,8 +344,8 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         Assert.False(result.FromCache);
 
         using var ctx = _fixture.CreateContext();
-        Assert.Equal(2, await ctx.ConversationDocumentSummaries.CountAsync(TestContext.Current.CancellationToken));
-        Assert.Equal(1, await ctx.ConversationDocumentSummaries.CountAsync(
+        Assert.Equal(2, await ctx.ConversationDocumentSummaries.IncludingDeactivated().CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await ctx.ConversationDocumentSummaries.IncludingDeactivated().CountAsync(
             s => !s.DateDeactivated.HasValue, TestContext.Current.CancellationToken));
     }
 
@@ -386,11 +441,11 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         using var ctx = _fixture.CreateContext();
 
         // One row for the digest's own reduce call, and nothing at all for the cache hit under it.
-        var usage = await ctx.ConversationUsage.SingleAsync(TestContext.Current.CancellationToken);
+        var usage = await ctx.ConversationUsage.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(ConversationUsageKinds.Summarization, usage.Kind);
 
         // A digest describes a scope, and the scope changes the moment a document is added.
-        var summaries = await ctx.ConversationDocumentSummaries.ToListAsync(TestContext.Current.CancellationToken);
+        var summaries = await ctx.ConversationDocumentSummaries.IncludingDeactivated().ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(summaries);
         Assert.Equal("Already known.", summaries[0].Text);
     }

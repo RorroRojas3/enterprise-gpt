@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Users;
 
@@ -9,13 +7,10 @@ namespace Enterprise.Gpt.Entity.McpServers;
 /// One user's own bearer credential for an MCP server registered with
 /// <see cref="Common.Enums.McpAuthTypes.UserApiKey"/>, held encrypted at rest.
 /// </summary>
-[Table(nameof(UserMcpCredential), Schema = "Core")]
-public class UserMcpCredential : BaseModifiedByEntity
+public class UserMcpCredential : BaseModifiedByEntity<Guid>
 {
-    [ForeignKey(nameof(User))]
     public Guid UserId { get; set; }
 
-    [ForeignKey(nameof(McpServer))]
     public Guid McpServerId { get; set; }
 
     /// <summary>
@@ -26,13 +21,11 @@ public class UserMcpCredential : BaseModifiedByEntity
     /// Never leaves the service layer: no DTO carries it and no route returns it. A payload
     /// the current key ring cannot open reads as "no credential", not as an error.
     /// </remarks>
-    [StringLength(2048)]
     public string Ciphertext { get; set; } = null!;
 
     /// <summary>
     /// Last four characters of the credential, so a user can tell which key is stored.
     /// </summary>
-    [StringLength(4)]
     public string ApiKeyHint { get; set; } = null!;
 
     /// <summary>

@@ -6,6 +6,7 @@ using Enterprise.Gpt.Entity.Permissions;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
 using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Extensions;
 using Enterprise.Gpt.Service.Security;
 using FluentValidation;
 using FluentValidation.Results;
@@ -78,13 +79,15 @@ namespace Enterprise.Gpt.Service.McpServers
         ITokenService tokenService,
         EnterpriseGptDbContext ctx,
         IMcpClientCache mcpClientCache,
-        IUserPermissionCache permissionCache) : IMcpServerService
+        IUserPermissionCache permissionCache,
+        TimeProvider timeProvider) : IMcpServerService
     {
         private readonly ILogger<McpServerService> _logger = logger;
         private readonly ITokenService _tokenService = tokenService;
         private readonly EnterpriseGptDbContext _ctx = ctx;
         private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
         private readonly IUserPermissionCache _permissionCache = permissionCache;
+        private readonly TimeProvider _timeProvider = timeProvider;
 
         /// <inheritdoc />
         public async Task<List<McpDto>> GetPermittedMcpServersAsync(CancellationToken cancellationToken = default)
@@ -97,8 +100,7 @@ namespace Enterprise.Gpt.Service.McpServers
             return await _ctx.McpServers
                 .AsNoTracking()
                 .Where(s => !s.DateDeactivated.HasValue
-                    && s.Permissions.Any(p => !p.DateDeactivated.HasValue
-                        && p.UserPermissions.Any(up => up.UserId == oid && !up.DateDeactivated.HasValue)))
+                    && s.Permissions.Any(p => p.UserPermissions.Any(up => up.UserId == oid)))
                 .OrderBy(s => s.Name)
                 .Select(McpServerMapper.BuildMcpDtoExpression(oid))
                 .ToListAsync(cancellationToken);
@@ -130,13 +132,10 @@ namespace Enterprise.Gpt.Service.McpServers
             await EnsureNameIsAvailableAsync(request.Name, excludeServerId: null, cancellationToken);
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
 
             var newServer = request.FromCreateMcpServerActionDtoToMcpServer();
             newServer.Id = Guid.NewGuid();
-            newServer.DateCreated = date;
             newServer.CreatedById = oid;
-            newServer.DateModified = date;
             newServer.ModifiedById = oid;
 
             // The permission is created in the same SaveChangesAsync so a server can never
@@ -147,9 +146,7 @@ namespace Enterprise.Gpt.Service.McpServers
                 Name = newServer.Name,
                 Description = $"Access to the {newServer.Name} MCP server.",
                 McpServerId = newServer.Id,
-                DateCreated = date,
                 CreatedById = oid,
-                DateModified = date,
                 ModifiedById = oid
             };
 
@@ -167,7 +164,7 @@ namespace Enterprise.Gpt.Service.McpServers
         public async Task<McpServerDto> UpdateMcpServerAsync(Guid id, UpdateMcpServerActionDto request, CancellationToken cancellationToken = default)
         {
             var server = await _ctx.McpServers
-                .Include(s => s.Permissions.Where(p => !p.DateDeactivated.HasValue))
+                .Include(s => s.Permissions)
                 .FirstOrDefaultAsync(s => s.Id == id && !s.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException("MCP server not found.");
 
@@ -177,7 +174,6 @@ namespace Enterprise.Gpt.Service.McpServers
             }
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
             // A stored key is consent to send it to one endpoint. Repointing the server is
             // therefore as much a reason to discard the keys as dropping the auth type is:
             // without this, editing the URL forwards every user's token to the new host on
@@ -187,7 +183,6 @@ namespace Enterprise.Gpt.Service.McpServers
                     || !string.Equals(server.Url, request.Url, StringComparison.OrdinalIgnoreCase));
 
             request.FromUpdateMcpServerActionDtoToMcpServer(server);
-            server.DateModified = date;
             server.ModifiedById = oid;
 
             // Keep the linked permission's name/description in sync so administrators keep
@@ -197,16 +192,15 @@ namespace Enterprise.Gpt.Service.McpServers
             {
                 permission.Name = server.Name;
                 permission.Description = $"Access to the {server.Name} MCP server.";
-                permission.DateModified = date;
                 permission.ModifiedById = oid;
             }
 
             if (discardUserApiKeys)
             {
-                await DeactivateCredentialsAsync(id, oid, date, cancellationToken);
+                await DeactivateCredentialsAsync(id, oid, cancellationToken);
             }
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"MCP server '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             // Connection details may have changed; cached clients must not outlive them.
             _mcpClientCache.InvalidateServer(id);
@@ -220,39 +214,35 @@ namespace Enterprise.Gpt.Service.McpServers
         public async Task DeactivateMcpServerAsync(Guid id, CancellationToken cancellationToken = default)
         {
             var server = await _ctx.McpServers
-                .Include(s => s.Permissions.Where(p => !p.DateDeactivated.HasValue))
-                    .ThenInclude(p => p.UserPermissions.Where(up => !up.DateDeactivated.HasValue))
-                .Include(s => s.UserCredentials.Where(c => !c.DateDeactivated.HasValue))
+                .Include(s => s.Permissions)
+                    .ThenInclude(p => p.UserPermissions)
+                .Include(s => s.UserCredentials)
                 .FirstOrDefaultAsync(s => s.Id == id && !s.DateDeactivated.HasValue, cancellationToken)
                 ?? throw new NotFoundException("MCP server not found.");
 
             var oid = _tokenService.GetOid();
-            var date = DateTimeOffset.UtcNow;
+            var date = _timeProvider.GetUtcNow();
 
             // Tracked entities so server, permission, grants and stored credentials deactivate in
             // one atomic save, preserving the invariant that an active grant implies an active
             // permission — and leaving no credential behind for a server nobody can select.
             server.DateDeactivated = date;
-            server.DateModified = date;
             server.ModifiedById = oid;
 
             foreach (var credential in server.UserCredentials)
             {
                 credential.DateDeactivated = date;
-                credential.DateModified = date;
                 credential.ModifiedById = oid;
             }
 
             foreach (var permission in server.Permissions)
             {
                 permission.DateDeactivated = date;
-                permission.DateModified = date;
                 permission.ModifiedById = oid;
 
                 foreach (var grant in permission.UserPermissions)
                 {
                     grant.DateDeactivated = date;
-                    grant.DateModified = date;
                     grant.ModifiedById = oid;
                 }
             }
@@ -263,7 +253,7 @@ namespace Enterprise.Gpt.Service.McpServers
                 .Select(g => g.UserId)
                 .Distinct()];
 
-            await _ctx.SaveChangesAsync(cancellationToken);
+            await _ctx.SaveChangesOrConflictAsync($"MCP server '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
             _mcpClientCache.InvalidateServer(id);
             _permissionCache.Invalidate(affectedUserIds);
@@ -275,17 +265,17 @@ namespace Enterprise.Gpt.Service.McpServers
         /// Marks every stored credential for a server deactivated, leaving the save to the caller
         /// so it lands in the same transaction as the change that made them redundant.
         /// </summary>
-        private async Task DeactivateCredentialsAsync(
-            Guid mcpServerId, Guid oid, DateTimeOffset date, CancellationToken cancellationToken)
+        private async Task DeactivateCredentialsAsync(Guid mcpServerId, Guid oid, CancellationToken cancellationToken)
         {
+            var date = _timeProvider.GetUtcNow();
+
             var credentials = await _ctx.UserMcpCredentials
-                .Where(c => c.McpServerId == mcpServerId && !c.DateDeactivated.HasValue)
+                .Where(c => c.McpServerId == mcpServerId)
                 .ToListAsync(cancellationToken);
 
             foreach (var credential in credentials)
             {
                 credential.DateDeactivated = date;
-                credential.DateModified = date;
                 credential.ModifiedById = oid;
             }
         }
@@ -303,7 +293,7 @@ namespace Enterprise.Gpt.Service.McpServers
                     && (excludeServerId == null || s.Id != excludeServerId), cancellationToken);
 
             var permissionNameTaken = await _ctx.Permissions
-                .AnyAsync(p => p.Name == name && !p.DateDeactivated.HasValue
+                .AnyAsync(p => p.Name == name
                     && (excludeServerId == null || p.McpServerId != excludeServerId), cancellationToken);
 
             if (serverNameTaken || permissionNameTaken)

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Enterprise.Gpt.Common.Constants.Users;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Users;
@@ -26,8 +27,8 @@ public class CreateUserActionDtoValidator : AbstractValidator<CreateUserActionDt
             .WithMessage("Email is required.")
             .EmailAddress()
             .WithMessage("Invalid email format.")
-            .MaximumLength(512)
-            .WithMessage("Email cannot exceed 512 characters.");
+            .MaximumLength(UserLimits.EmailMaxLength)
+            .WithMessage($"Email cannot exceed {UserLimits.EmailMaxLength} characters.");
         RuleFor(x => x.PermissionIds)
             .NotNull()
             .WithMessage("Permission ids are required.");

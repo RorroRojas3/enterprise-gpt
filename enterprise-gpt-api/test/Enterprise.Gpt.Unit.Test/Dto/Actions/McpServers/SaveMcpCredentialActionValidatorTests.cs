@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Constants.McpServers;
 using Enterprise.Gpt.Dto.Actions.McpServers;
 using Xunit;
 
@@ -31,8 +32,8 @@ public class SaveMcpCredentialActionValidatorTests
     [Fact]
     public void ApiKey_LongerThanTheColumnCanHold_IsRejected()
     {
-        Assert.True(IsAccepted(new string('a', McpCredentialRules.MaxLength)));
-        Assert.False(IsAccepted(new string('a', McpCredentialRules.MaxLength + 1)));
+        Assert.True(IsAccepted(new string('a', UserMcpCredentialLimits.ApiKeyMaxLength)));
+        Assert.False(IsAccepted(new string('a', UserMcpCredentialLimits.ApiKeyMaxLength + 1)));
     }
 
     [Theory]

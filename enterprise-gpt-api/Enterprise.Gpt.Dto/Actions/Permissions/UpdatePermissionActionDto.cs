@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Constants.Permissions;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Permissions;
@@ -20,8 +21,8 @@ public class UpdatePermissionActionDtoValidator : AbstractValidator<UpdatePermis
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .MaximumLength(256);
+            .MaximumLength(PermissionLimits.NameMaxLength);
         RuleFor(x => x.Description)
-            .MaximumLength(1024);
+            .MaximumLength(PermissionLimits.DescriptionMaxLength);
     }
 }

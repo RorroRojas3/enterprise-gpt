@@ -42,9 +42,8 @@ namespace Enterprise.Gpt.Service.Permissions
 
         /// <summary>
         /// Creates a new <see cref="Permission"/> entity from a
-        /// <see cref="CreatePermissionActionDto"/>. Callers are responsible for setting
-        /// <c>Id</c> and the audit columns (e.g. <c>DateCreated</c>, <c>CreatedById</c>)
-        /// before saving.
+        /// <see cref="CreatePermissionActionDto"/>. Callers set <c>Id</c>, <c>CreatedById</c> and
+        /// <c>ModifiedById</c>; the audit interceptor stamps the dates.
         /// </summary>
         /// <param name="dto">The action DTO carrying the new values.</param>
         /// <returns>The new, untracked entity.</returns>
@@ -60,8 +59,8 @@ namespace Enterprise.Gpt.Service.Permissions
 
         /// <summary>
         /// Applies an <see cref="UpdatePermissionActionDto"/> to an existing
-        /// <see cref="Permission"/> entity in place. Callers are responsible for
-        /// setting audit columns (e.g. <c>DateModified</c>) and saving changes.
+        /// <see cref="Permission"/> entity in place. Callers set <c>ModifiedById</c> and save; the audit
+        /// interceptor stamps <c>DateModified</c>.
         /// </summary>
         /// <param name="dto">The action DTO carrying the new values.</param>
         /// <param name="permission">The tracked entity to mutate.</param>

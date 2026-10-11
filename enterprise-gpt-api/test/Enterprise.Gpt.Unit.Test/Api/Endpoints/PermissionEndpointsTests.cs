@@ -38,7 +38,7 @@ public class PermissionEndpointsTests
     public async Task GetAllPermissionsAsync_ServiceReturnsPermissions_ReturnsOkWithPayload()
     {
         List<PermissionDto> expected = [CreateDto("aaa-active"), CreateDto("bbb-deactivated")];
-        _permissionService.GetAllPermissionsAsync(Arg.Any<CancellationToken>()).Returns(expected);
+        _permissionService.GetAllPermissionsIncludingDeactivatedAsync(Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await PermissionEndpoints.GetAllPermissionsAsync(_permissionService, TestContext.Current.CancellationToken);
 

@@ -34,7 +34,8 @@ public sealed class UserMcpCredentialServiceTests : IDisposable
             _tokenService,
             _fixture.Context,
             _protector,
-            _mcpClientCache);
+            _mcpClientCache,
+            TimeProvider.System);
     }
 
     public void Dispose()
@@ -99,7 +100,7 @@ public sealed class UserMcpCredentialServiceTests : IDisposable
     private async Task<UserMcpCredential?> ReadCredentialAsync(Guid mcpServerId, Guid? userId = null)
     {
         using var ctx = _fixture.CreateContext();
-        return await ctx.UserMcpCredentials
+        return await ctx.UserMcpCredentials.IncludingDeactivated()
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 c => c.McpServerId == mcpServerId && c.UserId == (userId ?? KnownIds.SeedUserId),
@@ -154,7 +155,7 @@ public sealed class UserMcpCredentialServiceTests : IDisposable
         Assert.Equal("wxyz", status.ApiKeyHint);
 
         using var ctx = _fixture.CreateContext();
-        var credentials = await ctx.UserMcpCredentials
+        var credentials = await ctx.UserMcpCredentials.IncludingDeactivated()
             .Where(c => c.McpServerId == server.Id)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(credentials);

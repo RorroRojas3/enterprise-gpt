@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 using Enterprise.Gpt.Entity.Conversations;
 using Enterprise.Gpt.Entity.Documents;
@@ -15,25 +13,21 @@ namespace Enterprise.Gpt.Entity.Projects;
 /// Ownership is the whole authorization model: a project, its documents and its conversations
 /// all carry the same <see cref="UserId"/>, and every query filters on it.
 /// </remarks>
-[Table(nameof(Project), Schema = "Core")]
-public class Project : BaseModifiedEntity
+public class Project : BaseModifiedEntity<Guid>
 {
     /// <summary>
     /// The Entra object id of the owner. Every read and write is scoped to it.
     /// </summary>
-    [ForeignKey(nameof(User))]
     public Guid UserId { get; set; }
 
     /// <summary>
     /// The project name, unique among the owner's active projects.
     /// </summary>
-    [StringLength(256)]
     public string Name { get; set; } = null!;
 
     /// <summary>
     /// Optional free-text description. Never sent to the model.
     /// </summary>
-    [StringLength(1024)]
     public string? Description { get; set; }
 
     /// <summary>
@@ -53,7 +47,6 @@ public class Project : BaseModifiedEntity
     /// Read at each turn rather than snapshotted into the conversation transcript, so editing them
     /// affects later turns and moving a conversation between projects behaves as expected.
     /// </remarks>
-    [Column(TypeName = "nvarchar(max)")]
     public string? Instructions { get; set; }
 
     public User User { get; set; } = null!;

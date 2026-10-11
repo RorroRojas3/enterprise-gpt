@@ -60,7 +60,7 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
         using var scope = _fixture.Factory.Services.CreateScope();
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
 
-        var document = await ctx.ConversationDocuments
+        var document = await ctx.ConversationDocuments.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == stored.Id, TestContext.Current.CancellationToken);
 
@@ -68,7 +68,7 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
 
         // The whole of the retrieval isolation: a document with no chunk rows contributes nothing to
         // the candidate set, which is a structural fact rather than a predicate anybody has to keep.
-        Assert.Equal(0, await ctx.ConversationDocumentChunks
+        Assert.Equal(0, await ctx.ConversationDocumentChunks.IncludingDeactivated()
             .CountAsync(x => x.ConversationDocumentId == stored.Id, TestContext.Current.CancellationToken));
     }
 
@@ -147,7 +147,7 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
             TestContext.Current.CancellationToken));
 
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
-        Assert.Equal(0, await ctx.ConversationDocuments
+        Assert.Equal(0, await ctx.ConversationDocuments.IncludingDeactivated()
             .CountAsync(x => x.ConversationId == conversationId, TestContext.Current.CancellationToken));
     }
 
@@ -165,7 +165,7 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
         await scope.ServiceProvider.GetRequiredService<IGeneratedDocumentService>().DiscardAsync(stored.Id);
 
         var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
-        var document = await ctx.ConversationDocuments
+        var document = await ctx.ConversationDocuments.IncludingDeactivated()
             .AsNoTracking()
             .SingleAsync(x => x.Id == stored.Id, TestContext.Current.CancellationToken);
 

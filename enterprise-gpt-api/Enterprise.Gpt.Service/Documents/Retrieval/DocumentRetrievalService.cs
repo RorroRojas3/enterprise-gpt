@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using System.Text;
+using Enterprise.Gpt.Common.Constants.Documents;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Common.Extensions;
 using Enterprise.Gpt.Repository.Sql.DbContexts;
@@ -78,14 +79,6 @@ public sealed class DocumentRetrievalService(
     EnterpriseGptDbContext ctx) : IDocumentRetrievalService
 {
     /// <summary>
-    /// Dimension of the stored embeddings, fixed by the <c>vector(1536)</c> column on
-    /// <see cref="Entity.Base.BaseDocumentChunk.Embedding"/>. A query vector of any other size is a
-    /// misconfigured embedding deployment, and SQL Server would reject it with a type error that says
-    /// nothing about the cause.
-    /// </summary>
-    private const int EmbeddingDimensions = 1536;
-
-    /// <summary>
     /// The rank-fusion constant from the original Reciprocal Rank Fusion paper. It damps the influence
     /// of the very top ranks, so a chunk both passes agree on beats one that either ranks first alone.
     /// </summary>
@@ -146,7 +139,6 @@ public sealed class DocumentRetrievalService(
         var conversationDocuments = await _ctx.ConversationDocuments
             .AsNoTracking()
             .Where(d => d.ConversationId == conversationId
-                && !d.DateDeactivated.HasValue
                 && d.Type == ConversationDocumentTypes.Uploaded)
             .OrderBy(d => d.DateCreated)
             .Select(d => new { d.Id, d.Name })
@@ -158,13 +150,11 @@ public sealed class DocumentRetrievalService(
         // Read from the conversation rather than taken from the caller, and confirmed active rather than
         // assumed. Reading it here ties the project to a conversation that is genuinely in it, so this
         // service cannot be asked for one project's documents through another project's conversation.
-        // Nulling it for a deactivated project is what keeps the project half of every retrieval query
-        // switched off for the rest of the turn, since the conversation still points at it.
+        // A deactivated project reads as no project, since the soft-delete filter applies to the navigation;
+        // that keeps the project half of every retrieval query switched off while the link still exists.
         var activeProjectId = await _ctx.Conversations
             .AsNoTracking()
-            .Where(c => c.Id == conversationId
-                && c.ProjectId.HasValue
-                && !c.Project!.DateDeactivated.HasValue)
+            .Where(c => c.Id == conversationId && c.Project != null)
             .Select(c => c.ProjectId)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -173,7 +163,7 @@ public sealed class DocumentRetrievalService(
         {
             var projectDocuments = await _ctx.ProjectDocuments
                 .AsNoTracking()
-                .Where(d => d.ProjectId == activeProjectId.Value && !d.DateDeactivated.HasValue)
+                .Where(d => d.ProjectId == activeProjectId.Value)
                 .OrderBy(d => d.DateCreated)
                 .Select(d => new { d.Id, d.Name })
                 .ToListAsync(cancellationToken)
@@ -271,10 +261,10 @@ public sealed class DocumentRetrievalService(
 
         var vector = generated[0].Vector;
 
-        if (vector.Length != EmbeddingDimensions)
+        if (vector.Length != DocumentChunkLimits.EmbeddingDimensions)
         {
             throw new InvalidOperationException(
-                $"The embedding generator returned a {vector.Length}-dimension vector, but stored chunks are {EmbeddingDimensions}-dimension. " +
+                $"The embedding generator returned a {vector.Length}-dimension vector, but stored chunks are {DocumentChunkLimits.EmbeddingDimensions}-dimension. " +
                 "The configured embedding deployment does not match the one documents were ingested with.");
         }
 
@@ -726,7 +716,7 @@ public sealed class DocumentRetrievalService(
         {
             var sheets = await _ctx.ConversationDocumentSheets
                 .AsNoTracking()
-                .Where(s => conversationDocumentIds.Contains(s.ConversationDocumentId) && !s.DateDeactivated.HasValue)
+                .Where(s => conversationDocumentIds.Contains(s.ConversationDocumentId))
                 .Select(s => new { s.ConversationDocumentId, s.SheetIndex, s.SheetName })
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -741,7 +731,7 @@ public sealed class DocumentRetrievalService(
         {
             var sheets = await _ctx.ProjectDocumentSheets
                 .AsNoTracking()
-                .Where(s => projectDocumentIds.Contains(s.ProjectDocumentId) && !s.DateDeactivated.HasValue)
+                .Where(s => projectDocumentIds.Contains(s.ProjectDocumentId))
                 .Select(s => new { s.ProjectDocumentId, s.SheetIndex, s.SheetName })
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);

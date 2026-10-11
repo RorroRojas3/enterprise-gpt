@@ -1,4 +1,4 @@
-using Enterprise.Gpt.Dto.Actions.Projects.Constants;
+using Enterprise.Gpt.Common.Constants.Projects;
 using FluentValidation;
 
 namespace Enterprise.Gpt.Dto.Actions.Projects;
@@ -34,10 +34,10 @@ public class UpdateProjectActionDtoValidator : AbstractValidator<UpdateProjectAc
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .MaximumLength(ProjectFieldLengths.Name);
+            .MaximumLength(ProjectLimits.NameMaxLength);
         RuleFor(x => x.Description)
-            .MaximumLength(ProjectFieldLengths.Description);
+            .MaximumLength(ProjectLimits.DescriptionMaxLength);
         RuleFor(x => x.Instructions)
-            .MaximumLength(ProjectFieldLengths.Instructions);
+            .MaximumLength(ProjectLimits.InstructionsMaxLength);
     }
 }

@@ -12,7 +12,7 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// run on in-memory SQLite:
 /// <list type="bullet">
 /// <item><description>
-/// The rowversion column (<see cref="BaseEntity.Version"/>, mapped via <c>[Timestamp]</c>)
+/// The rowversion column (<see cref="BaseModifiedEntity{TKey}.Version"/>, mapped with <c>IsRowVersion</c>)
 /// becomes an ordinary optional column. SQLite never generates rowversion values, so the
 /// store-generated NOT NULL column would otherwise fail every insert — including the HasData
 /// seeds applied by <c>EnsureCreated()</c> (see dotnet/efcore#20475). Concurrency-token
@@ -71,7 +71,7 @@ public class SqliteRowVersionModelCustomizer(ModelCustomizerDependencies depende
                 }
             }
 
-            var version = entityType.FindProperty(nameof(BaseEntity.Version));
+            var version = entityType.FindProperty(nameof(BaseModifiedEntity<Guid>.Version));
             if (version is not null)
             {
                 version.ValueGenerated = ValueGenerated.Never;

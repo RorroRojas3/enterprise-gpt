@@ -1,17 +1,16 @@
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents
 {
-    public sealed class ConversationDocumentConfiguration : IEntityTypeConfiguration<ConversationDocument>
+    public sealed class ConversationDocumentConfiguration : BaseDocumentConfiguration<ConversationDocument, Guid>
     {
-        public void Configure(EntityTypeBuilder<ConversationDocument> builder)
+        protected override void ConfigureEntity(EntityTypeBuilder<ConversationDocument> builder)
         {
             builder.ToTable(nameof(ConversationDocument), "Core");
-
-            builder.HasKey(x => x.Id);
 
             // A store default rather than the property initializer alone: EF scaffolds AddColumn from
             // the CLR default, so without it the column would backfill every existing row to a value
@@ -25,10 +24,6 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents
             builder.HasOne(x => x.Conversation)
                 .WithMany(x => x.Documents)
                 .HasForeignKey(x => x.ConversationId);
-
-            builder.HasOne(x => x.User)
-                .WithMany()
-                .HasForeignKey(x => x.UserId);
 
             builder.HasMany(x => x.Chunks)
                 .WithOne(x => x.ConversationDocument)

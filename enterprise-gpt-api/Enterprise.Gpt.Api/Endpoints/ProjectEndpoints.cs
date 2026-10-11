@@ -47,7 +47,8 @@ public static class ProjectEndpoints
         group.MapPut("{id:guid}", UpdateProjectAsync)
             .AddEndpointFilter<ValidationEndpointFilter<UpdateProjectActionDto>>()
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         group.MapDelete("{id:guid}", DeactivateProjectAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
 

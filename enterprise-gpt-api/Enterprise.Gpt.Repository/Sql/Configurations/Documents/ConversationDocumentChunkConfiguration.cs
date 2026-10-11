@@ -1,20 +1,15 @@
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents
 {
-    public sealed class ConversationDocumentChunkConfiguration : IEntityTypeConfiguration<ConversationDocumentChunk>
+    public sealed class ConversationDocumentChunkConfiguration : BaseDocumentChunkConfiguration<ConversationDocumentChunk, Guid>
     {
-        public void Configure(EntityTypeBuilder<ConversationDocumentChunk> builder)
+        protected override void ConfigureEntity(EntityTypeBuilder<ConversationDocumentChunk> builder)
         {
             builder.ToTable(nameof(ConversationDocumentChunk), "Core");
-
-            builder.HasKey(x => x.Id);
-
-            builder.Property(x => x.Text)
-                .HasColumnType("nvarchar(max)")
-                .IsRequired();
 
             // Chunk ordinals are dense and unique per document; the filter keeps soft-deleted rows from
             // blocking a re-ingestion of the same document.

@@ -1,21 +1,24 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.Text.Json.Serialization;
-
 namespace Enterprise.Gpt.Entity.Base;
 
-public class BaseEntity
+/// <summary>
+/// The non-generic face of <see cref="BaseEntity{TKey}"/>, so the interceptors can reach every key type at once.
+/// </summary>
+public interface IBaseEntity
 {
-    [Key]
-    [JsonPropertyName("id")]
-    public Guid Id { get; set; }
+    /// <summary>When the row was soft-deleted, at offset zero; <see langword="null"/> while it is live.</summary>
+    DateTimeOffset? DateDeactivated { get; set; }
+}
 
-    [JsonPropertyName("dateCreated")]
-    public DateTimeOffset DateCreated { get; set; }
+/// <summary>
+/// The key and soft-delete stamp every table carries.
+/// </summary>
+/// <typeparam name="TKey">The key type, <see cref="Guid"/> or <see cref="int"/>.</typeparam>
+public abstract class BaseEntity<TKey> : IBaseEntity
+    where TKey : struct, IEquatable<TKey>
+{
+    /// <summary>The row's key.</summary>
+    public TKey Id { get; set; }
 
-    [JsonPropertyName("dateDeactivated")]
+    /// <inheritdoc />
     public DateTimeOffset? DateDeactivated { get; set; }
-
-    [Timestamp]
-    [JsonPropertyName("version")]
-    public byte[] Version { get; set; } = null!;
 }

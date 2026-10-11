@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Constants.Usage;
 using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,13 +9,15 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Usage;
 /// <summary>
 /// Configures the append-only <see cref="ConversationUsage"/> audit table.
 /// </summary>
-public sealed class ConversationUsageConfiguration : IEntityTypeConfiguration<ConversationUsage>
+public sealed class ConversationUsageConfiguration : BaseCreatedEntityConfiguration<ConversationUsage, Guid>
 {
-    public void Configure(EntityTypeBuilder<ConversationUsage> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ConversationUsage> builder)
     {
         builder.ToTable(nameof(ConversationUsage), "Core");
 
-        builder.HasKey(x => x.Id);
+        builder.Property(x => x.DeploymentName).HasMaxLength(ConversationUsageLimits.DeploymentNameMaxLength);
+        builder.Property(x => x.InputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
+        builder.Property(x => x.OutputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
 
         builder.HasOne(x => x.Conversation)
             .WithMany(x => x.Usage)

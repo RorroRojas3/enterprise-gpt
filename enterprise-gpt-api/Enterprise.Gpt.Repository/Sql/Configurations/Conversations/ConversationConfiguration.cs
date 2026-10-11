@@ -1,41 +1,40 @@
+using Enterprise.Gpt.Common.Constants.Conversations;
 using Enterprise.Gpt.Entity.Conversations;
-using Enterprise.Gpt.Entity.Projects;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Conversations;
 
 /// <summary>
-/// Configures the optional <see cref="Conversation"/> to <see cref="Project"/> relationship.
+/// Maps <see cref="Conversation"/> to <c>Core.Conversation</c>, its owner, its optional project and model,
+/// and the indexes that back the sidebar listings.
 /// </summary>
-/// <remarks>
-/// The rest of the conversation mapping still comes from data annotations on the entity; this type
-/// exists because an optional foreign key and its index cannot be expressed there without making the
-/// project navigation required.
-/// </remarks>
-public sealed class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
+public sealed class ConversationConfiguration : BaseModifiedEntityConfiguration<Conversation, Guid>
 {
-    public void Configure(EntityTypeBuilder<Conversation> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<Conversation> builder)
     {
         builder.ToTable(nameof(Conversation), "Core");
 
-        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).HasMaxLength(ConversationLimits.NameMaxLength);
+
+        builder.HasOne(x => x.User)
+            .WithMany()
+            .HasForeignKey(x => x.UserId);
 
         builder.HasOne(x => x.Project)
             .WithMany(x => x.Conversations)
             .HasForeignKey(x => x.ProjectId)
             .IsRequired(false);
 
-        // Optional for the same reason the project relationship is: a conversation has no model
-        // until its first turn runs, and an annotation-only mapping would make the navigation
-        // required.
+        // Optional: a conversation has no model until its first turn runs.
         builder.HasOne(x => x.Model)
             .WithMany()
             .HasForeignKey(x => x.ModelId)
             .IsRequired(false);
 
         // The index the project cascade reads when it clears ProjectId. Deliberately not extended
-        // with DateCreated for US-907's ?projectId= listing: that query is owner-scoped too, so the
+        // with DateCreated for the ?projectId= listing: that query is owner-scoped too, so the
         // engine seeks the user index below and gets the ordering off it for free, leaving ProjectId
         // as a residual predicate over one user's conversations — a bounded set. Folding DateCreated
         // in here would buy a second ordered path for a listing that already has one.

@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 
 namespace Enterprise.Gpt.Entity.Documents;
@@ -6,8 +5,7 @@ namespace Enterprise.Gpt.Entity.Documents;
 /// <summary>
 /// A column of a sheet belonging to a project document.
 /// </summary>
-[Table(nameof(ProjectDocumentSheetColumn), Schema = "Core")]
-public class ProjectDocumentSheetColumn : BaseDocumentSheetColumn
+public class ProjectDocumentSheetColumn : BaseDocumentSheetColumn<Guid>
 {
     /// <summary>The sheet this column belongs to.</summary>
     public Guid ProjectDocumentSheetId { get; set; }

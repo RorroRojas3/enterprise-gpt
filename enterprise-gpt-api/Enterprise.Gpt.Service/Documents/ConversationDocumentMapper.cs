@@ -84,8 +84,7 @@ public static class ConversationDocumentMapper
             // The owner needs no predicate here: siblings under one conversation share its owner.
             // Served by the (ConversationId, DateDeactivated) index the per-conversation listing added.
             ConversationDocumentCount = document.Conversation.Documents.Count(sibling =>
-                !sibling.DateDeactivated.HasValue
-                && (!hasOrigin || sibling.Type == originType)
+                (!hasOrigin || sibling.Type == originType)
                 && (pattern == null || EF.Functions.Like(sibling.Name, pattern))),
             Name = document.Name,
             Extension = document.Extension,

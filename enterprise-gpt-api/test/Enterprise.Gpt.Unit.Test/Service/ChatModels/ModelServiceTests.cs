@@ -35,7 +35,8 @@ public sealed class ModelServiceTests : IDisposable
             _fixture.Context,
             // The seeded row is the summarizer, which is what the guards below key off.
             Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
-            _chatClientResolver);
+            _chatClientResolver,
+            TimeProvider.System);
     }
 
     public void Dispose()
@@ -354,6 +355,24 @@ public sealed class ModelServiceTests : IDisposable
         Assert.NotNull(untouched);
         Assert.True(untouched.IsDefault);
         Assert.Equal(existingDefault.DateModified, untouched.DateModified);
+    }
+
+    [Fact]
+    public async Task UpdateModelAsync_LostRowVersionRace_ThrowsConflict()
+    {
+        var model = await AddModelAsync("aaa-raced");
+        var service = new ModelService(
+            NullLogger<ModelService>.Instance,
+            _tokenService,
+            _fixture.CreateServiceContext(new LostRaceInterceptor<Model>()),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = KnownIds.SeedModelId }),
+            _chatClientResolver,
+            TimeProvider.System);
+
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => service.UpdateModelAsync(model.Id, UpdateRequest(name: "aaa-raced"), TestContext.Current.CancellationToken));
+
+        Assert.Contains(model.Id.ToString(), exception.Message);
     }
 
     [Fact]

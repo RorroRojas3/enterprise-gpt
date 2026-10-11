@@ -66,8 +66,7 @@ public static class ProjectMapper
 
     /// <summary>
     /// Creates a new <see cref="Project"/> entity from a <see cref="CreateProjectActionDto"/>.
-    /// Callers are responsible for setting <c>Id</c>, <c>UserId</c> and the audit columns
-    /// (e.g. <c>DateCreated</c>) before saving.
+    /// Callers set <c>Id</c> and <c>UserId</c>; the audit interceptor stamps the dates.
     /// </summary>
     /// <param name="dto">The action DTO carrying the new values.</param>
     /// <returns>The new, untracked entity.</returns>
@@ -83,8 +82,7 @@ public static class ProjectMapper
 
     /// <summary>
     /// Applies an <see cref="UpdateProjectActionDto"/> to an existing <see cref="Project"/> entity in
-    /// place. Callers are responsible for setting audit columns (e.g. <c>DateModified</c>) and saving
-    /// changes.
+    /// place. Callers save; the audit interceptor stamps <c>DateModified</c>.
     /// </summary>
     /// <param name="dto">The action DTO carrying the new values.</param>
     /// <param name="project">The tracked entity to mutate.</param>

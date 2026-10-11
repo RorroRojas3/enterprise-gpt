@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace Enterprise.Gpt.Entity.Base;
 
 /// <summary>
@@ -7,27 +5,21 @@ namespace Enterprise.Gpt.Entity.Base;
 /// columns and rows hang off.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Mirrors <see cref="BaseDocumentChunk"/>'s split — an unmapped base plus one mapped table per
-/// document family — because the two document families are structurally identical and differ only
-/// in which document they hang off.
-/// </para>
-/// <para>
 /// A document holds many sheets, so uniqueness is per ordinal rather than per document.
-/// </para>
 /// </remarks>
-public class BaseDocumentSheet : BaseModifiedEntity
+/// <typeparam name="TKey">The key type, <see cref="Guid"/> or <see cref="int"/>.</typeparam>
+public abstract class BaseDocumentSheet<TKey> : BaseModifiedEntity<TKey>
+    where TKey : struct, IEquatable<TKey>
 {
     /// <summary>
     /// The sheet's 1-based position in the workbook's own tab order, and the value a chunk drawn
-    /// from it carries as <see cref="BaseDocumentChunk.SourceNumber"/>.
+    /// from it carries as <see cref="BaseDocumentChunk{TKey}.SourceNumber"/>.
     /// </summary>
     public int SheetIndex { get; set; }
 
     /// <summary>
     /// The sheet's name as the workbook declares it, or the file name for a <c>.csv</c>.
     /// </summary>
-    [StringLength(256)]
     public string SheetName { get; set; } = null!;
 
     /// <summary>

@@ -6,14 +6,6 @@ using Enterprise.Gpt.Entity.Permissions;
 using Enterprise.Gpt.Entity.Projects;
 using Enterprise.Gpt.Entity.Usage;
 using Enterprise.Gpt.Entity.Users;
-using Enterprise.Gpt.Repository.Sql.Configurations.ChatModels;
-using Enterprise.Gpt.Repository.Sql.Configurations.Conversations;
-using Enterprise.Gpt.Repository.Sql.Configurations.Documents;
-using Enterprise.Gpt.Repository.Sql.Configurations.McpServers;
-using Enterprise.Gpt.Repository.Sql.Configurations.Permissions;
-using Enterprise.Gpt.Repository.Sql.Configurations.Projects;
-using Enterprise.Gpt.Repository.Sql.Configurations.Usage;
-using Enterprise.Gpt.Repository.Sql.Configurations.Users;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -85,34 +77,10 @@ namespace Enterprise.Gpt.Repository.Sql.DbContexts
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.ApplyConfiguration(new UserConfiguration());
-            modelBuilder.ApplyConfiguration(new UserPermissionConfiguration());
-            modelBuilder.ApplyConfiguration(new PermissionConfiguration());
-            modelBuilder.ApplyConfiguration(new McpServerConfiguration());
-            modelBuilder.ApplyConfiguration(new UserMcpCredentialConfiguration());
-            modelBuilder.ApplyConfiguration(new ProviderConfiguration());
-            modelBuilder.ApplyConfiguration(new ModelConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationUsageConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationUsageMcpServerConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationUsageToolCallConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationUsageTurnConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationDocumentConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationDocumentChunkConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationDocumentSummaryConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationDocumentSheetConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationDocumentSheetColumnConfiguration());
-            modelBuilder.ApplyConfiguration(new ConversationDocumentSheetRowConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectDocumentConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectDocumentChunkConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectDocumentSummaryConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectDocumentSheetConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectDocumentSheetColumnConfiguration());
-            modelBuilder.ApplyConfiguration(new ProjectDocumentSheetRowConfiguration());
-            modelBuilder.ApplyConfiguration(new MessageFeedbackConfiguration());
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(EnterpriseGptDbContext).Assembly);
 
-            // Configure global delete behavior
+            // NoAction on every key: rows are soft-deleted, and SQL Server rejects the multiple cascade paths
+            // this graph would otherwise create.
             foreach (var relationship in modelBuilder.Model.GetEntityTypes()
                 .SelectMany(e => e.GetForeignKeys()))
             {

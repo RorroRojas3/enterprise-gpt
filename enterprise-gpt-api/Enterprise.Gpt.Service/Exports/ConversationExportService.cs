@@ -93,7 +93,7 @@ public sealed class ConversationExportService(
         // correctly, but a deactivated conversation still has a transcript and must not export.
         var exists = await _ctx.Conversations
             .AsNoTracking()
-            .AnyAsync(x => x.Id == id && x.UserId == userId && !x.DateDeactivated.HasValue, cancellationToken);
+            .AnyAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
 
         if (!exists)
         {

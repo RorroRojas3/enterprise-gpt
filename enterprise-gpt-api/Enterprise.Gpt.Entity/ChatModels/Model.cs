@@ -1,16 +1,11 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Enterprise.Gpt.Entity.Base;
+﻿using Enterprise.Gpt.Entity.Base;
 
 namespace Enterprise.Gpt.Entity.ChatModels
 {
-    [Table(nameof(Model), Schema = "Core.Ref")]
-    public class Model : BaseModifiedByEntity
+    public class Model : BaseModifiedByEntity<Guid>
     {
-        [ForeignKey(nameof(Provider))]
         public Guid ProviderId { get; set; }
 
-        [StringLength(256)]
         public string Name { get; set; } = null!;
 
         /// <summary>
@@ -20,16 +15,12 @@ namespace Enterprise.Gpt.Entity.ChatModels
         /// <remarks>
         /// Sized for the longest of those — a Bedrock inference-profile ARN overruns 256 characters.
         /// </remarks>
-        [StringLength(512)]
         public string DeploymentName { get; set; } = null!;
 
-        [StringLength(1024)]
         public string Description { get; set; } = null!;
 
-        [Column(TypeName = "decimal(18, 2)")]
         public decimal ContextWindowSize { get; set; }
 
-        [Column(TypeName = "decimal(18, 2)")]
         public decimal MaxOutputTokens { get; set; }
 
         public bool IsToolEnabled { get; set; } = true;
@@ -90,14 +81,12 @@ namespace Enterprise.Gpt.Entity.ChatModels
         /// call was charged. Every usage row snapshots the pair at write time for that reason.
         /// </para>
         /// </remarks>
-        [Column(TypeName = "decimal(18, 6)")]
         public decimal? InputPricePerMillionTokens { get; set; }
 
         /// <summary>
         /// Gets or sets what this deployment charges per 1,000,000 output tokens, on the same terms
         /// as <see cref="InputPricePerMillionTokens"/>.
         /// </summary>
-        [Column(TypeName = "decimal(18, 6)")]
         public decimal? OutputPricePerMillionTokens { get; set; }
 
         public Provider Provider { get; set; } = null!;

@@ -92,7 +92,8 @@ public sealed class DocumentServiceTests : IDisposable
             _jobStatusStore,
             _jobCancellationRegistry,
             _tokenService,
-            _fixture.Context);
+            _fixture.Context,
+            TimeProvider.System);
     }
 
     public void Dispose() => _fixture.Dispose();
@@ -288,7 +289,7 @@ public sealed class DocumentServiceTests : IDisposable
             "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ConversationDocuments
+        var document = await ctx.ConversationDocuments.IncludingDeactivated()
             .AsNoTracking()
             .Include(d => d.Chunks)
             .SingleAsync(d => d.Id == result.Id, TestContext.Current.CancellationToken);
@@ -316,7 +317,7 @@ public sealed class DocumentServiceTests : IDisposable
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ConversationDocuments
+        var document = await ctx.ConversationDocuments.IncludingDeactivated()
             .AsNoTracking()
             .Include(d => d.Chunks)
             .SingleAsync(TestContext.Current.CancellationToken);
@@ -342,7 +343,7 @@ public sealed class DocumentServiceTests : IDisposable
             ContainerName, expectedPath, Arg.Any<byte[]>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ConversationDocuments.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        var document = await ctx.ConversationDocuments.IncludingDeactivated().AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(expectedPath, document.Path);
     }
 
@@ -441,8 +442,8 @@ public sealed class DocumentServiceTests : IDisposable
             () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        Assert.False(await ctx.ConversationDocuments.AnyAsync(TestContext.Current.CancellationToken));
-        Assert.False(await ctx.ConversationDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ConversationDocuments.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ConversationDocumentChunks.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -611,7 +612,7 @@ public sealed class DocumentServiceTests : IDisposable
             "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ProjectDocuments
+        var document = await ctx.ProjectDocuments.IncludingDeactivated()
             .AsNoTracking()
             .Include(d => d.Chunks)
             .SingleAsync(d => d.Id == result.Id, TestContext.Current.CancellationToken);
@@ -637,7 +638,7 @@ public sealed class DocumentServiceTests : IDisposable
             () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ProjectDocuments
+        var document = await ctx.ProjectDocuments.IncludingDeactivated()
             .AsNoTracking()
             .Include(d => d.Chunks)
             .SingleAsync(TestContext.Current.CancellationToken);
@@ -663,7 +664,7 @@ public sealed class DocumentServiceTests : IDisposable
             ContainerName, expectedPath, Arg.Any<byte[]>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ProjectDocuments.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        var document = await ctx.ProjectDocuments.IncludingDeactivated().AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(expectedPath, document.Path);
     }
 
@@ -729,8 +730,8 @@ public sealed class DocumentServiceTests : IDisposable
         await _documentStore.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        Assert.False(await ctx.ProjectDocuments.AnyAsync(TestContext.Current.CancellationToken));
-        Assert.False(await ctx.ProjectDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ProjectDocuments.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ProjectDocumentChunks.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -745,8 +746,8 @@ public sealed class DocumentServiceTests : IDisposable
             "job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        Assert.False(await ctx.ConversationDocuments.AnyAsync(TestContext.Current.CancellationToken));
-        Assert.False(await ctx.ConversationDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ConversationDocuments.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ConversationDocumentChunks.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -762,8 +763,8 @@ public sealed class DocumentServiceTests : IDisposable
             "job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        Assert.False(await ctx.ProjectDocuments.AnyAsync(TestContext.Current.CancellationToken));
-        Assert.False(await ctx.ProjectDocumentChunks.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ProjectDocuments.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await ctx.ProjectDocumentChunks.IncludingDeactivated().AnyAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -858,7 +859,7 @@ public sealed class DocumentServiceTests : IDisposable
         await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
         Assert.NotNull(stored.DateDeactivated);
     }
 
@@ -874,7 +875,7 @@ public sealed class DocumentServiceTests : IDisposable
         await _service.CancelUploadAsync("job-1", TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.ProjectDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.ProjectDocuments.IncludingDeactivated().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
         Assert.NotNull(stored.DateDeactivated);
     }
 
@@ -891,7 +892,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         // A failed job produced no document, so there is nothing to retract.
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
         Assert.Null(stored.DateDeactivated);
     }
 
@@ -907,7 +908,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         // The job lost the race, so it is the one that cleans up — rows and the stored original alike.
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.ConversationDocuments.SingleOrDefaultAsync(x => x.ConversationId == conversation.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.ConversationDocuments.IncludingDeactivated().SingleOrDefaultAsync(x => x.ConversationId == conversation.Id, TestContext.Current.CancellationToken);
         Assert.NotNull(stored);
         Assert.NotNull(stored.DateDeactivated);
         await _documentStore.Received(1).DeleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -940,11 +941,11 @@ public sealed class DocumentServiceTests : IDisposable
         await _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
         Assert.NotNull(stored.DateDeactivated);
         // A chunk left active under a deleted document would still be matched by retrieval.
         Assert.All(
-            await ctx.ConversationDocumentChunks.Where(x => x.ConversationDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
+            await ctx.ConversationDocumentChunks.IncludingDeactivated().Where(x => x.ConversationDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
             chunk => Assert.NotNull(chunk.DateDeactivated));
     }
 
@@ -1002,7 +1003,7 @@ public sealed class DocumentServiceTests : IDisposable
             () => _service.DeactivateConversationDocumentAsync(conversation.Id, document.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        var stored = await ctx.ConversationDocuments.SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
+        var stored = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(x => x.Id == document.Id, TestContext.Current.CancellationToken);
         Assert.Null(stored.DateDeactivated);
     }
 
@@ -1053,11 +1054,11 @@ public sealed class DocumentServiceTests : IDisposable
         using var ctx = _fixture.CreateContext();
         // Rows and columns are reached through the sheet navigation rather than the document, which is
         // the one leg of this cascade a document-only assertion would never exercise.
-        Assert.All(await ctx.ConversationDocumentSheets.Where(x => x.ConversationDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
+        Assert.All(await ctx.ConversationDocumentSheets.IncludingDeactivated().Where(x => x.ConversationDocumentId == document.Id).ToListAsync(TestContext.Current.CancellationToken),
             sheet => Assert.NotNull(sheet.DateDeactivated));
-        Assert.All(await ctx.ConversationDocumentSheetColumns.Where(x => x.ConversationDocumentSheetId == sheetId).ToListAsync(TestContext.Current.CancellationToken),
+        Assert.All(await ctx.ConversationDocumentSheetColumns.IncludingDeactivated().Where(x => x.ConversationDocumentSheetId == sheetId).ToListAsync(TestContext.Current.CancellationToken),
             column => Assert.NotNull(column.DateDeactivated));
-        Assert.All(await ctx.ConversationDocumentSheetRows.Where(x => x.ConversationDocumentSheetId == sheetId).ToListAsync(TestContext.Current.CancellationToken),
+        Assert.All(await ctx.ConversationDocumentSheetRows.IncludingDeactivated().Where(x => x.ConversationDocumentSheetId == sheetId).ToListAsync(TestContext.Current.CancellationToken),
             row => Assert.NotNull(row.DateDeactivated));
     }
     #endregion
@@ -1857,7 +1858,7 @@ public sealed class DocumentServiceTests : IDisposable
             "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var sheet = await ctx.ConversationDocumentSheets
+        var sheet = await ctx.ConversationDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Include(s => s.Columns)
             .Include(s => s.Rows)
@@ -1899,7 +1900,7 @@ public sealed class DocumentServiceTests : IDisposable
             "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        var sheet = await ctx.ConversationDocumentSheets
+        var sheet = await ctx.ConversationDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Include(s => s.Columns)
             .Include(s => s.Rows)
@@ -1920,7 +1921,7 @@ public sealed class DocumentServiceTests : IDisposable
             "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken);
 
         using var ctx = _fixture.CreateContext();
-        var sheet = await ctx.ProjectDocumentSheets
+        var sheet = await ctx.ProjectDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Include(s => s.Columns)
             .Include(s => s.Rows)
@@ -1928,7 +1929,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         Assert.Equal(2, sheet.Columns.Count);
         Assert.Equal(2, sheet.Rows.Count);
-        Assert.Empty(await ctx.ConversationDocumentSheets.AsNoTracking().ToListAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await ctx.ConversationDocumentSheets.IncludingDeactivated().AsNoTracking().ToListAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -1941,7 +1942,7 @@ public sealed class DocumentServiceTests : IDisposable
             "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
 
         using var ctx = _fixture.CreateContext();
-        var sheet = await ctx.ProjectDocumentSheets
+        var sheet = await ctx.ProjectDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Include(s => s.Columns)
             .Include(s => s.Rows)
@@ -1963,7 +1964,7 @@ public sealed class DocumentServiceTests : IDisposable
 
         using var ctx = _fixture.CreateContext();
 
-        Assert.Empty(await ctx.ConversationDocumentSheets
+        Assert.Empty(await ctx.ConversationDocumentSheets.IncludingDeactivated()
             .AsNoTracking()
             .Where(s => s.ConversationDocumentId == result.Id)
             .ToListAsync(TestContext.Current.CancellationToken));

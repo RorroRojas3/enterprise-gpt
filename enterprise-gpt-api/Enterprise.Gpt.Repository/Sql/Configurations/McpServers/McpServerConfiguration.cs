@@ -1,19 +1,29 @@
 using System.Text.Json;
+using Enterprise.Gpt.Common.Constants.McpServers;
 using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.McpServers
 {
-    public sealed class McpServerConfiguration : IEntityTypeConfiguration<McpServer>
+    public sealed class McpServerConfiguration : BaseModifiedByEntityConfiguration<McpServer, Guid>
     {
-        public void Configure(EntityTypeBuilder<McpServer> builder)
-        {
-            builder.ToTable("McpServer", "Core.Ref");
+        /// <inheritdoc />
+        /// <remarks>Usage, history and audit columns reach this through required navigations, so a retired row must stay visible.</remarks>
+        protected override bool IsSoftDeleteFiltered => false;
 
-            builder.HasKey(x => x.Id);
+        protected override void ConfigureEntity(EntityTypeBuilder<McpServer> builder)
+        {
+            builder.ToTable(nameof(McpServer), "Core.Ref");
+
+            builder.Property(x => x.Name).HasMaxLength(McpServerLimits.NameMaxLength);
+            builder.Property(x => x.Description).HasMaxLength(McpServerLimits.DescriptionMaxLength);
+            builder.Property(x => x.Url).HasMaxLength(McpServerLimits.UrlMaxLength);
+            builder.Property(x => x.Scope).HasMaxLength(McpServerLimits.ScopeMaxLength);
+            builder.Property(x => x.IconKey).HasMaxLength(McpServerLimits.IconKeyMaxLength);
 
             builder.Property(x => x.AuthType)
                 .HasConversion<int>();
@@ -59,14 +69,6 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.McpServers
                         v => v == null
                             ? null
                             : new Dictionary<string, string>(v, StringComparer.OrdinalIgnoreCase)));
-
-            builder.HasOne(x => x.CreatedBy)
-                .WithMany()
-                .HasForeignKey(x => x.CreatedById);
-
-            builder.HasOne(x => x.ModifiedBy)
-                .WithMany()
-                .HasForeignKey(x => x.ModifiedById);
 
             builder.HasIndex(x => x.Name)
                 .HasFilter("[DateDeactivated] IS NULL")

@@ -1,3 +1,4 @@
+using Enterprise.Gpt.Common.Constants.McpServers;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Common.Validation;
 using FluentValidation;
@@ -35,20 +36,20 @@ public class CreateMcpServerActionDtoValidator : AbstractValidator<CreateMcpServ
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .MaximumLength(256);
+            .MaximumLength(McpServerLimits.NameMaxLength);
         RuleFor(x => x.Description)
             .NotEmpty()
-            .MaximumLength(1024);
+            .MaximumLength(McpServerLimits.DescriptionMaxLength);
         RuleFor(x => x.Url)
             .NotEmpty()
-            .MaximumLength(2048)
+            .MaximumLength(McpServerLimits.UrlMaxLength)
             .Must(BeAnAbsoluteHttpUri)
             .WithMessage("Url must be an absolute http or https URI.");
         RuleFor(x => x.AuthType)
             .IsInEnum();
         RuleFor(x => x.Scope)
             .NotEmpty()
-            .MaximumLength(512)
+            .MaximumLength(McpServerLimits.ScopeMaxLength)
             .When(x => x.AuthType == McpAuthTypes.EntraIdOnBehalfOf)
             .WithMessage($"Scope is required when the auth type is {nameof(McpAuthTypes.EntraIdOnBehalfOf)}.");
         // Stated as "every type but one" rather than as an arm per type: a scope is
@@ -65,7 +66,7 @@ public class CreateMcpServerActionDtoValidator : AbstractValidator<CreateMcpServ
         // stored as '' beside the NULLs meaning the same thing, and `IconKey IS NULL` and
         // `iconKey === null` would disagree about the same row. Null clears the icon.
         RuleFor(x => x.IconKey)
-            .MaximumLength(64)
+            .MaximumLength(McpServerLimits.IconKeyMaxLength)
             .Matches(IconKeyPattern)
             .When(x => x.IconKey is not null)
             .WithMessage("IconKey must be a lowercase slug such as 'microsoft'.");

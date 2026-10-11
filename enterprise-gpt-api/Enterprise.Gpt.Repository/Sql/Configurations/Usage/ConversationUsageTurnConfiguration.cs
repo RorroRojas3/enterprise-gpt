@@ -1,4 +1,6 @@
+using Enterprise.Gpt.Common.Constants.Usage;
 using Enterprise.Gpt.Entity.Usage;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -7,13 +9,14 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Usage;
 /// <summary>
 /// Configures the append-only per-model-turn breakdown of a <see cref="ConversationUsage"/> call.
 /// </summary>
-public sealed class ConversationUsageTurnConfiguration : IEntityTypeConfiguration<ConversationUsageTurn>
+public sealed class ConversationUsageTurnConfiguration : BaseCreatedEntityConfiguration<ConversationUsageTurn, Guid>
 {
-    public void Configure(EntityTypeBuilder<ConversationUsageTurn> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ConversationUsageTurn> builder)
     {
         builder.ToTable(nameof(ConversationUsageTurn), "Core");
 
-        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ResponseId).HasMaxLength(ConversationUsageTurnLimits.ResponseIdMaxLength);
+        builder.Property(x => x.ReportedModelId).HasMaxLength(ConversationUsageTurnLimits.ReportedModelIdMaxLength);
 
         builder.HasOne(x => x.ConversationUsage)
             .WithMany(x => x.Turns)

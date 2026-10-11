@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,13 +9,11 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 /// Maps <see cref="ProjectDocumentSheet"/> to <c>Core.ProjectDocumentSheet</c>, its column and row
 /// relationships, and the unique ordinal index that keeps a document's sheets dense.
 /// </summary>
-public sealed class ProjectDocumentSheetConfiguration : IEntityTypeConfiguration<ProjectDocumentSheet>
+public sealed class ProjectDocumentSheetConfiguration : BaseDocumentSheetConfiguration<ProjectDocumentSheet, Guid>
 {
-    public void Configure(EntityTypeBuilder<ProjectDocumentSheet> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ProjectDocumentSheet> builder)
     {
         builder.ToTable(nameof(ProjectDocumentSheet), "Core");
-
-        builder.HasKey(x => x.Id);
 
         builder.HasMany(x => x.Columns)
             .WithOne(x => x.ProjectDocumentSheet)

@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using Enterprise.Gpt.Entity.Base;
 
 namespace Enterprise.Gpt.Entity.Documents;
@@ -6,8 +5,7 @@ namespace Enterprise.Gpt.Entity.Documents;
 /// <summary>
 /// A worksheet of a spreadsheet uploaded into a project.
 /// </summary>
-[Table(nameof(ProjectDocumentSheet), Schema = "Core")]
-public class ProjectDocumentSheet : BaseDocumentSheet
+public class ProjectDocumentSheet : BaseDocumentSheet<Guid>
 {
     /// <summary>The document this sheet belongs to.</summary>
     public Guid ProjectDocumentId { get; set; }

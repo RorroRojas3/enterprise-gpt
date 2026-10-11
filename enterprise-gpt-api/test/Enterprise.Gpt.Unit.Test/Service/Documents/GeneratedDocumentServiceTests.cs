@@ -59,7 +59,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ConversationDocuments.SingleAsync(TestContext.Current.CancellationToken);
+        var document = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(ConversationDocumentTypes.Generated, document.Type);
         Assert.Equal("summary.xlsx", document.Name);
@@ -79,10 +79,10 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
 
         using var ctx = _fixture.CreateContext();
 
-        Assert.Empty(await ctx.ConversationDocumentChunks
+        Assert.Empty(await ctx.ConversationDocumentChunks.IncludingDeactivated()
             .Where(x => x.ConversationDocumentId == stored.Id)
             .ToListAsync(TestContext.Current.CancellationToken));
-        Assert.Empty(await ctx.ConversationDocumentSheets
+        Assert.Empty(await ctx.ConversationDocumentSheets.IncludingDeactivated()
             .Where(x => x.ConversationDocumentId == stored.Id)
             .ToListAsync(TestContext.Current.CancellationToken));
     }
@@ -116,7 +116,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        Assert.Empty(await ctx.ConversationDocuments.ToListAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await ctx.ConversationDocuments.IncludingDeactivated().ToListAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -176,7 +176,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             GeneratedContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         using var ctx = _fixture.CreateContext();
-        Assert.Empty(await ctx.ConversationDocuments.ToListAsync(TestContext.Current.CancellationToken));
+        Assert.Empty(await ctx.ConversationDocuments.IncludingDeactivated().ToListAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -219,9 +219,34 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
         await _service.DiscardAsync(stored.Id);
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ConversationDocuments.SingleAsync(TestContext.Current.CancellationToken);
+        var document = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(document.DateDeactivated);
+        await _documentStore.Received(1).DeleteAsync(
+            GeneratedContainerName,
+            $"{KnownIds.SeedUserId}/{conversation.Id}/{stored.Id}.xlsx",
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A conversation cascade may have deactivated the row before the turn discards it; its blob must still go.
+    /// </summary>
+    [Fact]
+    public async Task DiscardAsync_RowAlreadyDeactivated_StillRemovesTheBlob()
+    {
+        var conversation = await AddConversationAsync();
+        var stored = await _service.StoreAsync(
+            new GeneratedDocumentRequest(conversation.Id, KnownIds.SeedUserId, "summary.xlsx", [1, 2, 3]),
+            TestContext.Current.CancellationToken);
+        using (var arrange = _fixture.CreateContext())
+        {
+            await arrange.ConversationDocuments.IncludingDeactivated()
+                .Where(x => x.Id == stored.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.DateDeactivated, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+        }
+
+        await _service.DiscardAsync(stored.Id);
+
         await _documentStore.Received(1).DeleteAsync(
             GeneratedContainerName,
             $"{KnownIds.SeedUserId}/{conversation.Id}/{stored.Id}.xlsx",
@@ -254,7 +279,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
         await _service.DiscardAsync(stored.Id);
 
         using var ctx = _fixture.CreateContext();
-        var document = await ctx.ConversationDocuments.SingleAsync(TestContext.Current.CancellationToken);
+        var document = await ctx.ConversationDocuments.IncludingDeactivated().SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(document.DateDeactivated);
     }
@@ -264,7 +289,8 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             _documentStore,
             new StaticOptionsMonitor<BlobStorageOptions>(configuration.GetSection(BlobStorageOptions.SectionName).Get<BlobStorageOptions>() ?? new BlobStorageOptions()),
             Microsoft.Extensions.Options.Options.Create(new DocumentOptions { MaxFileSizeBytes = maxFileSizeBytes }),
-            _fixture.ScopeFactory);
+            _fixture.ScopeFactory,
+            TimeProvider.System);
 
     private static IConfiguration Configuration() =>
         new ConfigurationBuilder()

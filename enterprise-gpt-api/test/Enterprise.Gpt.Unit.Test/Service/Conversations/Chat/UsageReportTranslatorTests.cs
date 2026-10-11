@@ -1,5 +1,6 @@
 using Andes.Extensions.AI;
 using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Constants.Usage;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Entity.Usage;
 using Enterprise.Gpt.Service.Agents.Constants;
@@ -19,8 +20,6 @@ namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 /// </summary>
 public sealed class UsageReportTranslatorTests
 {
-    private static readonly DateTimeOffset _date = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);
-
     private static readonly FileAgentModel _fileAgent =
         new(Guid.Parse("2f0d0c1e-6c0a-4f0a-9b3f-2a1c9a5f7e01"), Providers.AzureOpenAI, "gpt-file-agent");
 
@@ -116,7 +115,7 @@ public sealed class UsageReportTranslatorTests
     [Fact]
     public void Translate_NullReport_ReturnsEmpty()
     {
-        var result = UsageReportTranslator.Translate(null, [], _date);
+        var result = UsageReportTranslator.Translate(null, []);
 
         Assert.Equal(0, result.InputTokens);
         Assert.Equal(0, result.OutputTokens);
@@ -128,7 +127,7 @@ public sealed class UsageReportTranslatorTests
     [Fact]
     public void Translate_NoToolCalls_SplitsAssistantTokensOnly()
     {
-        var result = UsageReportTranslator.Translate(Report(Usage(11, 7)), [], _date);
+        var result = UsageReportTranslator.Translate(Report(Usage(11, 7)), []);
 
         Assert.Equal(11, result.InputTokens);
         Assert.Equal(7, result.OutputTokens);
@@ -143,7 +142,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(11, 7), Call("GetWeather", Usage(3, 2)), Call("GetTraffic", Usage(4, 1)));
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         Assert.Equal(11, result.InputTokens);
         Assert.Equal(7, result.OutputTokens);
@@ -166,7 +165,7 @@ public sealed class UsageReportTranslatorTests
             Call("OuterAgent", Usage(100, 60), kind: ToolKind.Agent, children: child),
             Call("Sibling", Usage(1, 1)));
 
-        var rows = UsageReportTranslator.Translate(report, [], _date).ToolCalls;
+        var rows = UsageReportTranslator.Translate(report, []).ToolCalls;
 
         Assert.Equal(["OuterAgent", "InnerAgent", "Lookup", "Sibling"], rows.Select(r => r.ToolName));
     }
@@ -178,7 +177,7 @@ public sealed class UsageReportTranslatorTests
             Usage(0, 0),
             Call("GetWeather", Usage(3, 2), callId: "call_1", succeeded: false, duration: TimeSpan.FromMilliseconds(1500)));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
 
         Assert.Equal("GetWeather", row.ToolName);
         Assert.Equal(ConversationToolKinds.Function, row.Kind);
@@ -187,7 +186,6 @@ public sealed class UsageReportTranslatorTests
         Assert.False(row.Succeeded);
         Assert.Equal(0, row.Sequence);
         Assert.Equal(0, row.Depth);
-        Assert.Equal(_date, row.DateCreated);
     }
 
     [Theory]
@@ -199,7 +197,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(0, 0), Call("Anything", Usage(1, 1), kind: kind));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
 
         Assert.Equal(expected, row.Kind);
     }
@@ -209,7 +207,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(0, 0), Call("First", Usage(1, 1)), Call("Second", Usage(1, 1)));
 
-        var rows = UsageReportTranslator.Translate(report, [], _date).ToolCalls;
+        var rows = UsageReportTranslator.Translate(report, []).ToolCalls;
 
         Assert.Equal(["First", "Second"], rows.Select(r => r.ToolName));
         Assert.Equal([0, 1], rows.Select(r => r.Sequence));
@@ -223,7 +221,7 @@ public sealed class UsageReportTranslatorTests
         var child = Call("InnerSearch", Usage(30, 20), kind: ToolKind.Function);
         var report = Report(Usage(11, 7), Call("ResearchAgent", Usage(100, 60), kind: ToolKind.Agent, children: child));
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         var parent = Assert.Single(Roots(result));
         Assert.Equal(70, parent.InputTokens);
@@ -253,7 +251,7 @@ public sealed class UsageReportTranslatorTests
         var child = Call("InnerAgent", Usage(30, 20), kind: ToolKind.Agent, children: grandchild);
         var report = Report(Usage(0, 0), Call("OuterAgent", Usage(100, 60), kind: ToolKind.Agent, children: child));
 
-        var outer = Assert.Single(Roots(UsageReportTranslator.Translate(report, [], _date)));
+        var outer = Assert.Single(Roots(UsageReportTranslator.Translate(report, [])));
         var inner = Assert.Single(outer.Children);
         var leaf = Assert.Single(inner.Children);
 
@@ -272,7 +270,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(11, 7), Call("Opaque", usage: null, kind: ToolKind.McpTool));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
 
         Assert.Null(row.InputTokens);
         Assert.Null(row.OutputTokens);
@@ -286,7 +284,7 @@ public sealed class UsageReportTranslatorTests
         var child = Call("Opaque", usage: null, kind: ToolKind.McpTool);
         var report = Report(Usage(0, 0), Call("Agent", Usage(40, 10), kind: ToolKind.Agent, children: child));
 
-        var parent = Assert.Single(Roots(UsageReportTranslator.Translate(report, [], _date)));
+        var parent = Assert.Single(Roots(UsageReportTranslator.Translate(report, [])));
 
         Assert.Equal(40, parent.InputTokens);
         Assert.Equal(10, parent.OutputTokens);
@@ -301,7 +299,7 @@ public sealed class UsageReportTranslatorTests
         var child = Call("Inner", Usage(100, 100));
         var report = Report(Usage(0, 0), Call("Outer", Usage(10, 10), kind: ToolKind.Agent, children: child));
 
-        var parent = Assert.Single(Roots(UsageReportTranslator.Translate(report, [], _date)));
+        var parent = Assert.Single(Roots(UsageReportTranslator.Translate(report, [])));
 
         Assert.Equal(0, parent.InputTokens);
         Assert.Equal(0, parent.OutputTokens);
@@ -315,7 +313,7 @@ public sealed class UsageReportTranslatorTests
         var tickets = new McpServerReference(Guid.NewGuid(), "Tickets");
         var report = Report(Usage(0, 0), Call("Weather_forecast", Usage(1, 1), kind: ToolKind.McpTool, source: "anything"));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [weather, tickets], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [weather, tickets]).ToolCalls);
 
         Assert.Equal(weather.Id, row.McpServerId);
     }
@@ -327,7 +325,7 @@ public sealed class UsageReportTranslatorTests
         var server = new McpServerReference(Guid.NewGuid(), "Andes Test MCP");
         var report = Report(Usage(0, 0), Call("Andes_Test_MCP_echo", Usage(1, 1), kind: ToolKind.McpTool));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [server], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [server]).ToolCalls);
 
         Assert.Equal(server.Id, row.McpServerId);
     }
@@ -340,7 +338,7 @@ public sealed class UsageReportTranslatorTests
         var longer = new McpServerReference(Guid.NewGuid(), "Weather_Pro");
         var report = Report(Usage(0, 0), Call("Weather_Pro_forecast", Usage(1, 1), kind: ToolKind.McpTool));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [shorter, longer], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [shorter, longer]).ToolCalls);
 
         Assert.Equal(longer.Id, row.McpServerId);
     }
@@ -351,7 +349,7 @@ public sealed class UsageReportTranslatorTests
         var server = new McpServerReference(Guid.NewGuid(), "Weather");
         var report = Report(Usage(0, 0), Call("forecast", Usage(1, 1), kind: ToolKind.McpTool, source: "weather"));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [server], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [server]).ToolCalls);
 
         Assert.Equal(server.Id, row.McpServerId);
     }
@@ -364,7 +362,7 @@ public sealed class UsageReportTranslatorTests
         var server = new McpServerReference(Guid.NewGuid(), "Weather");
         var report = Report(Usage(0, 0), Call("forecast", Usage(1, 1), kind: ToolKind.McpTool, source: "Elsewhere"));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [server], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [server]).ToolCalls);
 
         Assert.Null(row.McpServerId);
     }
@@ -375,7 +373,7 @@ public sealed class UsageReportTranslatorTests
         var server = new McpServerReference(Guid.NewGuid(), "Weather");
         var report = Report(Usage(0, 0), Call("Weather_forecast", Usage(1, 1), kind: ToolKind.Function));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [server], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [server]).ToolCalls);
 
         Assert.Null(row.McpServerId);
     }
@@ -387,7 +385,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(0, 0), Call("ResearchAgent", Usage(1, 1), kind: ToolKind.Agent, source: "Research Agent"));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
 
         Assert.Null(row.ModelId);
         Assert.Null(row.DeploymentName);
@@ -403,7 +401,7 @@ public sealed class UsageReportTranslatorTests
             Usage(0, 0),
             Call(new string('t', 400), Usage(1, 1), source: new string('s', 400), callId: new string('c', 200)));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
 
         Assert.Equal(256, row.ToolName.Length);
         Assert.Equal(256, row.Source!.Length);
@@ -424,13 +422,12 @@ public sealed class UsageReportTranslatorTests
             ],
             Call("Weather_forecast", Usage(0, 0), kind: ToolKind.McpTool));
 
-        var turns = UsageReportTranslator.Translate(report, [], _date).Turns;
+        var turns = UsageReportTranslator.Translate(report, []).Turns;
 
         Assert.Equal([0, 1], turns.Select(turn => turn.Iteration));
         Assert.Equal(["resp-0", "resp-1"], turns.Select(turn => turn.ResponseId));
         Assert.Equal([5, 11], turns.Select(turn => turn.InputTokens));
         Assert.Equal([3, 7], turns.Select(turn => turn.OutputTokens));
-        Assert.All(turns, turn => Assert.Equal(_date, turn.DateCreated));
     }
 
     // The turn rows partition the assistant columns rather than adding to them. A report that
@@ -440,7 +437,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = ReportWithTurns(Usage(16, 10), [Turn(0, Usage(5, 3)), Turn(1, Usage(11, 7))]);
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         Assert.Equal(result.InputTokens, result.Turns.Sum(turn => turn.InputTokens ?? 0));
         Assert.Equal(result.OutputTokens, result.Turns.Sum(turn => turn.OutputTokens ?? 0));
@@ -454,7 +451,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(11, 7), Call("forecast", Usage(1, 1)));
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         Assert.Empty(result.Turns);
         Assert.Equal(11, result.InputTokens);
@@ -467,7 +464,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = ReportWithTurns(Usage(0, 0), [Turn(0, new UsageDetails())]);
 
-        var turn = Assert.Single(UsageReportTranslator.Translate(report, [], _date).Turns);
+        var turn = Assert.Single(UsageReportTranslator.Translate(report, []).Turns);
 
         Assert.Null(turn.InputTokens);
         Assert.Null(turn.OutputTokens);
@@ -485,7 +482,7 @@ public sealed class UsageReportTranslatorTests
             Call("first", Usage(1, 1), iteration: 0),
             Call("second", Usage(1, 1), iteration: 1));
 
-        var rows = UsageReportTranslator.Translate(report, [], _date).ToolCalls;
+        var rows = UsageReportTranslator.Translate(report, []).ToolCalls;
 
         Assert.Equal([0, 1], rows.Select(row => row.Iteration));
     }
@@ -501,7 +498,7 @@ public sealed class UsageReportTranslatorTests
             [Turn(0, Usage(5, 3))],
             Call("parent", Usage(4, 4), kind: ToolKind.Agent, iteration: 2, children: child));
 
-        var rows = UsageReportTranslator.Translate(report, [], _date).ToolCalls;
+        var rows = UsageReportTranslator.Translate(report, []).ToolCalls;
 
         Assert.Equal([0, 1], rows.Select(row => row.Depth));
         Assert.All(rows, row => Assert.Equal(2, row.Iteration));
@@ -516,10 +513,10 @@ public sealed class UsageReportTranslatorTests
             Usage(0, 0),
             [Turn(0, Usage(1, 1), responseId: new string('r', 400), modelId: new string('m', 800))]);
 
-        var turn = Assert.Single(UsageReportTranslator.Translate(report, [], _date).Turns);
+        var turn = Assert.Single(UsageReportTranslator.Translate(report, []).Turns);
 
-        Assert.Equal(ConversationUsageTurn.ResponseIdMaxLength, turn.ResponseId!.Length);
-        Assert.Equal(ConversationUsageTurn.ReportedModelIdMaxLength, turn.ReportedModelId!.Length);
+        Assert.Equal(ConversationUsageTurnLimits.ResponseIdMaxLength, turn.ResponseId!.Length);
+        Assert.Equal(ConversationUsageTurnLimits.ReportedModelIdMaxLength, turn.ReportedModelId!.Length);
     }
 
     // Both counts are billed subsets of their parent column, and both are dropped by the
@@ -534,7 +531,7 @@ public sealed class UsageReportTranslatorTests
                 Turn(1, Usage(11, 7, cached: 4, reasoning: 3))
             ]);
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         Assert.Equal(6, result.CachedInputTokens);
         Assert.Equal(4, result.ReasoningTokens);
@@ -549,7 +546,7 @@ public sealed class UsageReportTranslatorTests
             Usage(16, 10),
             [Turn(0, Usage(5, 3, cached: 2)), Turn(1, Usage(11, 7))]);
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         Assert.Equal(2, result.CachedInputTokens);
         Assert.Null(result.ReasoningTokens);
@@ -562,7 +559,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = ReportWithTurns(Usage(16, 10), [Turn(0, Usage(5, 3)), Turn(1, Usage(11, 7))]);
 
-        var result = UsageReportTranslator.Translate(report, [], _date);
+        var result = UsageReportTranslator.Translate(report, []);
 
         Assert.Null(result.CachedInputTokens);
         Assert.Null(result.ReasoningTokens);
@@ -573,7 +570,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(10, 4), Call(FileAgentToolNames.Agent, Usage(30, 12), ToolKind.Agent));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date, _fileAgent).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _fileAgent).ToolCalls);
 
         Assert.Equal(ConversationToolKinds.Agent, row.Kind);
         Assert.Equal(_fileAgent.ModelId, row.ModelId);
@@ -590,7 +587,7 @@ public sealed class UsageReportTranslatorTests
             Call(FileAgentToolNames.Agent, Usage(30, 12), ToolKind.Agent, children: Call("load_skill", Usage(4, 1))));
 
         var child = Assert.Single(
-            UsageReportTranslator.Translate(report, [], _date, _fileAgent).ToolCalls, call => call.Depth == 1);
+            UsageReportTranslator.Translate(report, [], _fileAgent).ToolCalls, call => call.Depth == 1);
 
         Assert.Null(child.ModelId);
         Assert.Null(child.DeploymentName);
@@ -604,7 +601,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(10, 4), Call(toolName, Usage(3, 1), kind));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date, _fileAgent).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _fileAgent).ToolCalls);
 
         Assert.Null(row.ModelId);
         Assert.Null(row.DeploymentName);
@@ -617,7 +614,7 @@ public sealed class UsageReportTranslatorTests
     {
         var report = Report(Usage(10, 4), Call(FileAgentToolNames.Agent, Usage(30, 12), ToolKind.Agent));
 
-        var row = Assert.Single(UsageReportTranslator.Translate(report, [], _date).ToolCalls);
+        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
 
         Assert.Null(row.ModelId);
         Assert.Null(row.DeploymentName);

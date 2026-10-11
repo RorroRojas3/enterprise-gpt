@@ -1,14 +1,34 @@
 ﻿using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Common.Constants.ChatModels;
 using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.ChatModels
 {
-    public class ModelConfiguration : IEntityTypeConfiguration<Model>
+    public class ModelConfiguration : BaseModifiedByEntityConfiguration<Model, Guid>
     {
-        public void Configure(EntityTypeBuilder<Model> builder)
+        /// <inheritdoc />
+        /// <remarks>Usage, history and audit columns reach this through required navigations, so a retired row must stay visible.</remarks>
+        protected override bool IsSoftDeleteFiltered => false;
+
+        protected override void ConfigureEntity(EntityTypeBuilder<Model> builder)
         {
+            builder.ToTable(nameof(Model), "Core.Ref");
+
+            builder.Property(x => x.Name).HasMaxLength(ModelLimits.NameMaxLength);
+            builder.Property(x => x.DeploymentName).HasMaxLength(ModelLimits.DeploymentNameMaxLength);
+            builder.Property(x => x.Description).HasMaxLength(ModelLimits.DescriptionMaxLength);
+            builder.Property(x => x.ContextWindowSize).HasColumnType("decimal(18, 2)");
+            builder.Property(x => x.MaxOutputTokens).HasColumnType("decimal(18, 2)");
+            builder.Property(x => x.InputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
+            builder.Property(x => x.OutputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
+
+            builder.HasOne(x => x.Provider)
+                .WithMany()
+                .HasForeignKey(x => x.ProviderId);
+
             // A store default so a column added later backfills existing rows to visible rather than
             // hiding the whole catalog at once. ValueGeneratedNever because EF's seed differ skips
             // store-generated columns, and would drop this one from HasData with no error at all.

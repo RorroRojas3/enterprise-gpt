@@ -1,4 +1,5 @@
 using Enterprise.Gpt.Entity.Documents;
+using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -8,13 +9,11 @@ namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 /// Maps <see cref="ConversationDocumentSheet"/> to <c>Core.ConversationDocumentSheet</c>, its column
 /// and row relationships, and the unique ordinal index that keeps a document's sheets dense.
 /// </summary>
-public sealed class ConversationDocumentSheetConfiguration : IEntityTypeConfiguration<ConversationDocumentSheet>
+public sealed class ConversationDocumentSheetConfiguration : BaseDocumentSheetConfiguration<ConversationDocumentSheet, Guid>
 {
-    public void Configure(EntityTypeBuilder<ConversationDocumentSheet> builder)
+    protected override void ConfigureEntity(EntityTypeBuilder<ConversationDocumentSheet> builder)
     {
         builder.ToTable(nameof(ConversationDocumentSheet), "Core");
-
-        builder.HasKey(x => x.Id);
 
         builder.HasMany(x => x.Columns)
             .WithOne(x => x.ConversationDocumentSheet)
