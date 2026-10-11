@@ -1,2 +1,0 @@
-  total: 2508
-  failed: 0
